@@ -43,15 +43,18 @@ import {
 import { clearProvisioning, setProvisioningStep } from "./provisioning";
 import { clearSetupFailure, recordSetupFailure } from "./setup-failure";
 import { coderBranchName, coderChatSlug, isWorktreeBranch } from "./slug";
+import { normalizeChatMode, type ChatMode } from "./checkout";
 
 /** The branch and directory a chat runs in. */
 export interface EnsuredWorktree {
   /** Workspace-relative path, e.g. `worktrees/saale/c-1a2b3c4d`. */
   path: string;
   branch: string;
+  /** Whether the checkout is the chat's own, or the project's shared one. */
+  mode: ChatMode;
 }
 
-/** The project a chat's worktree belongs to. */
+/** The project a chat's checkout belongs to. */
 interface ProjectRow {
   id: string;
   slug: string;
@@ -59,6 +62,8 @@ interface ProjectRow {
   defaultBranch: string;
   envFiles: unknown;
   setupScript: string | null;
+  chatMode: string;
+  repoSetupAt: Date | null;
 }
 
 /** How stale a repo may be before a new chat refreshes it. */
@@ -210,6 +215,50 @@ async function evictPooledAgent(userId: string, sessionId: string): Promise<void
 }
 
 /**
+ * The project's own checkout, which every chat of a `repo` project shares.
+ *
+ * There is nothing to build for a new chat: the repo is already on disk and on
+ * a branch. The env files and the setup script belong to that one checkout, so
+ * the script runs once and not again until it changes.
+ */
+async function ensureRepoCheckout(
+  userId: string,
+  sessionId: string,
+  project: ProjectRow,
+): Promise<EnsuredWorktree> {
+  if (!(await workspaceDirectoryExists(userId, project.repoPath))) {
+    throw new Error(`The checkout ${project.repoPath} is gone from your workspace`);
+  }
+
+  const envFiles = storedEnvFiles(project.envFiles);
+  await writeEnvFiles(userId, project.repoPath, envFiles, { onlyMissing: true });
+  await excludeEnvFiles(userId, project.repoPath, envFiles);
+
+  if (project.setupScript && !project.repoSetupAt) {
+    await setProvisioningStep(sessionId, "setup");
+    const setup = await runSetupScript(userId, project.repoPath, project.setupScript);
+    if (setup.ok) {
+      await clearSetupFailure(sessionId);
+      // Recorded on the project: the next chat must not install again.
+      await prisma.coderProject.update({
+        where: { id: project.id },
+        data: { repoSetupAt: new Date() },
+      });
+    } else {
+      await recordSetupFailure(sessionId, { exitCode: setup.exitCode, output: setup.output });
+    }
+  }
+
+  const head = await runGit(userId, {
+    cwd: project.repoPath,
+    args: ["symbolic-ref", "--short", "HEAD"],
+    allowFailure: true,
+  });
+  const branch = head.exitCode === 0 ? head.stdout.trim() : "";
+  return { path: project.repoPath, branch: branch || project.defaultBranch, mode: "repo" };
+}
+
+/**
  * Make sure this chat has a worktree, and return the one it runs in.
  *
  * Three cases, in the order they happen: a row whose directory is still there
@@ -235,11 +284,17 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
       defaultBranch: true,
       envFiles: true,
       setupScript: true,
+      chatMode: true,
+      repoSetupAt: true,
     },
   });
   if (!project) throw new Error(`Project not found: ${chat.projectId}`);
 
   try {
+    if (normalizeChatMode(project.chatMode) === "repo") {
+      return await ensureRepoCheckout(userId, sessionId, project);
+    }
+
     const result = await withProjectLock(project.id, () =>
       withLockRetry(() => resolveWorktree(userId, sessionId, project, chat.worktreeBranch)),
     );
@@ -259,7 +314,7 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
           output: setup.output,
         });
     }
-    return { path: result.path, branch: result.branch };
+    return { path: result.path, branch: result.branch, mode: "worktree" };
   } finally {
     // Whatever happened, the chat is no longer building a workspace: the agent
     // starts next, and a stuck hint is worse than none.
@@ -272,7 +327,7 @@ async function resolveWorktree(
   sessionId: string,
   project: ProjectRow,
   branchOverride: string | null,
-): Promise<EnsuredWorktree & { changed: boolean; created: boolean }> {
+): Promise<Omit<EnsuredWorktree, "mode"> & { changed: boolean; created: boolean }> {
   const envFiles = storedEnvFiles(project.envFiles);
   const row = await prisma.coderWorktree.findUnique({ where: { sessionId } });
   if (row) {

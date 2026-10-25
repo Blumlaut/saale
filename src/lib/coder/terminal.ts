@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { kill, writeInput } from "@/lib/sandbox/client";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { getTerminalExecs, unregisterTerminalExec } from "@/lib/redis";
+import { checkoutOf } from "./checkout";
 import { resolveCoderPath } from "./paths";
 
 /** Longest command the panel will run. */
@@ -23,12 +24,12 @@ export const MAX_TERMINAL_COMMAND_LENGTH = 4000;
 export interface TerminalTarget {
   /** Absolute path inside the container. */
   cwd: string;
-  /** Workspace-relative worktree path, for the prompt. */
+  /** Workspace-relative checkout path, for the prompt. */
   worktreePath: string;
   branch: string;
 }
 
-/** Raised when a chat has no worktree to run in yet. */
+/** Raised when a chat has no checkout to run in yet. */
 export class TerminalNotReadyError extends Error {
   constructor(message = "This chat has no worktree yet. Send a message first.") {
     super(message);
@@ -36,24 +37,27 @@ export class TerminalNotReadyError extends Error {
   }
 }
 
-/** The chat's worktree, scoped to its owner. */
+/** The chat's checkout, scoped to its owner. */
 export async function resolveTerminalTarget(
   userId: string,
   sessionId: string,
 ): Promise<TerminalTarget | null> {
   const chat = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId, projectId: { not: null } },
-    select: { coderWorktree: { select: { path: true, branch: true, status: true } } },
+    select: {
+      project: { select: { repoPath: true, chatMode: true } },
+      coderWorktree: { select: { path: true, branch: true, baseSha: true, status: true } },
+    },
   });
   if (!chat) return null;
 
-  const worktree = chat.coderWorktree;
-  if (!worktree || worktree.status !== "active") throw new TerminalNotReadyError();
+  const checkout = checkoutOf(chat);
+  if (!checkout) throw new TerminalNotReadyError();
 
   return {
-    cwd: resolveCoderPath(userId, worktree.path),
-    worktreePath: worktree.path,
-    branch: worktree.branch,
+    cwd: resolveCoderPath(userId, checkout.path),
+    worktreePath: checkout.path,
+    branch: checkout.branch,
   };
 }
 

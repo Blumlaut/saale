@@ -7,7 +7,8 @@
  * stays thin.
  */
 
-import { loadCoderSession, assertRepoRelativePath } from "./changes";
+import { assertRepoRelativePath, loadCoderSession } from "./changes";
+import { checkoutOf } from "./checkout";
 import { readCommitDiff, readBlobAt, resolveCommit, blobSizeAt } from "./git";
 import type { CommitDiffFile } from "./git-status";
 
@@ -97,10 +98,8 @@ export async function loadCommitDiffFile(
   };
 }
 
-/** The chat's worktree path, or null for a chat with nothing to diff. */
+/** The chat's checkout path, or null for a chat with nothing to diff. */
 async function worktreeFor(userId: string, sessionId: string): Promise<string | null> {
   const session = await loadCoderSession(userId, sessionId);
-  if (!session) return null;
-  if (!session.coderWorktree || session.coderWorktree.status !== "active") return null;
-  return session.coderWorktree.path;
+  return session ? (checkoutOf(session)?.path ?? null) : null;
 }

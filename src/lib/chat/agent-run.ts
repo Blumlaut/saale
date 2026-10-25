@@ -86,7 +86,7 @@ export async function ensureChatAgent(options: {
       coderCustomInstructions: userSettings.coderCustomInstructions,
       toolPolicies: userSettings.toolPolicies,
       toolExposure: userSettings.toolExposure,
-      ...(worktree ? { workspaceCwd: worktree.path } : {}),
+      ...(worktree ? { workspaceCwd: worktree.path, checkoutMode: worktree.mode } : {}),
       wrapTool,
       emitApprovalRequest,
     });

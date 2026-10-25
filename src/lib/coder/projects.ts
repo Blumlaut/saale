@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { ensureWorkspaceDirectory, writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { GitError, cloneRepo, initRepo, runGit } from "./git";
 import { ensureGitconfig, gitIdentityFor } from "./gitconfig";
+import { CHAT_MODES, normalizeChatMode, type ChatMode } from "./checkout";
 import { CoderProjectError } from "./project-error";
 import {
   excludeEnvFiles,
@@ -58,6 +59,7 @@ const SETTINGS_SELECT = {
   originUrl: true,
   envFiles: true,
   setupScript: true,
+  chatMode: true,
 } as const;
 
 /** Worktree rows in this state count towards a project's worktrees. */
@@ -77,6 +79,7 @@ export const DEFAULT_GITIGNORE = [
 export interface CreateProjectInput {
   name: string;
   cloneUrl?: string | null | undefined;
+  chatMode?: ChatMode | undefined;
 }
 
 /** A project as the list shows it. */
@@ -86,6 +89,7 @@ export interface CoderProjectSummary {
   slug: string;
   repoPath: string;
   defaultBranch: string;
+  chatMode: ChatMode;
   /** Worktrees still checked out, so removed ones do not inflate it. */
   worktreeCount: number;
   chatCount: number;
@@ -114,6 +118,8 @@ export interface ProjectSettings {
   /** What every worktree of this project gets. */
   envFiles: EnvFile[];
   setupScript: string | null;
+  /** Whether chats get a worktree of their own or share the checkout. */
+  chatMode: ChatMode;
 }
 
 export interface CoderProjectDetail extends ProjectSettings {
@@ -146,6 +152,15 @@ function cleanCloneUrl(cloneUrl: string | null | undefined): string | null {
     throw new CoderProjectError("A clone URL cannot contain whitespace");
   }
   return url;
+}
+
+/** The chat mode a request asked for, refused when it is not one we know. */
+export function parseChatMode(value: unknown): ChatMode {
+  if (value === undefined || value === null) return "worktree";
+  if (!CHAT_MODES.includes(value as ChatMode)) {
+    throw new CoderProjectError(`Chat mode must be one of ${CHAT_MODES.join(", ")}`);
+  }
+  return value as ChatMode;
 }
 
 /** The slug a project would like, before conflicts are resolved. */
@@ -227,6 +242,7 @@ export async function createProject(
 ): Promise<CoderProject> {
   const name = cleanName(input.name);
   const cloneUrl = cleanCloneUrl(input.cloneUrl);
+  const chatMode = parseChatMode(input.chatMode);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -266,6 +282,7 @@ export async function createProject(
           repoPath,
           originUrl: cloneUrl,
           defaultBranch,
+          chatMode,
         },
       });
     } catch (err) {
@@ -297,6 +314,7 @@ export async function listProjects(userId: string): Promise<CoderProjectSummary[
       slug: true,
       repoPath: true,
       defaultBranch: true,
+      chatMode: true,
       worktrees: { where: { status: WORKTREE_STATUS_ACTIVE }, select: { id: true } },
       _count: { select: { chats: true } },
       chats: { orderBy: { lastActivityAt: "desc" }, take: 1, select: { lastActivityAt: true } },
@@ -309,6 +327,7 @@ export async function listProjects(userId: string): Promise<CoderProjectSummary[
     slug: project.slug,
     repoPath: project.repoPath,
     defaultBranch: project.defaultBranch,
+    chatMode: normalizeChatMode(project.chatMode),
     worktreeCount: project.worktrees.length,
     chatCount: project._count.chats,
     lastActivityAt: project.chats[0]?.lastActivityAt ?? null,
@@ -345,6 +364,7 @@ export async function getProject(
     repoPath: project.repoPath,
     originUrl: project.originUrl,
     defaultBranch: project.defaultBranch,
+    chatMode: normalizeChatMode(project.chatMode),
     envFiles: storedEnvFiles(project.envFiles),
     setupScript: project.setupScript,
     chats: project.chats.map((chat) => ({
@@ -366,7 +386,13 @@ export async function getProjectSettings(
     where: { id: projectId, userId },
     select: SETTINGS_SELECT,
   });
-  return project ? { ...project, envFiles: storedEnvFiles(project.envFiles) } : null;
+  return project
+    ? {
+        ...project,
+        envFiles: storedEnvFiles(project.envFiles),
+        chatMode: normalizeChatMode(project.chatMode),
+      }
+    : null;
 }
 
 /** The project id when it belongs to `userId`, null otherwise. */
@@ -400,6 +426,7 @@ export interface UpdateProjectInput {
   defaultBranch?: string | undefined;
   envFiles?: EnvFile[] | undefined;
   setupScript?: string | null | undefined;
+  chatMode?: ChatMode | undefined;
 }
 
 /**
@@ -412,10 +439,19 @@ export interface UpdateProjectInput {
  */
 async function applyEnvToWorktrees(
   userId: string,
-  project: { id: string; repoPath: string },
+  project: { id: string; repoPath: string; chatMode: ChatMode },
   envFiles: EnvFile[],
 ): Promise<void> {
   await excludeEnvFiles(userId, project.repoPath, envFiles);
+
+  // The project's own checkout is the one chats run in when they share it.
+  if (project.chatMode === "repo" && (await workspaceDirectoryExists(userId, project.repoPath))) {
+    await writeEnvFiles(userId, project.repoPath, envFiles, { onlyMissing: true }).catch(
+      (err: unknown) => {
+        console.error(`Failed to write the env files into ${project.repoPath}:`, err);
+      },
+    );
+  }
 
   const worktrees = await prisma.coderWorktree.findMany({
     where: {
@@ -460,6 +496,8 @@ export async function updateProject(
     input.envFiles === undefined ? storedEnvFiles(project.envFiles) : parseEnvFiles(input.envFiles);
   const setupScript =
     input.setupScript === undefined ? project.setupScript : parseSetupScript(input.setupScript);
+  const previousMode = normalizeChatMode(project.chatMode);
+  const chatMode = input.chatMode === undefined ? previousMode : parseChatMode(input.chatMode);
 
   const updated = await prisma.coderProject.update({
     where: { id: project.id },
@@ -468,14 +506,22 @@ export async function updateProject(
       defaultBranch,
       envFiles: envFiles as unknown as Prisma.InputJsonValue,
       setupScript,
+      chatMode,
+      // The shared checkout installed what the old script asked for.
+      ...(setupScript !== project.setupScript || chatMode !== previousMode
+        ? { repoSetupAt: null }
+        : {}),
     },
     select: SETTINGS_SELECT,
   });
 
-  // Only a save that carried files has anything to hand the checkouts.
-  if (input.envFiles !== undefined) await applyEnvToWorktrees(userId, updated, envFiles);
+  // A save that carried files, or moved the chats into the shared checkout, has
+  // something to hand the checkouts.
+  if (input.envFiles !== undefined || chatMode !== previousMode) {
+    await applyEnvToWorktrees(userId, { ...updated, chatMode }, envFiles);
+  }
 
-  return { ...updated, envFiles: storedEnvFiles(updated.envFiles) };
+  return { ...updated, envFiles: storedEnvFiles(updated.envFiles), chatMode };
 }
 
 /** A summary row as JSON, dates as ISO strings. */
@@ -486,6 +532,7 @@ export function serializeProject(project: CoderProjectSummary) {
     slug: project.slug,
     repoPath: project.repoPath,
     defaultBranch: project.defaultBranch,
+    chatMode: project.chatMode,
     worktreeCount: project.worktreeCount,
     chatCount: project.chatCount,
     lastActivityAt: project.lastActivityAt?.toISOString() ?? null,
@@ -506,6 +553,7 @@ export function serializeCreatedProject(project: CoderProject) {
       slug: project.slug,
       repoPath: project.repoPath,
       defaultBranch: project.defaultBranch,
+      chatMode: project.chatMode,
     },
   };
 }
@@ -525,6 +573,7 @@ export function serializeProjectDetail(
       originUrl: project.originUrl,
       envFiles: project.envFiles,
       setupScript: project.setupScript,
+      chatMode: project.chatMode,
     },
     chats: project.chats.map((chat) => ({
       id: chat.id,

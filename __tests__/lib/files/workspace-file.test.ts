@@ -4,11 +4,11 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
-import { loadCoderSession } from "@/lib/coder/changes";
+import { loadChatCheckout } from "@/lib/coder/checkout";
 import { userIdentity } from "@/lib/sandbox/identity";
 
-vi.mock("@/lib/coder/changes", () => ({
-  loadCoderSession: vi.fn(),
+vi.mock("@/lib/coder/checkout", () => ({
+  loadChatCheckout: vi.fn(),
 }));
 
 const userId = "user-1";
@@ -30,22 +30,16 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  vi.mocked(loadCoderSession).mockReset();
-  vi.mocked(loadCoderSession).mockResolvedValue(null);
+  vi.mocked(loadChatCheckout).mockReset();
+  vi.mocked(loadChatCheckout).mockResolvedValue(null);
   await fs.rm(userRoot, { recursive: true, force: true });
   await fs.mkdir(userRoot, { recursive: true });
 });
 
-/** An active coder session whose worktree lives at `worktreePath`. */
-function coderSession(worktreePath: string | null) {
-  return {
-    id: "chat-1",
-    projectId: "proj-1",
-    project: { id: "proj-1", name: "Project", slug: "project" },
-    coderWorktree: worktreePath
-      ? { path: worktreePath, branch: "main", baseSha: "abc1234", status: "active" }
-      : null,
-  };
+/** The checkout a coder chat works in, or none. */
+function chatCheckout(checkoutPath: string | null) {
+  if (!checkoutPath) return null;
+  return { path: checkoutPath, branch: "main", baseSha: "abc1234", mode: "worktree" as const };
 }
 
 /** Write a file into the user's workspace and return its relative path. */
@@ -142,7 +136,7 @@ describe("readWorkspaceFile for a coder chat", () => {
   it("resolves a relative path against the chat's active worktree", async () => {
     await fs.writeFile(path.join(worktree(), "notes.md"), "worktree notes");
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
+    vi.mocked(loadChatCheckout).mockResolvedValue(chatCheckout(storedWorktree));
 
     const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
 
@@ -151,7 +145,7 @@ describe("readWorkspaceFile for a coder chat", () => {
 
   it("falls back to the workspace root when the worktree has no such file", async () => {
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
+    vi.mocked(loadChatCheckout).mockResolvedValue(chatCheckout(storedWorktree));
 
     const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
 
@@ -160,7 +154,7 @@ describe("readWorkspaceFile for a coder chat", () => {
 
   it("resolves against the root when the chat has no worktree", async () => {
     await fs.writeFile(path.join(userRoot, "notes.md"), "root notes");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(null));
+    vi.mocked(loadChatCheckout).mockResolvedValue(chatCheckout(null));
 
     const file = await readWorkspaceFile(userId, "notes.md", { session: "chat-1" });
 
@@ -170,7 +164,7 @@ describe("readWorkspaceFile for a coder chat", () => {
   it("never reads a worktree stored outside the workspace", async () => {
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), "saale-outside-"));
     await fs.writeFile(path.join(outside, "leak.txt"), "top secret");
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(outside));
+    vi.mocked(loadChatCheckout).mockResolvedValue(chatCheckout(outside));
 
     await expect(
       readWorkspaceFile(userId, "leak.txt", { session: "chat-1" }),
@@ -178,7 +172,7 @@ describe("readWorkspaceFile for a coder chat", () => {
   });
 
   it("refuses a traversal that would climb out of the workspace", async () => {
-    vi.mocked(loadCoderSession).mockResolvedValue(coderSession(storedWorktree));
+    vi.mocked(loadChatCheckout).mockResolvedValue(chatCheckout(storedWorktree));
 
     await expect(
       readWorkspaceFile(userId, "../../user-2/secret.txt", { session: "chat-1" }),

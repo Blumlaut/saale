@@ -65,6 +65,7 @@ function projectRow(overrides: Record<string, unknown> = {}) {
     originUrl: null,
     envFiles: null,
     setupScript: null,
+    chatMode: "worktree",
     ...overrides,
   };
 }
@@ -102,6 +103,7 @@ describe("updateProject", () => {
         defaultBranch: "main",
         envFiles: [],
         setupScript: null,
+        chatMode: "worktree",
       },
       select: expect.any(Object),
     });

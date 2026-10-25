@@ -49,13 +49,17 @@ const mocks = vi.hoisted(() => {
     clearProvisioning: vi.fn(),
     recordSetupFailure: vi.fn(),
     clearSetupFailure: vi.fn(),
+    updateProject: vi.fn(),
   };
 });
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatSession: { findFirst: (...args: unknown[]) => mocks.findChat(...args) },
-    coderProject: { findFirst: (...args: unknown[]) => mocks.findProject(...args) },
+    coderProject: {
+      findFirst: (...args: unknown[]) => mocks.findProject(...args),
+      update: (...args: unknown[]) => mocks.updateProject(...args),
+    },
     coderWorktree: {
       findUnique: (...args: unknown[]) => mocks.findWorktree(...args),
       create: (...args: unknown[]) => mocks.createWorktree(...args),
@@ -158,6 +162,7 @@ beforeEach(async () => {
   mocks.clearProvisioning.mockResolvedValue(undefined);
   mocks.recordSetupFailure.mockResolvedValue(undefined);
   mocks.clearSetupFailure.mockResolvedValue(undefined);
+  mocks.updateProject.mockResolvedValue({});
 });
 
 afterEach(async () => {
@@ -252,7 +257,11 @@ describe("ensureWorktree", () => {
 
     const worktree = await ensureWorktree(USER, "chat-1");
 
-    expect(worktree).toEqual({ path: "worktrees/saale/c-chat1", branch: "wt/c-chat1" });
+    expect(worktree).toEqual({
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      mode: "worktree",
+    });
     expect(mocks.addWorktree).not.toHaveBeenCalled();
     expect(mocks.headSha).not.toHaveBeenCalled();
     expect(mocks.pruneWorktrees).not.toHaveBeenCalled();
@@ -272,7 +281,11 @@ describe("ensureWorktree", () => {
 
     const worktree = await ensureWorktree(USER, "chat-1");
 
-    expect(worktree).toEqual({ path: "worktrees/saale/c-chat1", branch: "wt/c-chat1" });
+    expect(worktree).toEqual({
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      mode: "worktree",
+    });
     expect(mocks.pruneWorktrees).toHaveBeenCalledWith(USER, "projects/saale");
     expect(mocks.addWorktree).toHaveBeenCalledWith(USER, {
       repoDir: "projects/saale",
@@ -290,7 +303,11 @@ describe("ensureWorktree", () => {
 
     const worktree = await ensureWorktree(USER, "chat-1");
 
-    expect(worktree).toEqual({ path: "worktrees/saale/c-chat1", branch: "wt/c-chat1" });
+    expect(worktree).toEqual({
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      mode: "worktree",
+    });
     expect(mocks.addWorktree).toHaveBeenCalledWith(USER, {
       repoDir: "projects/saale",
       dir: "worktrees/saale/c-chat1",
@@ -452,7 +469,11 @@ describe("ensureWorktree", () => {
 
     const worktree = await ensureWorktree(USER, "chat-1");
 
-    expect(worktree).toEqual({ path: "worktrees/saale/c-chat1", branch: "wt/c-chat1" });
+    expect(worktree).toEqual({
+      path: "worktrees/saale/c-chat1",
+      branch: "wt/c-chat1",
+      mode: "worktree",
+    });
     expect(mocks.addWorktree).toHaveBeenCalledTimes(1);
   });
 
@@ -642,5 +663,81 @@ describe("ensureWorktree: a setup script that fails", () => {
 
     expect(mocks.recordSetupFailure).not.toHaveBeenCalled();
     expect(mocks.clearSetupFailure).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A project whose chats share its own checkout: there is nothing to build for a
+ * new chat, and the setup script installs into that one checkout once.
+ */
+describe("ensureWorktree: a project whose chats share its checkout", () => {
+  const SHARED = "projects/shared";
+
+  beforeEach(async () => {
+    mocks.findProject.mockResolvedValue({
+      ...PROJECT,
+      repoPath: SHARED,
+      chatMode: "repo",
+      repoSetupAt: null,
+    });
+    await fs.mkdir(path.join(workspaceRoot, IDENTITY, SHARED), { recursive: true });
+  });
+
+  it("hands back the project's checkout without making a worktree", async () => {
+    mocks.runGit.mockResolvedValue({ stdout: "main\n", stderr: "", exitCode: 0 });
+
+    const checkout = await ensureWorktree(USER, "chat-shared");
+
+    expect(checkout).toEqual({ path: SHARED, branch: "main", mode: "repo" });
+    expect(mocks.addWorktree).not.toHaveBeenCalled();
+    expect(mocks.createWorktree).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the default branch when git cannot name one", async () => {
+    mocks.runGit.mockResolvedValue({ stdout: "", stderr: "", exitCode: 1 });
+
+    const checkout = await ensureWorktree(USER, "chat-shared");
+
+    expect(checkout.branch).toBe(PROJECT.defaultBranch);
+  });
+
+  it("installs once and records it on the project", async () => {
+    mocks.findProject.mockResolvedValue({
+      ...PROJECT,
+      repoPath: SHARED,
+      chatMode: "repo",
+      repoSetupAt: null,
+      setupScript: "npm ci",
+    });
+
+    await ensureWorktree(USER, "chat-shared-1");
+
+    expect(mocks.setProvisioning).toHaveBeenCalledWith("chat-shared-1", "setup");
+    expect(mocks.updateProject).toHaveBeenCalledWith({
+      where: { id: PROJECT.id },
+      data: { repoSetupAt: expect.any(Date) },
+    });
+  });
+
+  it("does not install again for the next chat", async () => {
+    mocks.findProject.mockResolvedValue({
+      ...PROJECT,
+      repoPath: SHARED,
+      chatMode: "repo",
+      repoSetupAt: new Date(),
+      setupScript: "npm ci",
+    });
+    mocks.runInWorkspace.mockClear();
+
+    await ensureWorktree(USER, "chat-shared-2");
+
+    expect(mocks.runInWorkspace).not.toHaveBeenCalled();
+    expect(mocks.updateProject).not.toHaveBeenCalled();
+  });
+
+  it("refuses a checkout that is gone", async () => {
+    await fs.rm(path.join(workspaceRoot, IDENTITY, SHARED), { recursive: true, force: true });
+
+    await expect(ensureWorktree(USER, "chat-shared-3")).rejects.toThrow(/gone from your workspace/);
   });
 });
