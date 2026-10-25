@@ -256,7 +256,7 @@ export async function POST(
     // chat open, so the next message gets the try.
     const titleText = sanitizedContent || attachments[0]?.fileName || "Attachment";
     const derivedTitle = chatSession.titleSource === "default" ? deriveChatTitle(titleText) : null;
-    await prisma.chatSession.update({
+    const updatedSession = await prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         messageCount: { increment: 1 },
@@ -268,6 +268,7 @@ export async function POST(
             }
           : {}),
       },
+      select: { title: true },
     });
 
     // A queued message is delivered by the stream route's drain once the
@@ -277,6 +278,7 @@ export async function POST(
       return NextResponse.json({
         ok: true,
         queued: true,
+        title: updatedSession.title,
         message: serializeChatMessage(userMessageWithAttachments!),
       });
     }
@@ -290,6 +292,7 @@ export async function POST(
         ok: true,
         queued: false,
         steered: true,
+        title: updatedSession.title,
         streamUrl: `/api/chat/sessions/${sessionId}/stream`,
         message: serializeChatMessage(userMessageWithAttachments!),
       });
@@ -308,6 +311,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       queued: false,
+      title: updatedSession.title,
       streamUrl: `/api/chat/sessions/${sessionId}/stream`,
       message: serializeChatMessage(userMessageWithAttachments!),
     });
