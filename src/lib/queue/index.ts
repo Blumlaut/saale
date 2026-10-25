@@ -447,6 +447,40 @@ export async function scheduleCoderSweep(intervalMinutes: number): Promise<strin
   return removed;
 }
 
+// ─── Calendar reminders ────────────────────────────────────────────────────
+
+/** Job scheduler id of the calendar reminder sweep. */
+export const CALENDAR_REMINDERS_SCHEDULER_ID = "calendar-reminders";
+
+/** Job name the calendar reminder sweep scheduler enqueues. */
+export const CALENDAR_REMINDERS_JOB_NAME = "calendar_reminders";
+
+/**
+ * Register the sweep that pushes reminders for upcoming calendar events.
+ *
+ * A minute apart, because a reminder is only useful close to the event, and the
+ * sweep reads an indexed slice of the calendar.
+ *
+ * @param intervalMinutes - How often to look for events that are due
+ * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
+ */
+export async function scheduleCalendarReminders(intervalMinutes: number): Promise<string[]> {
+  const queue = getQueue();
+  const removed = await removeLegacyRepeatableJobs(
+    queue,
+    CALENDAR_REMINDERS_JOB_NAME,
+    CALENDAR_REMINDERS_SCHEDULER_ID,
+  );
+
+  await queue.upsertJobScheduler(
+    CALENDAR_REMINDERS_SCHEDULER_ID,
+    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { name: CALENDAR_REMINDERS_JOB_NAME, data: {} },
+  );
+
+  return removed;
+}
+
 // ─── Watcher chat retention ────────────────────────────────────────────────
 
 /** Job scheduler id of the watcher chat cleanup. */

@@ -2,7 +2,9 @@
 import "dotenv/config";
 import type { Job, Processor } from "bullmq";
 import {
+  CALENDAR_REMINDERS_JOB_NAME,
   CODER_SWEEP_JOB_NAME,
+  scheduleCalendarReminders,
   scheduleCoderSweep,
   COUNCIL_SWEEP_JOB_NAME,
   createWorker,
@@ -18,7 +20,11 @@ import {
 import { isCouncilEnabled } from "@/lib/council/flag";
 import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
+import { sendCalendarReminders } from "@/lib/notifications/calendar-reminders";
 import { registerTelegramWebhook } from "@/lib/telegram";
+
+/** How often to look for calendar events that are due a reminder (1 min) */
+const CALENDAR_REMINDERS_INTERVAL_MINUTES = 1;
 
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
@@ -40,6 +46,14 @@ const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
 /** Register the coder worktree sweep, reporting pruned v5 repeatable jobs. */
 async function registerCoderSweep(): Promise<void> {
   const removed = await scheduleCoderSweep(CODER_SWEEP_INTERVAL_MINUTES);
+  for (const id of removed) {
+    console.log(`[worker] Removed legacy repeatable job ${id}`);
+  }
+}
+
+/** Register the calendar reminder sweep, reporting pruned v5 repeatable jobs. */
+async function registerCalendarReminders(): Promise<void> {
+  const removed = await scheduleCalendarReminders(CALENDAR_REMINDERS_INTERVAL_MINUTES);
   for (const id of removed) {
     console.log(`[worker] Removed legacy repeatable job ${id}`);
   }
@@ -131,6 +145,16 @@ async function executeCoderSweepViaApp(): Promise<unknown> {
   return postToApp("/api/coder/sweep", {});
 }
 
+/** Remind users about the calendar events that are about to start. */
+async function executeCalendarReminders(): Promise<void> {
+  const result = await sendCalendarReminders();
+  if (result.due > 0) {
+    console.log(
+      `[worker] Calendar reminders: ${result.due} due, ${result.notified} notified of ${result.scanned} upcoming`,
+    );
+  }
+}
+
 /** Remove the bot chats whose work is finished and whose window has passed. */
 async function executeWatcherChatCleanupViaApp(): Promise<unknown> {
   return postToApp("/api/watchers/cleanup", {});
@@ -160,6 +184,9 @@ function createJobRouter(): Processor {
     }
     if (job.name === WATCHER_CHAT_CLEANUP_JOB_NAME) {
       return executeWatcherChatCleanupViaApp();
+    }
+    if (job.name === CALENDAR_REMINDERS_JOB_NAME) {
+      return executeCalendarReminders();
     }
     return executeJobViaApp(job);
   };
@@ -226,6 +253,7 @@ async function main() {
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Schedule coder worktree sweep", registerCoderSweep);
   await retryUntilSuccess("Schedule watcher chat cleanup", registerWatcherChatCleanup);
+  await retryUntilSuccess("Schedule calendar reminders", registerCalendarReminders);
   await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook);
 
   process.on("SIGINT", async () => {
