@@ -22,6 +22,7 @@ import {
   parseNumstat,
   parsePorcelainZ,
   parseStatusHeader,
+  parseSymrefHead,
   parseWorktreeList,
   type CommitDiffFile,
   type GitCommit,
@@ -190,6 +191,46 @@ export async function cloneRepo(
 
 /** A fetch talks to a remote, so it gets its own budget, above a local command. */
 const FETCH_TIMEOUT_SECONDS = 120;
+
+/** A one-line question to a remote, asked while someone waits on a form. */
+const PROBE_TIMEOUT_SECONDS = 10;
+
+/**
+ * The branch a remote would check out by default, for the setup flow.
+ *
+ * Asked before the project exists, so it cannot come from a clone. A remote
+ * that does not answer is not an error here: the form keeps the repo's own
+ * branch as the answer and the clone is where it is found out.
+ */
+export async function remoteDefaultBranch(userId: string, url: string): Promise<string | null> {
+  const env: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
+    console.error(`Failed to load sandbox variables for probing ${url}:`, err);
+    return {};
+  });
+  // `gh` is the only thing here that can reach a private repo with a token.
+  const authorized = Boolean(env.GH_TOKEN);
+  const args = authorized
+    ? ["gh", "repo", "view", url, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"]
+    : ["git", "ls-remote", "--symref", "--", url, "HEAD"];
+
+  const result = await runInWorkspace(userId, {
+    cwd: ".",
+    command: args.map(shellQuote).join(" "),
+    env: authorized ? env : undefined,
+    timeoutSeconds: PROBE_TIMEOUT_SECONDS,
+  }).catch((err: unknown) => {
+    console.error(`Failed to ask ${url} for its default branch:`, err);
+    return null;
+  });
+  if (!result) return null;
+  if (result.exitCode !== 0) {
+    console.warn(`[coder] could not read the default branch of ${url}: ${failureMessage(result)}`);
+    return null;
+  }
+
+  const branch = authorized ? result.stdout.trim() : parseSymrefHead(result.stdout);
+  return branch || null;
+}
 
 /**
  * Update the repo's remote-tracking refs, when it has a remote.

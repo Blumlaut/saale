@@ -36,6 +36,7 @@ import {
   isRepoFullyPushed,
   readCommitDiff,
   refSha,
+  remoteDefaultBranch,
   removeWorktree,
   resolveCommit,
   runGit,
@@ -220,6 +221,51 @@ describe("cloneRepo", () => {
     await expect(
       cloneRepo(USER, { dir: "projects/private", url: "https://github.com/Blumlaut/x.git" }),
     ).rejects.toThrow(/terminal prompts disabled/);
+  });
+});
+
+describe("remoteDefaultBranch", () => {
+  it("reads the symref plain git reports for HEAD", async () => {
+    sandboxEnv = {};
+    execResult = {
+      stdout: "ref: refs/heads/develop\tHEAD\n1".concat("0".repeat(39), "\tHEAD\n"),
+      stderr: "",
+      exitCode: 0,
+    };
+
+    await expect(remoteDefaultBranch(USER, "https://github.com/x/y.git")).resolves.toBe("develop");
+
+    const options = execOptions[0] as { command: string; env?: Record<string, string> };
+    expect(options.command).toBe("git ls-remote --symref -- https://github.com/x/y.git HEAD");
+    expect(options.env?.GH_TOKEN).toBeUndefined();
+  });
+
+  it("asks gh instead when the user has a token, so private repos answer too", async () => {
+    execResult = { stdout: "trunk\n", stderr: "", exitCode: 0 };
+
+    await expect(remoteDefaultBranch(USER, "https://github.com/x/y.git")).resolves.toBe("trunk");
+
+    const options = execOptions[0] as { command: string; env: Record<string, string> };
+    expect(options.command).toBe(
+      "gh repo view https://github.com/x/y.git --json defaultBranchRef --jq .defaultBranchRef.name",
+    );
+    expect(options.env.GH_TOKEN).toBe("secret-token");
+  });
+
+  it("answers null when the remote refuses", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sandboxEnv = {};
+    execResult = { stdout: "", stderr: "fatal: repository not found", exitCode: 128 };
+
+    await expect(remoteDefaultBranch(USER, "https://github.com/x/y.git")).resolves.toBeNull();
+    warn.mockRestore();
+  });
+
+  it("answers null for a HEAD that names no branch", async () => {
+    sandboxEnv = {};
+    execResult = { stdout: "1".concat("0".repeat(39), "\tHEAD\n"), stderr: "", exitCode: 0 };
+
+    await expect(remoteDefaultBranch(USER, "https://github.com/x/y.git")).resolves.toBeNull();
   });
 });
 
