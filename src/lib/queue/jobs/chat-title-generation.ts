@@ -37,18 +37,20 @@ export async function handler(params: {
   const { config, userId, modelId } = params;
   const maxSessions = (config.maxSessionsPerRun as number) ?? 10;
 
-  // Find sessions with default or auto-generated titles
+  // Sessions whose title still comes from the message itself: none written yet,
+  // read off the first message, or set by an earlier run of this job.
   const sessions = await prisma.chatSession.findMany({
     where: {
       userId,
       messageCount: { gt: 1 }, // skip sessions with 0-1 messages
-      OR: [{ title: { endsWith: "..." } }, { title: "New Chat" }],
+      titleSource: { in: ["default", "auto", "ai"] },
     },
     orderBy: { lastActivityAt: "desc" },
     take: maxSessions,
     select: {
       id: true,
       title: true,
+      titleSource: true,
       messageCount: true,
     },
   });
@@ -71,12 +73,6 @@ export async function handler(params: {
   }
 
   for (const session of sessions) {
-    // Skip if title was already manually updated (no longer matches default patterns)
-    if (session.title !== "New Chat" && !session.title.endsWith("...")) {
-      sessionsSkipped++;
-      continue;
-    }
-
     const messages = messagesBySession.get(session.id) ?? [];
 
     if (messages.length === 0) {
@@ -130,7 +126,7 @@ Output JSON only:
     if (newTitle && newTitle !== session.title) {
       await prisma.chatSession.update({
         where: { id: session.id, userId },
-        data: { title: newTitle },
+        data: { title: newTitle, titleSource: "ai" },
       });
       titlesGenerated++;
     } else {
