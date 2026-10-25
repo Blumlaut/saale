@@ -12,7 +12,7 @@ export type SendMessageResult =
    *  prompted now. `steered` means the message was injected into a running
    *  turn that was waiting on a tool approval. all pending approvals were
    *  denied for it. */
-  | { kind: "ok"; message: Message; queued: boolean; steered?: boolean }
+  | { kind: "ok"; message: Message; queued: boolean; steered?: boolean; title?: string }
   /** 409. unexpected: the server queues instead of rejecting. */
   | { kind: "conflict" }
   /** 404. session gone; caller should navigate away. */
@@ -52,7 +52,12 @@ export async function sendChatMessage(
     return { kind: "error", message: body.error || res.statusText };
   }
 
-  const data = (await res.json()) as { message?: Message; queued?: boolean; steered?: boolean };
+  const data = (await res.json()) as {
+    message?: Message;
+    queued?: boolean;
+    steered?: boolean;
+    title?: string;
+  };
   if (!data.message) {
     return { kind: "error", message: "Missing message in response" };
   }
@@ -61,5 +66,7 @@ export async function sendChatMessage(
     message: data.message,
     queued: data.queued === true,
     steered: data.steered === true,
+    // the chat's title after this message, when the server (re)named it
+    ...(data.title ? { title: data.title } : {}),
   };
 }

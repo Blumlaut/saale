@@ -29,6 +29,15 @@ describe("sendChatMessage", () => {
     expect(JSON.parse(init.body as string)).toEqual({ content: "hello" });
   });
 
+  it("carries the chat title the message produced", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ message: { id: "m4" }, queued: false, title: "Dark mode toggle" }),
+    );
+    const result = await sendChatMessage("sess-1", "add a dark mode toggle");
+
+    expect(result.kind === "ok" && result.title).toBe("Dark mode toggle");
+  });
+
   it("flags a message the server queued instead of prompting", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m2" }, queued: true }));
     expect(await sendChatMessage("sess-1", "hello")).toEqual({

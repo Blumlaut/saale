@@ -136,7 +136,10 @@ function stubDbMessage(messageId: string, attachments: unknown[] = []) {
   };
   mockPrisma.chatMessage.create.mockResolvedValue(messageRecord);
   mockPrisma.chatMessage.findUnique.mockResolvedValue(messageRecord);
-  mockPrisma.chatSession.update.mockResolvedValue({});
+  // mirrors the row the route wrote, so the response carries the real title
+  mockPrisma.chatSession.update.mockImplementation(async (args: { data: { title?: string } }) => ({
+    title: args.data.title,
+  }));
 }
 
 function createData() {
@@ -325,6 +328,9 @@ describe("plain JSON messages (no attachments)", () => {
     };
     expect(update.title).toBe("Add dark mode toggle to settings page");
     expect(update.titleSource).toBe("auto");
+
+    // the sidebar and the chat header read the same title without a reload
+    expect((await res.json()).title).toBe("Add dark mode toggle to settings page");
   });
 
   it("leaves a chat that already has a title alone", async () => {

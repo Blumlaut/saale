@@ -408,6 +408,11 @@ export function ChatInterface({
           case "error":
             throw new Error(result.message);
           case "ok": {
+            // The first message names the chat server-side. Take the title from
+            // this response so the header and the sidebar lists agree now,
+            // instead of at the next reload.
+            if (result.title) applySession({ title: result.title });
+
             const saved: Message = {
               ...optimistic,
               id: result.message.id,
@@ -482,7 +487,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, router, connect, disconnect, setDraft, runCommand],
+    [sessionId, router, connect, disconnect, setDraft, runCommand, applySession],
   );
 
   // ─── Send queue actions ──────────────────────────────────────────────────
