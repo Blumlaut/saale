@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
+import { addInboxNotification } from "@/lib/notifications/inbox";
 
 const NOTIFICATION_KEY = "notifications:";
 
@@ -33,22 +34,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { type, title, message, data } = body;
 
-  const notification = {
-    id: crypto.randomUUID(),
+  const notification = await addInboxNotification(authResult.user.id, {
     type,
     title,
     message,
     data,
-    read: false,
-    createdAt: new Date().toISOString(),
-  };
-
-  const redis = getRedis();
-  const key = `${NOTIFICATION_KEY}${authResult.user.id}`;
-
-  // Add to list (keep last 100)
-  await redis.lpush(key, JSON.stringify(notification));
-  await redis.ltrim(key, 0, 99);
+  });
 
   return NextResponse.json({ ok: true, notification });
 }

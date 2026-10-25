@@ -29,6 +29,7 @@ const baseSettings: UserSettings = {
   coderToolConfig: null,
   toolPolicies: null,
   toolExposure: null,
+  pushNotifications: null,
 };
 
 /** The category order is fixed, so the last switch is the last category. */

@@ -22,6 +22,7 @@ function serializeSettings(settings: AppSettings) {
     coderToolConfig: settings.coderToolConfig,
     toolPolicies: settings.toolPolicies,
     toolExposure: normalizeToolExposure(settings.toolExposure),
+    pushNotifications: settings.pushNotifications,
   };
 }
 
