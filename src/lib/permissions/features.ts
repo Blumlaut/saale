@@ -45,7 +45,7 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
   coder: {
     label: "Coder",
     description: "Project worktrees and coding chats, with the terminal and file tools.",
-    toolCategories: ["terminal"],
+    toolCategories: ["terminal", "coder"],
     navId: "coder",
     defaultOn: true,
   },

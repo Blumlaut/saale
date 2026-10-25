@@ -26,6 +26,7 @@ import {
   SlidersHorizontal,
   Send,
   Users,
+  FolderGit2,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -153,6 +154,14 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     label: "Infrastructure",
     description: "Manage remote machines via SSH",
     icon: Server,
+    defaultEnabled: true,
+    defaultExposure: "codemode",
+  },
+  {
+    key: "coder",
+    label: "Coder projects",
+    description: "List coder projects and hand work to a coding chat",
+    icon: FolderGit2,
     defaultEnabled: true,
     defaultExposure: "codemode",
   },

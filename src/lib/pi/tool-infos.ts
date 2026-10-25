@@ -765,6 +765,26 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     summaryTemplate: "Removing machine {name}",
   },
 
+  // ── Coder projects ────────────────────────────────────────────────
+  {
+    name: "project_list",
+    label: "List Projects",
+    description: "List the user's coder projects and the project this chat is in",
+    category: "coder",
+    // Read-only: an id to dispatch work with, nothing that changes.
+    defaultPolicy: "allow",
+    defaultExposure: "codemode",
+  },
+  {
+    name: "project_chat_start",
+    label: "Start Coding Chat",
+    description: "Start a coding chat in a project and get its reply",
+    category: "coder",
+    // A coding chat runs shell commands in a checkout, so it starts on approval.
+    defaultPolicy: "ask",
+    defaultExposure: "deferred",
+  },
+
   // ── Settings ──────────────────────────────────────────────────────
   {
     name: "settings_list",
