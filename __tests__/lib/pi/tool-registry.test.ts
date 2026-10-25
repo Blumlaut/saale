@@ -88,6 +88,14 @@ vi.mock("@/lib/pi/tools/infra-tools", () => ({
   ]),
 }));
 
+vi.mock("@/lib/coder/tools", () => ({
+  createProjectTools: vi.fn((userId: string) => [
+    { name: "project_list", userId },
+    { name: "project_chat_start", userId },
+  ]),
+  createProjectSettingsTools: vi.fn(() => []),
+}));
+
 // Feature gating is a database lookup; these cases are about the categories.
 const ALL_FEATURES_ON = Object.fromEntries(FEATURES.map((key) => [key, true])) as FeatureMap;
 vi.mock("@/lib/permissions/feature-access", () => ({
@@ -490,6 +498,7 @@ describe("resolveTools", () => {
       agentJobs: true,
       watchers: true,
       infra: true,
+      coder: true,
       settings: true,
     };
 
@@ -505,6 +514,10 @@ describe("resolveTools", () => {
       // listed  while creating one is an action it has to go and find.
       expect(exposureOf(tools, "watcher_list")).toBe("codemode");
       expect(exposureOf(tools, "watcher_create")).toBe("deferred");
+      // Projects work the same way: the list is what the model names a project
+      // from, and starting a coding chat is an action to go and find.
+      expect(exposureOf(tools, "project_list")).toBe("codemode");
+      expect(exposureOf(tools, "project_chat_start")).toBe("deferred");
       // The rest of the catalog stays callable from a script but unlisted, so
       // it has to be found with `searchTools`.
       expect(exposureOf(tools, "infra_exec")).toBe("deferred");
