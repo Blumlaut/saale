@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 import { useClickOutside } from "@/hooks/use-click-outside";
+import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
@@ -61,7 +62,9 @@ export function DashboardNav() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [mailExpanded, setMailExpanded] = useState(false);
+  const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
+    validate: isBoolean,
+  });
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const isAdmin = useIsAdmin();
