@@ -160,7 +160,7 @@ export function WorktreePanel({
               <GitBranch className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Project
               {state?.changes.length ? (
-                <span className="text-muted-foreground font-mono text-[10px]">
+                <span className="text-muted-foreground text-[10px] tabular-nums">
                   {state.changes.length}
                 </span>
               ) : null}

@@ -55,7 +55,7 @@ function statusLetter(change: CoderChange): { letter: string; className: string 
 function Counts({ change }: { change: CoderChange }) {
   if (change.added === null && change.deleted === null) return null;
   return (
-    <span className="shrink-0 font-mono text-[11px]">
+    <span className="shrink-0 text-[11px] tabular-nums">
       <span className="text-emerald-600 dark:text-emerald-400">+{change.added ?? 0}</span>{" "}
       <span className="text-red-600 dark:text-red-400">−{change.deleted ?? 0}</span>
     </span>
@@ -133,7 +133,7 @@ function CommitRow({
           {commit.shortSha}
         </span>
         <span className="min-w-0 flex-1 text-xs break-words">{commit.subject}</span>
-        <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
+        <span className="text-muted-foreground shrink-0 pt-px text-[11px] tabular-nums">
           {formatRelativeDate(commit.date)}
         </span>
       </button>
@@ -269,7 +269,7 @@ export function ChangesView({
           {/* The same checkout as every other chat of the project, which is
               worth saying before someone commits on a shared branch. */}
           {state.worktree?.mode === "repo" && (
-            <span className="text-muted-foreground shrink-0 font-mono text-[10px] tracking-wide uppercase">
+            <span className="text-muted-foreground shrink-0 text-[10px] tracking-wide uppercase">
               shared
             </span>
           )}
@@ -292,7 +292,7 @@ export function ChangesView({
             </span>
           )}
           {(state.ahead > 0 || state.behind > 0) && (
-            <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px]">
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums">
               {state.ahead > 0 && <span className="text-muted-foreground">↑{state.ahead}</span>}
               {state.behind > 0 && (
                 <span className="text-amber-600 dark:text-amber-400">↓{state.behind}</span>
@@ -306,7 +306,7 @@ export function ChangesView({
         <CollapsibleSection
           label={state.changes.length === 1 ? "1 file" : `${state.changes.length} files`}
           right={
-            <span className="shrink-0 font-mono text-[11px]">
+            <span className="shrink-0 text-[11px] tabular-nums">
               <span className="text-emerald-600 dark:text-emerald-400">+{totals.added}</span>{" "}
               <span className="text-red-600 dark:text-red-400">−{totals.deleted}</span>
             </span>
@@ -339,7 +339,7 @@ export function ChangesView({
                   >
                     <span
                       className={cn(
-                        "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+                        "w-3 shrink-0 text-center text-[11px] font-semibold",
                         status.className,
                       )}
                     >
@@ -380,7 +380,7 @@ export function ChangesView({
           <CollapsibleSection
             label="Scripts"
             right={
-              <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+              <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
                 {state.scripts.length}
               </span>
             }
@@ -394,7 +394,7 @@ export function ChangesView({
                   className="hover:bg-accent/60 flex items-center gap-2 rounded px-2 py-1 text-left transition-colors"
                   title={script.command}
                 >
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{script.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs">{script.name}</span>
                   <span className="text-muted-foreground min-w-0 truncate font-mono text-[10px]">
                     npm run {script.name}
                   </span>
@@ -407,7 +407,7 @@ export function ChangesView({
         <CollapsibleSection
           label="Recent commits"
           right={
-            <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+            <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
               {state.commits.length}
             </span>
           }

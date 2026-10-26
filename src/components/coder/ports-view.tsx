@@ -94,7 +94,7 @@ export function PortsView({ view }: { view: ReturnType<typeof usePorts> }) {
         <div className="min-h-0 flex-1 overflow-y-auto">
           {ports.map((entry) => (
             <div key={entry.port} className="flex items-center gap-1 px-2 py-1.5">
-              <span className="text-muted-foreground font-mono text-[11px]">{entry.port}</span>
+              <span className="text-muted-foreground text-[11px] tabular-nums">{entry.port}</span>
               <span
                 className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]"
                 title={commandLabel(entry.command)}
@@ -102,9 +102,7 @@ export function PortsView({ view }: { view: ReturnType<typeof usePorts> }) {
                 {commandLabel(entry.command)}
               </span>
               {entry.loopback ? (
-                <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
-                  loopback
-                </span>
+                <span className="text-muted-foreground shrink-0 text-[10px]">loopback</span>
               ) : null}
               {entry.url ? (
                 <Button
