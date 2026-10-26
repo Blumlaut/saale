@@ -409,6 +409,15 @@ describe("compact activity", () => {
     expect(screen.queryByText("running")).not.toBeInTheDocument();
   });
 
+  it("spins while the turn is still working", () => {
+    const running = [step({ id: "a1", toolCalls: [exec("tc-1", "uptime", "running")] })];
+    const { rerender } = renderTranscript(running, true, true);
+    expect(toolsRow().querySelector(".animate-spin")).not.toBeNull();
+
+    rerender(<MessageList messages={running} compactActivity isLoading={false} />);
+    expect(toolsRow().querySelector(".animate-spin")).toBeNull();
+  });
+
   it("keeps a shown file open while the work beside it stays folded", () => {
     renderTranscript([
       step({

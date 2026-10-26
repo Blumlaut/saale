@@ -68,7 +68,12 @@ export function CompactActivity({
     <div className="space-y-1">
       {reasoning.length > 0 && <ReasoningRow reasoning={reasoning} isActive={isActive} />}
       {toolCalls.length > 0 && (
-        <ToolsRow toolCalls={toolCalls} renderCall={renderCall} markOf={markOf} />
+        <ToolsRow
+          toolCalls={toolCalls}
+          isActive={isActive}
+          renderCall={renderCall}
+          markOf={markOf}
+        />
       )}
     </div>
   );
@@ -133,13 +138,15 @@ function ReasoningRow({
   );
 }
 
-/** "Used 7 tools". a running count and a sliding window of tool marks. */
+/** "Used 7 tools". a running count, a sliding window of marks, a spinner while the turn works. */
 function ToolsRow({
   toolCalls,
+  isActive,
   renderCall: RenderCall,
   markOf,
 }: {
   toolCalls: readonly ToolCallData[];
+  isActive: boolean;
   renderCall: ToolCallRenderer;
   markOf: (toolCall: ToolCallData) => ToolMark;
 }) {
@@ -151,46 +158,46 @@ function ToolsRow({
 
   return (
     <div className="liquid-glass-inner rounded-xl">
-      <div className="flex items-center">
-        <Button
-          variant="ghost"
-          size="xs"
-          aria-expanded={open}
-          onClick={() => setOpen((prev) => !prev)}
-          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-left text-xs font-normal"
-        >
-          {open ? (
-            <ChevronDown className="text-muted-foreground size-3 shrink-0" />
-          ) : (
-            <ChevronRight className="text-muted-foreground size-3 shrink-0" />
-          )}
-          {/* The count absorbs the pressure, so a run's marks never widen the row. */}
-          <span className="min-w-0 shrink truncate text-xs font-medium">
-            Used {plural(toolCalls.length, "tool", "tools")}
-          </span>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-left text-xs font-normal"
+      >
+        {open ? (
+          <ChevronDown className="text-muted-foreground size-3 shrink-0" />
+        ) : (
+          <ChevronRight className="text-muted-foreground size-3 shrink-0" />
+        )}
+        {/* The count absorbs the pressure, so a run's marks never widen the row. */}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          Used {plural(toolCalls.length, "tool", "tools")}
+        </span>
 
-          {/* Decorative: the count above is the accessible name. */}
-          <span
-            aria-hidden
-            className="relative h-3.5 shrink-0 overflow-hidden"
-            style={{ width: `${marks.length * SLOT_REM}rem` }}
-          >
-            {marks.map((call, index) => (
-              <span
-                key={call.id}
-                className="absolute top-0 left-0 transition-transform duration-200 ease-out"
-                style={{ transform: `translateX(${index * SLOT_REM}rem)` }}
-              >
-                {/* Nested: the entrance animates a scale, which must not fight
+        {/* Decorative: the count above is the accessible name. */}
+        <span
+          aria-hidden
+          className="relative h-3.5 shrink-0 overflow-hidden"
+          style={{ width: `${marks.length * SLOT_REM}rem` }}
+        >
+          {marks.map((call, index) => (
+            <span
+              key={call.id}
+              className="absolute top-0 left-0 transition-transform duration-200 ease-out"
+              style={{ transform: `translateX(${index * SLOT_REM}rem)` }}
+            >
+              {/* Nested: the entrance animates a scale, which must not fight
                     the slot transform that slides the window along. */}
-                <span className="animate-in fade-in zoom-in-75 block h-3.5 w-3.5 duration-200 ease-out">
-                  <ToolMarkView mark={markOf(call)} />
-                </span>
+              <span className="animate-in fade-in zoom-in-75 block h-3.5 w-3.5 duration-200 ease-out">
+                <ToolMarkView mark={markOf(call)} />
               </span>
-            ))}
-          </span>
-        </Button>
-      </div>
+            </span>
+          ))}
+        </span>
+
+        {isActive && <Loader2 className="text-muted-foreground size-3 shrink-0 animate-spin" />}
+      </Button>
 
       {open && (
         <div className="border-border/30 space-y-1.5 border-t p-2">
