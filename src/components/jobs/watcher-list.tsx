@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   AlertCircle,
-  AlertTriangle,
   BellOff,
   CheckCircle,
   Clock,
@@ -27,7 +26,6 @@ import {
   Pencil,
   Play,
   Radar,
-  ShieldCheck,
   Timer,
   Trash2,
   Zap,
@@ -188,19 +186,6 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
     }
   };
 
-  const handleApprove = async (watcher: ScriptWatcher) => {
-    setBusyId(watcher.id);
-    try {
-      await patchJson(`/api/watchers/${watcher.id}`, { approve: true });
-      await loadWatchers(true);
-      onRefresh?.();
-    } catch (err) {
-      console.error("Failed to approve watcher script:", err);
-    } finally {
-      setBusyId(null);
-    }
-  };
-
   const handleRunNow = async (watcher: ScriptWatcher) => {
     setBusyId(watcher.id);
     try {
@@ -266,20 +251,6 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-sm font-medium">{watcher.name}</span>
-                        {watcher.needsApproval && (
-                          <Badge
-                            variant="secondary"
-                            className="bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400"
-                          >
-                            <AlertTriangle className="mr-1 h-3 w-3" />
-                            Needs approval
-                          </Badge>
-                        )}
-                        {watcher.grantAll && (
-                          <Badge variant="secondary" className="text-xs">
-                            All tools
-                          </Badge>
-                        )}
                         {!watcher.enabled && (
                           <Badge variant="secondary" className="text-xs">
                             Disabled
@@ -345,12 +316,6 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                         </span>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="min-w-40">
-                        {watcher.needsApproval && (
-                          <DropdownMenuItem onClick={() => void handleApprove(watcher)}>
-                            <ShieldCheck className="mr-2 h-3.5 w-3.5" />
-                            Approve script
-                          </DropdownMenuItem>
-                        )}
                         <DropdownMenuItem onClick={() => void handleRunNow(watcher)}>
                           <Play className="mr-2 h-3.5 w-3.5" />
                           Run now
@@ -396,25 +361,6 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
               </div>
             ) : (
               <>
-                {selected.needsApproval && (
-                  <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                    <p className="text-xs text-amber-700 dark:text-amber-400">
-                      The script changed after it was approved, so this watcher is paused. Approve
-                      it to let it tick again.
-                    </p>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => void handleApprove(selected)}
-                      disabled={busyId === selected.id}
-                    >
-                      <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                      Approve script
-                    </Button>
-                  </div>
-                )}
-
                 {selected.lastError && (
                   <div className="border-destructive/20 bg-destructive/5 border-b px-4 py-3">
                     <p className="text-destructive text-xs break-words whitespace-pre-wrap">
@@ -480,26 +426,6 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                     </div>
                   ))
                 )}
-
-                {/* Approved tools are what the script may call unattended. */}
-                <div className="border-t px-4 py-3">
-                  <p className="text-muted-foreground text-xs font-medium">Approved tools</p>
-                  {selected.grantedTools.length === 0 ? (
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {selected.grantAll
-                        ? "Every enabled tool."
-                        : "None. this script only reads tools that never ask."}
-                    </p>
-                  ) : (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {selected.grantedTools.map((name) => (
-                        <Badge key={name} variant="secondary" className="font-mono text-xs">
-                          {name}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </>
             )}
           </GlassPanelContent>

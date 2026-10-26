@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import {
-  approveWatcherScript,
   deleteWatcher,
   serializeWatcher,
   updateWatcher,
@@ -57,10 +56,7 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 /**
  * PATCH /api/watchers/[id]. edit a watcher.
  *
- * `approveScript` is what the dialog sends once the user has seen the consent
- * list for the script it is saving; without it a script change leaves the grant
- * stale, and the next tick is refused instead of running on an old approval.
- * `approve` alone re-approves the script already stored.
+ * A new script is the one the next tick runs.
  */
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const authResult = await requireSession();
@@ -73,35 +69,26 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
     const owned = await findOwned(authResult.user.id, id);
     if (!owned) return NextResponse.json({ error: "Watcher not found" }, { status: 404 });
 
-    if (body.approve === true && body.script === undefined) {
-      await approveWatcherScript(id, authResult.user.id);
-    } else {
-      const fields: Record<string, unknown> = {};
-      for (const key of [
-        "name",
-        "description",
-        "script",
-        "cronExpression",
-        "deliver",
-        "sessionId",
-        "projectId",
-        "worktreeMode",
-        "retentionMinutes",
-        "wakePrompt",
-        "modelId",
-        "cooldownMinutes",
-        "enabled",
-      ]) {
-        if (key in body) fields[key] = body[key];
-      }
-
-      await updateWatcher({
-        id,
-        userId: authResult.user.id,
-        fields,
-        approveScript: body.approveScript === true,
-      });
+    const fields: Record<string, unknown> = {};
+    for (const key of [
+      "name",
+      "description",
+      "script",
+      "cronExpression",
+      "deliver",
+      "sessionId",
+      "projectId",
+      "worktreeMode",
+      "retentionMinutes",
+      "wakePrompt",
+      "modelId",
+      "cooldownMinutes",
+      "enabled",
+    ]) {
+      if (key in body) fields[key] = body[key];
     }
+
+    await updateWatcher({ id, userId: authResult.user.id, fields });
 
     const watcher = await prisma.scriptWatcher.findUniqueOrThrow({
       where: { id },

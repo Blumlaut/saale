@@ -12,9 +12,9 @@
  *
  * Two differences from the chat path, both because there is nobody watching:
  *
- * - The tool table is built directly instead of through Pi's agent loop, whose
- *   `ctx.executeTool()` is what applies the approval gate. The gate is replaced
- *   by the grant check in `grant.ts`, which runs before the sandbox starts.
+ * - The tool table is built directly instead of through Pi's agent loop. A call
+ *   that would ask the user in a chat runs here on the script's say-so, so a
+ *   tick does not stop to wait for an answer nobody can give.
  * - The script's deadline is a tick budget. In a chat the model waits out a slow
  *   script; here a tick that overruns would pile up against the next one.
  */
@@ -65,7 +65,7 @@ function resultText(content: readonly { type: string; text?: string }[]): string
  * Turn Saale's tools into sandbox tools.
  *
  * The set is already decided. `watcherToolAccess` is the one place that answers
- * what a script may reach, `codemode` included. so nothing is filtered here.
+ * what a script may reach. so nothing is filtered here.
  *
  * A call resolves exactly the way Pi's own codemode bridge resolves it
  * (`toScriptValue` in the codemode extension): a tool that declares an

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -19,8 +18,8 @@ import { fetchJson, patchJson, postJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import { ModelPicker } from "@/components/shared/model-picker";
-import { AlertTriangle, Loader2, Play, Radar, ShieldCheck } from "lucide-react";
-import type { ScriptWatcher, WatcherConsentPreview } from "@/types/shared";
+import { Loader2, Play, Radar } from "lucide-react";
+import type { ScriptWatcher } from "@/types/shared";
 
 /** The part of a conversation the target picker needs. */
 interface ChatOption {
@@ -89,10 +88,8 @@ interface TestResult {
 /**
  * Create or edit a watcher.
  *
- * The consent list is the point of this dialog: a watcher runs unattended, so
- * the user reads the script and sees which tool calls it may make without being
- * asked again. The preview is fetched as the script changes, and the same list
- * is what gets recorded. there is no second, looser approval at run time.
+ * A watcher runs unattended, so the dialog is where the script is read and tried
+ * before it is put on a schedule.
  */
 export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: WatcherDialogProps) {
   const [name, setName] = useState("");
@@ -112,8 +109,6 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
 
   const [chats, setChats] = useState<ChatOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [preview, setPreview] = useState<WatcherConsentPreview | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [saving, setSaving] = useState(false);
@@ -148,7 +143,6 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
     if (!open) return;
     setError(null);
     setTestResult(null);
-    setPreviewError(null);
 
     if (watcher) {
       setName(watcher.name);
@@ -197,47 +191,16 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
     return reference ? `${reference.provider}/${reference.name}` : "";
   }, [modelId]);
 
-  // Show what the script would be allowed to call, as it is written.
-  useEffect(() => {
-    if (!open || !script.trim()) {
-      setPreview(null);
-      return;
-    }
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const data = await postJson<{ preview: WatcherConsentPreview }>("/api/watchers", {
-          preview: true,
-          script,
-          sessionId: resolveTarget(),
-        });
-        if (cancelled) return;
-        setPreview(data.preview);
-        setPreviewError(null);
-      } catch (err) {
-        if (cancelled) return;
-        console.error("Failed to resolve the script's tool consent:", err);
-        setPreviewError(err instanceof Error ? err.message : "Could not read the script.");
-      }
-    }, 600);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [open, script, resolveTarget]);
-
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
     setError(null);
     try {
-      const data = await postJson<{ preview: WatcherConsentPreview; outcome: TestResult }>(
-        "/api/watchers",
-        { preview: true, run: true, script, sessionId: resolveTarget() },
-      );
-      setPreview(data.preview);
+      const data = await postJson<{ outcome: TestResult }>("/api/watchers", {
+        preview: true,
+        script,
+        sessionId: resolveTarget(),
+      });
       setTestResult(data.outcome);
     } catch (err) {
       console.error("Failed to test the watcher script:", err);
@@ -268,9 +231,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
       };
 
       if (watcher) {
-        // The user is looking at the script and its consent list, so this save
-        // is also the approval for whatever the script now says.
-        await patchJson(`/api/watchers/${watcher.id}`, { ...payload, approveScript: true });
+        await patchJson(`/api/watchers/${watcher.id}`, payload);
       } else {
         await postJson("/api/watchers", payload);
       }
@@ -532,46 +493,6 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </p>
           </div>
 
-          {/* What the script may call without being asked again. */}
-          <div className="bg-muted/40 rounded border p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <ShieldCheck className="text-muted-foreground h-3.5 w-3.5" />
-              <span className="text-xs font-medium">Approved tools</span>
-              {preview?.grantAll && (
-                <Badge
-                  variant="secondary"
-                  className="bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400"
-                >
-                  <AlertTriangle className="mr-1 h-3 w-3" />
-                  Every enabled tool
-                </Badge>
-              )}
-            </div>
-
-            {previewError ? (
-              <p className="text-destructive mt-1.5 text-xs break-words">{previewError}</p>
-            ) : !preview || preview.grantedTools.length === 0 ? (
-              <p className="text-muted-foreground mt-1.5 text-xs">
-                {preview?.grantAll
-                  ? "This script reaches tools it does not name, so it may call any enabled tool. That is what you are approving."
-                  : "None. this script only calls tools that never ask for approval."}
-              </p>
-            ) : (
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {preview.grantedTools.map((tool) => (
-                  <Badge key={tool} variant="secondary" className="font-mono text-xs">
-                    {tool}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            <p className="text-muted-foreground mt-1.5 text-xs">
-              These run without asking, every check, forever. Editing the script later asks you to
-              approve the new one.
-            </p>
-          </div>
-
           {testResult && (
             <div className="bg-muted/40 rounded border p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -668,7 +589,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </Button>
             <Button onClick={() => void handleSave()} disabled={saving || !canSave}>
               {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              {isEdit ? "Save and approve" : "Create watcher"}
+              {isEdit ? "Save" : "Create watcher"}
             </Button>
           </div>
         </div>

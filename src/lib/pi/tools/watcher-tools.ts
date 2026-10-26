@@ -5,7 +5,6 @@ import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import {
   createWatcher,
   deleteWatcher,
-  previewConsent,
   serializeWatcher,
   updateWatcher,
   WatcherInputError,
@@ -17,13 +16,9 @@ import { previewScript, previewWatcherTick } from "@/lib/watchers/tick";
  * Script watcher tools.
  *
  * A watcher is a durable, unattended capability: its script runs on a schedule
- * and can call the user's tools without anyone watching. Managing one runs on
- * the model's own say-so. testing runs in a sandbox without recording or
- * waking anyone, and deleting only stops a tick the user can recreate. The gate
- * is the *script* instead: a script whose calls need approval is created locked
- * and starts running when the user approves it on the Watchers page, and a
- * rewritten one pauses the same way. Nothing here can approve a script on the
- * user's behalf.
+ * and can call the user's tools without anyone watching. Testing runs in a
+ * sandbox without recording or waking anyone, and deleting only stops a tick the
+ * user can recreate.
  */
 
 /** How a script is expected to report. Repeated in the descriptions on purpose. */
@@ -33,8 +28,7 @@ const SCRIPT_CONTRACT = [
   "and `load(key)`, and `return` something only when there is news:",
   "`undefined`/`null`/`false` means nothing happened and nobody is woken.",
   'Find a tool you cannot name with `searchTools("what you need")` inside the script',
-  "(`ALL_TOOLS` lists every tool); a tool reached that way cannot be read from the source,",
-  "so the user approves every tool the script could call instead of the ones it names.",
+  "(`ALL_TOOLS` lists every tool).",
   "A call resolves to the tool's value, so read its fields (`r.exitCode`, `r.stdout`).",
   "A script that should tell the user something itself calls `tools.telegram_send({ message })`",
   'during the run. with `deliver: "silent"` that is the whole delivery and no model is woken.',
@@ -55,9 +49,6 @@ const watcherSchema = Type.Object({
     Type.Object({ chatId: Type.String(), title: Type.Union([Type.String(), Type.Null()]) }),
     Type.String(),
   ]),
-  approvedTools: Type.Array(Type.String()),
-  unrestricted: Type.Boolean(),
-  needsApproval: Type.Boolean(),
   cooldownMinutes: Type.Union([Type.Integer(), Type.Null()]),
   ticks: Type.Integer(),
   fires: Type.Integer(),
@@ -82,30 +73,19 @@ const runOutcomeSchema = Type.Object({
   tools: Type.Array(Type.String()),
 });
 
-const watcherTestSchema = Type.Object({
-  ...runOutcomeSchema.properties,
-  // Only a draft script is checked before the watcher exists.
-  wouldNeedApprovalFor: Type.Optional(Type.Array(Type.String())),
-  wouldBeAllowedEveryTool: Type.Optional(Type.Boolean()),
-});
+const watcherTestSchema = Type.Object(runOutcomeSchema.properties);
 
 const watcherCreateSchema = Type.Object({
   created: Type.Boolean(),
   id: Type.String(),
   name: Type.String(),
-  approvedTools: Type.Array(Type.String()),
-  unrestricted: Type.Boolean(),
-  needsApproval: Type.Boolean(),
   note: Type.String(),
 });
 
 const watcherUpdateSchema = Type.Object({
   updated: Type.Boolean(),
   id: Type.String(),
-  needsApproval: Type.Boolean(),
-  note: Type.Optional(Type.String()),
-  toolsItWillAskToApprove: Type.Optional(Type.Array(Type.String())),
-  unrestricted: Type.Optional(Type.Boolean()),
+  note: Type.String(),
 });
 
 const watcherTicksSchema = Type.Object({
@@ -159,7 +139,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_list",
       label: "List Watchers",
       description:
-        "List script watchers: the cheap poll jobs that run a script on a schedule and wake you only when it reports something. Shows cadence, approved tools, last outcome, and whether a script is waiting for the user's approval.",
+        "List script watchers: the cheap poll jobs that run a script on a schedule and wake you only when it reports something. Shows cadence, delivery target and last outcome.",
       parameters: Type.Object({}),
       outputSchema: watcherListSchema,
       execute: async () => {
@@ -188,9 +168,6 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
                       : serialized.sessionId
                         ? { chatId: serialized.sessionId, title: serialized.sessionTitle }
                         : "nothing",
-                approvedTools: serialized.grantedTools,
-                unrestricted: serialized.grantAll,
-                needsApproval: serialized.needsApproval,
                 cooldownMinutes: serialized.cooldownMinutes,
                 ticks: serialized.tickCount,
                 fires: serialized.fireCount,
@@ -216,7 +193,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         ),
         watcherId: Type.Optional(
           Type.String({
-            description: "Run a saved watcher's script instead (checks it against its approval).",
+            description: "Run a saved watcher's script instead.",
           }),
         ),
         sessionId: Type.Optional(
@@ -247,26 +224,13 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
           throw new Error("Provide `script` to run, or `watcherId` to check a saved watcher.");
         }
 
-        const targetSession = params.sessionId ?? sessionId;
-        const consent = await previewConsent({
-          userId,
-          script: params.script,
-          sessionId: targetSession,
-        });
         const outcome = await previewScript({
           userId,
           script: params.script,
-          sessionId: targetSession,
+          sessionId: params.sessionId ?? sessionId,
         });
 
-        return {
-          value: {
-            ...tickView(outcome),
-            // What creating this watcher would ask the user to approve.
-            wouldNeedApprovalFor: consent.grantedTools,
-            wouldBeAllowedEveryTool: consent.grantAll,
-          },
-        };
+        return { value: tickView(outcome) };
       },
     }),
 
@@ -274,7 +238,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
     defineStructuredTool({
       name: "watcher_create",
       label: "Create Watcher",
-      description: `Create a script watcher: it runs a script on a cron schedule and does something with what the script returns. Use it for anything you would otherwise poll for on a timer. checking a mailbox, a remote host, a feed, a git repo. where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} \`deliver\` decides where a returned value goes: a conversation you answer in, a project where you get a coder chat and a worktree of your own, or nothing because the script itself told the user. A script that calls a tool needing approval is created paused: the watcher starts ticking once the user approves its script on the Watchers page, so tell them it is waiting. A script that only calls tools which never ask runs from the moment you create it.`,
+      description: `Create a script watcher: it runs a script on a cron schedule and does something with what the script returns. Use it for anything you would otherwise poll for on a timer. checking a mailbox, a remote host, a feed, a git repo. where running a full agent every few minutes would be wasteful. ${SCRIPT_CONTRACT} \`deliver\` decides where a returned value goes: a conversation you answer in, a project where you get a coder chat and a worktree of your own, or nothing because the script itself told the user. It ticks from the moment you create it, and a tool that would ask you in a chat runs here unattended.`,
       parameters: Type.Object({
         name: Type.String({ description: "Watcher name (max 100 chars, unique per user)." }),
         script: Type.String({ description: `The script body. ${SCRIPT_CONTRACT}` }),
@@ -336,8 +300,6 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         try {
           const created = await createWatcher({
             userId,
-            // A tool call is not a human reading the script.
-            approvedByUser: false,
             fields: {
               name: params.name,
               script: params.script,
@@ -359,12 +321,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
               created: true,
               id: created.id,
               name: created.name,
-              approvedTools: created.grantedTools,
-              unrestricted: created.grantAll,
-              needsApproval: created.needsApproval,
-              note: created.needsApproval
-                ? "The watcher is created but paused: tell the user it needs their approval on the Watchers page before it starts ticking."
-                : deliveryNote(created.deliver),
+              note: deliveryNote(created.deliver),
             },
           };
         } catch (err) {
@@ -379,7 +336,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_update",
       label: "Update Watcher",
       description:
-        "Update a watcher's script, cadence, delivery target, wake instructions, cooldown or enabled state. Changing the script does not renew its tool approval: the watcher pauses until the user approves the new script, because an approval covers the script it was given for and nothing else. Tell the user when that happens.",
+        "Update a watcher's script, cadence, delivery target, wake instructions, cooldown or enabled state. A new script runs from the next tick on.",
       parameters: Type.Object({
         watcherId: Type.String({ description: "Watcher id." }),
         script: Type.Optional(Type.String({ description: "New script body." })),
@@ -437,33 +394,13 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         }
 
         try {
-          const updated = await updateWatcher({
-            id: params.watcherId,
-            userId,
-            fields,
-            // A tool call is not a human reading this script, so a changed script
-            // waits for the user rather than re-earning its grant here.
-            approveScript: false,
-          });
-
-          const watcher = await prisma.scriptWatcher.findUniqueOrThrow({
-            where: { id: updated.id },
-            select: { script: true, grantedTools: true, grantAll: true },
-          });
-          const consent = await previewConsent({ userId, script: watcher.script });
+          const updated = await updateWatcher({ id: params.watcherId, userId, fields });
 
           return {
             value: {
               updated: true,
               id: updated.id,
-              needsApproval: updated.needsApproval,
-              ...(updated.needsApproval
-                ? {
-                    note: "The script changed, so the watcher is paused until the user approves it on the Watchers page.",
-                    toolsItWillAskToApprove: consent.grantedTools,
-                    unrestricted: consent.grantAll,
-                  }
-                : { note: deliveryNote(updated.deliver) }),
+              note: deliveryNote(updated.deliver),
             },
           };
         } catch (err) {

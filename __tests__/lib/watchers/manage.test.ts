@@ -3,16 +3,12 @@ import {
   createWatcher,
   DEFAULT_WAKE_PROMPT,
   MAX_COOLDOWN_MINUTES,
-  needsScriptApproval,
   normalizeCronExpression,
   updateWatcher,
   WatcherInputError,
 } from "@/lib/watchers/manage";
-import { hashScript, UNAPPROVED_SCRIPT_HASH } from "@/lib/watchers/grant";
 import { deliveryNote } from "@/lib/watchers/delivery";
 
-// The create path is decided by the tool set and the consent it earns, so both
-// are stated here rather than resolved: `mail_list` never asks, `mail_send` does.
 vi.mock("@/lib/db", () => ({
   prisma: {
     scriptWatcher: {
@@ -25,14 +21,6 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/watchers/access", () => ({
-  loadWatcherToolAccess: vi.fn(async () => ({
-    callable: [],
-    callableNames: ["mail_list", "mail_send"],
-    toolPolicies: null,
-  })),
-}));
-
 vi.mock("@/lib/queue", () => ({
   scheduleWatcher: vi.fn(async () => {}),
   syncWatcherSchedule: vi.fn(async () => {}),
@@ -43,9 +31,8 @@ import { prisma } from "@/lib/db";
 
 /**
  * The watcher write rules. A watcher runs unattended, so what it accepts has to
- * be what the tick can actually act on  a cadence BullMQ cannot parse, or a
- * grant that no longer matches the script it was given for, are the two ways a
- * saved watcher becomes a silent one.
+ * be what the tick can actually act on. A cadence BullMQ cannot parse is the way
+ * a saved watcher becomes a silent one.
  */
 
 describe("normalizeCronExpression", () => {
@@ -80,27 +67,6 @@ describe("normalizeCronExpression", () => {
   });
 });
 
-describe("needsScriptApproval", () => {
-  const script = "return await tools.mail_list({});";
-
-  it("holds while the script matches the hash it was approved at", () => {
-    expect(needsScriptApproval({ script, scriptHash: hashScript(script) })).toBe(false);
-  });
-
-  it("is true when the script changed under its approval", () => {
-    expect(
-      needsScriptApproval({ script: `${script}\n// edited`, scriptHash: hashScript(script) }),
-    ).toBe(true);
-  });
-
-  it("notices a change that differs only in whitespace", () => {
-    // A rewrite is a rewrite: the hash is over the exact source the user read.
-    expect(needsScriptApproval({ script: `${script} `, scriptHash: hashScript(script) })).toBe(
-      true,
-    );
-  });
-});
-
 describe("the limits a watcher is created with", () => {
   it("bounds the cooldown at a week", () => {
     expect(MAX_COOLDOWN_MINUTES).toBe(10_080);
@@ -112,29 +78,10 @@ describe("the limits a watcher is created with", () => {
   });
 });
 
-describe("createWatcher and who approved the script", () => {
-  it("ticks a script that needs no consent, whoever wrote it", async () => {
+describe("createWatcher", () => {
+  it("saves a script that calls a tool which would ask in a chat", async () => {
     const created = await createWatcher({
       userId: "user-1",
-      approvedByUser: false,
-      fields: {
-        name: "Watch the inbox",
-        script: "return await tools.mail_list({ folder: 'inbox' });",
-        cronExpression: "*/10 * * * *",
-        deliver: "silent",
-      },
-    });
-
-    // `mail_list` is `allow`, so there is nothing for a person to approve and
-    // the watcher is live from the moment it exists.
-    expect(created.needsApproval).toBe(false);
-    expect(created.grantedTools).toEqual([]);
-  });
-
-  it("pauses a script the model wrote that would call a tool needing approval", async () => {
-    const created = await createWatcher({
-      userId: "user-1",
-      approvedByUser: false,
       fields: {
         name: "Forward the important mail",
         script: "return await tools.mail_send({ to: 'me@example.com' });",
@@ -143,36 +90,25 @@ describe("createWatcher and who approved the script", () => {
       },
     });
 
-    expect(created.needsApproval).toBe(true);
-    expect(created.grantedTools).toEqual(["mail_send"]);
-    // The stored hash cannot describe the script, which is what "unapproved"
-    // means everywhere the row is read: the UI offers the approval and the tick
-    // is refused until it is given.
     const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
-    expect(written?.scriptHash).toBe(UNAPPROVED_SCRIPT_HASH);
-    expect(
-      needsScriptApproval({
-        script: String(written?.script),
-        scriptHash: String(written?.scriptHash),
+    expect(created.name).toBe("Forward the important mail");
+    expect(written?.script).toContain("mail_send");
+  });
+
+  it("refuses a second watcher with a name the user already has", async () => {
+    vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({ id: "w-9" } as never);
+
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        fields: {
+          name: "Watch the inbox",
+          script: "return 1;",
+          cronExpression: "*/10 * * * *",
+          deliver: "silent",
+        },
       }),
-    ).toBe(true);
-  });
-
-  it("starts the same script immediately when the user is the one saving it", async () => {
-    const created = await createWatcher({
-      userId: "user-1",
-      approvedByUser: true,
-      fields: {
-        name: "Forward the important mail",
-        script: "return await tools.mail_send({ to: 'me@example.com' });",
-        cronExpression: "*/10 * * * *",
-        deliver: "silent",
-      },
-    });
-
-    expect(created.needsApproval).toBe(false);
-    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
-    expect(written?.scriptHash).toBe(hashScript(String(written?.script)));
+    ).rejects.toThrow(/already exists/);
   });
 });
 
@@ -184,7 +120,6 @@ describe("where a fire is delivered", () => {
     await expect(
       createWatcher({
         userId: "user-1",
-        approvedByUser: true,
         fields: { name: "No target", script, cronExpression, deliver: "chat" },
       }),
     ).rejects.toThrow(/needs one/);
@@ -194,7 +129,6 @@ describe("where a fire is delivered", () => {
     await expect(
       createWatcher({
         userId: "user-1",
-        approvedByUser: true,
         fields: { name: "No project", script, cronExpression, deliver: "coder" },
       }),
     ).rejects.toThrow(/needs one/);
@@ -206,7 +140,6 @@ describe("where a fire is delivered", () => {
     await expect(
       createWatcher({
         userId: "user-1",
-        approvedByUser: true,
         fields: {
           name: "Someone else's repo",
           script,
@@ -219,9 +152,8 @@ describe("where a fire is delivered", () => {
   });
 
   it("stores a coder target with its worktree mode and retention", async () => {
-    const created = await createWatcher({
+    await createWatcher({
       userId: "user-1",
-      approvedByUser: true,
       fields: {
         name: "Review pull requests",
         script,
@@ -234,7 +166,6 @@ describe("where a fire is delivered", () => {
     });
 
     const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
-    expect(created.needsApproval).toBe(false);
     expect(written?.deliver).toBe("coder");
     expect(written?.projectId).toBe("project-1");
     expect(written?.worktreeMode).toBe("sticky");
@@ -244,7 +175,6 @@ describe("where a fire is delivered", () => {
   it("keeps the chat a fire reports into, and no other", async () => {
     await createWatcher({
       userId: "user-1",
-      approvedByUser: true,
       fields: {
         name: "Review pull requests",
         script,
@@ -262,7 +192,6 @@ describe("where a fire is delivered", () => {
 
     await createWatcher({
       userId: "user-1",
-      approvedByUser: true,
       fields: {
         name: "Watch the inbox",
         script,
@@ -283,9 +212,6 @@ describe("where a fire is delivered", () => {
       name: "Review pull requests",
       description: null,
       script,
-      scriptHash: hashScript(script),
-      grantedTools: [],
-      grantAll: false,
       cronExpression,
       enabled: true,
       deliver: "coder",
@@ -312,7 +238,6 @@ describe("where a fire is delivered", () => {
       id: "w-1",
       userId: "user-1",
       fields: { deliver: "silent" },
-      approveScript: false,
     });
 
     const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
@@ -329,9 +254,6 @@ describe("where a fire is delivered", () => {
       name: "Review pull requests",
       description: null,
       script,
-      scriptHash: hashScript(script),
-      grantedTools: [],
-      grantAll: false,
       cronExpression,
       enabled: true,
       deliver: "coder",
@@ -358,7 +280,6 @@ describe("where a fire is delivered", () => {
       id: "w-1",
       userId: "user-1",
       fields: { modelId: null },
-      approveScript: false,
     });
 
     const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
