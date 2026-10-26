@@ -17,6 +17,7 @@ import {
   SidebarSections,
   SidebarSectionToggle,
   sidebarItemClass,
+  useRowFlip,
 } from "@/components/layout/sidebar-chrome";
 
 export interface AdminNavItem {
@@ -59,6 +60,8 @@ export function AdminNav() {
     setExpandedHref(areaHref);
   }, [areaHref]);
 
+  const rowRef = useRowFlip(items.map((item) => item.href));
+
   return (
     <SidebarFrame>
       <SidebarBrand badge="Admin" />
@@ -74,6 +77,7 @@ export function AdminNav() {
           return (
             <div key={item.href}>
               <SidebarItem
+                rowRef={rowRef(item.href)}
                 href={item.href}
                 label={item.label}
                 icon={item.icon}

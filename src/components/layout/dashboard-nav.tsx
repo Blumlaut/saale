@@ -29,6 +29,7 @@ import {
   SidebarSections,
   SidebarSectionToggle,
   sidebarSectionItemClass,
+  useRowFlip,
 } from "@/components/layout/sidebar-chrome";
 import { Badge } from "@/components/ui/badge";
 import { Mail, Shield, Search, X, Loader2 } from "lucide-react";
@@ -47,6 +48,7 @@ export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { visibleItems } = useSidebarNav();
+  const rowRef = useRowFlip(visibleItems.map((item) => item.id));
   const activeAccountId = useSearchParams().get("accountId");
   const isAccountActive = (accountId: string) =>
     pathname === "/dashboard/mail" && activeAccountId === accountId;
@@ -159,7 +161,7 @@ export function DashboardNav() {
 
   /* Mail carries the user's accounts: the row goes to the inbox, the toggle opens them. */
   const renderMailItem = (item: SidebarNavItem) => (
-    <div key={item.id}>
+    <div key={item.id} ref={rowRef(item.id)}>
       <SidebarItem
         href={item.href}
         label={item.label}
@@ -261,6 +263,7 @@ export function DashboardNav() {
     return (
       <div key={item.id}>
         <SidebarItem
+          rowRef={rowRef(item.id)}
           href={item.href}
           label={item.label}
           icon={SIDEBAR_NAV_ICONS[item.id]}
@@ -381,6 +384,7 @@ export function DashboardNav() {
           return (
             <SidebarItem
               key={item.id}
+              rowRef={rowRef(item.id)}
               href={item.href}
               label={item.label}
               icon={SIDEBAR_NAV_ICONS[item.id]}

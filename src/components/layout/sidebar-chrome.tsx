@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useLayoutEffect, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
@@ -106,15 +107,18 @@ export function SidebarItem({
   icon: Icon,
   active,
   trailing,
+  rowRef,
 }: {
   href: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
   trailing?: React.ReactNode;
+  /** Lets `useRowFlip` measure the row, so a reorder can slide it. */
+  rowRef?: (element: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div ref={rowRef} className="flex items-center gap-1">
       <Link href={href} className={sidebarItemClass(active, "min-w-0 flex-1")}>
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate">{label}</span>
@@ -198,6 +202,61 @@ export function SidebarSectionList({
       ))}
     </>
   );
+}
+
+/**
+ * Slides rows to their new places when their order changes, which is what makes
+ * a reorder in the appearance editor readable on the sidebar itself. Positions
+ * are only compared when the order is different, so expanding a section does
+ * not set every row in motion.
+ */
+export function useRowFlip(order: readonly string[]) {
+  const rows = useRef(new Map<string, HTMLElement>());
+  const registry = useRef(new Map<string, (element: HTMLElement | null) => void>());
+  const before = useRef(new Map<string, number>());
+  const previousOrder = useRef("");
+
+  const rowRef = useCallback((id: string) => {
+    const existing = registry.current.get(id);
+    if (existing) return existing;
+
+    const ref = (element: HTMLElement | null) => {
+      if (element) rows.current.set(id, element);
+      else rows.current.delete(id);
+    };
+    registry.current.set(id, ref);
+    return ref;
+  }, []);
+
+  useLayoutEffect(() => {
+    const tops = new Map<string, number>();
+    for (const [id, element] of rows.current) {
+      tops.set(id, element.getBoundingClientRect().top);
+    }
+
+    const signature = order.join(",");
+    const reordered = previousOrder.current !== "" && previousOrder.current !== signature;
+    previousOrder.current = signature;
+
+    if (reordered && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      for (const [id, element] of rows.current) {
+        const from = before.current.get(id);
+        const to = tops.get(id);
+        if (from === undefined || to === undefined) continue;
+
+        const shift = from - to;
+        if (Math.abs(shift) < 1) continue;
+        element.animate([{ transform: `translateY(${shift}px)` }, { transform: "translateY(0)" }], {
+          duration: 180,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        });
+      }
+    }
+
+    before.current = tops;
+  });
+
+  return rowRef;
 }
 
 /** Console footer: version, theme toggle, orange tick. */
