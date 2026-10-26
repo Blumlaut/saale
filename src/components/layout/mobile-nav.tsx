@@ -51,7 +51,7 @@ export function MobileNav() {
       ];
 
   return (
-    <nav className="border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
+    <nav className="mobile-nav border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
       {/* flex-1 + min-w-0 keeps every item on a 320px screen; truncate is a safety net */}
       <div className="flex h-14 items-center px-1">
         {items.map((item) => {

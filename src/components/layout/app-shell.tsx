@@ -1,4 +1,5 @@
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
 import { SidebarNavProvider } from "@/components/providers/sidebar-nav-provider";
 
@@ -28,7 +29,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
   return (
     <KeyboardShortcutsProvider>
       <SidebarNavProvider>
-        <div className="dashboard-layout h-dvh overflow-hidden">
+        <DashboardLayout>
           <div className="shell-frame">
             {/* Desktop sidebar. on phones the bottom bar is the navigation */}
             <div className="hidden shrink-0 md:flex">{nav}</div>
@@ -44,7 +45,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
             </main>
           </div>
           <MobileNav />
-        </div>
+        </DashboardLayout>
       </SidebarNavProvider>
     </KeyboardShortcutsProvider>
   );
