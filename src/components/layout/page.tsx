@@ -59,29 +59,35 @@ export function PageActions({
  * its label waiting for `md`, so the row holds its height on a phone.
  */
 export function PageAction({
-  icon: Icon,
+  icon,
   label,
   busy,
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Button>, "children" | "size"> & {
-  icon?: LucideIcon;
+  /** A Lucide icon, or a ready-made element when the button needs a custom one. */
+  icon?: LucideIcon | React.ReactNode;
   label: string;
   /** Swaps the icon for a spinner and disables the button. */
   busy?: boolean;
 }) {
+  const glyph = busy ? (
+    <Loader2 className="h-4 w-4 animate-spin" />
+  ) : React.isValidElement(icon) ? (
+    icon
+  ) : icon ? (
+    React.createElement(icon as LucideIcon, { className: "h-4 w-4" })
+  ) : null;
+
   return (
     <Button
       size="icon"
+      aria-label={label}
       className={cn("h-8 w-8 md:w-auto md:gap-1.5 md:px-3", className)}
       disabled={busy || props.disabled}
       {...props}
     >
-      {busy ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : Icon ? (
-        <Icon className="h-4 w-4" />
-      ) : null}
+      {glyph}
       <span className="hidden md:inline">{label}</span>
     </Button>
   );

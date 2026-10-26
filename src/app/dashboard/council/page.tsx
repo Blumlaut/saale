@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Page } from "@/components/layout/page";
+import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -97,33 +97,24 @@ export default function CouncilPage() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          {/* Toolbar. functional context left, actions right, icon-only on mobile */}
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-6">
-            <span className="console-label min-w-0 truncate">
-              {councils.length === 0 ? "Councils" : `${councils.length} councils`}
-            </span>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => void load()}
-                aria-label="Refresh councils"
-              >
-                <Loader2 className={cn("h-4 w-4", loading && "animate-spin")} />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={openCreate}
-                className="h-8 gap-1.5 md:h-9"
-                aria-label="New council"
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">New council</span>
-              </Button>
-            </div>
-          </div>
+          <PageActions
+            leading={
+              <span className="console-label min-w-0 truncate">
+                {councils.length === 0 ? "Councils" : `${councils.length} councils`}
+              </span>
+            }
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void load()}
+              aria-label="Refresh councils"
+            >
+              <Loader2 className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+            <PageAction icon={Plus} label="New council" onClick={openCreate} />
+          </PageActions>
 
           {/* The list scrolls here. the only scroll region */}
           <div className="min-h-0 flex-1 overflow-y-auto">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Page } from "@/components/layout/page";
+import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { MessageTimeline } from "@/components/council/message-timeline";
@@ -14,7 +14,7 @@ import { useCouncilStream } from "@/components/council/use-council-stream";
 import { fetchJson, postJson } from "@/lib/http";
 import { COUNCIL_ORCHESTRATIONS, MAX_ROOM_PAGE } from "@/lib/council/config";
 import type { CouncilDetail, CouncilMessageView } from "@/types/council";
-import { ChevronLeft, FolderOpen, Loader2, Square } from "lucide-react";
+import { ChevronLeft, FolderOpen, Square } from "lucide-react";
 
 /**
  * The council room.
@@ -136,57 +136,51 @@ export default function CouncilRoomPage() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          {/* Toolbar. back, room identity, then the run actions */}
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 md:px-6">
+          <PageActions
+            leading={
+              <>
+                <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
+                  <Link href="/dashboard/council" aria-label="Back to councils">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-sm font-medium">{council?.name ?? "Council"}</span>
+                  {orchestrationLabel && (
+                    <span className="text-muted-foreground text-[11px]">{orchestrationLabel}</span>
+                  )}
+                </div>
+              </>
+            }
+          >
             <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
-              <Link href="/dashboard/council" aria-label="Back to councils">
-                <ChevronLeft className="h-4 w-4" />
+              <Link
+                href={`/dashboard/council/${councilId}/files`}
+                aria-label="Council workspace files"
+              >
+                <FolderOpen className="h-4 w-4" />
               </Link>
             </Button>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium">{council?.name ?? "Council"}</span>
-              {orchestrationLabel && (
-                <span className="text-muted-foreground text-[11px]">{orchestrationLabel}</span>
-              )}
-            </div>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              <Button asChild variant="ghost" size="icon-sm" className="shrink-0">
-                <Link
-                  href={`/dashboard/council/${councilId}/files`}
-                  aria-label="Council workspace files"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                </Link>
-              </Button>
-              {running && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="h-8 gap-1.5 md:h-9"
-                  disabled={stopping}
-                  onClick={() => void stop()}
-                >
-                  {stopping ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Square className="h-4 w-4" />
-                  )}
-                  <span className="hidden md:inline">Stop</span>
-                </Button>
-              )}
-              <ConveneButton
-                disabled={!council || running}
-                pending={convening}
-                onConvene={(budget) => void convene(budget)}
-                defaults={{
-                  maxDurationSeconds: council?.maxDurationSeconds ?? null,
-                  maxTokens: council?.maxTokens ?? null,
-                  maxCostUsd: council?.maxCostUsd ?? null,
-                }}
+            {running && (
+              <PageAction
+                icon={Square}
+                label="Stop"
+                variant="destructive"
+                busy={stopping}
+                onClick={() => void stop()}
               />
-            </div>
-          </div>
+            )}
+            <ConveneButton
+              disabled={!council || running}
+              pending={convening}
+              onConvene={(budget) => void convene(budget)}
+              defaults={{
+                maxDurationSeconds: council?.maxDurationSeconds ?? null,
+                maxTokens: council?.maxTokens ?? null,
+                maxCostUsd: council?.maxCostUsd ?? null,
+              }}
+            />
+          </PageActions>
 
           {council && (
             <RunStatus

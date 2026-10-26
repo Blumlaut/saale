@@ -297,7 +297,7 @@ export function ConveneButton({ disabled, pending, onConvene, defaults }: Conven
         render={(triggerProps) => (
           <Button
             size="sm"
-            className="h-8 gap-1.5 md:h-9"
+            className="h-8 gap-1.5"
             disabled={disabled || pending}
             {...triggerProps}
           >
