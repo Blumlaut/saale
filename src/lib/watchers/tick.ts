@@ -1,6 +1,6 @@
 /**
- * One watcher tick, end to end: check the grant, run the script, decide whether
- * the result is worth waking the agent for, and record what happened.
+ * One watcher tick, end to end: run the script, decide whether the result is
+ * worth waking the agent for, and record what happened.
  *
  * The decision to spend tokens belongs here rather than in the script. A script
  * that could say "wake the agent" on every tick would be an unbounded spend
@@ -11,7 +11,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "./access";
-import { checkGrant } from "./grant";
 import { applyStoreWrites, isFiring, runWatcherScript } from "./runner";
 import { deliverWake } from "./wake";
 
@@ -69,7 +68,7 @@ function encodeValue(value: unknown): string | null {
 }
 
 /**
- * Check the grant, run the script, and read what came back.
+ * Run the script and read what came back.
  *
  * Writes nothing and wakes nobody: this is the whole of a tick's judgement, and
  * the caller decides whether to act on it (a scheduled tick does; a preview does
@@ -77,39 +76,9 @@ function encodeValue(value: unknown): string | null {
  */
 async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
   const scopeId = watcher.sessionId ?? `watcher:${watcher.id}`;
-  const { callable, callableNames, toolPolicies } = await loadWatcherToolAccess(
-    watcher.userId,
-    scopeId,
-  );
+  const { callable } = await loadWatcherToolAccess(watcher.userId, scopeId);
 
-  const base = { output: "", durationMs: 0, callCount: 0, callNames: [] };
   const store = readStore(watcher.store);
-  const empty = { ...store };
-
-  // ── The grant ───────────────────────────────────────────────────────
-  const violation = checkGrant({
-    grant: {
-      script: watcher.script,
-      scriptHash: watcher.scriptHash,
-      grantedTools: watcher.grantedTools,
-      grantAll: watcher.grantAll,
-    },
-    callableNames,
-    toolPolicies,
-  });
-
-  if (violation) {
-    return {
-      watcher,
-      outcome: {
-        ...base,
-        status: "blocked",
-        reason: [violation.reason, violation.missing.join(", ")].filter(Boolean).join(" "),
-      },
-      nextStore: empty,
-      firing: false,
-    };
-  }
 
   // ── The script ──────────────────────────────────────────────────────
   const result = await runWatcherScript({ script: watcher.script, tools: callable, store });
@@ -125,7 +94,7 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
     return {
       watcher,
       outcome: { ...measured, status: "error", reason: result.error ?? "Script failed" },
-      nextStore: empty,
+      nextStore: store,
       firing: false,
     };
   }
@@ -174,7 +143,6 @@ async function recordTick(options: {
   watcherId: string;
   outcome: TickOutcome;
   store?: Record<string, unknown>;
-  advanceStore: boolean;
   fired: boolean;
 }): Promise<TickOutcome> {
   const { outcome } = options;
@@ -203,9 +171,7 @@ async function recordTick(options: {
         outcome.status === "error" || outcome.status === "blocked"
           ? (outcome.reason ?? null)
           : null,
-      ...(options.advanceStore && options.store !== undefined
-        ? { store: options.store as Prisma.InputJsonValue }
-        : {}),
+      ...(options.store !== undefined ? { store: options.store as Prisma.InputJsonValue } : {}),
       ...(options.fired ? { fireCount: { increment: 1 }, lastFiredAt: new Date() } : {}),
     },
   });
@@ -236,9 +202,9 @@ async function pruneTicks(watcherId: string): Promise<void> {
 /**
  * Run one tick for a watcher.
  *
- * Never throws: every outcome. including a script that failed, a grant that no
- * longer holds, and a wake that could not be delivered. is a tick the log has
- * to show, so each one is recorded and returned.
+ * Never throws: every outcome. including a script that failed and a wake that
+ * could not be delivered. is a tick the log has to show, so each one is recorded
+ * and returned.
  */
 export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
   const watcher = await prisma.scriptWatcher.findUnique({ where: { id: watcherId } });
@@ -263,10 +229,7 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     return recordTick({
       watcherId: watcher.id,
       outcome,
-      // A blocked tick records that it was blocked. a watcher that keeps
-      // refusing to run is exactly what the log is for. but moves no ledger.
       store: evaluation.nextStore,
-      advanceStore: outcome.status !== "blocked",
       fired: false,
     });
   }
@@ -285,7 +248,6 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
           reason: `Cooling down until ${readyAt.toISOString()}`,
         },
         store: evaluation.nextStore,
-        advanceStore: true,
         fired: false,
       });
     }
@@ -316,7 +278,6 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
       watcherId: watcher.id,
       outcome: { ...outcome, status: "blocked", reason },
       // The ledger must not move past a report the user never received.
-      advanceStore: false,
       fired: false,
     });
   }
@@ -325,7 +286,6 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     watcherId: watcher.id,
     outcome: { ...outcome, sessionId: delivered.sessionId },
     store: evaluation.nextStore,
-    advanceStore: true,
     fired: true,
   });
 }
@@ -357,7 +317,7 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
 /**
  * Run a script that is not a watcher yet. the authoring loop.
  *
- * A script being written has no grant to check, so the decision that it may run
+ * Testing a script spends the tools it calls, so the decision that it may run
  * at all belongs to the tool policy that called this (`watcher_test` is allowed
  * by default, but the user can still gate it). Nothing is recorded and nobody
  * is woken.

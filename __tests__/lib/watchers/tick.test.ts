@@ -7,9 +7,9 @@ import type { ScriptWatcher } from "@prisma/client";
  * A tick end to end, with the real sandbox and a mocked database.
  *
  * The cases that matter are the ones where a tick must *not* wake the agent
- * a predicate that matched nothing, a cooldown still running, a script the user
- * has not approved  plus the one where the wake itself fails, because that is
- * where a report can be silently lost.
+ * a predicate that matched nothing, a cooldown still running  plus the one
+ * where the wake itself fails, because that is where a report can be silently
+ * lost.
  */
 
 const echoTool: ToolDefinition = {
@@ -42,7 +42,6 @@ import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "@/lib/watchers/access";
 import { deliverWake } from "@/lib/watchers/wake";
 import { runWatcherTick, previewScript } from "@/lib/watchers/tick";
-import { hashScript } from "@/lib/watchers/grant";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const findWatcher = vi.mocked(prisma.scriptWatcher.findUnique as any);
@@ -53,7 +52,7 @@ const access = vi.mocked(loadWatcherToolAccess as any);
 const wake = vi.mocked(deliverWake as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** A stored watcher, with the grant its script earns by default. */
+/** A stored watcher. */
 function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
   const script = "return await tools.mail_list({});";
   return {
@@ -62,9 +61,6 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     name: "Watch the inbox",
     description: null,
     script,
-    scriptHash: hashScript(script),
-    grantedTools: [],
-    grantAll: false,
     cronExpression: "*/5 * * * *",
     enabled: true,
     deliver: "chat",
@@ -113,9 +109,7 @@ describe("runWatcherTick", () => {
   });
 
   it("records an idle tick when the script has nothing to report", async () => {
-    findWatcher.mockResolvedValue(
-      watcher({ script: "return undefined;", scriptHash: hashScript("return undefined;") }),
-    );
+    findWatcher.mockResolvedValue(watcher({ script: "return undefined;" }));
 
     const outcome = await runWatcherTick("w-1");
 
@@ -150,9 +144,7 @@ describe("runWatcherTick", () => {
 
   it("records a silent report without waking anyone", async () => {
     const script = "await tools.mail_list({});\nreturn { sent: true };";
-    findWatcher.mockResolvedValue(
-      watcher({ script, scriptHash: hashScript(script), deliver: "silent" }),
-    );
+    findWatcher.mockResolvedValue(watcher({ script, deliver: "silent" }));
 
     const outcome = await runWatcherTick("w-1");
 
@@ -177,7 +169,6 @@ describe("runWatcherTick", () => {
     findWatcher.mockResolvedValue(
       watcher({
         script: "store('count', (load('count') ?? 0) + 1);\nreturn undefined;",
-        scriptHash: hashScript("store('count', (load('count') ?? 0) + 1);\nreturn undefined;"),
         store: { count: 2 },
       }),
     );
@@ -187,28 +178,8 @@ describe("runWatcherTick", () => {
     expect(writtenUpdate()?.store).toEqual({ count: 3 });
   });
 
-  it("refuses a script that changed after it was approved, without running it or waking anyone", async () => {
-    findWatcher.mockResolvedValue(
-      watcher({ script: "return await tools.mail_list({});\n// edited after approval" }),
-    );
-
-    const outcome = await runWatcherTick("w-1");
-
-    expect(outcome.status).toBe("blocked");
-    expect(outcome.reason).toContain("changed after it was approved");
-    expect(wake).not.toHaveBeenCalled();
-    // The refusal is on the record, but the ledger did not move.
-    expect(writtenTick()?.status).toBe("blocked");
-    expect(writtenUpdate()?.store).toBeUndefined();
-  });
-
   it("records a failed script as an error tick", async () => {
-    findWatcher.mockResolvedValue(
-      watcher({
-        script: "throw new Error('boom');",
-        scriptHash: hashScript("throw new Error('boom');"),
-      }),
-    );
+    findWatcher.mockResolvedValue(watcher({ script: "throw new Error('boom');" }));
 
     const outcome = await runWatcherTick("w-1");
 
@@ -221,9 +192,7 @@ describe("runWatcherTick", () => {
   it("drops a fire that lands inside the cooldown, keeping the ledger moving", async () => {
     const script = "store('last', 'news');\nreturn 'news';";
     const lastFiredAt = new Date(Date.now() - 60_000);
-    findWatcher.mockResolvedValue(
-      watcher({ script, scriptHash: hashScript(script), cooldownMinutes: 30, lastFiredAt }),
-    );
+    findWatcher.mockResolvedValue(watcher({ script, cooldownMinutes: 30, lastFiredAt }));
 
     const outcome = await runWatcherTick("w-1");
 
@@ -241,7 +210,6 @@ describe("runWatcherTick", () => {
     findWatcher.mockResolvedValue(
       watcher({
         script,
-        scriptHash: hashScript(script),
         cooldownMinutes: 30,
         lastFiredAt: new Date(Date.now() - 31 * 60_000),
       }),

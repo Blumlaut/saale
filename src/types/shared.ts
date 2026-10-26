@@ -79,12 +79,6 @@ export interface ScriptWatcher {
   wakePrompt: string;
   modelId: string | null;
   cooldownMinutes: number;
-  /** Tools the user approved for this script; the sandbox offers exactly these. */
-  grantedTools: string[];
-  /** The script reaches tools by a computed name, so its grant covers everything callable. */
-  grantAll: boolean;
-  /** The script changed after it was approved. it will not run until approved again. */
-  needsApproval: boolean;
   tickCount: number;
   fireCount: number;
   lastTickAt: string | null;
@@ -110,13 +104,6 @@ export interface ScriptWatcherTick {
   /** The chat this tick's fire was delivered into. */
   sessionId?: string | null;
   createdAt: string;
-}
-
-/** What a script would need approval for, before anything is saved. */
-export interface WatcherConsentPreview {
-  grantedTools: string[];
-  grantAll: boolean;
-  callableCount: number;
 }
 
 // --- Agent Jobs ---

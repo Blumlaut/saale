@@ -1,19 +1,10 @@
 /**
- * Creating, editing and approving watchers. the one place the rules live.
+ * Creating and editing watchers. the one place the rules live.
  *
  * The API routes and the LLM's tools are two doors onto the same write, so the
- * validation, the grant and the scheduler sync happen here once. A route that
+ * validation and the scheduler sync happen here once. A route that
  * re-implemented any of it would be a second answer to "is this watcher allowed
  * to do that".
- *
- * The grant is derived from the script at save time. The *approval* is the human
- * gate on the write path: the API is session-authenticated and the UI dialog
- * shows the consent list before saving, while a write from the model's tools
- * lands pending (`UNAPPROVED_SCRIPT_HASH`) unless the script needs no consent at
- * all. a watcher runs unattended, so its approval cannot come from the thing
- * that benefits from it. `checkGrant` then catches what moves afterwards. a
- * rewritten script through a path that skipped approval, a tool switched off, a
- * policy turned to `ask`.
  */
 
 import { prisma } from "@/lib/db";
@@ -27,17 +18,7 @@ import {
   MAX_RETENTION_MINUTES,
   type DeliverTarget,
 } from "./delivery";
-import { hashScript, consentFor, UNAPPROVED_SCRIPT_HASH } from "./grant";
-import { loadWatcherToolAccess } from "./access";
 import { scheduleWatcher, syncWatcherSchedule, unscheduleWatcher } from "@/lib/queue";
-
-/**
- * Scope a tool set for a watcher that does not exist yet.
- *
- * Only the tool *names* feed a grant and those do not depend on the scope, so a
- * grant can be read before the row (and its id) exists.
- */
-const PENDING_SCOPE = "watcher:pending";
 
 /** Longest cooldown a watcher may be given: a week, in minutes. */
 export const MAX_COOLDOWN_MINUTES = 7 * 24 * 60;
@@ -220,43 +201,22 @@ export interface WatcherFieldInput {
 }
 
 /**
- * Create a watcher, deriving its grant from the script.
+ * Create a watcher.
  *
- * `approvedByUser` says whether a person read the script behind this write. The
- * API sets it. the dialog shows the consent list before saving. and the
- * model's tool does not, so a script the model wrote only starts running once
- * the user has approved it on the Watchers page.
- *
- * A script that reaches nothing the user has to consent to is the same either
- * way: there is nothing to approve, so it ticks from the moment it is created.
- * The pending state is only for a script that would call an `ask` or `auto`
- * tool unattended, which is exactly what the approval exists to cover.
+ * It ticks from the moment it is created, whenever it was written. A tool the
+ * script calls that would ask the user in a chat runs here without asking, which
+ * is what an unattended script is.
  */
 export async function createWatcher(params: {
   userId: string;
   fields: WatcherFieldInput;
-  /** Whether a human read this script: the dialog on the API, never a tool call. */
-  approvedByUser: boolean;
 }): Promise<{
   id: string;
   name: string;
-  grantedTools: string[];
-  grantAll: boolean;
-  needsApproval: boolean;
   deliver: DeliverTarget;
 }> {
   const { userId } = params;
   const fields = await validateFields(userId, params.fields);
-
-  const access = await loadWatcherToolAccess(userId, fields.sessionId ?? PENDING_SCOPE);
-  const consent = consentFor({
-    script: fields.script,
-    callableNames: access.callableNames,
-    toolPolicies: access.toolPolicies,
-  });
-
-  const needsApproval =
-    !params.approvedByUser && (consent.grantedTools.length > 0 || consent.grantAll);
 
   const existing = await prisma.scriptWatcher.findFirst({
     where: { userId, name: fields.name },
@@ -267,13 +227,7 @@ export async function createWatcher(params: {
   }
 
   const watcher = await prisma.scriptWatcher.create({
-    data: {
-      userId,
-      ...fields,
-      scriptHash: needsApproval ? UNAPPROVED_SCRIPT_HASH : consent.scriptHash,
-      grantedTools: consent.grantedTools,
-      grantAll: consent.grantAll,
-    },
+    data: { userId, ...fields },
   });
 
   await scheduleWatcher(watcher).catch((err) => {
@@ -283,9 +237,6 @@ export async function createWatcher(params: {
   return {
     id: watcher.id,
     name: watcher.name,
-    grantedTools: consent.grantedTools,
-    grantAll: consent.grantAll,
-    needsApproval,
     deliver: watcher.deliver as DeliverTarget,
   };
 }
@@ -346,18 +297,13 @@ async function validateFields(userId: string, input: WatcherFieldInput): Promise
 /**
  * Update a watcher.
  *
- * A changed script does **not** re-earn its grant unless the caller says the
- * user approved it (`approveScript`). The API sets that because the user is
- * editing the script in front of them; the LLM's tools do not, so a model that
- * rewrites a watcher's script leaves it blocked until the user says yes. an
- * approval must not be extendable by the thing it constrains.
+ * A changed script is simply the script it runs from the next tick on.
  */
 export async function updateWatcher(params: {
   id: string;
   userId: string;
   fields: Partial<WatcherFieldInput>;
-  approveScript: boolean;
-}): Promise<{ id: string; needsApproval: boolean; deliver: DeliverTarget }> {
+}): Promise<{ id: string; deliver: DeliverTarget }> {
   const { id, userId } = params;
 
   const current = await prisma.scriptWatcher.findFirst({ where: { id, userId } });
@@ -382,8 +328,6 @@ export async function updateWatcher(params: {
     enabled: keep(params.fields.enabled, current.enabled),
   });
 
-  const scriptChanged = merged.script !== current.script;
-
   if (merged.name !== current.name) {
     const clash = await prisma.scriptWatcher.findFirst({
       where: { userId, name: merged.name, id: { not: id } },
@@ -392,63 +336,16 @@ export async function updateWatcher(params: {
     if (clash) throw new WatcherInputError(`A watcher named "${merged.name}" already exists.`);
   }
 
-  const grantFields =
-    scriptChanged && params.approveScript
-      ? await grantedFor(userId, merged.script, merged.sessionId)
-      : {};
-
   const watcher = await prisma.scriptWatcher.update({
     where: { id },
-    data: { ...merged, ...grantFields },
+    data: merged,
   });
 
   await syncWatcherSchedule(watcher).catch((err) => {
     console.error(`Failed to reschedule watcher ${watcher.id}:`, err);
   });
 
-  return {
-    id: watcher.id,
-    needsApproval: scriptChanged && !params.approveScript,
-    deliver: merged.deliver,
-  };
-}
-
-/** The grant a script earns, from the tool set its owner has right now. */
-async function grantedFor(
-  userId: string,
-  script: string,
-  sessionId: string | null,
-): Promise<{ scriptHash: string; grantedTools: string[]; grantAll: boolean }> {
-  const access = await loadWatcherToolAccess(userId, sessionId ?? PENDING_SCOPE);
-  const consent = consentFor({
-    script,
-    callableNames: access.callableNames,
-    toolPolicies: access.toolPolicies,
-  });
-  return {
-    scriptHash: consent.scriptHash,
-    grantedTools: consent.grantedTools,
-    grantAll: consent.grantAll,
-  };
-}
-
-/**
- * Approve the watcher's script as it currently stands.
- *
- * This is the user saying "yes, these calls" after a script changed. the same
- * decision the creation dialog carries, applied to an edit.
- */
-export async function approveWatcherScript(
-  id: string,
-  userId: string,
-): Promise<{ grantedTools: string[]; grantAll: boolean }> {
-  const current = await prisma.scriptWatcher.findFirst({ where: { id, userId } });
-  if (!current) throw new WatcherInputError("Watcher not found.");
-
-  const grant = await grantedFor(userId, current.script, current.sessionId);
-  await prisma.scriptWatcher.update({ where: { id }, data: grant });
-
-  return { grantedTools: grant.grantedTools, grantAll: grant.grantAll };
+  return { id: watcher.id, deliver: merged.deliver };
 }
 
 /** Delete a watcher and stop its ticks. */
@@ -461,45 +358,6 @@ export async function deleteWatcher(id: string, userId: string): Promise<void> {
 
   await prisma.scriptWatcher.delete({ where: { id } });
   await unscheduleWatcher(id);
-}
-
-/**
- * What a script would need consent for, without saving anything.
- *
- * The dialog shows this as the user writes the script, and the tools return it
- * so the model can say what it is about to be allowed to do before it asks for
- * the write to be approved.
- */
-export async function previewConsent(params: {
-  userId: string;
-  script: string;
-  sessionId?: string | null;
-}): Promise<{
-  grantedTools: string[];
-  grantAll: boolean;
-  /** Which of the granted tools are command-aware and worth calling out. */
-  callableCount: number;
-}> {
-  const access = await loadWatcherToolAccess(
-    params.userId,
-    params.sessionId ?? `watcher:preview-${params.userId}`,
-  );
-  const consent = consentFor({
-    script: normalizeScript(params.script),
-    callableNames: access.callableNames,
-    toolPolicies: access.toolPolicies,
-  });
-
-  return {
-    grantedTools: consent.grantedTools,
-    grantAll: consent.grantAll,
-    callableCount: access.callableNames.length,
-  };
-}
-
-/** Whether a stored watcher's script still matches the grant it carries. */
-export function needsScriptApproval(watcher: { script: string; scriptHash: string }): boolean {
-  return hashScript(watcher.script) !== watcher.scriptHash;
 }
 
 /** The shape every reader of a watcher gets. API, tools and UI alike. */
@@ -520,9 +378,6 @@ export interface SerializedWatcher {
   wakePrompt: string;
   modelId: string | null;
   cooldownMinutes: number;
-  grantedTools: string[];
-  grantAll: boolean;
-  needsApproval: boolean;
   tickCount: number;
   fireCount: number;
   lastTickAt: string | null;
@@ -556,9 +411,6 @@ export function serializeWatcher(watcher: WatcherRow): SerializedWatcher {
     wakePrompt: watcher.wakePrompt,
     modelId: watcher.modelId,
     cooldownMinutes: watcher.cooldownMinutes,
-    grantedTools: watcher.grantedTools,
-    grantAll: watcher.grantAll,
-    needsApproval: needsScriptApproval(watcher),
     tickCount: watcher.tickCount,
     fireCount: watcher.fireCount,
     lastTickAt: watcher.lastTickAt?.toISOString() ?? null,

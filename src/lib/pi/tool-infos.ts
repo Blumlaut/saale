@@ -622,10 +622,8 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Create Watcher",
     description: "Create a scheduled script watcher",
     category: "watchers",
-    // The durable half, but not the dangerous one: the watcher is what runs the
-    // script, and the script's approval is a gate of its own. a creation that
-    // would need one lands paused for it. Managing watchers is otherwise the
-    // model's own say-so.
+    // Spends nothing until its schedule comes round, and the user can stop it
+    // from the Watchers page.
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
@@ -634,8 +632,6 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     label: "Update Watcher",
     description: "Change a watcher's script or schedule",
     category: "watchers",
-    // Changing a script still pauses the watcher until the user approves it on
-    // the Watchers page. only the tool call itself runs without a click.
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },

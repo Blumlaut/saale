@@ -476,16 +476,10 @@ async function mockWatchers(page: Page) {
       return route.fulfill({ json: { watchers: [] } });
     }
 
-    // The dialog previews consent, then optionally runs the draft script. Both
-    // answers carry content that used to widen the overlay: an unbreakable tool
-    // name in the consent list, and a long value from the script.
+    // A test run of the draft script: the long value is what used to widen the
+    // overlay.
     return route.fulfill({
       json: {
-        preview: {
-          grantedTools: ["mcp__longserver__an_unbreakable_tool_name_that_keeps_going"],
-          grantAll: false,
-          callableCount: 41,
-        },
         outcome: {
           status: "fired",
           value: {
@@ -784,9 +778,9 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "jobs · new watcher",
     path: "/dashboard/jobs/watchers",
-    // The watcher dialog carries the longest content in the app: a script, a
-    // monospace consent list and a script's returned value, all of which used to
-    // widen auto-sized overlay tracks.
+    // The watcher dialog carries the longest content in the app: a script and a
+    // script's returned value, both of which used to widen auto-sized overlay
+    // tracks.
     sources: ["src/components/jobs/watcher-dialog.tsx"],
     mock: mockWatchers,
     open: (page) => click(page, 'button:has-text("New watcher")'),
