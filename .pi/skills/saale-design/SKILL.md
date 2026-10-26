@@ -218,7 +218,7 @@ body **never scrolls**. Pages must use the shared layout components in
 <GlassPanelHeader title="Agent Jobs" action={<PageAction icon={Plus} label="New agent" />} />
 ```
 
-`PageActions`, `PageAction`, `PageStatus` and `PageSection` live in `src/components/layout/page.tsx`. Never hand-roll the row or size the button yourself — a page that does drifts from every other page.
+`PageActions`, `PageAction`, `PageStatus` and `PageSection` live in `src/components/layout/page.tsx`. Never hand-roll the row or size the button yourself — a page that does drifts from every other page. `eslint.config.mjs` rejects a copied row or button, and `e2e/page-actions.spec.ts` measures the rendered result.
 
 Rules:
 

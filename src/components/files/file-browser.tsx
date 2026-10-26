@@ -22,6 +22,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { PageAction } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -296,16 +297,12 @@ export function FileBrowser({
             </DropdownMenuContent>
           </DropdownMenu>
           {capabilities.upload && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-8 gap-1.5 md:h-9"
-              aria-label="Upload files"
+            <PageAction
+              icon={Upload}
+              label="Upload files"
+              variant="secondary"
               onClick={() => fileInput.current?.click()}
-            >
-              <Upload className="h-4 w-4" />
-              <span className="hidden md:inline">Upload</span>
-            </Button>
+            />
           )}
         </div>
       </div>
