@@ -28,10 +28,21 @@ import {
   sessionCookieAttributes,
 } from "@/lib/auth/session-config";
 
+/** Origins that may send auth requests, comma separated in `AUTH_TRUSTED_ORIGINS`. */
+function trustedOriginsFromEnv(): string[] {
+  return (process.env.AUTH_TRUSTED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
+  // A preview hostname is under the deployment's own domain and changes per
+  // port, so the wildcard is configured once rather than per host.
+  trustedOrigins: trustedOriginsFromEnv(),
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
