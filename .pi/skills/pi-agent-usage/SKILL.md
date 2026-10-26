@@ -230,20 +230,25 @@ export async function createChatAgentSession(options: {
   model?: { provider: string; name: string }; // omitted → user's default chat model
   customInstructions: string | null;
   toolPolicies: Record<string, string> | null | undefined;
-  /** The approval gate. Omitting it runs every tool unapproved. */
-  wrapTool: (tool: ToolDefinition) => ToolDefinition;
-  /** Approval channel for the tools Pi extensions register (see Codemode below). */
+  /** Where an approval card goes (see Approvals below). */
   emitApprovalRequest: (request: ApprovalRequest) => void;
 }): Promise<{ session: AgentSession; sessionDir: string }>;
 ```
 
-Build the gate with `createToolApprovalGate({ userId, sessionId, toolPolicies,
-emitApprovalRequest })` (`src/lib/pi/tool-approval-gate.ts`) — it resolves each
-tool's policy and wraps `wrapWithApprovalGate`, which is the only thing that
-enforces the user's policies. Tools wrapped without it execute unapproved, so
-`createChatAgentSession` requires it. For web chat, build the emitter with
-`createChatApprovalEmitter(sessionId)` (publishes on the session event bus);
-Telegram has its own (a card in the chat).
+No session wraps its own tools. `createAgentResourceLoader()` adds
+`createToolApprovalExtension()` (`src/lib/pi/tool-approval-extension.ts`) to
+every interactive session, and Pi runs its `tool_call` handler for every call
+whichever way the tool was registered: Saale's own, a plugin's, an MCP server's,
+and the nested calls a codemode script makes. Pass `toolPolicies`,
+`mcpServerPolicies` and `emitApprovalRequest` down to it from the place that
+builds the session.
+
+A tool whose policy is `off` is left out of the tool list as well as blocked, in
+`resolveTools()` — an unbuildable tool is not declared to the model. The gate
+still answers `off` for the tools that appear after the session exists.
+
+For web chat, build the emitter with `createChatApprovalEmitter(sessionId)`
+(publishes on the session event bus); Telegram has its own (a card in the chat).
 
 ### Starting a session's extensions
 
@@ -258,8 +263,9 @@ includes extensions: it binds, then activates `codemode`.
 
 Saale runs Pi's `codemode` tool in every session that can call tools. The model
 writes a short JavaScript script that calls tools through `ctx.executeTool()`,
-which means **nested calls still go through Saale's approval gate** — the tools
-it calls are the wrapped definitions in the session's registry, not raw ones.
+which means **nested calls still go through Saale's approval gate** — they are
+`tool_call` events like any other, tagged with the id of the call that started
+the script.
 
 - The extension comes from `createAgentResourceLoader()`; the tool is registered
   inactive and `startSessionExtensions()` activates it.
@@ -273,10 +279,9 @@ it calls are the wrapped definitions in the session's registry, not raw ones.
 
 #### The script is the approval unit
 
-`codemode` is registered by its extension at `session_start`, so unlike Saale's
-own tools it never passes through `wrapTool`. `createCodemodeApprovalExtension()`
-(`src/lib/pi/codemode-approval.ts`, wired in `createAgentResourceLoader` under the
-`interactive` context) gates it on the `tool_call` event instead.
+`codemode` is registered by its extension at `session_start`, after the session
+is built. The `tool_call` gate sees it the same as everything else, so the
+script and the calls inside it are decided in one place.
 
 A script's calls each carry their own policy, so gating them one by one puts a
 card in front of the user per call — the same decision, asked N times. Instead
@@ -294,19 +299,18 @@ their own**, and one click that stands in for all of them.
   reaches by a computed name is covered by nothing and asks for itself — the
   card says so (`dynamic`).
 - **The grant** is recorded by `grantApprovalScope()`
-  (`src/lib/pi/approval-scope.ts`) against the call the user approved, and every
-  gate — `wrapWithApprovalGate` and the MCP extension — consults
-  `isApprovalScopeGranted()` before asking about a nested call
+  (`src/lib/pi/approval-scope.ts`) against the call the user approved, and the
+  gate consults `isApprovalScopeGranted()` before asking about a nested call
   (`<parent>/<n>`). It is process-local (the nested calls run where the wait
   settled), released when the script's result arrives, and expires with the
-  approval window. **A new gate must consult it too**, or a covered call will ask
-  again.
+  approval window. Anything that decides a call outside the gate has to consult
+  it too, or a covered call asks again.
 - **The policy for `codemode` itself** decides whether a script asks at all:
   `off` blocks scripts outright (nothing else can — no other gate sees them),
   `ask` always asks, and `auto` (the default) asks only when a script reaches a
   tool that would ask. `allow` runs the script as one step and leaves every call
-  to its own policy. All three gates resolve policy through `resolveToolPolicy()`
-  (`src/lib/pi/tool-policy.ts`) so they cannot disagree.
+  to its own policy. The gate resolves every policy through `resolveToolPolicy()`
+  (`src/lib/pi/tool-policy.ts`).
 - `codemode` is in the tool catalog with no category (it is active whatever the
   category switches say), so the settings UI lists it in its own "Always active"
   group.
@@ -326,13 +330,11 @@ loadConfig })`. Never let the MCP extension read the host's Pi directory: it
 - **Exposure is always `codemode`.** MCP tools stay out of the model's tool
   declarations and are reached from codemode scripts, which Saale enables
   anyway — a server with hundreds of tools does not bloat every prompt.
-- **MCP tools must be gated.** They are registered _after_ the session is built,
-  so `wrapTool` never sees them. `createMcpToolPolicyExtension()` (an inline
-  extension on `tool_call`) applies the user's per-tool policy, then the
-  server's policy, then `ask`, and honours an approval scope an approved script
-  already granted. Wire it wherever `createAgentResourceLoader` is called with
-  an `interactive` context, and pass the same approval channel the session's
-  tool gate uses.
+- **MCP tools are gated by the session's own gate.** They are registered _after_
+  the session is built, which is what the `tool_call` extension covers.
+  `createUserMcpExtension()` returns the server policies with the extension, and
+  `createAgentResourceLoader()` hands them to `createToolApprovalExtension()`:
+  the user's per-tool policy, then the server's, then `ask`.
 - **A config change must evict the user's pooled chats** (`evictUserSessions`)
   — a pooled session's extensions are fixed at creation.
 - **No server-to-client stream** (`createTransport` → `openGetStream: false`).
@@ -562,7 +564,7 @@ codemode exposure derive it. A new _category_ or _purpose_ is likewise derived.
 | `noTools: "builtin"` for text-only tasks                                           | Heavier than needed                                                                                                                                                                                                                                       | Use `noTools: "all"`                                                                                                                        |
 | Activating `codemode` via `defaultTools` while passing `noTools`                   | Pi ignores `defaultTools` when `noTools` is set, and naming built-in tools would activate the _host's_ file/shell tools                                                                                                                                   | `startSessionExtensions(session)` after `createAgentSession`                                                                                |
 | Never calling `session.bindExtensions()`                                           | Extensions never get `session_start`: no MCP connections, no codemode activation                                                                                                                                                                          | `startSessionExtensions(session)`                                                                                                           |
-| Gating MCP tools by wrapping them                                                  | They are registered after the session is built, so `wrapTool` never sees them — `ask`/`off` would be ignored                                                                                                                                              | `createMcpToolPolicyExtension()` on `tool_call`                                                                                             |
+| Gating tools by wrapping their definitions                                         | Tools registered after the session (a plugin's, an MCP server's, codemode) never pass through a wrapper, so `ask`/`off` would be ignored                                                                                                                  | One `createToolApprovalExtension()` on `tool_call`                                                                                          |
 | Letting the MCP extension read the host's `mcp.json` / `mcp-auth.json`             | Config and credentials belong to the machine's Pi install, not to a tenant                                                                                                                                                                                | `createUserMcpExtension(userId)` with `loadConfig`; override `logPath`/`openUrl`/`updateConfig`                                             |
 | No timeout on non-streaming calls                                                  | Can hang indefinitely                                                                                                                                                                                                                                     | Always add a timeout (5min default)                                                                                                         |
 | Returning `{ isError: true }` from a tool                                          | Pi's agent loop hardcodes `isError: false` for non-throwing results, so the failure reaches the model and the UI as a successful call                                                                                                                     | `throw new Error("…")` — the loop turns it into a flagged error result with the message                                                     |

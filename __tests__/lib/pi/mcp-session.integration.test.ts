@@ -34,7 +34,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { createUserMcpExtension, loadUserMcpServers } from "@/lib/mcp/servers";
-import { createMcpToolPolicyExtension } from "@/lib/pi/mcp-tool-policy";
+import { createToolApprovalExtension } from "@/lib/pi/tool-approval-extension";
 import { startSessionExtensions } from "@/lib/pi/processing-state";
 
 const USER_ID = "user-1";
@@ -99,10 +99,10 @@ describe("MCP servers in an agent session", () => {
         extensionFactories: [
           createCodemodeExtension(),
           mcp!.extension,
-          createMcpToolPolicyExtension({
+          createToolApprovalExtension({
             userId: USER_ID,
             sessionId: "session-1",
-            serverPolicies: policies,
+            mcpServerPolicies: policies,
             toolPolicies: null,
             emitApprovalRequest: () => {},
           }),

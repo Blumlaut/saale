@@ -67,6 +67,8 @@ export interface PluginConfig {
   dirSetting: string;
   /** Master switch. */
   enabled: boolean;
+  /** Whether a plugin may open a dialog in a chat (`ctx.ui`). */
+  ui: boolean;
   /** Per-plugin switches, keyed by plugin id. */
   states: Record<string, { enabled: boolean }>;
 }
@@ -80,12 +82,18 @@ export interface PluginConfig {
 export async function readPluginConfig(): Promise<PluginConfig> {
   const row = await prisma.adminSettings.findUnique({
     where: { id: "global" },
-    select: { piPluginsDir: true, piPluginsEnabled: true, piPluginStates: true },
+    select: {
+      piPluginsDir: true,
+      piPluginsEnabled: true,
+      piPluginStates: true,
+      piPluginsUi: true,
+    },
   });
   return {
     dir: resolvePluginsDir(row?.piPluginsDir),
     dirSetting: row?.piPluginsDir ?? "",
     enabled: row?.piPluginsEnabled ?? false,
+    ui: row?.piPluginsUi ?? true,
     states: normalizePluginStates(row?.piPluginStates),
   };
 }
@@ -648,6 +656,8 @@ export interface PluginListResult {
     dir: string;
     dirSetting: string;
     enabled: boolean;
+    /** Whether a plugin may open a dialog through `ctx.ui`. */
+    ui: boolean;
     dirExists: boolean;
   };
   plugins: PluginInfo[];
@@ -684,6 +694,7 @@ export async function listPlugins(): Promise<PluginListResult> {
       dir: config.dir,
       dirSetting: config.dirSetting,
       enabled: config.enabled,
+      ui: config.ui,
       dirExists: existsSync(/*turbopackIgnore: true*/ config.dir),
     },
     plugins,

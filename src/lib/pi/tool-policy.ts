@@ -1,11 +1,10 @@
 /**
  * Which approval policy governs a call.
  *
- * One answer for every gate that has to give one. Saale gates tool calls in
- * three places. the wrapper around its own tools, the extension that catches
- * MCP tools, and the gate on `codemode`. and they must agree: a tool that is
- * gated on one path and runs unapproved on another is the bug this module
- * exists to make impossible.
+ * One answer for the session's `tool_call` gate and for the tool list the model
+ * is given: a tool whose policy is `off` is neither declared nor callable, and
+ * the gate answers the same `off` for the tools registered after the session
+ * was built (a plugin's, an MCP server's).
  *
  * The user's own per-tool policy wins. Without one, an MCP tool follows its
  * server's policy and a tool Saale ships follows its catalog default.
@@ -17,7 +16,7 @@ import {
   MCP_TOOL_PREFIX,
   type McpToolPolicy,
 } from "@/lib/mcp/shared";
-import { getDefaultPolicy, isToolPolicy, type ToolPolicy } from "./tool-infos";
+import { findToolInfo, isToolPolicy, type ToolPolicy } from "./tool-infos";
 
 /** The user context a policy is resolved against. */
 export interface ToolPolicyContext {
@@ -45,8 +44,30 @@ export function resolveMcpToolPolicy(options: {
   return serverPolicy ?? "ask";
 }
 
-/** The policy that governs one call, whichever gate is asking. */
-export function resolveToolPolicy(toolName: string, context: ToolPolicyContext): ToolPolicy {
+/** What is known about a tool the catalog does not describe. */
+export interface ToolIntrinsicAccess {
+  /**
+   * The tool declares itself read-only (Pi's `readOnlyHint`, the MCP
+   * annotation of the same name). A read is harmless, so it runs.
+   */
+  readOnly: boolean;
+}
+
+/**
+ * The policy that governs one call, whichever gate is asking.
+ *
+ * A tool Saale ships follows its catalog default, which is where a tool's reach
+ * is decided (read file contents. `allow`; run a shell command. `auto`). A tool
+ * nobody configured. a plugin's, say, or one an MCP server adds later. has no
+ * entry, so its own declaration is the evidence: read-only runs, and anything
+ * that can write or reach outside the workspace asks. `ask` is the answer when
+ * there is no evidence at all.
+ */
+export function resolveToolPolicy(
+  toolName: string,
+  context: ToolPolicyContext,
+  access?: ToolIntrinsicAccess,
+): ToolPolicy {
   if (toolName.startsWith(MCP_TOOL_PREFIX)) {
     return resolveMcpToolPolicy({
       toolName,
@@ -56,5 +77,10 @@ export function resolveToolPolicy(toolName: string, context: ToolPolicyContext):
   }
 
   const policy = context.toolPolicies?.[toolName];
-  return isToolPolicy(policy) ? policy : getDefaultPolicy(toolName);
+  if (isToolPolicy(policy)) return policy;
+
+  const known = findToolInfo(toolName);
+  if (known) return known.defaultPolicy;
+
+  return access?.readOnly ? "allow" : "ask";
 }

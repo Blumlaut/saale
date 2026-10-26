@@ -16,6 +16,7 @@ import {
 import { processTelegramMessage } from "@/lib/telegram/processor";
 import type { TelegramFileInfo } from "@/lib/telegram/files";
 import { handleApprovalCallback } from "@/lib/telegram/approval";
+import { handlePluginDialogCallback, takePluginDialogReply } from "@/lib/telegram/plugin-dialogs";
 import { handleCommandPromptCallback, handleTelegramCommand } from "@/lib/telegram/command-prompts";
 import { extractQuotedMessage } from "@/lib/telegram/reply-context";
 import { handleGroupServiceMessage } from "@/lib/telegram/group-events";
@@ -121,6 +122,13 @@ function senderDisplayName(from: { first_name?: string; last_name?: string }): s
  *   would otherwise run one person's message against another person's account
  *   in front of everyone.
  */
+/** The message a message replies to, when it replies at all. */
+function repliedToMessageId(replyTo: unknown): number | undefined {
+  if (typeof replyTo !== "object" || replyTo === null) return undefined;
+  const id = (replyTo as { message_id?: unknown }).message_id;
+  return typeof id === "number" ? id : undefined;
+}
+
 export async function POST(request: NextRequest) {
   // 1. The instance's bot must exist and be switched on
   const botConfig = await getTelegramBot();
@@ -184,14 +192,20 @@ export async function POST(request: NextRequest) {
     if (approvalResult.handled) {
       if (approvalResult.message) await answer(approvalResult.message, "approval");
     } else {
-      // Not an approval callback. try a slash-command prompt's button.
-      const commandResult = await handleCommandPromptCallback(
-        callbackQuery.data,
-        presserId,
-        callbackQuery.message,
-      );
-      if (commandResult.handled && commandResult.message)
-        await answer(commandResult.message, "command");
+      // Not an approval callback. try a plugin's dialog button.
+      const dialogResult = await handlePluginDialogCallback(callbackQuery.data, presserId);
+      if (dialogResult.handled) {
+        if (dialogResult.message) await answer(dialogResult.message, "plugin dialog");
+      } else {
+        // Not a dialog either. try a slash-command prompt's button.
+        const commandResult = await handleCommandPromptCallback(
+          callbackQuery.data,
+          presserId,
+          callbackQuery.message,
+        );
+        if (commandResult.handled && commandResult.message)
+          await answer(commandResult.message, "command");
+      }
     }
 
     return NextResponse.json({ ok: true });
@@ -334,6 +348,27 @@ export async function POST(request: NextRequest) {
       console.error(`Telegram /${parsedCommand.name} failed:`, err);
     });
     return NextResponse.json({ ok: true });
+  }
+
+  // 8b. A text message may be the answer to a plugin's input/editor dialog.
+  //     The plugin is blocked until it arrives, so it is taken before anything
+  //     else acts on the text.
+  if (content.text) {
+    const dialogReply = await takePluginDialogReply({
+      userId,
+      telegramUserId,
+      telegramChatId,
+      text: content.text,
+      replyToMessageId: repliedToMessageId(message.reply_to_message),
+    }).catch((err: unknown): { consumed: boolean; note?: string } => {
+      console.error("Failed to take a plugin dialog reply:", err);
+      return { consumed: false };
+    });
+
+    if (dialogReply.consumed) {
+      if (dialogReply.note) await reply(dialogReply.note);
+      return NextResponse.json({ ok: true });
+    }
   }
 
   // 9. Update the cached display name (fire-and-forget)

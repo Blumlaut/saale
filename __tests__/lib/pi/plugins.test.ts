@@ -84,6 +84,7 @@ function config(overrides: Partial<PluginConfig> = {}): PluginConfig {
     dir: root,
     dirSetting: root,
     enabled: true,
+    ui: false,
     states: {},
     ...overrides,
   };

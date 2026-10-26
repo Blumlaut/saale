@@ -144,12 +144,14 @@ export default function AdminPluginsPage() {
   // Config form state, seeded from the server.
   const [dir, setDir] = useState("");
   const [enabled, setEnabled] = useState(false);
+  const [ui, setUi] = useState(false);
   const [switches, setSwitches] = useState<Record<string, boolean>>({});
 
   const apply = useCallback((next: PluginResponse) => {
     setData(next);
     setDir(next.config.dirSetting);
     setEnabled(next.config.enabled);
+    setUi(next.config.ui);
     setSwitches(
       Object.fromEntries(next.plugins.map((plugin) => [plugin.id, plugin.override ?? true])),
     );
@@ -686,6 +688,26 @@ export default function AdminPluginsPage() {
                     void save(
                       { enabled: next },
                       next ? "Plugins enabled" : "Plugins disabled globally",
+                    );
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Label htmlFor="plugins-ui" className="text-sm font-medium">
+                    Dialogs in the chat
+                  </Label>
+                  <Hint text="A plugin can ask a question through ctx.ui. The chat shows it, and the run waits for the answer." />
+                </div>
+                <Switch
+                  id="plugins-ui"
+                  checked={ui}
+                  onCheckedChange={(next) => {
+                    setUi(next);
+                    void save(
+                      { ui: next },
+                      next ? "Plugins may open dialogs" : "Plugins cannot open dialogs",
                     );
                   }}
                 />

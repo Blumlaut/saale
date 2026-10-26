@@ -50,6 +50,34 @@ export interface ApprovalData {
   approved?: boolean;
 }
 
+/**
+ * A dialog a plugin opened in the chat (Pi's `ctx.ui`). Mirrors
+ * `PluginUiPayload` in `@/lib/plugin-ui/requests`.
+ */
+export interface PluginDialogData {
+  id: string;
+  kind: "select" | "confirm" | "input" | "editor";
+  title: string;
+  message: string | null;
+  options: string[] | null;
+  placeholder: string | null;
+  prefill: string | null;
+  expiresAt: string;
+}
+
+/** A plugin's status line, keyed so several can stand side by side. */
+export interface PluginStatusData {
+  key: string;
+  text: string | null;
+}
+
+/** A panel a plugin put above or below the composer. */
+export interface PluginWidgetData {
+  key: string;
+  lines: string[] | null;
+  placement: "aboveEditor" | "belowEditor";
+}
+
 /** The tool calls a single approval covers. */
 export interface ApprovalBatchData {
   /** Tool names the approval covers; a call to any other tool still asks. */

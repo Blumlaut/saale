@@ -145,7 +145,7 @@ type MessageHandler = (channel: string, message: string) => void;
 
 export interface MemoryRedisClient {
   // strings
-  set(key: string, value: string, ...args: unknown[]): Promise<string>;
+  set(key: string, value: string, ...args: unknown[]): Promise<string | null>;
   setex(key: string, seconds: number, value: string): Promise<string>;
   get(key: string): Promise<string | null>;
   del(...keys: string[]): Promise<number>;
@@ -193,8 +193,14 @@ function createClient(): MemoryRedisClient {
 
     async set(key, value, ...args) {
       let ttlSeconds: number | undefined;
-      if (args[0] === "EX") ttlSeconds = Number(args[1]);
-      else if (args[0] === "PX") ttlSeconds = Number(args[1]) / 1000;
+      let onlyIfMissing = false;
+      for (let index = 0; index < args.length; index += 1) {
+        const arg = args[index];
+        if (arg === "EX") ttlSeconds = Number(args[index + 1]);
+        else if (arg === "PX") ttlSeconds = Number(args[index + 1]) / 1000;
+        else if (arg === "NX") onlyIfMissing = true;
+      }
+      if (onlyIfMissing && getEntry(key)) return null;
       setString(key, value, ttlSeconds);
       return "OK";
     },

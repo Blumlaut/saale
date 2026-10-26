@@ -680,6 +680,19 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     write: (_row, value) => ({ piPluginsEnabled: Boolean(value) }),
   },
   {
+    key: "admin.piPluginsUi",
+    group: GROUP.plugins,
+    label: "Plugin dialogs",
+    description:
+      "Let plugins open dialogs in a chat (Pi's extension UI: select, confirm, input, editor, notifications and status lines). A plugin runs inside the app, so a dialog it shows is the plugin asking the user directly. Turned off, a plugin's dialog is cancelled at once.",
+    columns: ["piPluginsUi"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: z.boolean(),
+    read: (row) => row.piPluginsUi,
+    write: (_row, value) => ({ piPluginsUi: Boolean(value) }),
+  },
+  {
     key: "admin.piPluginsDir",
     group: GROUP.plugins,
     label: "Plugin directory",
