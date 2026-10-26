@@ -197,12 +197,40 @@ export function useFileBrowser({
     [fetchListing],
   );
 
+  /** Whether the first listing has been asked for. */
+  const started = useRef(false);
+  /** The dotfile preference the visible listing was read with. */
+  const filteredBy = useRef(hideDotfiles);
+
   // The first listing waits for the stored preference, so a browser that was
   // last left showing dotfiles opens on them instead of asking twice.
   useEffect(() => {
-    if (!preferenceRead) return;
+    if (!preferenceRead || started.current) return;
+    started.current = true;
+    filteredBy.current = hideDotfiles;
     void load(start.current);
-  }, [load, preferenceRead]);
+  }, [hideDotfiles, load, preferenceRead]);
+
+  // Dotfiles are filtered server-side, so a change reads the folder again.
+  useEffect(() => {
+    if (!preferenceRead || !started.current || filteredBy.current === hideDotfiles) return;
+    filteredBy.current = hideDotfiles;
+    void load(current.current, { quiet: true });
+  }, [hideDotfiles, load, preferenceRead]);
+
+  // A caller that moves to another directory is browsing another workspace:
+  // the rows on screen belong to a root the user is no longer in.
+  useEffect(() => {
+    const next = startPath ?? "";
+    if (next === start.current) return;
+    start.current = next;
+    if (!preferenceRead) return;
+    root.current = "";
+    setListing(null);
+    setHome("");
+    setSelected(new Set());
+    void load(next);
+  }, [load, preferenceRead, startPath]);
 
   /** Re-read the current folder after a write, keeping the listing on screen. */
   const afterMutation = useCallback(async () => {
