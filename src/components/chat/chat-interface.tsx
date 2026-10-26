@@ -178,6 +178,7 @@ export function ChatInterface({
           thinkingLevel?: string;
           toolConfig?: ToolConfig;
           isGenerating?: boolean;
+          isBuilding?: boolean;
           queueHeld?: boolean;
           activeTool?: { name: string | null; startedAt?: string | null } | null;
         };
@@ -193,8 +194,10 @@ export function ChatInterface({
       // A generation the server knows about is in flight right now. spin the
       // composer's stop button even before the stream's first event arrives
       // (a refresh mid-run must not read as idle). Only ever raised here:
-      // clearing belongs to the stream's `done` event.
-      if (data.session?.isGenerating) setIsLoading(true);
+      // clearing belongs to the stream's `done` event. A chat building its
+      // workspace owes a reply just the same, and nothing streams until the
+      // build is done.
+      if (data.session?.isGenerating || data.session?.isBuilding) setIsLoading(true);
       applySession(data.session);
     } catch (err) {
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {

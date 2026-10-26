@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
+  isAgentBuilding,
   isSendQueueHeld,
   isSessionActive,
   isSessionBusy,
@@ -58,7 +59,14 @@ export async function GET(
 
   // Source of truth: Redis tracks active generations (ephemeral. cleared on crash).
   // processingSince is a DB timestamp that survives crashes and must not be trusted.
-  const isGenerating = await isSessionActive(authResult.userId, sessionId);
+  const [isGenerating, isBuilding, queueHeld] = await Promise.all([
+    isSessionActive(authResult.userId, sessionId),
+    // The first message of a coder chat builds the workspace before any of it
+    // streams. A client that comes back to the chat mid-build has to know a
+    // reply is still owed, or it reads as idle and never asks for the build.
+    isAgentBuilding(sessionId),
+    isSendQueueHeld(sessionId),
+  ]);
 
   // The active tool (if any) is persisted by the session event tracker at
   // tool_execution_start and cleared at tool_execution_end. It lets a client
@@ -88,7 +96,8 @@ export async function GET(
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
       isGenerating,
-      queueHeld: await isSendQueueHeld(sessionId),
+      isBuilding,
+      queueHeld,
       activeTool,
     },
     messages: messages.map(serializeChatMessage),

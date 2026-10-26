@@ -103,6 +103,8 @@ let conversation: ReturnType<typeof dbMessage>[];
 let queued: ReturnType<typeof dbMessage>[];
 /** Bumped per delivery so a pushed message sorts after the live turn. */
 let deliveryClock = 0;
+/** The server's view: the chat is building its workspace right now. */
+let building: boolean;
 
 function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input.toString();
@@ -137,7 +139,11 @@ function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   }
   if (url === `/api/chat/sessions/${SESSION_ID}/messages`) {
     return Promise.resolve(
-      json({ messages: conversation, queuedMessages: queued, session: { id: SESSION_ID } }),
+      json({
+        messages: conversation,
+        queuedMessages: queued,
+        session: { id: SESSION_ID, isBuilding: building },
+      }),
     );
   }
   if (url === `/api/chat/sessions/${SESSION_ID}/compact` && method === "POST") {
@@ -221,6 +227,7 @@ beforeEach(() => {
   conversation = [];
   queued = [];
   deliveryClock = 0;
+  building = false;
 });
 
 afterEach(() => {
@@ -347,5 +354,27 @@ describe("sending while a manual compaction holds the session", () => {
     await waitFor(() => expect(MockEventSource.instances).toHaveLength(2));
     expect(MockEventSource.instances[0]!.readyState).toBe(MockEventSource.CLOSED);
     expect(MockEventSource.instances[1]!.url).toBe(`/api/chat/sessions/${SESSION_ID}/stream`);
+  });
+});
+
+describe("coming back to a chat that is building its workspace", () => {
+  it("keeps waiting for the first reply", async () => {
+    // A coder chat builds its workspace before the agent sees the message, and
+    // nothing streams while it does. The server's record of the build is the
+    // only thing that says a reply is still owed.
+    building = true;
+    conversation = [dbMessage("u1", "hi")];
+
+    render(
+      <ChatInterface
+        sessionId={SESSION_ID}
+        temporaryMode={false}
+        onTemporaryChange={() => {}}
+        onNewChat={() => {}}
+        renderWaitingNotice={(waiting) => <span data-testid="waiting">{String(waiting)}</span>}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("waiting")).toHaveTextContent("true"));
   });
 });
