@@ -48,6 +48,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Admin accent overrides, rendered before the first paint so a custom
+            accent never flashes the default orange. */}
+        {/* eslint-disable-next-line @next/next/no-css-tags -- served from the database, not a file */}
+        <link rel="stylesheet" href="/api/branding/theme" data-branding-theme="" />
+      </head>
       <body className={`${inter.variable} ${geistMono.variable} font-sans`}>
         <ThemeProvider>
           <ErrorBoundary>{children}</ErrorBoundary>
