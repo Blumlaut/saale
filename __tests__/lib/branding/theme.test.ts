@@ -15,9 +15,18 @@ import {
 
 const CSS = readFileSync("src/app/globals.css", "utf8");
 
-/** A custom property's value inside one of globals.css' palette blocks. */
+/**
+ * The palette blocks in globals.css. The light one is declared on `:root` and
+ * repeated for `.light`, which is what lets a dark page hold a light island.
+ */
+const PALETTE_BLOCKS = {
+  ":root": /\n:root,\s*\n\.light \{([\s\S]*?)\n\}/,
+  ".dark": /\n\.dark \{([\s\S]*?)\n\}/,
+};
+
+/** A custom property's value inside one of the palette blocks. */
 function cssToken(block: ":root" | ".dark", name: string): string | undefined {
-  const body = new RegExp(`\\n${block.replace(".", "\\.")} \\{([\\s\\S]*?)\\n\\}`).exec(CSS)?.[1];
+  const body = PALETTE_BLOCKS[block].exec(CSS)?.[1];
   if (!body) throw new Error(`No ${block} block in globals.css`);
   return new RegExp(`${name}:\\s*(#[0-9a-fA-F]+)`).exec(body)?.[1];
 }
@@ -104,14 +113,14 @@ describe("buildBrandingCss", () => {
   it("writes the accent into every property that carries it", () => {
     const css = buildBrandingCss({ light: { primary: "#2563eb" }, dark: {} });
 
-    expect(css.startsWith(":root {")).toBe(true);
+    expect(css.startsWith(":root:not(.dark) {")).toBe(true);
     expect(css).toContain("--primary: #2563eb");
     expect(css).toContain("--ring: #2563eb");
     expect(css).toContain("--sidebar-primary: #2563eb");
     expect(css).toContain("--chart-1: #2563eb");
     // The ink is derived while secondary is unset.
     expect(css).toContain("--primary-foreground: #ffffff");
-    expect(css).not.toContain(".dark");
+    expect(css).not.toContain(".dark {");
   });
 
   it("puts dark overrides in a .dark block after :root", () => {
@@ -120,8 +129,15 @@ describe("buildBrandingCss", () => {
       dark: { primary: "#60a5fa" },
     });
 
-    expect(css.indexOf(":root {")).toBeLessThan(css.indexOf(".dark {"));
+    expect(css.indexOf(":root:not(.dark) {")).toBeLessThan(css.indexOf(".dark {"));
     expect(css).toContain("--primary: #60a5fa");
+  });
+
+  it("keeps a light override out of dark mode", () => {
+    const css = buildBrandingCss({ light: { primary: "#2563eb" }, dark: {} });
+
+    // `:root` alone ties with `.dark` and would win on load order.
+    expect(css).not.toMatch(/^:root \{/m);
   });
 
   it("keeps a secondary the admin picked over the derived ink", () => {

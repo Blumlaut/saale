@@ -143,8 +143,9 @@ export function accentInk(colors: Partial<Record<BrandColorKey, string>>): strin
 /**
  * The accent overrides, empty when nothing is overridden.
  *
- * `:root` comes first so the `.dark` block wins in dark mode: both selectors
- * carry the same specificity, and this sheet loads after `globals.css`.
+ * The light block is `:root:not(.dark)`: `:root` alone carries the same
+ * specificity as `.dark`, and this sheet loads after `globals.css`, so a bare
+ * `:root` would paint the light accent in dark mode too.
  */
 export function buildBrandingCss(colors: BrandColors): string {
   const blocks: string[] = [];
@@ -162,7 +163,9 @@ export function buildBrandingCss(colors: BrandColors): string {
     }
 
     if (declarations.length === 0) continue;
-    blocks.push(`${mode === "dark" ? ".dark" : ":root"} {\n  ${declarations.join(";\n  ")};\n}`);
+    blocks.push(
+      `${mode === "dark" ? ".dark" : ":root:not(.dark)"} {\n  ${declarations.join(";\n  ")};\n}`,
+    );
   }
 
   return blocks.join("\n\n");
