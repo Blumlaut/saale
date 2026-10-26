@@ -22,7 +22,7 @@ import {
   publishQueueUpdate,
   serializeQueuedMessages,
 } from "@/lib/chat/queue";
-import { deriveChatTitle } from "@/lib/chat/derive-title";
+import { promptTitleFields } from "@/lib/chat/name-session";
 import { serializeChatMessage } from "@/lib/chat/serialize-message";
 import {
   buildAttachmentPromptText,
@@ -250,23 +250,15 @@ export async function POST(
     });
 
     // Update session metadata. sending a message is real chat activity, so
-    // also advance lastActivityAt (the UI's sort/display timestamp).
-    // A chat named by its message is named once: the first message that says
-    // enough. A prompt that says nothing ("hi", a file on its own) leaves the
-    // chat open, so the next message gets the try.
+    // also advance lastActivityAt (the UI's sort/display timestamp). The chat is
+    // named here, in the request that carried the prompt.
     const titleText = sanitizedContent || attachments[0]?.fileName || "Attachment";
-    const derivedTitle = chatSession.titleSource === "default" ? deriveChatTitle(titleText) : null;
     const updatedSession = await prisma.chatSession.update({
-      where: { id: sessionId },
+      where: { id: sessionId, userId: authResult.userId },
       data: {
         messageCount: { increment: 1 },
         lastActivityAt: new Date(),
-        ...(chatSession.titleSource === "default"
-          ? {
-              title: derivedTitle ?? titleText.slice(0, 47) + (titleText.length > 47 ? "..." : ""),
-              ...(derivedTitle ? { titleSource: "auto" } : {}),
-            }
-          : {}),
+        ...promptTitleFields(chatSession.titleSource, titleText),
       },
       select: { title: true },
     });

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { isSessionBusy } from "@/lib/redis";
 import { get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "@/lib/chat/agent-run";
+import { promptTitleFields } from "@/lib/chat/name-session";
 import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { sendTelegramMessage, startTypingIndicator } from "./client";
@@ -68,6 +69,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
     select: {
       id: true,
       title: true,
+      titleSource: true,
       modelProvider: true,
       modelName: true,
       thinkingLevel: true,
@@ -150,8 +152,12 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       data: { sessionId: chat.id, role: "user", content: params.promptText },
     });
     await prisma.chatSession.update({
-      where: { id: chat.id },
-      data: { lastActivityAt: new Date(), messageCount: { increment: 1 } },
+      where: { id: chat.id, userId },
+      data: {
+        lastActivityAt: new Date(),
+        messageCount: { increment: 1 },
+        ...promptTitleFields(chat.titleSource, params.promptText),
+      },
     });
     entry.lastPromptedMessageId = userMessage.id;
 
