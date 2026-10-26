@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Page } from "@/components/layout/page";
+import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { Separator } from "@/components/ui/separator";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { startCoderChat } from "@/lib/chat-session";
@@ -68,21 +68,15 @@ export function ProjectList() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
-            <span className="console-label">
-              {loading ? "loading" : `${projects.length} projects`}
-            </span>
-            <div className="flex items-center gap-1">
-              <Button
-                size="icon"
-                className="h-8 w-8 md:w-auto md:px-3"
-                onClick={() => setCreating(true)}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">New project</span>
-              </Button>
-            </div>
-          </div>
+          <PageActions
+            leading={
+              <span className="console-label">
+                {loading ? "loading" : `${projects.length} projects`}
+              </span>
+            }
+          >
+            <PageAction icon={Plus} label="New project" onClick={() => setCreating(true)} />
+          </PageActions>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {error && <p className="text-destructive p-4 text-sm break-words">{error}</p>}

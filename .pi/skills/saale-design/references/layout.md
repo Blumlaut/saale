@@ -2,7 +2,7 @@
 
 ## Dashboard Shell
 
-The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageToolbar`, `PageScroll`, `PageTabStrip`.
+The dashboard is a **fixed-height app shell** — `h-dvh overflow-hidden` on the root. The body/viewport **never scrolls**; all scrolling is internal to panels. Pages are built from the shared `Page` components (`src/components/layout/page.tsx`): `Page`, `PageActions`, `PageAction`, `PageStatus`, `PageSection`, `PageScroll`, `PageTabStrip`.
 
 The flex containment chain: `h-full` (page) → `flex flex-col` → optional pinned action row (`shrink-0`) → content (`flex-1 min-h-0 overflow-hidden`) → scroll area (`flex-1 overflow-y-auto`) → footer (`shrink-0`).
 
@@ -10,9 +10,10 @@ The flex containment chain: `h-full` (page) → `flex flex-col` → optional pin
 
 Pages never render a page title (no title text, no subtitle, no title+action rows) — the nav already names the page and the row is wasted space. Instead:
 
-- **List/content pages:** a single full-height `GlassPanel` (`flex h-full flex-col overflow-hidden border-0`) in a `<Page className="gap-0">` → `min-h-0 flex-1` wrapper. Its **first row is the toolbar** (`shrink-0 border-b px-4 py-2`): actions right-aligned (icon-only on mobile, label at `md:`), functional context (date range, account switcher, search) on the left — never a bare page name. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`).
+- **List/content pages:** a single full-height `GlassPanel` (`flex h-full flex-col overflow-hidden border-0`) in a `<Page className="gap-0">`. Its **first row is `<PageActions>`**: actions on the right as `<PageAction>` (icon on a phone, label at `md:`), functional context (date range, account switcher, search) on the left — never a bare page name. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`).
+- **Form and settings pages:** the same single panel and the same `<PageActions>` row, with the groups of settings stacked inside it as `<PageSection>`s. Save is a `<PageAction label="Save">`, feedback is `<PageStatus>`.
 - **Tab pages:** the `PageTabStrip` row IS the toolbar; actions go to its right.
-- **Form pages:** a pinned slim `<PageToolbar>` row (status + Save, right-aligned, no title) above `<PageScroll>`.
+- **Two-panel pages** (jobs, council, mail): the action goes in the first panel's `GlassPanelHeader` `action` slot.
 
 ### Structure
 
@@ -49,7 +50,7 @@ Pages never render a page title (no title text, no subtitle, no title+action row
 
 ### Full-Bleed Views (the exception)
 
-A view that *is* the window — currently only **chat** — opts out of the page
+A view that _is_ the window — currently only **chat** — opts out of the page
 margin **on phones**: its layout root carries `.full-bleed` and the shell drops
 the gutter (see `globals.css`). The panels inside lose their radius
 (`rounded-none md:rounded-2xl`) so the surface runs edge to edge instead of
@@ -57,7 +58,7 @@ sitting in a window of dead space, and the composer ends exactly at the bottom
 nav instead of leaving a band above it.
 
 **Desktop keeps the console gutter and the rounded panels.** A wide window has
-room for the floating nav *and* the view, and a rounded card that touches the
+room for the floating nav _and_ the view, and a rounded card that touches the
 window edge shows the page background in its corner nooks — so the view is a
 card on desktop and a viewport on a phone. The nav never bleeds either way; on
 phones the bottom nav keeps its clearance (`3.5rem`).
@@ -130,13 +131,13 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 
 ## Responsive Behavior
 
-| Element       | Desktop (≥768px) | Mobile (<768px)      |
-| ------------- | ---------------- | -------------------- |
-| Panel layout  | 2-col if needed  | Single column        |
-| Navigation    | Floating sidebar | Flat bottom bar      |
-| Page margins  | 20–24px          | 16px + bottom nav    |
-| Panel padding | 24px             | 16px                 |
-| Font sizes    | Scaled (clamp)   | Scaled (clamp)       |
+| Element       | Desktop (≥768px) | Mobile (<768px)   |
+| ------------- | ---------------- | ----------------- |
+| Panel layout  | 2-col if needed  | Single column     |
+| Navigation    | Floating sidebar | Flat bottom bar   |
+| Page margins  | 20–24px          | 16px + bottom nav |
+| Panel padding | 24px             | 16px              |
+| Font sizes    | Scaled (clamp)   | Scaled (clamp)    |
 
 ### Responsive Pattern
 
@@ -154,14 +155,14 @@ All spacing follows the 4px rhythm (Tailwind default scale):
 
 ## Common Mistakes
 
-| Mistake                    | Fix                                       |
-| -------------------------- | ----------------------------------------- |
-| `h-dvh`/`h-screen` in a page | The shell owns viewport height — use `h-full` |
-| Page title / title+action row | Content owns the toolbar — no title text at all |
-| Page-level `overflow-y-auto` | Use `<PageScroll>` — the only scroll region |
-| Edge-to-edge panels        | Add page margins (`p-6`) — unless the view is full-bleed on phones (chat) |
-| 3+ column grid             | Reduce to 1 or 2 columns                  |
-| `w-full` on content panels | Use `max-w-3xl` or similar                |
-| Inconsistent gaps          | Use `gap-6` between panels always         |
-| Centered body text         | Left-align everything                     |
-| No responsive breakpoint   | Add `lg:` prefix for desktop-only layouts |
+| Mistake                       | Fix                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `h-dvh`/`h-screen` in a page  | The shell owns viewport height — use `h-full`                             |
+| Page title / title+action row | Content owns the toolbar — no title text at all                           |
+| Page-level `overflow-y-auto`  | Use `<PageScroll>` — the only scroll region                               |
+| Edge-to-edge panels           | Add page margins (`p-6`) — unless the view is full-bleed on phones (chat) |
+| 3+ column grid                | Reduce to 1 or 2 columns                                                  |
+| `w-full` on content panels    | Use `max-w-3xl` or similar                                                |
+| Inconsistent gaps             | Use `gap-6` between panels always                                         |
+| Centered body text            | Left-align everything                                                     |
+| No responsive breakpoint      | Add `lg:` prefix for desktop-only layouts                                 |

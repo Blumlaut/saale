@@ -85,7 +85,8 @@ jobs:
           # formatted by eslint's prettier plugin above.
           list format '^src/.*\.md$|^e2e/.*\.(ts|tsx)$'
           list code   '\.(ts|tsx|mts|cts)$'
-          list tests  '\.(test|spec)\.(ts|tsx)$'
+          # vitest only includes __tests__; e2e specs are Playwright, not vitest.
+          list tests  '^__tests__/.*\.(test|spec)\.(ts|tsx)$'
 
           echo "any=$any" >> "$GITHUB_OUTPUT"
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { PageActions, PageAction } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
 import { arrayOf, oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { TaskItem } from "./task-item";
 import { ChevronDown, ChevronRight, Loader2, Plus } from "lucide-react";
@@ -106,13 +106,9 @@ export function TaskList({
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      {/* Toolbar. page actions, right-aligned; no page title */}
-      <div className="border-border/30 flex shrink-0 items-center justify-end border-b px-4 py-2">
-        <Button variant="default" size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={onNew}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">New Task</span>
-        </Button>
-      </div>
+      <PageActions>
+        <PageAction icon={Plus} label="New Task" onClick={onNew} />
+      </PageActions>
 
       {loading ? (
         <div className="flex flex-1 items-center justify-center py-12">

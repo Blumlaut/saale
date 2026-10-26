@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { PageActions, PageAction } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -42,30 +43,27 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      {/* Toolbar. search is functional context (left), actions right */}
-      <div className="border-border/30 flex shrink-0 items-center gap-2 border-b px-3 py-2 md:px-4">
-        <div className="relative min-w-0 flex-1 md:max-w-xs">
-          <Search className="text-muted-foreground/60 pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search contacts"
-            aria-label="Search contacts"
-            className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-8 shadow-none"
-          />
-        </div>
-        <span className="text-muted-foreground console-label hidden shrink-0 sm:block">
-          {contacts.length} total
-        </span>
-        <Button
-          size="icon"
-          className="liquid-glass-accent ml-auto h-8 w-8 shrink-0 md:w-auto md:px-3"
-          onClick={onAdd}
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden text-xs font-medium md:inline">New Contact</span>
-        </Button>
-      </div>
+      <PageActions
+        leading={
+          <>
+            <div className="relative min-w-0 flex-1 md:max-w-xs">
+              <Search className="text-muted-foreground/60 pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search contacts"
+                aria-label="Search contacts"
+                className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-8 shadow-none"
+              />
+            </div>
+            <span className="text-muted-foreground console-label hidden shrink-0 sm:block">
+              {contacts.length} total
+            </span>
+          </>
+        }
+      >
+        <PageAction icon={Plus} label="New Contact" onClick={onAdd} />
+      </PageActions>
 
       {/* List. the only scroll region */}
       <div className="min-h-0 flex-1 overflow-y-auto">

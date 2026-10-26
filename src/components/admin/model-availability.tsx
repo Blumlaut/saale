@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ModelPicker } from "@/components/shared/model-picker";
-import { Page, PageScroll } from "@/components/layout/page";
+import { Page, PageAction, PageActions, PageScroll, PageStatus } from "@/components/layout/page";
 import {
   enabledModelIds,
   fromGlobalProviderModels,
@@ -20,16 +20,7 @@ import {
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import {
-  Bot,
-  Brain,
-  Loader2,
-  CheckCircle,
-  AlertCircle,
-  Search,
-  Eye,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Bot, Brain, Loader2, Search, Eye, SlidersHorizontal } from "lucide-react";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -215,41 +206,30 @@ export function ModelAvailability() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          {/* Toolbar. search left, save right */}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-            <div className="relative min-w-0 flex-1 sm:max-w-xs">
-              <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-              <Input
-                type="text"
-                placeholder="Search models…"
-                value={modelSearch}
-                onChange={(e) => setModelSearch(e.target.value)}
-                className="h-8 pl-9 text-sm"
-              />
-            </div>
-
-            <div className="ml-auto flex items-center gap-2">
-              {capabilityInfo && (
-                <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
-                  <Bot className="h-3.5 w-3.5" /> {capabilityInfo}
-                </span>
-              )}
-              {saveStatus === "success" && (
-                <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                  <CheckCircle className="h-3.5 w-3.5" /> Saved
-                </span>
-              )}
-              {saveStatus === "error" && (
-                <span className="text-destructive flex items-center gap-1 text-xs">
-                  <AlertCircle className="h-3.5 w-3.5" /> Error
-                </span>
-              )}
-              <Button size="sm" disabled={saving} onClick={handleSaveModels}>
-                {saving ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                Save
-              </Button>
-            </div>
-          </div>
+          <PageActions
+            leading={
+              <>
+                <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                  <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                  <Input
+                    type="text"
+                    placeholder="Search models…"
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    className="h-8 pl-9 text-sm"
+                  />
+                </div>
+                {capabilityInfo && (
+                  <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
+                    <Bot className="h-3.5 w-3.5" /> {capabilityInfo}
+                  </span>
+                )}
+              </>
+            }
+          >
+            <PageStatus status={saveStatus} />
+            <PageAction label="Save" busy={saving} onClick={handleSaveModels} />
+          </PageActions>
 
           <PageScroll className="space-y-6 p-4">
             {/* The fallback for every account without a pick of its own */}
