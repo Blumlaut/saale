@@ -77,6 +77,7 @@ function listingPerRequest() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   vi.mocked(fetchJson).mockResolvedValue(listing());
 });
 
@@ -149,6 +150,25 @@ describe("FileBrowser", () => {
     expect(await screen.findByRole("menuitem", { name: "New folder" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Select all" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" })).toBeInTheDocument();
+  });
+
+  it("remembers that hidden files were asked for", async () => {
+    const first = renderBrowser();
+    await screen.findByText("artifacts");
+    expect(vi.mocked(fetchJson).mock.calls[0]?.[0]).toContain("hideDotfiles=1");
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Show hidden files" }));
+    await waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain("hideDotfiles=0");
+    });
+
+    first.unmount();
+    vi.mocked(fetchJson).mockClear();
+    renderBrowser();
+
+    await screen.findByText("artifacts");
+    expect(vi.mocked(fetchJson).mock.calls[0]?.[0]).toContain("hideDotfiles=0");
   });
 
   it("goes home to the folder it was opened at", async () => {
