@@ -24,6 +24,10 @@ function isItemActive(href: string, pathname: string): boolean {
  * The mobile bottom bar. On app pages it mirrors the user's sidebar layout
  * (admins get the Admin item appended); inside the admin panel it mirrors the
  * admin sidebar and swaps in a Dashboard item as the way back to the app.
+ *
+ * Icons only, with the active one in the accent colour under a tick: labels
+ * cost the height this bar exists to save, and eight of them truncate on a
+ * 320px phone.
  */
 export function MobileNav() {
   const pathname = usePathname();
@@ -52,8 +56,7 @@ export function MobileNav() {
 
   return (
     <nav className="mobile-nav border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
-      {/* flex-1 + min-w-0 keeps every item on a 320px screen; truncate is a safety net */}
-      <div className="flex h-14 items-center px-1">
+      <div className="flex h-11 items-center px-1.5">
         {items.map((item) => {
           const isActive = isItemActive(item.href, pathname);
           const Icon = item.icon;
@@ -62,25 +65,20 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 transition-colors",
-                isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                "relative flex h-full min-w-0 flex-1 items-center justify-center transition-colors",
+                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <Icon
-                className={cn(
-                  "h-5 w-5",
-                  isActive ? "text-primary stroke-[2.5px]" : "stroke-[1.5px]",
-                )}
-              />
-              <span
-                className={cn(
-                  "max-w-full truncate text-[10px] font-medium tracking-tight max-[360px]:text-[9px]",
-                  isActive && "text-foreground",
-                )}
-              >
-                {item.label}
-              </span>
+              {isActive && (
+                <span
+                  aria-hidden
+                  className="bg-primary absolute top-0 left-1/2 h-0.5 w-4.5 -translate-x-1/2"
+                />
+              )}
+              <Icon className={cn("h-5 w-5", isActive ? "stroke-[2.5px]" : "stroke-[1.5px]")} />
             </Link>
           );
         })}
