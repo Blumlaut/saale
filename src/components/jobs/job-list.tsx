@@ -85,8 +85,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
           if (job && job.latestRunStatus === "running") return currentId;
           return null;
         });
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to load jobs:", err);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -98,8 +98,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     try {
       const data = await fetchJson<{ schemas: JobSchema[] }>("/api/jobs/schemas");
       setSchemas(data.schemas ?? []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load job schemas:", err);
     }
   }, []);
 
@@ -108,8 +108,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     try {
       const data = await fetchJson<{ runs: JobRun[] }>(`/api/jobs/${jobId}/runs?limit=10`);
       setRuns(data.runs);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load job runs:", err);
     } finally {
       if (!silent) setLoadingRuns(false);
     }
@@ -170,8 +170,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
       await patchJson(`/api/jobs/${jobId}`, { enabled });
       setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
       onRefresh?.();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to toggle job:", err);
     }
   };
 
@@ -184,8 +184,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
         setSelectedJob(null);
         setRuns([]);
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to delete job:", err);
     }
   };
 

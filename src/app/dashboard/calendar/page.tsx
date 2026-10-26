@@ -39,8 +39,8 @@ export default function CalendarPage() {
         "/api/calendar/accounts",
       );
       setAccounts(data.accounts ?? []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load calendar accounts:", err);
     }
   }, []);
 
@@ -82,8 +82,8 @@ export default function CalendarPage() {
 
       const data = await fetchJson<{ events: CalendarEvent[] }>(`/api/calendar/events?${params}`);
       setEvents(data.events ?? []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load calendar events:", err);
     } finally {
       setLoading(false);
     }

@@ -52,8 +52,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
       try {
         await patchJson(`/api/calendar/calendars/${calendarId}`, { enabled });
         await onAccountsChange();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to toggle calendar:", err);
       }
     },
     [onAccountsChange],
@@ -64,8 +64,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
     try {
       await deleteJson(`/api/calendar/calendars/${pendingDelete}`);
       await onAccountsChange();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to delete calendar:", err);
     } finally {
       setAlertOpen(false);
       setPendingDelete(null);
@@ -95,8 +95,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
       });
       closeAddSheet();
       await onAccountsChange();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to create calendar:", err);
     }
   }, [newCalendarName, newCalendarColor, addAccountId, onAccountsChange]);
 
@@ -111,8 +111,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
         setEditingCalendarId(null);
         setEditingName("");
         await onAccountsChange();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to save calendar:", err);
       }
     },
     [editingName, editingColor, onAccountsChange],
