@@ -8,6 +8,7 @@ import { fetchJson } from "@/lib/http";
 import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
+import type { CalendarAccountSummary } from "@/types/shared";
 import { Page, PageAction, PageScroll } from "@/components/layout/page";
 import { ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { CalendarSidebar } from "@/components/calendar/calendar-sidebar";
@@ -17,20 +18,6 @@ import { DayView } from "@/components/calendar/day-view";
 import { EventDialog } from "@/components/calendar/event-dialog";
 import { EventViewSheet } from "@/components/calendar/event-view-sheet";
 
-interface CalendarAccount {
-  id: string;
-  name: string;
-  accountType: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-    eventCount: number;
-  }>;
-}
-
 export default function CalendarPage() {
   const [view, setView, viewRestored] = usePersistedState<"month" | "week" | "day">(
     "calendar:view",
@@ -39,7 +26,7 @@ export default function CalendarPage() {
   );
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
+  const [accounts, setAccounts] = useState<CalendarAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [viewSheetOpen, setViewSheetOpen] = useState(false);
@@ -48,7 +35,9 @@ export default function CalendarPage() {
 
   const loadAccounts = useCallback(async () => {
     try {
-      const data = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
+      const data = await fetchJson<{ accounts: CalendarAccountSummary[] }>(
+        "/api/calendar/accounts",
+      );
       setAccounts(data.accounts ?? []);
     } catch {
       // Ignore

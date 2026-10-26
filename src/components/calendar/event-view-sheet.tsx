@@ -1,6 +1,7 @@
 "use client";
 
 import type { CalendarEvent } from "@/types/shared";
+import type { CalendarAccountSummary } from "@/types/shared";
 import { useState, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -20,22 +21,10 @@ import {
 } from "lucide-react";
 import { patchJson, deleteJson } from "@/lib/http";
 
-interface CalendarAccount {
-  id: string;
-  name: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-  }>;
-}
-
 interface EventViewSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accounts: CalendarAccount[];
+  accounts: CalendarAccountSummary[];
   event: CalendarEvent | null;
   onSuccess?: () => void;
 }

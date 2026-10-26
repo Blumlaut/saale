@@ -24,23 +24,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { patchJson, deleteJson, postJson } from "@/lib/http";
-
-interface CalendarAccount {
-  id: string;
-  name: string;
-  accountType: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-    eventCount: number;
-  }>;
-}
+import type { CalendarAccountSummary } from "@/types/shared";
 
 interface CalendarSidebarProps {
-  accounts: CalendarAccount[];
+  accounts: CalendarAccountSummary[];
   onAccountsChange: () => Promise<void>;
 }
 
@@ -56,7 +43,7 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
   const [editingColor, setEditingColor] = useState("");
 
   const totalEvents = accounts.reduce(
-    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + cal.eventCount, 0),
+    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + (cal.eventCount ?? 0), 0),
     0,
   );
 

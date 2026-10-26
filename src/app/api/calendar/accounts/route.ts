@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
+import { CALENDAR_ACCOUNT_SELECT, serializeCalendarAccount } from "@/lib/calendar/account-summary";
 import { discoverCalendars } from "@/lib/calendar/caldav";
 import { syncCalendarAccount } from "@/lib/calendar/sync";
 
@@ -16,54 +17,11 @@ export async function GET() {
   const accounts = await prisma.calendarAccount.findMany({
     where: { userId: authResult.user.id },
     orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      name: true,
-      accountType: true,
-      serverUrl: true,
-      username: true,
-      authMethod: true,
-      enabled: true,
-      lastSyncedAt: true,
-      createdAt: true,
-      updatedAt: true,
-      calendars: {
-        select: {
-          id: true,
-          remoteId: true,
-          name: true,
-          color: true,
-          enabled: true,
-          lastSyncedAt: true,
-          _count: { select: { events: true } },
-        },
-        orderBy: { name: "asc" },
-      },
-    },
+    select: CALENDAR_ACCOUNT_SELECT,
   });
 
   return NextResponse.json({
-    accounts: accounts.map((a) => ({
-      id: a.id,
-      name: a.name,
-      accountType: a.accountType,
-      serverUrl: a.serverUrl,
-      username: a.username,
-      authMethod: a.authMethod,
-      enabled: a.enabled,
-      lastSyncedAt: a.lastSyncedAt?.toISOString() ?? null,
-      createdAt: a.createdAt.toISOString(),
-      updatedAt: a.updatedAt.toISOString(),
-      calendars: a.calendars.map((c) => ({
-        id: c.id,
-        remoteId: c.remoteId,
-        name: c.name,
-        color: c.color,
-        enabled: c.enabled,
-        lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
-        eventCount: c._count.events,
-      })),
-    })),
+    accounts: accounts.map(serializeCalendarAccount),
   });
 }
 

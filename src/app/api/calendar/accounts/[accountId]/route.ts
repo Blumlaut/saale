@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireCalendarAccountOwner } from "@/lib/auth";
+import { CALENDAR_ACCOUNT_SELECT, serializeCalendarAccount } from "@/lib/calendar/account-summary";
 import { prisma } from "@/lib/db";
 import { encrypt } from "@/lib/crypto";
 
@@ -18,57 +19,14 @@ export async function GET(
 
   const account = await prisma.calendarAccount.findUnique({
     where: { id: accountId },
-    select: {
-      id: true,
-      name: true,
-      serverUrl: true,
-      username: true,
-      authMethod: true,
-      enabled: true,
-      lastSyncedAt: true,
-      createdAt: true,
-      updatedAt: true,
-      calendars: {
-        select: {
-          id: true,
-          remoteId: true,
-          name: true,
-          color: true,
-          enabled: true,
-          lastSyncedAt: true,
-          _count: { select: { events: true } },
-        },
-        orderBy: { name: "asc" },
-      },
-    },
+    select: CALENDAR_ACCOUNT_SELECT,
   });
 
   if (!account) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    account: {
-      id: account.id,
-      name: account.name,
-      serverUrl: account.serverUrl,
-      username: account.username,
-      authMethod: account.authMethod,
-      enabled: account.enabled,
-      lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
-      createdAt: account.createdAt.toISOString(),
-      updatedAt: account.updatedAt.toISOString(),
-      calendars: account.calendars.map((c) => ({
-        id: c.id,
-        remoteId: c.remoteId,
-        name: c.name,
-        color: c.color,
-        enabled: c.enabled,
-        lastSyncedAt: c.lastSyncedAt?.toISOString() ?? null,
-        eventCount: c._count.events,
-      })),
-    },
-  });
+  return NextResponse.json({ account: serializeCalendarAccount(account) });
 }
 
 /**

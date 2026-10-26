@@ -9,23 +9,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { AlertCircle, MapPin } from "lucide-react";
 import { postJson } from "@/lib/http";
-
-interface CalendarAccount {
-  id: string;
-  name: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-  }>;
-}
+import type { CalendarAccountSummary } from "@/types/shared";
 
 interface EventDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accounts: CalendarAccount[];
+  accounts: CalendarAccountSummary[];
   date: Date | null;
   onSuccess?: () => void;
 }

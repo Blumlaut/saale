@@ -198,3 +198,26 @@ export interface CalendarEvent {
   allDay: boolean;
   source: string;
 }
+
+/** One calendar under an account, with how many events it holds. */
+export interface CalendarAccountCalendar {
+  id: string;
+  name: string;
+  color: string | null;
+  enabled: boolean;
+  remoteId?: string | null;
+  lastSyncedAt?: string | null;
+  eventCount: number;
+}
+
+/** A calendar account as the calendar API returns it, with the calendars under it. */
+export interface CalendarAccountSummary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  accountType?: string;
+  serverUrl?: string | null;
+  username?: string | null;
+  lastSyncedAt?: string | null;
+  calendars: CalendarAccountCalendar[];
+}

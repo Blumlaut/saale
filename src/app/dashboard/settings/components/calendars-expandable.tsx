@@ -1,16 +1,10 @@
 "use client";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
-
-interface CalendarItem {
-  id: string;
-  name: string;
-  color: string | null;
-  eventCount: number;
-}
+import type { CalendarAccountCalendar } from "@/types/shared";
 
 interface CalendarsExpandableProps {
-  calendars: CalendarItem[];
+  calendars: CalendarAccountCalendar[];
   isExpanded: boolean;
   onToggle: () => void;
 }
