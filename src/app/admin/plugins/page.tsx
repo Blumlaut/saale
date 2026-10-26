@@ -24,6 +24,7 @@ import {
 } from "@/components/admin/plugin-dialogs";
 import { Page, PageTabStrip } from "@/components/layout/page";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { cn } from "@/lib/utils";
 import type { PluginInfo, PluginLogEntry, PluginUpdate } from "@/lib/pi/plugins";
 import {
@@ -122,7 +123,11 @@ function Hint({ text }: { text: string }) {
 }
 
 export default function AdminPluginsPage() {
-  const [tab, setTab] = useState<"plugins" | "config" | "logs">("plugins");
+  const [tab, setTab] = usePersistedState<"plugins" | "config" | "logs">(
+    "admin:plugins:tab",
+    "plugins",
+    { validate: oneOf("plugins", "config", "logs") },
+  );
   const [data, setData] = useState<PluginResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);

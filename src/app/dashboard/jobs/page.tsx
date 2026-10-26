@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Plus, Bot, RefreshCw, Radar } from "lucide-react";
 import { Page, PageTabStrip } from "@/components/layout/page";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { JobList } from "@/components/jobs/job-list";
 import { JobDialog } from "@/components/jobs/job-dialog";
 import { AgentJobList } from "@/components/jobs/agent-job-list";
@@ -14,7 +15,11 @@ import { WatcherDialog } from "@/components/jobs/watcher-dialog";
 import type { AgentJobDefinition, ScriptWatcher } from "@/types/shared";
 
 export default function JobsPage() {
-  const [activeTab, setActiveTab] = useState("agents");
+  const [activeTab, setActiveTab] = usePersistedState<"agents" | "scheduled" | "watchers">(
+    "jobs:tab",
+    "agents",
+    { validate: oneOf("agents", "scheduled", "watchers") },
+  );
 
   // Agent job state
   const [showAgentDialog, setShowAgentDialog] = useState(false);
@@ -94,7 +99,11 @@ export default function JobsPage() {
   return (
     <Page>
       {/* Tabs. strip pinned, content scrolls internally */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as "agents" | "scheduled" | "watchers")}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <div className="flex shrink-0 items-center justify-between gap-2">
           <PageTabStrip className="min-w-0 flex-1">
             <TabsList>
