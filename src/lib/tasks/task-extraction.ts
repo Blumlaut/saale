@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { dispatchAiJob } from "@/lib/queue/job-handler";
+import { askForJson, scanUnreadEmails } from "@/lib/email/extraction-scan";
 import { findDuplicateTasks } from "@/lib/tasks/task-api-helpers";
 
 export interface ExtractedTask {
@@ -47,73 +47,36 @@ export async function extractTasksFromEmails(params: {
   tasksSkipped: number;
   errors: string[];
 }> {
-  let emailsScanned = 0;
-  let tasksCreated = 0;
-  let tasksSkipped = 0;
-  const errors: string[] = [];
-
-  // Fetch candidate emails
-  const where: Record<string, unknown> = {
-    taskScanned: false,
-  };
-
-  if (params.accountId) {
-    where.accountId = params.accountId;
-  }
-
-  if (params.maxEmailAge && params.maxEmailAge > 0) {
-    const cutoff = new Date();
-    cutoff.setHours(cutoff.getHours() - params.maxEmailAge);
-    where.date = { gte: cutoff };
-  }
-
-  const limit = Math.min(params.limit ?? 20, 100);
-  const emails = await prisma.emailMessage.findMany({
-    where,
-    orderBy: { date: "desc" },
-    take: limit,
-    select: {
-      id: true,
-      subject: true,
-      bodyText: true,
-      bodyPreview: true,
-      date: true,
-      accountId: true,
-    },
-  });
-
-  for (const email of emails) {
-    emailsScanned++;
-
-    try {
-      // Mark as scanned immediately to avoid re-processing on retry
-      await prisma.emailMessage.update({
-        where: { id: email.id },
-        data: { taskScanned: true },
-      });
-
+  const scan = await scanUnreadEmails({
+    tag: "task-extraction",
+    scannedFlag: "taskScanned",
+    userId: params.userId,
+    accountId: params.accountId,
+    limit: params.limit,
+    maxEmailAge: params.maxEmailAge,
+    process: async (email) => {
       const extracted = await extractSingleEmail(email, params.userId, params.modelId);
+      if (!extracted || extracted.length === 0) return { skipped: 1 };
 
-      if (!extracted || extracted.length === 0) {
-        tasksSkipped++;
-        continue;
-      }
+      let created = 0;
+      let skipped = 0;
+      const errors: string[] = [];
 
       for (const taskData of extracted) {
         try {
-          // Validate
-          if (!taskData.title) continue;
-
-          // Dedup check (scoped to user)
-          const duplicates = await findDuplicateTasks(taskData.title, params.userId);
-          if (duplicates.length > 0) {
-            tasksSkipped++;
+          if (!taskData.title) {
+            skipped++;
             continue;
           }
 
-          // Create task
+          const duplicates = await findDuplicateTasks(taskData.title, params.userId);
+          if (duplicates.length > 0) {
+            skipped++;
+            continue;
+          }
+
           await createTask(taskData, params.userId, email.id);
-          tasksCreated++;
+          created++;
         } catch (err) {
           const taskErr = err as Error;
           console.error(
@@ -125,20 +88,23 @@ export async function extractTasksFromEmails(params: {
           );
         }
       }
-    } catch (err) {
-      const emailErr = err as Error;
-      console.error(`[task-extraction] Failed to process email ${email.id}:`, emailErr.message);
-      errors.push(`Failed to process email "${email.subject.slice(0, 50)}": ${emailErr.message}`);
-    }
-  }
+
+      return { created, skipped, errors };
+    },
+  });
 
   // eslint-disable-next-line no-console
   console.log(
-    `[task-extraction] Done: ${emailsScanned} scanned, ${tasksCreated} created, ` +
-      `${tasksSkipped} skipped, ${errors.length} errors`,
+    `[task-extraction] Done: ${scan.emailsScanned} scanned, ${scan.created} created, ` +
+      `${scan.skipped} skipped, ${scan.errors.length} errors`,
   );
 
-  return { emailsScanned, tasksCreated, tasksSkipped, errors };
+  return {
+    emailsScanned: scan.emailsScanned,
+    tasksCreated: scan.created,
+    tasksSkipped: scan.skipped,
+    errors: scan.errors,
+  };
 }
 
 /**
@@ -159,37 +125,23 @@ async function extractSingleEmail(
 
   const systemPrompt = EXTRACT_TASKS_PROMPT.replace("{{CURRENT_DATE}}", currentDate);
 
-  const prompt = JSON.stringify({
+  const prompt = {
     task: "extract_tasks",
     instructions: systemPrompt,
     email: {
       subject: email.subject,
       body: body.slice(0, 4000),
     },
+  };
+
+  const parsed = await askForJson<ExtractedTask[]>(userId, prompt, {
+    modelId,
+    tag: "task-extraction",
   });
 
-  const response = await dispatchAiJob(userId, prompt, {
-    modelId: modelId ?? null,
-  });
-  const text = response.trim();
+  if (!Array.isArray(parsed)) return [];
 
-  if (!text || text === "[]" || text === "null" || text === "NULL") {
-    return [];
-  }
-
-  // Parse JSON response
-  try {
-    // Handle markdown code blocks
-    const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
-    const parsed = JSON.parse(cleaned) as ExtractedTask[];
-
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((t) => t && t.title);
-  } catch {
-    console.warn(`[task-extraction] Failed to parse AI response:`, text.slice(0, 200));
-    return [];
-  }
+  return parsed.filter((t) => t && t.title);
 }
 
 /**
