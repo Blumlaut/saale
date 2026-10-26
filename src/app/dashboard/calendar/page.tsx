@@ -5,6 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchJson } from "@/lib/http";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
 import { Page, PageScroll } from "@/components/layout/page";
@@ -31,7 +32,11 @@ interface CalendarAccount {
 }
 
 export default function CalendarPage() {
-  const [view, setView] = useState<"month" | "week" | "day">("month");
+  const [view, setView, viewRestored] = usePersistedState<"month" | "week" | "day">(
+    "calendar:view",
+    "month",
+    { validate: oneOf("month", "week", "day") },
+  );
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
@@ -100,8 +105,9 @@ export default function CalendarPage() {
   }, [loadAccounts]);
 
   useEffect(() => {
+    if (!viewRestored) return;
     loadEvents();
-  }, [loadEvents]);
+  }, [loadEvents, viewRestored]);
 
   const navigate = (direction: -1 | 1) => {
     const next = new Date(currentDate);
