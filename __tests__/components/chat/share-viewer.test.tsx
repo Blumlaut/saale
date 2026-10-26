@@ -132,7 +132,7 @@ describe("share viewer tool calls", () => {
     expect(screen.queryByText(/tool calls?/)).not.toBeInTheDocument();
   });
 
-  it("reports a run as failed when one of its calls failed (edge case)", () => {
+  it("keeps a failing call off the activity row (edge case)", () => {
     renderShare([
       step("a1", [
         call("t1", "read", "Read a file"),
@@ -140,8 +140,8 @@ describe("share viewer tool calls", () => {
       ]),
     ]);
 
-    // The failure is on the activity row itself  it is never behind a click.
-    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("Used 2 tools")).toBeInTheDocument();
+    expect(screen.queryByText("failed")).not.toBeInTheDocument();
   });
 
   it("never renders args, results or errors, even once the run is opened (edge case)", () => {
