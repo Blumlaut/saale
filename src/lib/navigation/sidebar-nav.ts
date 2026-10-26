@@ -84,13 +84,13 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
       {
         id: "agents",
         href: "/dashboard/jobs/agents",
-        label: "Agent jobs",
+        label: "Agents",
         description: "Prompts that run on a schedule",
       },
       {
         id: "scheduled",
         href: "/dashboard/jobs/scheduled",
-        label: "Scheduled jobs",
+        label: "Schedules",
         description: "Built-in jobs that run on a schedule",
       },
       {
