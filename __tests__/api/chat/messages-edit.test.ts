@@ -19,6 +19,7 @@ const {
   mockRegisterActiveSession,
   mockSetPendingPrompt,
   mockSetPendingHistoryRewind,
+  mockReleaseSendQueue,
   mockGetPoolKey,
   mockGetPoolEntry,
 } = vi.hoisted(() => ({
@@ -35,6 +36,7 @@ const {
   mockRegisterActiveSession: vi.fn().mockResolvedValue(undefined),
   mockSetPendingPrompt: vi.fn().mockResolvedValue(undefined),
   mockSetPendingHistoryRewind: vi.fn().mockResolvedValue(undefined),
+  mockReleaseSendQueue: vi.fn().mockResolvedValue(undefined),
   mockGetPoolKey: vi.fn(() => "user-1:session-1"),
   mockGetPoolEntry: vi.fn(),
 }));
@@ -44,6 +46,7 @@ vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
   registerActiveSession: mockRegisterActiveSession,
+  releaseSendQueue: mockReleaseSendQueue,
   setPendingPrompt: mockSetPendingPrompt,
   setPendingHistoryRewind: mockSetPendingHistoryRewind,
 }));
@@ -136,6 +139,20 @@ describe("PATCH /messages/:messageId", () => {
       previousContent: "the original text",
       userMessageIndex: 1,
     });
+  });
+
+  it("resumes a stopped session, so the edit is answered", async () => {
+    // Stop holds the send queue, and the stream route refuses to prompt
+    // anything while it is held. An edit asks for a new answer, so it has to
+    // release the hold like sending does.
+    await patch("the edited text");
+
+    expect(mockReleaseSendQueue).toHaveBeenCalledWith(SESSION_ID);
+    // Released before the connection can decide, which is what a held session
+    // reads to refuse the prompt.
+    expect(mockReleaseSendQueue.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRegisterActiveSession.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("rejects editing a message that is still queued", async () => {
