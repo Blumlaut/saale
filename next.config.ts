@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.178.109"],
+  allowedDevOrigins: ["192.168.178.109", "**.chat.blumlaut.me"],
   output: "standalone",
   serverExternalPackages: [
     "@better-auth/kysely-adapter",
