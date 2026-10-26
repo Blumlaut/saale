@@ -55,6 +55,24 @@ describe("groupMessages", () => {
     expect(groups[1]!.type).toBe("assistant-group");
   });
 
+  it("keeps a live turn in the run it streams into", () => {
+    // A client that connects mid-run streams a turn it has no parent for: the
+    // root was set by a `message_saved` this connection never saw. Left out of
+    // the run it renders as its own bubble, so the run's tools split across
+    // two cards and two timestamps until a reload merges them again.
+    const groups = groupMessages([
+      msg({ id: "a-root" }),
+      msg({ id: "a-child", parentMessageId: "a-root" }),
+      msg({ id: "streaming-t9", turnId: "t9" }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual({
+      type: "assistant-group",
+      messages: ["a-root", "a-child", "streaming-t9"].map((id) => expect.objectContaining({ id })),
+    });
+  });
+
   it("treats system messages like user messages (standalone bubble)", () => {
     const groups = groupMessages([msg({ id: "s1", role: "system" })]);
     expect(groups[0]).toEqual({ type: "user", message: expect.objectContaining({ id: "s1" }) });
