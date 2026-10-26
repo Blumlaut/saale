@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ChatWelcome } from "./chat-empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { downloadFile } from "@/lib/download";
+import { isSendKey } from "@/lib/chat/enter-to-send";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
@@ -590,7 +591,7 @@ function UserMessageItem({
   }, [message.id, editDraft, onEdit]);
 
   const handleEditKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSendKey(e)) {
       e.preventDefault();
       saveEditing();
     } else if (e.key === "Escape") {

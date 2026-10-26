@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowUp, Clock, Loader2, Paperclip, Pencil, X } from "lucide-react";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
+import { isSendKey } from "@/lib/chat/enter-to-send";
 import type { Message } from "./types";
 
 /**
@@ -76,7 +77,7 @@ export function QueuedMessages({
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (isSendKey(e)) {
                       e.preventDefault();
                       void submitEdit(message.id);
                     } else if (e.key === "Escape") {

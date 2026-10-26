@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { postJson } from "@/lib/http";
 import { MAX_MESSAGE_LENGTH } from "@/lib/council/config";
+import { isSendKey } from "@/lib/chat/enter-to-send";
 import type { CouncilMemberView } from "@/types/council";
 import { Loader2, Send } from "lucide-react";
 
@@ -61,7 +62,7 @@ export function Composer({ councilId, members, running, waiting, onPosted }: Com
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (isSendKey(e)) {
               e.preventDefault();
               void submit();
             }
