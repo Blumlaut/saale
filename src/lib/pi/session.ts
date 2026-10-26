@@ -79,6 +79,8 @@ export async function buildSessionDeps(options: {
   toolConfig: ToolConfig | null | undefined;
   /** Per-category exposure (`AppSettings.toolExposure`). */
   toolExposure?: ToolExposureConfig | null | undefined;
+  /** Per-tool approval policies (`AppSettings.toolPolicies`). */
+  toolPolicies?: Record<string, string> | null | undefined;
   modelProvider: string | undefined;
   modelName: string | undefined;
 }) {
@@ -91,6 +93,7 @@ export async function buildSessionDeps(options: {
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createSandboxScopedTools,
     ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
+    toolPolicies: options.toolPolicies,
   });
   allCustomTools.push(...resolvedTools);
 

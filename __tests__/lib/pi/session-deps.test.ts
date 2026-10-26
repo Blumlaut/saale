@@ -82,4 +82,26 @@ describe("buildSessionDeps", () => {
 
     expect(enabled).toMatchObject({ terminal: true, email: false, settings: true });
   });
+
+  it("hands the approval policies to the resolver, which drops the tools set to off", async () => {
+    let policies: Record<string, string> | null | undefined;
+    mockResolveTools.mockImplementationOnce(
+      async (_userId: string, _sessionId: string, _config: unknown, opts: unknown) => {
+        policies = (opts as { toolPolicies?: Record<string, string> }).toolPolicies;
+        return [tool("memory_search")];
+      },
+    );
+
+    await buildSessionDeps({
+      userId: "user-1",
+      sessionId: "session-1",
+      customTools: [],
+      toolConfig: null,
+      toolPolicies: { memory_search: "off" },
+      modelProvider: "custom",
+      modelName: "model",
+    });
+
+    expect(policies).toEqual({ memory_search: "off" });
+  });
 });

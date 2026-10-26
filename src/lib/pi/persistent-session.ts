@@ -70,6 +70,7 @@ export async function createPersistentSession(options: {
     customTools: options.customTools,
     toolConfig: options.toolConfig,
     toolExposure: options.toolExposure,
+    toolPolicies: options.toolPolicies,
     modelProvider: options.modelProvider,
     modelName: options.modelName,
   });

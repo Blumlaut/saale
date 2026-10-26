@@ -1,11 +1,10 @@
 /**
  * Which approval policy governs a call.
  *
- * One answer for every gate that has to give one. Saale gates tool calls in
- * three places. the wrapper around its own tools, the extension that catches
- * MCP tools, and the gate on `codemode`. and they must agree: a tool that is
- * gated on one path and runs unapproved on another is the bug this module
- * exists to make impossible.
+ * One answer for the session's `tool_call` gate and for the tool list the model
+ * is given: a tool whose policy is `off` is neither declared nor callable, and
+ * the gate answers the same `off` for the tools registered after the session
+ * was built (a plugin's, an MCP server's).
  *
  * The user's own per-tool policy wins. Without one, an MCP tool follows its
  * server's policy and a tool Saale ships follows its catalog default.

@@ -150,6 +150,28 @@ describe("resolveTools", () => {
     expect(tools.map((tool) => tool.name)).not.toContain("mail_list");
   });
 
+  it("drops a tool the user set to off, keeping the rest of its category", async () => {
+    const tools = await resolveTools(
+      userId,
+      sessionId,
+      { ...ALL_OFF, email: true },
+      { ...options, toolPolicies: { mail_list: "off" } },
+    );
+
+    expect(tools.map((tool) => tool.name)).toEqual(["mail_accounts", "mail_read"]);
+  });
+
+  it("keeps a tool whose policy only asks", async () => {
+    const tools = await resolveTools(
+      userId,
+      sessionId,
+      { ...ALL_OFF, email: true },
+      { ...options, toolPolicies: { mail_list: "ask" } },
+    );
+
+    expect(tools.map((tool) => tool.name)).toContain("mail_list");
+  });
+
   it("makes every resolved tool end when the run is aborted", async () => {
     // Pi awaits tool execution and only checks the abort signal between tool
     // calls, so without wrapping, Stop during a tool waits for that tool.
