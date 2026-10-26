@@ -91,7 +91,7 @@ const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
 const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
 const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
-const SETTINGS = "/dashboard/settings";
+const SETTINGS = settingsSection("profile").href;
 
 /** Realistic ED25519 public key  the content that used to widen the dialog. */
 const SSH_PUBLIC_KEY =
@@ -940,7 +940,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · section picker",
     path: settingsSection("models").href,
-    sources: ["src/app/dashboard/settings/components/settings-section-picker.tsx"],
+    sources: ["src/components/layout/section-picker.tsx"],
     open: (page) => click(page, '[aria-label^="Settings section:"]'),
   },
   {
@@ -1348,7 +1348,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "admin · install plugin",
-    path: "/admin/plugins",
+    path: "/admin/plugins/installed",
     sources: ["src/components/admin/plugin-dialogs.tsx"],
     open: async (page) => {
       await click(page, 'button[aria-label="Install"]');

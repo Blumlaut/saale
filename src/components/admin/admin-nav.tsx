@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ import { hasGrant } from "@/lib/permissions/roles";
 import type { AdminAction } from "@/lib/permissions/statements";
 import {
   ChevronRight,
+  ChevronDown,
   Bot,
   Users,
   Settings,
@@ -19,6 +21,7 @@ import {
   Puzzle,
   type LucideIcon,
 } from "lucide-react";
+import { adminSections, isAdminItemPath } from "@/lib/navigation/admin-sections";
 
 export interface AdminNavItem {
   href: string;
@@ -45,6 +48,14 @@ export function AdminNav() {
     ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
     : [];
 
+  // One item's sections are open at a time, and the page you are on opens its own.
+  const [expandedHref, setExpandedHref] = useState<string | null>(null);
+  const ownItem = ADMIN_NAV_ITEMS.find((item) => isAdminItemPath(item.href, pathname));
+
+  useEffect(() => {
+    if (ownItem && adminSections(ownItem.href).length > 0) setExpandedHref(ownItem.href);
+  }, [ownItem]);
+
   return (
     <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
       <GlassPanel className="shadow-md">
@@ -62,26 +73,75 @@ export function AdminNav() {
 
           <Separator className="my-2" />
 
-          {/* Nav Items */}
+          {/* Nav Items. an item with sections expands into them */}
           <div className="space-y-0.5">
             {items.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+              const isActive = isAdminItemPath(item.href, pathname);
               const Icon = item.icon;
+              const sections = adminSections(item.href);
+              const expanded = expandedHref === item.href;
 
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                    isActive
-                      ? "bg-accent font-medium dark:bg-white/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+                <div key={item.href}>
+                  <div className="flex items-center gap-1">
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
+                        isActive
+                          ? "bg-accent font-medium dark:bg-white/5"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                    {sections.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground size-7 shrink-0 rounded-md"
+                        aria-expanded={expanded}
+                        aria-label={
+                          expanded ? `Hide ${item.label} pages` : `Show ${item.label} pages`
+                        }
+                        onClick={() => setExpandedHref(expanded ? null : item.href)}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "h-3.5 w-3.5 transition-transform duration-150",
+                            !expanded && "-rotate-90",
+                          )}
+                        />
+                      </Button>
+                    )}
+                  </div>
+
+                  {sections.length > 0 && expanded && (
+                    <div className="border-border/60 mt-0.5 ml-3.5 border-l pl-1.5">
+                      {sections.map((section) => {
+                        const sectionActive =
+                          pathname === section.href || pathname.startsWith(`${section.href}/`);
+
+                        return (
+                          <Link
+                            key={section.id}
+                            href={section.href}
+                            aria-current={sectionActive ? "page" : undefined}
+                            className={cn(
+                              "flex items-center rounded-lg px-2 py-0.5 text-sm transition-colors duration-150",
+                              sectionActive
+                                ? "bg-accent text-foreground font-medium"
+                                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                            )}
+                          >
+                            <span className="truncate">{section.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
                   )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
+                </div>
               );
             })}
           </div>
