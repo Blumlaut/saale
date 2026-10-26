@@ -4,6 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack --port 3630",
+    "dev:setup": "sh scripts/dev.sh setup",
+    "dev:start": "sh scripts/dev.sh start",
+    "dev:stop": "sh scripts/dev.sh stop",
+    "dev:restart": "sh scripts/dev.sh restart",
+    "dev:status": "sh scripts/dev.sh status",
+    "dev:logs": "sh scripts/dev.sh logs",
     "dev:all": "sh -c 'npx prisma generate && npx prisma db push --accept-data-loss && HOSTNAME=0.0.0.0 npm run worker:dev & HOSTNAME=0.0.0.0 npm run dev'",
     "build": "next build",
     "build:worker": "npx esbuild src/lib/queue/worker.ts --bundle --platform=node --packages=external --outfile=dist/worker.mjs --format=esm --target=node26",

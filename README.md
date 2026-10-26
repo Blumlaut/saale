@@ -294,8 +294,22 @@ npm test             # unit tests only
 npm run test:e2e     # Playwright
 ```
 
-Outside Docker the app needs `DATABASE_URL`, `REDIS_URL` and a running Postgres and Redis;
-`docker compose up postgres redis` gives you both.
+Outside Docker the app needs `DATABASE_URL`, `REDIS_URL` and a running Postgres and Redis.
+One script does that and the rest of a working checkout:
+
+```bash
+npm run dev:setup    # Postgres, Redis, a database and port of its own, .env, the schema, an account
+npm run dev:start    # dev server and queue worker in the background
+```
+
+`dev:setup` starts the machine's Postgres and Redis and installs them when they are
+missing. It creates a database and a Redis index per checkout, keeps the port a checkout
+already uses, and writes only its own block into `.env`. The account it seeds is `dev` /
+`saale-dev-password` (`SEED_USERNAME`, `SEED_PASSWORD`). `DATABASE_URL`, `REDIS_URL` and
+`PORT` override what it works out.
+
+Afterwards `npm run dev:status`, `dev:stop`, `dev:restart` and `dev:logs` drive the two
+background processes. Their pids and logs live in `.dev/`.
 
 `npm run docker:dev` runs the whole stack with hot reload instead.
 

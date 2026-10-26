@@ -56,3 +56,6 @@ uploads/
 jscpd-report.html/
 jscpd-report.json/
 test-results/
+
+# Dev script state (logs and pids)
+.dev/
