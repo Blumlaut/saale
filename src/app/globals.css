@@ -183,7 +183,7 @@ phone bottom bar, a sidebar row on desktop. */
   overflow: hidden;
   /* Phone gutter, with bottom clearance for the fixed bottom nav. */
   padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
-    calc(5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
+    calc(4.25rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
 }
 
 .shell-main {
@@ -220,7 +220,7 @@ phone bottom bar, a sidebar row on desktop. */
 A view that *is* the window (chat) marks its layout root with `.full-bleed`.
 On phones the gutter around the page is dropped so the view runs to the window
 edges instead of floating as a card inside it. the bottom nav keeps its
-clearance (3.5rem = its height) so the view never hides behind it, and device
+clearance (2.75rem = its height) so the view never hides behind it, and device
 insets are preserved (an installed app still clears the notch, the status bar
 and the home indicator).
 
@@ -230,7 +230,7 @@ navigation *and* the view, so the chat is a card there, not a viewport. */
   .shell-frame:has(.full-bleed) {
     padding-top: env(safe-area-inset-top);
     padding-right: env(safe-area-inset-right);
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(2.75rem + env(safe-area-inset-bottom));
     padding-left: env(safe-area-inset-left);
   }
 

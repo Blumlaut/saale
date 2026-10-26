@@ -152,7 +152,7 @@ test.describe("mobile content fit", () => {
     await ctx.close();
   });
 
-  test("bottom-nav labels and the calendar title fit a 320px phone", async ({ browser }) => {
+  test("the icon bar keeps every item inside its cell on a 320px phone", async ({ browser }) => {
     test.skip(!session, "login failed");
     const ctx = await browser.newContext({
       viewport: SMALL_PHONE,
@@ -165,8 +165,30 @@ test.describe("mobile content fit", () => {
 
     await gotoAndSettle(page, "/dashboard/calendar");
 
-    const navLabels = await visibleLabelOverflow(page, "nav.md\\:hidden a span");
-    expect(navLabels, `nav labels truncated: ${JSON.stringify(navLabels)}`).toEqual([]);
+    const bar = await page.evaluate(() => {
+      const nav = document.querySelector(".mobile-nav");
+      if (!nav) return null;
+      return {
+        height: nav.getBoundingClientRect().height,
+        items: [...nav.querySelectorAll("a")].map((link) => {
+          const cell = link.getBoundingClientRect();
+          const icon = link.querySelector("svg")?.getBoundingClientRect();
+          return {
+            // The label is gone, so the icon carries the name for a screen reader.
+            name: link.getAttribute("aria-label") ?? "",
+            squeezed: !icon || icon.width > cell.width || icon.right > cell.right + 0.5,
+          };
+        }),
+      };
+    });
+
+    expect(bar, "no bottom bar rendered").not.toBeNull();
+    expect(bar!.height, "the bar grew past its 44px row").toBeLessThanOrEqual(45);
+    expect(bar!.items.length).toBeGreaterThan(0);
+    for (const item of bar!.items) {
+      expect(item.name, "a nav item without an accessible name").not.toBe("");
+      expect(item.squeezed, `the icon of "${item.name}" does not fit its cell`).toBe(false);
+    }
 
     const calendarTitle = await visibleLabelOverflow(page, "h2");
     const truncatedTitle = calendarTitle.find((l) => /\d{4}/.test(l.text));

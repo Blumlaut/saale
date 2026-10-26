@@ -33,10 +33,10 @@ function LayoutProbe() {
   );
 }
 
-/** The bottom bar's labels, left to right. */
+/** The bottom bar's items, left to right (icon-only, so the name is the label). */
 function mobileNavLabels(): string[] {
   const bar = screen.getByRole("navigation");
-  return [...bar.querySelectorAll("a")].map((link) => (link.textContent ?? "").trim());
+  return [...bar.querySelectorAll("a")].map((link) => link.getAttribute("aria-label") ?? "");
 }
 
 async function probeText(): Promise<string[]> {
