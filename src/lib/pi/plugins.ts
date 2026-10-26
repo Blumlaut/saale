@@ -656,6 +656,8 @@ export interface PluginListResult {
     dir: string;
     dirSetting: string;
     enabled: boolean;
+    /** Whether a plugin may open a dialog through `ctx.ui`. */
+    ui: boolean;
     dirExists: boolean;
   };
   plugins: PluginInfo[];
@@ -692,6 +694,7 @@ export async function listPlugins(): Promise<PluginListResult> {
       dir: config.dir,
       dirSetting: config.dirSetting,
       enabled: config.enabled,
+      ui: config.ui,
       dirExists: existsSync(/*turbopackIgnore: true*/ config.dir),
     },
     plugins,

@@ -58,6 +58,7 @@ export async function PATCH(request: NextRequest) {
   const patch: Record<string, unknown> = {};
   if (typeof input.dir === "string") patch.piPluginsDir = input.dir;
   if (typeof input.enabled === "boolean") patch.piPluginsEnabled = input.enabled;
+  if (typeof input.ui === "boolean") patch.piPluginsUi = input.ui;
   const states = pluginStatesPatch(input.plugins);
   if (states) Object.assign(patch, states);
 
