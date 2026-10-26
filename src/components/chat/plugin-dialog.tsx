@@ -36,28 +36,37 @@ export function PluginDialog({
 }) {
   const [text, setText] = useState(dialog.prefill ?? "");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // A dialog's own state belongs to its id: the next one starts fresh.
   useEffect(() => {
     setText(dialog.prefill ?? "");
     setBusy(false);
+    setError(null);
   }, [dialog.id, dialog.prefill]);
 
   const answer = async (body: Record<string, unknown>) => {
     setBusy(true);
+    setError(null);
     try {
       const response = await fetch(`/api/chat/sessions/${sessionId}/plugin-ui`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: dialog.id, ...body }),
       });
-      if (!response.ok && response.status !== 404) {
-        console.error("Plugin dialog answer failed:", await response.text());
+      // 404 is an answer that landed first somewhere else. Anything else that
+      // failed never reached the plugin, which is still blocked on it.
+      if (response.ok || response.status === 404) {
+        onSettled(dialog.id);
+        return;
       }
+      console.error("Plugin dialog answer failed:", await response.text());
+      setError("That answer did not reach the plugin. Try again.");
     } catch (err) {
       console.error("Plugin dialog answer failed:", err);
+      setError("That answer did not reach the plugin. Try again.");
     } finally {
-      onSettled(dialog.id);
+      setBusy(false);
     }
   };
 
@@ -85,6 +94,13 @@ export function PluginDialog({
 
         {dialog.message && (
           <p className="text-sm break-words whitespace-pre-wrap">{dialog.message}</p>
+        )}
+
+        {error && (
+          <p className="text-destructive flex items-start gap-1.5 text-xs">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>{error}</span>
+          </p>
         )}
 
         {dialog.kind === "select" && (
