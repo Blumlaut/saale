@@ -6,6 +6,7 @@ import { fetchJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { UserAvatar } from "@/components/profile/user-avatar";
 import { User, Loader2 } from "lucide-react";
 
 interface SessionData {
@@ -67,6 +68,10 @@ export function ImpersonationBanner() {
           <User className="mr-1.5 h-3 w-3" />
           Impersonating
         </Badge>
+        <UserAvatar
+          className="liquid-glass-pill hidden h-7 w-7 shrink-0 sm:flex"
+          iconClassName="h-3.5 w-3.5"
+        />
         <span className="min-w-0 flex-1 truncate text-sm">
           Viewing as <span className="font-medium">{displayName}</span>
           {session.user.email && (

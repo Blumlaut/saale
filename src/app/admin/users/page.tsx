@@ -17,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, postJson, patchJson } from "@/lib/http";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { authClient } from "@/lib/auth-client";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
 import {
@@ -44,6 +45,8 @@ interface AdminUser {
   name: string;
   username: string | null;
   email: string;
+  /** URL of the picture they uploaded, null while they have none. */
+  image: string | null;
   role: string;
   banned: boolean | null;
   createdAt: string;
@@ -322,9 +325,12 @@ export default function AdminUsersPage() {
               return (
                 <div key={user.id}>
                   <div className="flex items-center gap-3 px-4 py-3">
-                    <div className="bg-muted/50 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">
-                      {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
-                    </div>
+                    <Avatar className="h-9 w-9 shrink-0">
+                      {user.image ? <AvatarImage src={user.image} alt="" /> : null}
+                      <AvatarFallback className="bg-muted/50 text-sm font-bold">
+                        {(user.name ?? user.email)[0]?.toUpperCase() ?? "?"}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium">{user.name ?? ""}</span>
