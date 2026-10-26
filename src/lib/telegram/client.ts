@@ -85,16 +85,30 @@ export async function validateBotToken(botToken: string) {
  * Publish the slash commands to Telegram's own `/` menu.
  *
  * The list comes from the shared registry, so the bot menu can never drift
- * from the commands the web chat offers.
+ * from the commands the web chat offers. Private chats hold the list; every
+ * group scopes down to nothing, because the bot has no commands to run there.
  */
 export async function registerBotCommands(encryptedToken: string): Promise<boolean> {
   const bot = createBot(encryptedToken);
-  return bot.api.setMyCommands(
-    listCommands("telegram").map((meta) => ({
-      command: meta.name,
-      description: meta.description,
-    })),
-  );
+
+  const [result] = await Promise.all([
+    bot.api.setMyCommands(
+      listCommands("telegram").map((meta) => ({
+        command: meta.name,
+        description: meta.description,
+      })),
+      { scope: { type: "all_private_chats" } },
+    ),
+    // The default scope is what groups inherit, and older deployments filled it.
+    bot.api.deleteMyCommands({ scope: { type: "default" } }).catch((err) => {
+      console.error("[telegram] Failed to clear the default command menu:", err);
+    }),
+    bot.api.deleteMyCommands({ scope: { type: "all_group_chats" } }).catch((err) => {
+      console.error("[telegram] Failed to clear the group command menu:", err);
+    }),
+  ]);
+
+  return result;
 }
 
 /**
