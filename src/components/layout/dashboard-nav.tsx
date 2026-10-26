@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
+import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
@@ -65,10 +66,14 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
-  const [navWidth, setNavWidth] = usePersistedState("nav:width", 192, {
-    validate: (v): v is number => typeof v === "number" && v >= 160 && v <= 320,
+  const navWidth = useResizableWidth({
+    storageKey: "saale:ui:nav:width",
+    label: "Resize navigation",
+    defaultWidth: 192,
+    minWidth: 160,
+    maxWidth: 320,
+    handle: "right",
   });
-  const resizingNav = useRef(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const isAdmin = useIsAdmin();
@@ -244,35 +249,12 @@ export function DashboardNav() {
     </div>
   );
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!resizingNav.current) return;
-      const newW = Math.min(320, Math.max(160, e.clientX - 24));
-      setNavWidth(newW);
-    };
-    const onUp = () => {
-      resizingNav.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [setNavWidth]);
-
   return (
-    <nav className="sidebar-nav relative sticky top-6 h-fit shrink-0" style={{ width: navWidth }}>
+    <nav className="sidebar-nav relative sticky top-6 h-fit shrink-0" style={{ width: navWidth.width }}>
       <GlassPanel className="shadow-md">
         <div
-          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/40"
-          onMouseDown={() => {
-            resizingNav.current = true;
-            document.body.style.cursor = "col-resize";
-            document.body.style.userSelect = "none";
-          }}
+          {...navWidth.handleProps}
+          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-border"
         />
         <GlassPanelContent className="p-3">
           {/* Brand */}

@@ -74,6 +74,15 @@ export default function CoderLayout() {
     };
   }, [sessionId, reload, provisioningStep]);
 
+  const coderChatSidebar = useResizableWidth({
+    storageKey: "saale:ui:coder:chatSidebarWidth",
+    label: "Resize coder chat list",
+    defaultWidth: 256,
+    minWidth: 180,
+    maxWidth: 400,
+    handle: "right",
+  });
+
   const newChat = useCallback(() => {
     if (!projectId) return;
     createChatSession({ projectId })
@@ -113,7 +122,8 @@ export default function CoderLayout() {
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="hidden w-64 shrink-0 md:block">
+        <div className="hidden shrink-0 md:block relative" style={{ width: coderChatSidebar.width }}>
+          <div {...coderChatSidebar.handleProps} className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-border" />
           <ProjectChats projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
         </div>
 
