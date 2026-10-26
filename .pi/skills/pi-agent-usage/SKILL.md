@@ -518,6 +518,11 @@ message following the old conversation.
   `sessionManager.resetLeaf()` + `session.refreshContext()` instead.
 - Read-then-claim the request: a rewind belongs to one specific message, and
   consuming it while prompting an unrelated one throws the edit away.
+- An edit releases the send queue's stop hold (`releaseSendQueue`), like sending
+  does. Stop holds the queue, and the stream route refuses to prompt anything
+  while it is held, so without this an edit after Stop is saved and never
+  answered: the transcript keeps the original message and the next prompt sends
+  that instead of the edit.
 - Never guess which entry to rewind to — a wrong pick deletes history. Match on
   the DB position, verified against the pre-edit content, then fall back to the
   closest content match; skip the rewind when nothing matches.

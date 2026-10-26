@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import {
   isSessionActive,
   registerActiveSession,
+  releaseSendQueue,
   setPendingHistoryRewind,
   setPendingPrompt,
 } from "@/lib/redis";
@@ -102,6 +103,11 @@ export async function PATCH(
       },
     });
   });
+
+  // An edit asks for a new answer, so it resumes a stopped session the same
+  // way sending does. Without this the stream decides "session stopped by the
+  // user" and never prompts the edited message.
+  await releaseSendQueue(sessionId);
 
   // Register in Redis so the 409 guard works before the SSE connection is made.
   await registerActiveSession(authResult.user.id, sessionId);
