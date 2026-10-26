@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 /**
  * `viewportFit: "cover"` lets an installed app paint under the status bar and
  * home indicator; the shell compensates with `env(safe-area-inset-*)` padding
- * (see `.app-shell-padding` / `.mobile-shell-content` in globals.css).
+ * (see `.shell-frame` in globals.css).
  */
 export const viewport: Viewport = {
   width: "device-width",

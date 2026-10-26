@@ -14,6 +14,11 @@ interface AppShellProps {
  * The shell every authenticated area renders inside: fixed to the viewport, with
  * all scrolling internal to panels (see AGENTS.md "No External Scroll").
  *
+ * The page is rendered once. The frame reshapes itself (`.shell-frame` in
+ * globals.css): a column with the bottom bar on phones, a sidebar row on
+ * desktop. Rendering the page per breakpoint used to mount every view twice:
+ * two composers, two SSE streams, two sets of form state.
+ *
  * The providers the navs read from live here too, so a layout cannot render the
  * sidebar (desktop or bottom bar) without them. Rendering `MobileNav` outside a
  * `SidebarNavProvider` used to crash every admin page with "useSidebarNav must be
@@ -24,10 +29,10 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
     <KeyboardShortcutsProvider>
       <SidebarNavProvider>
         <div className="dashboard-layout h-dvh overflow-hidden">
-          {/* Desktop: sidebar + main, flex chain fills the viewport */}
-          <div className="app-shell-padding hidden h-full gap-3 overflow-hidden md:flex">
-            {nav}
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="shell-frame">
+            {/* Desktop sidebar. on phones the bottom bar is the navigation */}
+            <div className="hidden shrink-0 md:flex">{nav}</div>
+            <main className="shell-main">
               {banner}
               {/* Page wrapper. flex-1 fills the remaining space */}
               <div className="min-h-0 flex-1">
@@ -38,19 +43,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
               </div>
             </main>
           </div>
-
-          {/* Mobile: full-width content + bottom nav */}
-          <div className="mobile-shell md:hidden">
-            <main className="mobile-shell-content flex flex-col overflow-hidden">
-              {banner}
-              <div className="min-h-0 flex-1">
-                <div className="page-wrapper h-full">
-                  <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
-                </div>
-              </div>
-            </main>
-            <MobileNav />
-          </div>
+          <MobileNav />
         </div>
       </SidebarNavProvider>
     </KeyboardShortcutsProvider>
