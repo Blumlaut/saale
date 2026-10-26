@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
@@ -75,10 +75,10 @@ export default function ChatLayout({ children: _children }: { children: React.Re
           desktop (see `.full-bleed` in globals.css) */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         {/* Sidebar. desktop only */}
-        <div className="hidden shrink-0 md:block relative" style={{ width: chatSidebar.width }}>
+        <div className="relative hidden shrink-0 md:block" style={{ width: chatSidebar.width }}>
           <div
             {...chatSidebar.handleProps}
-            className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-border"
+            className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
           />
           <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
         </div>

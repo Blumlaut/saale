@@ -255,22 +255,18 @@ should not show a horizontal scrollbar. it overlaps the tabs on desktop
   overflow: hidden;
 }
 
-/* Bump up spacing, radii, and nav width on larger screens so everything feels proportionally bigger */
+/* Bump up spacing on larger screens so everything feels proportionally bigger.
+   The nav keeps the width its own drag handle set, so no width rule here. */
 
 @media (min-width: 1400px) {
   .dashboard-layout > div {
     padding: 1.25rem;
-    gap: 1.5rem;
   }
 }
 
 @media (min-width: 1920px) {
   .dashboard-layout > div {
     padding: 1.5rem;
-    gap: 2rem;
-  }
-  .sidebar-nav {
-    width: 16rem !important; /* w-64 */
   }
 }
 

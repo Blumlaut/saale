@@ -122,8 +122,14 @@ export default function CoderLayout() {
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="hidden shrink-0 md:block relative" style={{ width: coderChatSidebar.width }}>
-          <div {...coderChatSidebar.handleProps} className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-border" />
+        <div
+          className="relative hidden shrink-0 md:block"
+          style={{ width: coderChatSidebar.width }}
+        >
+          <div
+            {...coderChatSidebar.handleProps}
+            className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
+          />
           <ProjectChats projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
         </div>
 
