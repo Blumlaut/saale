@@ -37,25 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CalendarAccountDialog } from "@/components/calendar/calendar-account-dialog";
 import { SubscriptionDialog } from "@/components/calendar/subscription-dialog";
-
-interface CalendarAccount {
-  id: string;
-  name: string;
-  accountType: string;
-  serverUrl: string | null;
-  username: string | null;
-  enabled: boolean;
-  lastSyncedAt: string | null;
-  calendars: Array<{
-    id: string;
-    remoteId: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-    lastSyncedAt: string | null;
-    eventCount: number;
-  }>;
-}
+import type { CalendarAccountSummary } from "@/types/shared";
 
 interface Subscription {
   id: string;
@@ -69,7 +51,7 @@ interface Subscription {
 }
 
 export function CalendarSection() {
-  const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
+  const [accounts, setAccounts] = useState<CalendarAccountSummary[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -94,7 +76,9 @@ export function CalendarSection() {
 
   const loadData = async () => {
     try {
-      let accountsRes = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
+      let accountsRes = await fetchJson<{ accounts: CalendarAccountSummary[] }>(
+        "/api/calendar/accounts",
+      );
       const accountsList = accountsRes.accounts ?? [];
 
       // Ensure local account exists
@@ -102,7 +86,9 @@ export function CalendarSection() {
         await fetchJson("/api/calendar/ensure-local-account").catch((err) => {
           console.error("Failed to ensure local calendar account:", err);
         });
-        accountsRes = await fetchJson<{ accounts: CalendarAccount[] }>("/api/calendar/accounts");
+        accountsRes = await fetchJson<{ accounts: CalendarAccountSummary[] }>(
+          "/api/calendar/accounts",
+        );
         accountsList.length = 0;
         accountsList.push(...(accountsRes.accounts ?? []));
       }
@@ -273,7 +259,7 @@ export function CalendarSection() {
   };
 
   const totalEvents = accounts.reduce(
-    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + cal.eventCount, 0),
+    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + (cal.eventCount ?? 0), 0),
     0,
   );
 

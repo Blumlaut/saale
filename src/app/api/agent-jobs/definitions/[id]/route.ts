@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
 import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
+import { serializeAgentDefinition } from "@/lib/agent-jobs/serialize";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * GET /api/agent-jobs/definitions/:id. Get a single definition
@@ -23,27 +25,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    definition: {
-      id: definition.id,
-      name: definition.name,
-      description: definition.description,
-      prompt: definition.prompt,
-      systemPrompt: definition.systemPrompt,
-      toolConfig: definition.toolConfig as Record<string, boolean> | null,
-      modelId: definition.modelId,
-      thinkingLevel: definition.thinkingLevel,
-      outputChannel: definition.outputChannel,
-      outputChannelId: definition.outputChannelId,
-      cronExpression: definition.cronExpression,
-      runAt: definition.runAt?.toISOString() ?? null,
-      lastRunAt: definition.lastRunAt?.toISOString(),
-      enabled: definition.enabled,
-      systemManaged: definition.systemManaged,
-      createdAt: definition.createdAt.toISOString(),
-      updatedAt: definition.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ definition: serializeAgentDefinition(definition) });
 }
 
 /**
@@ -82,11 +64,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     enabled,
   } = body;
 
-  // Normalize modelId format
   let resolvedModelId = existing.modelId;
   if (modelId !== undefined) {
-    const raw = modelId || null;
-    resolvedModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
+    resolvedModelId = modelId ? toStoredModelId(modelId) : null;
   }
 
   // One-off `runAt` and cron are mutually exclusive. Parse both supplied
@@ -138,27 +118,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
   }
 
-  return NextResponse.json({
-    definition: {
-      id: updated.id,
-      name: updated.name,
-      description: updated.description,
-      prompt: updated.prompt,
-      systemPrompt: updated.systemPrompt,
-      toolConfig: updated.toolConfig as Record<string, boolean> | null,
-      modelId: updated.modelId,
-      thinkingLevel: updated.thinkingLevel,
-      outputChannel: updated.outputChannel,
-      outputChannelId: updated.outputChannelId,
-      cronExpression: updated.cronExpression,
-      runAt: updated.runAt?.toISOString() ?? null,
-      lastRunAt: updated.lastRunAt?.toISOString(),
-      enabled: updated.enabled,
-      systemManaged: updated.systemManaged,
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ definition: serializeAgentDefinition(updated) });
 }
 
 /**

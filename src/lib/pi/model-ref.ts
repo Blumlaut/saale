@@ -51,3 +51,23 @@ export function formatModelReference(
   if (!trimmedProvider || !trimmedName) return null;
   return `${trimmedProvider}:${trimmedName}`;
 }
+
+/**
+ * The stored form of a reference the picker handed back, which works in
+ * `provider/modelId`.
+ */
+export function toStoredModelId(reference: string): string {
+  return reference.replace("/", ":");
+}
+
+/** The `provider/modelId` form the pickers work in, from the stored form. */
+export function toPickerModelId(reference: string): string {
+  return reference.replace(":", "/");
+}
+
+/** A reference written out as `modelId (provider)` where it reads better. */
+export function formatModelId(reference: string | null | undefined): string | null {
+  const parts = splitModelReference(reference);
+  if (!parts) return reference?.trim() || null;
+  return `${parts.name} (${parts.provider})`;
+}

@@ -2,24 +2,16 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  Play,
-  Loader2,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  Trash2,
-  Settings,
-  Calendar,
-  Brain,
-  Pencil,
-} from "lucide-react";
+import { Loader2, Settings, Calendar, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
+import { formatModelId } from "@/lib/pi/model-ref";
+import { getCronLabel } from "@/lib/jobs/cron-label";
+import { JobRowActions } from "@/components/jobs/job-row-actions";
+import { RunStatusBadge } from "@/components/jobs/run-status-badge";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
 import { ConfigDisplay } from "@/components/jobs/config-form";
@@ -55,28 +47,6 @@ interface JobRun {
   startedAt: string | null;
   completedAt: string | null;
   duration: number | null;
-}
-
-const cronExamples: Record<string, string> = {
-  "* * * * *": "Every minute",
-  "*/5 * * * *": "Every 5 minutes",
-  "*/30 * * * *": "Every 30 minutes",
-  "0 * * * *": "Every hour",
-  "0 */6 * * *": "Every 6 hours",
-  "0 9 * * *": "Daily at 9am",
-  "0 9 * * 1": "Monday at 9am",
-};
-
-function getCronLabel(expr: string): string {
-  return cronExamples[expr] ?? expr;
-}
-
-function getModelLabel(modelId: string | null): string | null {
-  if (!modelId) return null;
-  // Normalize "/" to ":" for consistent display
-  const normalized = modelId.includes("/") ? modelId.replace("/", ":") : modelId;
-  const [provider, ...nameParts] = normalized.split(":");
-  return `${nameParts.join(":")} (${provider})`;
 }
 
 interface JobListProps {
@@ -115,8 +85,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
           if (job && job.latestRunStatus === "running") return currentId;
           return null;
         });
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to load jobs:", err);
       } finally {
         if (!silent) setLoading(false);
       }
@@ -128,8 +98,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     try {
       const data = await fetchJson<{ schemas: JobSchema[] }>("/api/jobs/schemas");
       setSchemas(data.schemas ?? []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load job schemas:", err);
     }
   }, []);
 
@@ -138,8 +108,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     try {
       const data = await fetchJson<{ runs: JobRun[] }>(`/api/jobs/${jobId}/runs?limit=10`);
       setRuns(data.runs);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load job runs:", err);
     } finally {
       if (!silent) setLoadingRuns(false);
     }
@@ -200,8 +170,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
       await patchJson(`/api/jobs/${jobId}`, { enabled });
       setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, enabled } : j)));
       onRefresh?.();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to toggle job:", err);
     }
   };
 
@@ -214,41 +184,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
         setSelectedJob(null);
         setRuns([]);
       }
-    } catch {
-      // Ignore
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return (
-          <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">
-            <CheckCircle className="mr-1 h-3 w-3" />
-            Completed
-          </Badge>
-        );
-      case "error":
-        return (
-          <Badge variant="secondary" className="bg-destructive/10 text-destructive">
-            <AlertCircle className="mr-1 h-3 w-3" />
-            Error
-          </Badge>
-        );
-      case "running":
-        return (
-          <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            Running
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="secondary">
-            <Clock className="mr-1 h-3 w-3" />
-            Pending
-          </Badge>
-        );
+    } catch (err) {
+      console.error("Failed to delete job:", err);
     }
   };
 
@@ -291,7 +228,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           {schema?.usesAi && job.modelId && (
                             <Badge variant="secondary" className="max-w-[12rem] truncate text-xs">
                               <Brain className="mr-1 h-3 w-3" />
-                              {getModelLabel(job.modelId)}
+                              {formatModelId(job.modelId)}
                             </Badge>
                           )}
                           <Switch
@@ -316,43 +253,13 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           )}
                         </div>
                       </button>
-                      <div className="flex items-center gap-1">
-                        {job.latestRunStatus === "running" ? (
-                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled>
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => handleRun(job.id)}
-                            disabled={runningId === job.id}
-                          >
-                            {runningId === job.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Play className="h-3 w-3" />
-                            )}
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => onEdit?.(job)}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleDelete(job.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
+                      <JobRowActions
+                        running={job.latestRunStatus === "running"}
+                        pendingRun={runningId === job.id}
+                        onRun={() => handleRun(job.id)}
+                        onEdit={() => onEdit?.(job)}
+                        onDelete={() => handleDelete(job.id)}
+                      />
                     </div>
                     {i < jobs.length - 1 && <Separator className="px-4" />}
                   </div>
@@ -394,7 +301,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           AI Model
                         </span>
                         <Badge variant="secondary" className="text-xs">
-                          {getModelLabel(selectedJob.modelId)}
+                          {formatModelId(selectedJob.modelId)}
                         </Badge>
                       </div>
                     )}
@@ -448,7 +355,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           className="bg-accent rounded-xl border p-3 dark:bg-white/5"
                         >
                           <div className="flex items-center justify-between">
-                            {getStatusBadge(run.status)}
+                            <RunStatusBadge status={run.status} />
                             <span className="text-muted-foreground text-xs">
                               {run.startedAt ? formatRelativeDate(run.startedAt) : ""}
                             </span>

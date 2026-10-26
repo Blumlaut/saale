@@ -7,19 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Loader2, Link as LinkIcon, Trash2 } from "lucide-react";
 import { postJson, patchJson, deleteJson } from "@/lib/http";
-
-interface CalendarAccount {
-  id: string;
-  name: string;
-  accountType: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-  }>;
-}
+import type { CalendarAccountSummary } from "@/types/shared";
 
 interface SubscriptionData {
   id: string;
@@ -35,7 +23,7 @@ interface SubscriptionData {
 interface SubscriptionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accounts: CalendarAccount[];
+  accounts: CalendarAccountSummary[];
   subscription?: SubscriptionData | null;
   onSuccess?: () => void;
 }

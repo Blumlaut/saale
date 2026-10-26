@@ -33,22 +33,9 @@ import {
 } from "lucide-react";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
+import { getCronLabel } from "@/lib/jobs/cron-label";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import type { ScriptWatcher, ScriptWatcherTick } from "@/types/shared";
-
-const cronExamples: Record<string, string> = {
-  "* * * * *": "Every minute",
-  "*/5 * * * *": "Every 5 minutes",
-  "*/10 * * * *": "Every 10 minutes",
-  "*/30 * * * *": "Every 30 minutes",
-  "0 * * * *": "Every hour",
-  "0 */6 * * *": "Every 6 hours",
-  "0 9 * * *": "Daily at 9am",
-};
-
-function getCronLabel(expr: string): string {
-  return cronExamples[expr] ?? expr;
-}
 
 /** The tick outcome, as a badge the user can read at a glance. */
 function TickBadge({ status }: { status: string }) {

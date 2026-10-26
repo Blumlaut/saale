@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { fetchJson, postJson } from "@/lib/http";
-import { splitEmailAddresses } from "@/lib/email/utils";
-import { toast } from "sonner";
-import type { EmailAccount } from "@/types/shared";
 import { EmailComposeForm } from "@/components/mail/email-compose-form";
+import { useEmailCompose } from "@/hooks/use-email-compose";
 
 interface ComposeSheetProps {
   open: boolean;
@@ -14,98 +11,26 @@ interface ComposeSheetProps {
 }
 
 export function ComposeSheet({ open, onOpenChange }: ComposeSheetProps) {
-  const [accounts, setAccounts] = useState<EmailAccount[]>([]);
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadAccounts = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
-      const accs = data.accounts ?? [];
-      setAccounts(accs);
-      if (accs.length > 0 && !accountId) {
-        setAccountId(accs[0]!.id);
-      }
-    } catch {
-      // Ignore
-    }
-  }, [accountId]);
+  const { formProps, loadAccounts, reset, send } = useEmailCompose();
 
   useEffect(() => {
-    if (open) {
-      loadAccounts();
-    }
+    if (open) void loadAccounts();
   }, [open, loadAccounts]);
 
-  const handleSend = async () => {
-    if (!to.trim() || !accountId) return;
-
-    setSending(true);
-    setError("");
-
-    try {
-      const result = await postJson<{ sentFolder: string | null }>(
-        `/api/email/accounts/${accountId}/send`,
-        {
-          to: splitEmailAddresses(to),
-          cc: splitEmailAddresses(cc),
-          bcc: splitEmailAddresses(bcc),
-          subject,
-          body,
-        },
-      );
-
-      if (result.sentFolder) {
-        toast.success("Email sent");
-      } else {
-        toast.warning("Email sent, but no copy could be filed in Sent");
-      }
-      resetAndClose();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSending(false);
-    }
+  const close = () => {
+    reset();
+    onOpenChange(false);
   };
 
-  const resetAndClose = () => {
-    setTo("");
-    setCc("");
-    setBcc("");
-    setSubject("");
-    setBody("");
-    setError("");
-    onOpenChange(false);
+  const handleSend = async () => {
+    if (!(await send()).ok) return;
+    close();
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[560px] sm:max-w-none">
-        <EmailComposeForm
-          accounts={accounts}
-          accountId={accountId}
-          onAccountIdChange={setAccountId}
-          to={to}
-          onToChange={setTo}
-          cc={cc}
-          onCcChange={setCc}
-          bcc={bcc}
-          onBccChange={setBcc}
-          subject={subject}
-          onSubjectChange={setSubject}
-          body={body}
-          onBodyChange={setBody}
-          error={error}
-          sending={sending}
-          onSend={handleSend}
-          onDiscard={resetAndClose}
-        />
+        <EmailComposeForm {...formProps} onSend={handleSend} onDiscard={close} />
       </SheetContent>
     </Sheet>
   );

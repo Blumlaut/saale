@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { batchSizeField, emailAccountField, maxEmailAgeField, modelField } from "./_helpers";
+import type { FieldDef } from "@/lib/queue/job-schemas";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
 
@@ -11,42 +13,15 @@ export const metadata = {
   usesAi: true,
 } as const;
 
-export const fields = [
-  {
-    key: "accountId",
-    label: "Account",
-    description: "Leave empty to process all accounts",
-    type: "select" as const,
-    default: "",
-    options: [] as Array<{ value: string; label: string }>,
-  },
-  {
-    key: "limit",
-    label: "Batch size",
+export const fields: FieldDef[] = [
+  emailAccountField(),
+  batchSizeField({
     description: "Number of emails to process per run",
-    type: "number" as const,
-    default: 10,
-    min: 1,
+    fallback: 10,
     max: 100,
-    step: 1,
-  },
-  {
-    key: "maxEmailAge",
-    label: "Max email age",
-    description: "Only process emails received within this many hours (0 = no limit)",
-    type: "number" as const,
-    default: 24,
-    min: 0,
-    max: 720,
-    step: 1,
-  },
-  {
-    key: "modelId",
-    label: "AI Model",
-    description: "Override the default model for this job",
-    type: "model" as const,
-    default: "",
-  },
+  }),
+  maxEmailAgeField({ verb: "process", fallback: 24 }),
+  modelField(),
 ];
 
 export async function handler(params: {

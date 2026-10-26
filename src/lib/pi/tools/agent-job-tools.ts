@@ -6,6 +6,7 @@ import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue"
 import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * An agent job definition as list, create and update report it. The three tools
@@ -274,11 +275,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
       }),
       outputSchema: AGENT_JOB_CREATE_SCHEMA,
       execute: async (_toolCallId, params) => {
-        // Normalize modelId
-        const rawModelId = params.modelId || null;
-        const resolvedModelId = rawModelId?.includes("/")
-          ? rawModelId.replace("/", ":")
-          : rawModelId;
+        const resolvedModelId = params.modelId ? toStoredModelId(params.modelId) : null;
 
         let runAt: Date | null;
         try {
@@ -443,8 +440,7 @@ export function createAgentJobTools(userId: string): ToolDefinition[] {
         if (params.toolConfig !== undefined)
           data.toolConfig = params.toolConfig as Record<string, boolean>;
         if (params.modelId !== undefined) {
-          const raw = params.modelId;
-          data.modelId = raw ? (raw.includes("/") ? raw.replace("/", ":") : raw) : null;
+          data.modelId = params.modelId ? toStoredModelId(params.modelId) : null;
         }
         if (params.outputChannel !== undefined) data.outputChannel = params.outputChannel || null;
         if (params.outputChannelId !== undefined)

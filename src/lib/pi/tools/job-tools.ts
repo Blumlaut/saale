@@ -5,6 +5,7 @@ import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from 
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /** A job as job_list reports it (config parsed, dates as ISO strings). */
 const jobListEntrySchema = Type.Object({
@@ -493,12 +494,9 @@ export function createJobTools(userId: string): ToolDefinition[] {
           }
         }
 
-        // Extract modelId (top-level param overrides config)
-        // Normalize "/" to ":" so modelId is always stored in canonical format
-        const rawModelId = params.modelId ?? (mergedConfig.modelId as string | undefined) ?? null;
-        const resolvedModelId = rawModelId?.includes("/")
-          ? rawModelId.replace("/", ":")
-          : rawModelId;
+        // Top-level param overrides the config value.
+        const rawModelId = (params.modelId ?? mergedConfig.modelId) as string | undefined | null;
+        const resolvedModelId = rawModelId ? toStoredModelId(rawModelId) : null;
         delete mergedConfig.modelId;
 
         const job = await prisma.queueTask.create({
@@ -645,10 +643,8 @@ export function createJobTools(userId: string): ToolDefinition[] {
         let newModelId = job.modelId;
         let newEnabled = job.enabled;
 
-        // Update modelId (normalize "/" to ":" for canonical format)
         if (params.modelId !== undefined) {
-          const raw = params.modelId || null;
-          newModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
+          newModelId = params.modelId ? toStoredModelId(params.modelId) : null;
         }
 
         // Update enabled

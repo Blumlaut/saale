@@ -59,3 +59,4 @@ test-results/
 
 # Dev script state (logs and pids)
 .dev/
+.tmp/

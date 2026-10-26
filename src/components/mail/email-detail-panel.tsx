@@ -1,9 +1,8 @@
 "use client";
 
-import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getTagColor } from "@/lib/email/tags";
-import { parseAddresses } from "@/lib/email/utils";
+import { formatMessageDate, parseAddresses, senderLabel } from "@/lib/email/utils";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,13 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Mail, Loader2, Plus, X } from "lucide-react";
 import { MessageToolbar } from "./message-toolbar";
+import { EmailMessageBody } from "./email-message-body";
 import type { EmailMessageDetail } from "./types";
-
-function getSender(msg: EmailMessageDetail): string {
-  if (msg.fromName) return msg.fromName;
-  if (msg.fromEmail) return msg.fromEmail;
-  return "Unknown Sender";
-}
 
 interface EmailDetailPanelProps {
   message: EmailMessageDetail | null;
@@ -60,14 +54,14 @@ export function EmailDetailPanel({
                   {message.subject || "(no subject)"}
                 </h2>
                 <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
-                  <span className="truncate font-medium">{getSender(message)}</span>
+                  <span className="truncate font-medium">{senderLabel(message)}</span>
                   <span className="text-muted-foreground/60">&lt;{message.fromEmail}&gt;</span>
                 </div>
                 <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
                   <span>To: {parseAddresses(message.to).join(", ")}</span>
                 </div>
                 <p className="text-muted-foreground mt-0.5 text-xs">
-                  {format(new Date(message.date), "MMM d, yyyy 'at' h:mm a")}
+                  {formatMessageDate(message.date)}
                 </p>
               </div>
               <div className="shrink-0">
@@ -153,13 +147,7 @@ export function EmailDetailPanel({
 
           {/* Message body */}
           <GlassPanelContent className="flex-1 overflow-y-auto">
-            {message.bodyHtml ? (
-              <div className="max-w-none" dangerouslySetInnerHTML={{ __html: message.bodyHtml }} />
-            ) : (
-              <pre className="text-sm whitespace-pre-wrap">
-                {message.bodyText || message.bodyPreview}
-              </pre>
-            )}
+            <EmailMessageBody message={message} />
           </GlassPanelContent>
         </>
       ) : (
