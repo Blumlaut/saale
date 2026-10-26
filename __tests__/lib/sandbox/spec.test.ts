@@ -68,8 +68,12 @@ describe("containerSpec", () => {
   });
 
   it("labels the container with the identity, which is what sweeping reads", () => {
-    expect(spec.Labels).toEqual({ "saale.sandbox": "user-abc123" });
+    expect(spec.Labels["saale.sandbox"]).toBe("user-abc123");
     expect(spec.name).toBe("saale-sandbox-user-abc123");
+  });
+
+  it("keeps the container out of the app's compose project", () => {
+    expect(spec.Labels["com.docker.compose.project"]).toBe("");
   });
 
   it("idles until a command arrives", () => {
