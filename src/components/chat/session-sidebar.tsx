@@ -15,16 +15,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
-import { fetchJson, postJson } from "@/lib/http";
+import { fetchJson, patchJson, postJson } from "@/lib/http";
 import {
+  broadcastChatPinned,
   broadcastSessionsDeleted,
+  CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
   CHAT_SESSIONS_DELETED_EVENT,
 } from "@/lib/chat/session-events";
 import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { useLongPress } from "@/hooks/use-long-press";
-import { splitSessionsByActivity } from "@/lib/chat/session-recency";
+import { splitPinnedSessions, splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
   Trash2,
   Loader2,
@@ -35,6 +37,8 @@ import {
   MessageSquarePlus,
   CheckSquare,
   Check,
+  Pin,
+  PinOff,
   X,
 } from "lucide-react";
 
@@ -42,6 +46,7 @@ interface ChatSession {
   id: string;
   title: string;
   temporary: boolean;
+  pinned: boolean;
   messageCount: number;
   watcherCount?: number;
   updatedAt: string;
@@ -78,6 +83,7 @@ interface SessionRowProps {
   selected: boolean;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
+  onTogglePin: (id: string, pinned: boolean) => void;
   onToggleSelect: (id: string) => void;
   onSelectRow: (id: string) => void;
 }
@@ -90,6 +96,7 @@ function SessionRow({
   selected,
   onOpen,
   onDelete,
+  onTogglePin,
   onToggleSelect,
   onSelectRow,
 }: SessionRowProps) {
@@ -157,6 +164,7 @@ function SessionRow({
             {session.isGenerating && (
               <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
             )}
+            {session.pinned && <Pin className="text-muted-foreground h-3 w-3 shrink-0" />}
             {session.forkedFromSessionId && (
               <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
             )}
@@ -188,6 +196,10 @@ function SessionRow({
             )}
           />
           <DropdownMenuContent align="end" className="min-w-40">
+            <DropdownMenuItem onClick={() => onTogglePin(session.id, !session.pinned)}>
+              {session.pinned ? <PinOff /> : <Pin />}
+              {session.pinned ? "Unpin chat" : "Pin chat"}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onSelectRow(session.id)}>
               <CheckSquare />
               Select chat
@@ -253,12 +265,24 @@ export function SessionSidebar({
       const gone = new Set(ids);
       setSessions((prev) => prev.filter((session) => !gone.has(session.id)));
     };
+    // A pin made in the other copy of this list (phone sheet, desktop panel)
+    // moves the row here too.
+    const onPinned = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; pinned?: boolean }>).detail;
+      if (!detail?.id || typeof detail.pinned !== "boolean") return;
+      const { id, pinned } = detail;
+      setSessions((prev) =>
+        prev.map((session) => (session.id === id ? { ...session, pinned } : session)),
+      );
+    };
 
     window.addEventListener(CHAT_RENAMED_EVENT, onRenamed);
     window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
+    window.addEventListener(CHAT_PINNED_EVENT, onPinned);
     return () => {
       window.removeEventListener(CHAT_RENAMED_EVENT, onRenamed);
       window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
+      window.removeEventListener(CHAT_PINNED_EVENT, onPinned);
     };
   }, [fetchSessions]);
 
@@ -328,7 +352,30 @@ export function SessionSidebar({
     setSelectedIds((prev) => new Set(prev).add(id));
   }, []);
 
-  const { recent, older } = useMemo(() => splitSessionsByActivity(sessions), [sessions]);
+  // The row moves the moment the pin is clicked. a failed request puts it back,
+  // so the list never claims a pin the server did not keep.
+  const togglePin = useCallback(async (id: string, pinned: boolean) => {
+    const apply = (value: boolean) =>
+      setSessions((prev) =>
+        prev.map((session) => (session.id === id ? { ...session, pinned: value } : session)),
+      );
+
+    apply(pinned);
+    try {
+      await patchJson(`/api/chat/sessions/${encodeURIComponent(id)}`, { pinned });
+      broadcastChatPinned(id, pinned);
+    } catch (err) {
+      console.error(`Failed to ${pinned ? "pin" : "unpin"} chat ${id}:`, err);
+      apply(!pinned);
+      toast.error(pinned ? "Could not pin the chat" : "Could not unpin the chat");
+    }
+  }, []);
+
+  const { pinned: pinnedSessions, unpinned } = useMemo(
+    () => splitPinnedSessions(sessions),
+    [sessions],
+  );
+  const { recent, older } = useMemo(() => splitSessionsByActivity(unpinned), [unpinned]);
 
   const activeIsOlder = older.some((s) => s.id === activeSessionId);
   // The active chat must never hide inside the fold, and an all-old list would
@@ -353,6 +400,7 @@ export function SessionSidebar({
       selected={selectedIds.has(session.id)}
       onOpen={openSession}
       onDelete={(id) => requestDelete([id])}
+      onTogglePin={togglePin}
       onToggleSelect={toggleSelect}
       onSelectRow={selectRow}
     />
@@ -398,6 +446,16 @@ export function SessionSidebar({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+            {pinnedSessions.length > 0 && (
+              <>
+                <p className="console-label text-muted-foreground px-3 pt-1 pb-0.5">Pinned</p>
+                {pinnedSessions.map(renderRow)}
+                {(recent.length > 0 || older.length > 0) && (
+                  <div className="border-border/40 my-1 border-t" />
+                )}
+              </>
+            )}
+
             {recent.map(renderRow)}
 
             {older.length > 0 && (

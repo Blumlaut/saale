@@ -29,11 +29,12 @@ function iso(daysAgo: number) {
   return new Date(NOW - daysAgo * DAY).toISOString();
 }
 
-function session(id: string, title: string, daysAgo: number, watcherCount = 0) {
+function session(id: string, title: string, daysAgo: number, watcherCount = 0, pinned = false) {
   return {
     id,
     title,
     temporary: false,
+    pinned,
     messageCount: 3,
     watcherCount,
     createdAt: iso(daysAgo + 1),
@@ -65,6 +66,11 @@ function mockSessions(sessions = SESSIONS, bulk?: BulkResponse | BulkResponse[])
       const { ids } = JSON.parse(String(init?.body)) as { ids: string[]; force?: boolean };
       const answer = answers?.shift() ?? bulk ?? { deleted: ids, failed: [] };
       return new Response(JSON.stringify(answer), { status: 200 });
+    }
+    // Pin/unpin rides on the chat's own PATCH.
+    if (url.startsWith("/api/chat/sessions/") && init?.method === "PATCH") {
+      const body = JSON.parse(String(init.body)) as { pinned?: boolean };
+      return new Response(JSON.stringify({ session: { pinned: body.pinned } }), { status: 200 });
     }
     expect(url).toBe("/api/chat/sessions");
     return new Response(JSON.stringify({ sessions }), { status: 200 });
@@ -409,5 +415,73 @@ describe("SessionSidebar multi-select", () => {
     expect(screen.getByText("Recent chat")).toBeInTheDocument();
     expect(screen.getByText("1 selected")).toBeInTheDocument();
     expect(toastError).toHaveBeenCalledWith(expect.stringContaining("1 of 2"));
+  });
+});
+
+describe("SessionSidebar pinned chats", () => {
+  it("sticks a pinned chat above the recency groups, however old it is", async () => {
+    mockSessions([
+      session("s-fresh", "Fresh chat", 0.2),
+      session("s-pinned", "Pinned chat", 40, 0, true),
+      session("s-recent", "Recent chat", 3),
+    ]);
+
+    await renderSidebar(undefined, "Pinned chat");
+
+    expect(screen.getByText("Pinned")).toBeInTheDocument();
+    const pinnedRow = rowButton("Pinned chat");
+    const freshRow = rowButton("Fresh chat");
+    // Document order is list order: the pinned row sits above the fresh one.
+    expect(pinnedRow.compareDocumentPosition(freshRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("keeps a pinned chat out of the folded older card", async () => {
+    mockSessions([
+      session("s-pinned", "Pinned chat", 40, 0, true),
+      session("s-fresh", "Fresh chat", 0.2),
+      session("s-stale", "Stale chat", 9),
+    ]);
+
+    await renderSidebar(undefined, "Pinned chat");
+
+    expect(screen.getByText("Pinned chat")).toBeInTheDocument();
+    expect(screen.queryByText("Stale chat")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show older chats" })).toBeInTheDocument();
+  });
+
+  it("pins a chat from the row menu and offers to unpin it", async () => {
+    await renderSidebar();
+
+    await revealRowActions("Fresh chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin chat" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/chat/sessions/s-fresh",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ pinned: true }) }),
+      ),
+    );
+    expect(await screen.findByText("Pinned")).toBeInTheDocument();
+
+    await revealRowActions("Fresh chat");
+    expect(await screen.findByRole("menuitem", { name: "Unpin chat" })).toBeInTheDocument();
+  });
+
+  it("puts the row back when the server refuses the pin", async () => {
+    await renderSidebar();
+
+    fetchMock.mockImplementationOnce(
+      async () => new Response(JSON.stringify({ error: "Nope" }), { status: 500 }),
+    );
+    await revealRowActions("Fresh chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin chat" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Could not pin the chat"));
+    expect(screen.queryByText("Pinned")).not.toBeInTheDocument();
+
+    await revealRowActions("Fresh chat");
+    expect(await screen.findByRole("menuitem", { name: "Pin chat" })).toBeInTheDocument();
   });
 });

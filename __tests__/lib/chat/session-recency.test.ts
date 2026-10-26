@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   OLD_CHAT_INACTIVITY_DAYS,
   lastActivityTimestamp,
+  splitPinnedSessions,
   splitSessionsByActivity,
+  type SessionActivity,
+  type SessionPin,
 } from "@/lib/chat/session-recency";
 
 const NOW = Date.parse("2025-06-15T12:00:00.000Z");
@@ -13,6 +16,7 @@ function session(id: string, daysAgo: number, overrides: Record<string, unknown>
     id,
     lastActivityAt: new Date(NOW - daysAgo * DAY).toISOString(),
     updatedAt: new Date(NOW - daysAgo * DAY).toISOString(),
+    pinned: false,
     ...overrides,
   };
 }
@@ -80,5 +84,32 @@ describe("splitSessionsByActivity", () => {
     expect(recent.map((s) => s.id)).toEqual(["broken"]);
     expect(older).toEqual([]);
     expect(lastActivityTimestamp(broken)).toBe(Infinity);
+  });
+});
+
+describe("splitPinnedSessions", () => {
+  it("lifts pinned chats out and leaves the rest in their order", () => {
+    const { pinned, unpinned } = splitPinnedSessions([
+      session("fresh", 0),
+      session("pinned-stale", 40, { pinned: true }),
+      session("recent", 2),
+      session("pinned-fresh", 1, { pinned: true }),
+    ]);
+
+    expect(pinned.map((s) => s.id)).toEqual(["pinned-stale", "pinned-fresh"]);
+    expect(unpinned.map((s) => s.id)).toEqual(["fresh", "recent"]);
+  });
+
+  it("counts a missing or null pin as unpinned", () => {
+    // A list row without the column (older response, nulled value) stays put.
+    const oldShape = { id: "legacy", updatedAt: new Date(NOW).toISOString() };
+    const nulled = { ...session("nulled", 1), pinned: null };
+
+    const { pinned, unpinned } = splitPinnedSessions<SessionActivity & SessionPin & { id: string }>(
+      [oldShape, nulled],
+    );
+
+    expect(pinned).toEqual([]);
+    expect(unpinned.map((s) => s.id)).toEqual(["legacy", "nulled"]);
   });
 });
