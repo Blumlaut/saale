@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { arrayOf, oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { TaskItem } from "./task-item";
 import { ChevronDown, ChevronRight, Loader2, Plus } from "lucide-react";
 import type { Task } from "@/types/shared";
@@ -19,6 +20,8 @@ interface TaskListProps {
 
 type GroupKey = "overdue" | "today" | "thisWeek" | "someday" | "completed";
 
+const GROUP_KEYS = oneOf("overdue", "today", "thisWeek", "someday", "completed");
+
 export function TaskList({
   tasks,
   loading,
@@ -28,7 +31,12 @@ export function TaskList({
   onEdit,
   onChat,
 }: TaskListProps) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<GroupKey>>(new Set(["completed"]));
+  const [collapsed, setCollapsed] = usePersistedState<GroupKey[]>(
+    "tasks:collapsedGroups",
+    ["completed"],
+    { validate: arrayOf(GROUP_KEYS) },
+  );
+  const collapsedGroups = useMemo(() => new Set(collapsed), [collapsed]);
 
   const groups = useMemo(() => {
     const now = new Date();
@@ -91,15 +99,9 @@ export function TaskList({
   }, [tasks]);
 
   const toggleGroup = (key: GroupKey) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    setCollapsed((current) =>
+      current.includes(key) ? current.filter((other) => other !== key) : [...current, key],
+    );
   };
 
   return (
