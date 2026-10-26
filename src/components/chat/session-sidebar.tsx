@@ -1,31 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PinnedChatGroup, ChatListRow } from "@/components/chat/chat-list";
+import { fetchJson, postJson } from "@/lib/http";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { cn, ROW_ACTION } from "@/lib/utils";
-import { fetchJson, patchJson, postJson } from "@/lib/http";
-import {
-  broadcastChatPinned,
   broadcastSessionsDeleted,
   CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
   CHAT_SESSIONS_DELETED_EVENT,
 } from "@/lib/chat/session-events";
+import { saveChatPin } from "@/lib/chat/pin";
 import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
-import { useLongPress } from "@/hooks/use-long-press";
 import { splitPinnedSessions, splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
   Trash2,
@@ -33,12 +25,7 @@ import {
   Ghost,
   GitBranch,
   ChevronRight,
-  MoreVertical,
   MessageSquarePlus,
-  CheckSquare,
-  Check,
-  Pin,
-  PinOff,
   X,
 } from "lucide-react";
 
@@ -73,150 +60,6 @@ function formatDate(dateStr: string) {
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days} days ago`;
   return date.toLocaleDateString();
-}
-
-interface SessionRowProps {
-  session: ChatSession;
-  active: boolean;
-  deleting: boolean;
-  selecting: boolean;
-  selected: boolean;
-  onOpen: (id: string) => void;
-  onDelete: (id: string) => void;
-  onTogglePin: (id: string, pinned: boolean) => void;
-  onToggleSelect: (id: string) => void;
-  onSelectRow: (id: string) => void;
-}
-
-function SessionRow({
-  session,
-  active,
-  deleting,
-  selecting,
-  selected,
-  onOpen,
-  onDelete,
-  onTogglePin,
-  onToggleSelect,
-  onSelectRow,
-}: SessionRowProps) {
-  // Holding a row is the touch way into a selection; ctrl/⌘-click is the pointer
-  // way, and the row menu offers a labelled path for anyone who finds neither.
-  const hold = useLongPress(() => {
-    if (selecting) onToggleSelect(session.id);
-    else onSelectRow(session.id);
-  });
-
-  const handleActivate = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    // The hold already acted on this gesture. the browser's click follows it.
-    if (hold.consumeLongPress()) return;
-    if (selecting || event.metaKey || event.ctrlKey) {
-      event.preventDefault();
-      onToggleSelect(session.id);
-      return;
-    }
-    onOpen(session.id);
-  };
-
-  return (
-    <div
-      data-slot="session-row"
-      className={cn(
-        "group relative flex items-center gap-1 rounded-lg text-sm transition-colors duration-150 select-none",
-        !selecting && "pr-1",
-        selected ? "bg-primary/10" : active ? "bg-accent/70" : "hover:bg-accent/60",
-      )}
-      onPointerDown={hold.onPointerDown}
-      onPointerMove={hold.onPointerMove}
-      onPointerUp={hold.onPointerUp}
-      onPointerCancel={hold.onPointerCancel}
-      onContextMenu={hold.onContextMenu}
-    >
-      {/* One target per row: while picking, the whole surface toggles, so a tap
-          that lands beside the box. or on the row's padding. still counts. */}
-      <button
-        className={cn(
-          "flex min-w-0 flex-1 items-center text-left",
-          selecting ? "gap-2 px-1.5" : "pl-3",
-        )}
-        aria-pressed={selecting ? selected : undefined}
-        onClick={handleActivate}
-      >
-        {selecting && (
-          <span
-            aria-hidden
-            data-slot="selection-indicator"
-            className={cn(
-              "border-input flex size-4 shrink-0 items-center justify-center rounded-sm border transition-colors",
-              selected && "border-primary bg-primary text-primary-foreground",
-            )}
-          >
-            {selected && <Check className="size-3.5" strokeWidth={3} />}
-          </span>
-        )}
-        <span className="flex min-w-0 flex-1 flex-col py-2">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate font-medium">
-              {session.title.length > TITLE_MAX_CHARS
-                ? `${session.title.slice(0, TITLE_MAX_CHARS)}…`
-                : session.title}
-            </span>
-            {session.isGenerating && (
-              <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
-            )}
-            {session.pinned && <Pin className="text-muted-foreground h-3 w-3 shrink-0" />}
-            {session.forkedFromSessionId && (
-              <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
-            )}
-            {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
-          </span>
-          <span className="text-muted-foreground truncate text-xs">
-            {formatDate(session.lastActivityAt ?? session.updatedAt)} · {session.messageCount}{" "}
-            messages
-            {session.forkedFromSessionId && " · fork"}
-            {session.temporary && " · auto-delete"}
-          </span>
-        </span>
-      </button>
-      {/* Delete lives behind the row menu: a permanent one-tap delete next to
-          every row is too easy to hit while scrolling. */}
-      {!selecting && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={(triggerProps) => (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn("shrink-0", ROW_ACTION)}
-                {...triggerProps}
-              >
-                {deleting ? <Loader2 className="animate-spin" /> : <MoreVertical />}
-                <span className="sr-only">Actions for {session.title}</span>
-              </Button>
-            )}
-          />
-          <DropdownMenuContent align="end" className="min-w-40">
-            <DropdownMenuItem onClick={() => onTogglePin(session.id, !session.pinned)}>
-              {session.pinned ? <PinOff /> : <Pin />}
-              {session.pinned ? "Unpin chat" : "Pin chat"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSelectRow(session.id)}>
-              <CheckSquare />
-              Select chat
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={deleting}
-              onClick={() => onDelete(session.id)}
-            >
-              <Trash2 />
-              Delete chat
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
 }
 
 export function SessionSidebar({
@@ -362,8 +205,7 @@ export function SessionSidebar({
 
     apply(pinned);
     try {
-      await patchJson(`/api/chat/sessions/${encodeURIComponent(id)}`, { pinned });
-      broadcastChatPinned(id, pinned);
+      await saveChatPin(id, pinned);
     } catch (err) {
       console.error(`Failed to ${pinned ? "pin" : "unpin"} chat ${id}:`, err);
       apply(!pinned);
@@ -391,18 +233,41 @@ export function SessionSidebar({
   const openSession = useCallback((id: string) => router.push(`/dashboard/chat/${id}`), [router]);
 
   const renderRow = (session: ChatSession) => (
-    <SessionRow
+    <ChatListRow
       key={session.id}
-      session={session}
+      title={session.title}
+      titleMaxChars={TITLE_MAX_CHARS}
       active={session.id === activeSessionId}
+      pinned={session.pinned}
       deleting={deletingIds.includes(session.id)}
-      selecting={selecting}
-      selected={selectedIds.has(session.id)}
-      onOpen={openSession}
-      onDelete={(id) => requestDelete([id])}
-      onTogglePin={togglePin}
-      onToggleSelect={toggleSelect}
-      onSelectRow={selectRow}
+      accessories={
+        <>
+          {session.isGenerating && (
+            <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
+          )}
+          {session.forkedFromSessionId && (
+            <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
+          )}
+          {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
+        </>
+      }
+      subtitle={
+        <>
+          {formatDate(session.lastActivityAt ?? session.updatedAt)} · {session.messageCount}{" "}
+          messages
+          {session.forkedFromSessionId && " · fork"}
+          {session.temporary && " · auto-delete"}
+        </>
+      }
+      selection={{
+        selecting,
+        selected: selectedIds.has(session.id),
+        toggle: () => toggleSelect(session.id),
+        start: () => selectRow(session.id),
+      }}
+      onOpen={() => openSession(session.id)}
+      onTogglePin={() => togglePin(session.id, !session.pinned)}
+      onDelete={() => requestDelete([session.id])}
     />
   );
 
@@ -446,37 +311,33 @@ export function SessionSidebar({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-            {pinnedSessions.length > 0 && (
-              <>
-                <p className="console-label text-muted-foreground px-3 pt-1 pb-0.5">Pinned</p>
-                {pinnedSessions.map(renderRow)}
-                {(recent.length > 0 || older.length > 0) && (
-                  <div className="border-border/40 my-1 border-t" />
-                )}
-              </>
-            )}
+            <PinnedChatGroup
+              pinned={pinnedSessions}
+              renderRows={(items) => items.map(renderRow)}
+              hasRest={recent.length > 0 || older.length > 0}
+            >
+              {recent.map(renderRow)}
 
-            {recent.map(renderRow)}
-
-            {older.length > 0 && (
-              <Collapsible
-                open={olderOpen}
-                onOpenChange={setOlderOpen}
-                className="border-border/40 mt-1 border-t pt-1"
-              >
-                <CollapsibleTrigger
-                  aria-label={olderOpen ? "Hide older chats" : "Show older chats"}
-                  className="group text-muted-foreground hover:bg-accent/60 hover:text-foreground flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors duration-150"
+              {older.length > 0 && (
+                <Collapsible
+                  open={olderOpen}
+                  onOpenChange={setOlderOpen}
+                  className="border-border/40 mt-1 border-t pt-1"
                 >
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-90" />
-                  <span className="min-w-0 flex-1 truncate font-medium">Older chats</span>
-                  <Badge variant="secondary" className="font-mono">
-                    {older.length}
-                  </Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent>{older.map(renderRow)}</CollapsibleContent>
-              </Collapsible>
-            )}
+                  <CollapsibleTrigger
+                    aria-label={olderOpen ? "Hide older chats" : "Show older chats"}
+                    className="group text-muted-foreground hover:bg-accent/60 hover:text-foreground flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition-colors duration-150"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-90" />
+                    <span className="min-w-0 flex-1 truncate font-medium">Older chats</span>
+                    <Badge variant="secondary" className="font-mono">
+                      {older.length}
+                    </Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>{older.map(renderRow)}</CollapsibleContent>
+                </Collapsible>
+              )}
+            </PinnedChatGroup>
           </div>
         )}
       </div>
