@@ -3,13 +3,15 @@ import { NextRequest } from "next/server";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireChatSessionOwner, mockPrisma, mockIsSessionActive } = vi.hoisted(() => ({
-  mockRequireChatSessionOwner: vi.fn(),
-  mockPrisma: {
-    chatMessage: { findMany: vi.fn() },
-  },
-  mockIsSessionActive: vi.fn().mockResolvedValue(false),
-}));
+const { mockRequireChatSessionOwner, mockPrisma, mockIsSessionActive, mockIsAgentBuilding } =
+  vi.hoisted(() => ({
+    mockRequireChatSessionOwner: vi.fn(),
+    mockPrisma: {
+      chatMessage: { findMany: vi.fn() },
+    },
+    mockIsSessionActive: vi.fn().mockResolvedValue(false),
+    mockIsAgentBuilding: vi.fn().mockResolvedValue(false),
+  }));
 
 vi.mock("@/lib/auth", () => ({
   requireChatSessionOwner: mockRequireChatSessionOwner,
@@ -18,6 +20,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 
 vi.mock("@/lib/redis", () => ({
+  isAgentBuilding: mockIsAgentBuilding,
   isSessionActive: mockIsSessionActive,
   isSendQueueHeld: vi.fn().mockResolvedValue(false),
 }));
@@ -69,6 +72,7 @@ beforeEach(() => {
     },
   });
   mockIsSessionActive.mockResolvedValue(false);
+  mockIsAgentBuilding.mockResolvedValue(false);
 });
 
 describe("GET /api/chat/sessions/[sessionId]/messages", () => {
@@ -116,6 +120,20 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
       thinking: "reasoning so far",
       errorMessage: "503: service unavailable",
     });
+  });
+
+  it("reports a workspace that is still being built", async () => {
+    mockPrisma.chatMessage.findMany
+      .mockResolvedValueOnce([baseMessage({ id: "u1", role: "user", content: "hi" })])
+      .mockResolvedValueOnce([]);
+    mockIsAgentBuilding.mockResolvedValue(true);
+
+    const body = await get();
+
+    // Nothing streams while the build runs, so a client that comes back to the
+    // chat needs this to know a reply is still owed.
+    expect(body.session.isBuilding).toBe(true);
+    expect(body.session.isGenerating).toBe(false);
   });
 
   it("reports the send queue separately from the conversation", async () => {
