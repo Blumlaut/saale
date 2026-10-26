@@ -1,6 +1,10 @@
-import { requireFeaturePage } from "@/lib/permissions/guards";
+import { SectionedAreaShell } from "@/components/layout/sectioned-area-shell";
+import { sidebarNavItem } from "@/lib/navigation/sidebar-nav";
 
-export default async function FeatureLayout({ children }: { children: React.ReactNode }) {
-  await requireFeaturePage("jobs");
-  return children;
+export default function JobsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SectionedAreaShell areaLabel="Jobs" sections={sidebarNavItem("jobs").sections ?? []}>
+      {children}
+    </SectionedAreaShell>
+  );
 }

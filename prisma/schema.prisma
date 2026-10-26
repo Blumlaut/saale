@@ -55,8 +55,24 @@ model User {
   updatedAt       DateTime  @updatedAt
 
   twoFactors    TwoFactor[]
+  avatar        UserAvatar?
 
   @@map("user")
+}
+
+/// A user's profile picture, re-encoded to a 96px WebP. It lives in its own row
+/// so a user list never drags the bytes along; `/api/profile/avatar` serves it.
+model UserAvatar {
+  userId    String   @id
+  data      Bytes
+  mimeType  String   @default("image/webp")
+  size      Int
+  width     Int
+  height    Int
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_avatar")
 }
 
 // better-auth two-factor plugin (TOTP) — managed via the plugin, never

@@ -90,7 +90,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-[440px] flex-col overflow-hidden p-0 sm:max-w-none">
+      <SheetContent className="flex w-full max-w-[440px] flex-col overflow-hidden p-0">
         <div className="flex h-full flex-col">
           <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
             <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">

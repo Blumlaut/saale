@@ -1,6 +1,11 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import { bootstrapSession, type E2ESession } from "./utils";
+import {
+  SIDEBAR_NAV_ITEM_IDS,
+  SIDEBAR_NAV_ITEMS,
+  type SidebarNavItemId,
+} from "@/lib/navigation/sidebar-nav";
 
 /**
  * Sidebar customization.
@@ -25,7 +30,16 @@ const MOBILE = { width: 375, height: 667 };
  * filter uses, so a visible Council item cannot slip past these assertions
  * unnoticed.
  */
-const NAV_LABELS = ["Chat", "Mail", "Calendar", "Tasks", "Jobs", "Infrastructure", "Settings"];
+const NAV_LABELS = [
+  "Chat",
+  "Mail",
+  "Contacts",
+  "Calendar",
+  "Tasks",
+  "Jobs",
+  "Infrastructure",
+  "Settings",
+];
 const NAV_LABELS_ANY = [...NAV_LABELS, "Council"];
 
 let session: E2ESession | null = null;
@@ -61,10 +75,16 @@ async function sidebarOrder(page: Page): Promise<string[]> {
   }, NAV_LABELS_ANY);
 }
 
-/** An item of the desktop sidebar  Mail renders as a button, the rest as links. */
+/** Row index in the editor, which lists the whole registry including hidden items. */
+function rowIndex(id: SidebarNavItemId): number {
+  const index = SIDEBAR_NAV_ITEMS.findIndex((item) => item.id === id);
+  if (index === -1) throw new Error(`e2e: ${id} is not a sidebar item`);
+  return index;
+}
+
+/** An item of the desktop sidebar. Every row is a link, the section toggle beside it. */
 function sidebarItem(page: Page, label: string) {
-  const sidebar = page.locator("nav.sidebar-nav");
-  return sidebar.getByRole(label === "Mail" ? "button" : "link", { name: label, exact: true });
+  return page.locator("nav.sidebar-nav").getByRole("link", { name: label, exact: true });
 }
 
 /** Labels of the items in the mobile bottom bar, left to right. */
@@ -83,10 +103,9 @@ async function persistedIds(ctx: BrowserContext): Promise<string[]> {
 
 /** Open Settings → Appearance and wait for the sidebar editor. */
 async function openAppearance(page: Page) {
-  if (!page.url().includes("/dashboard/settings")) {
-    await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
+  if (!page.url().endsWith("/dashboard/settings/appearance")) {
+    await page.goto("/dashboard/settings/appearance", { waitUntil: "domcontentloaded" });
   }
-  await page.getByRole("tab", { name: "Appearance" }).click();
   await expect(page.getByRole("heading", { name: "Sidebar" })).toBeVisible();
 }
 
@@ -105,17 +124,29 @@ test.describe("sidebar customization", () => {
     expect(await sidebarOrder(page)).toEqual(NAV_LABELS);
 
     await openAppearance(page);
-    for (let i = 0; i < 6; i++) {
-      await page.getByRole("button", { name: "Move Settings up" }).click();
+    // The layout also holds hidden items, so Settings needs as many clicks as
+    // the registry has entries above it. Click until it reaches the top.
+    const moveUp = page.getByRole("button", { name: "Move Settings up" });
+    for (let i = 0; i < 20 && !(await moveUp.isDisabled()); i++) {
+      await moveUp.click();
     }
 
     // Settings is first now  in the editor and in the sidebar itself.
     await expect(page.getByRole("button", { name: "Move Settings up" })).toBeDisabled();
     await expect
       .poll(() => persistedIds(ctx))
-      .toEqual(["settings", "chat", "mail", "calendar", "tasks", "jobs", "infra"]);
+      .toEqual(["settings", "chat", "mail", "contacts", "calendar", "tasks", "jobs", "infra"]);
 
-    const reordered = ["Settings", "Chat", "Mail", "Calendar", "Tasks", "Jobs", "Infrastructure"];
+    const reordered = [
+      "Settings",
+      "Chat",
+      "Mail",
+      "Contacts",
+      "Calendar",
+      "Tasks",
+      "Jobs",
+      "Infrastructure",
+    ];
     await expect.poll(() => sidebarOrder(page)).toEqual(reordered);
 
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -134,14 +165,23 @@ test.describe("sidebar customization", () => {
     await openAppearance(page);
 
     const rows = page.locator('div[draggable="true"]');
-    await expect(rows).toHaveCount(7);
-    // Drag the 4th row (Tasks) onto the first (Chat).
-    await rows.nth(3).dragTo(rows.nth(0));
+    await expect(rows).toHaveCount(SIDEBAR_NAV_ITEMS.length);
+    // Drag Tasks onto Chat.
+    await rows.nth(rowIndex("tasks")).dragTo(rows.nth(rowIndex("chat")));
 
     await expect(page.getByRole("button", { name: "Move Tasks up" })).toBeDisabled();
     await expect
       .poll(() => sidebarOrder(page))
-      .toEqual(["Tasks", "Chat", "Mail", "Calendar", "Jobs", "Infrastructure", "Settings"]);
+      .toEqual([
+        "Tasks",
+        "Chat",
+        "Mail",
+        "Contacts",
+        "Calendar",
+        "Jobs",
+        "Infrastructure",
+        "Settings",
+      ]);
 
     await ctx.close();
   });
@@ -160,11 +200,11 @@ test.describe("sidebar customization", () => {
     // Stored before the phone opens it  the desktop sidebar applies edits optimistically.
     await expect
       .poll(() => persistedIds(ctx))
-      .toEqual(["chat", "calendar", "tasks", "jobs", "infra", "settings"]);
+      .toEqual(["chat", "contacts", "calendar", "tasks", "jobs", "infra", "settings"]);
 
     await expect
       .poll(() => sidebarOrder(page))
-      .toEqual(["Chat", "Calendar", "Tasks", "Jobs", "Infrastructure", "Settings"]);
+      .toEqual(["Chat", "Contacts", "Calendar", "Tasks", "Jobs", "Infrastructure", "Settings"]);
     await expect(sidebarItem(page, "Mail")).toHaveCount(0);
     await ctx.close();
 
@@ -180,7 +220,7 @@ test.describe("sidebar customization", () => {
     const me = (await (await mobile.request.get("/api/auth/get-session")).json()) as {
       user?: { role?: string };
     };
-    const expectedLabels = ["Chat", "Calendar", "Tasks", "Jobs", "Servers", "Settings"];
+    const expectedLabels = ["Chat", "Contacts", "Calendar", "Tasks", "Jobs", "Servers", "Settings"];
     if (me.user?.role === "admin") expectedLabels.push("Admin");
 
     // The bar renders the default layout until the stored one arrives  poll.
@@ -209,7 +249,7 @@ test.describe("sidebar customization", () => {
     expect(res.status()).toBe(200);
     const { items } = (await res.json()) as { items: { id: string; hidden: boolean }[] };
     // Items the layout doesn't mention keep showing, appended after the ordered ones.
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(SIDEBAR_NAV_ITEMS.length);
     expect(items.find((item) => item.id === "tasks")?.hidden).toBe(true);
     expect(items.find((item) => item.id === "calendar")?.hidden).toBe(false);
 
@@ -219,9 +259,13 @@ test.describe("sidebar customization", () => {
 
     await page.getByRole("button", { name: "Reset" }).click();
 
-    const switches = page.getByRole("switch");
-    await expect(switches).toHaveCount(7);
+    // Only the editor's rows: the appearance page has switches of its own.
+    const switches = page.locator('div[draggable="true"]').getByRole("switch");
+    await expect(switches).toHaveCount(SIDEBAR_NAV_ITEMS.length);
     for (const item of await switches.all()) {
+      // The opt-in items start hidden, so only the everyday ones are on.
+      const optIn = (await item.getAttribute("aria-label"))?.match(/^Show (\w+) in the sidebar$/);
+      if (optIn && (optIn[1] === "Coder" || optIn[1] === "Council")) continue;
       await expect(item).toBeChecked();
     }
     await expect(page.getByRole("button", { name: "Reset" })).toBeDisabled();
@@ -239,17 +283,8 @@ test.describe("sidebar customization", () => {
     const page = await ctx.newPage();
 
     const res = await ctx.request.patch("/api/settings/sidebar-nav", {
-      data: {
-        items: [
-          { id: "chat", hidden: false },
-          { id: "mail", hidden: true },
-          { id: "calendar", hidden: true },
-          { id: "tasks", hidden: true },
-          { id: "jobs", hidden: true },
-          { id: "infra", hidden: true },
-          { id: "settings", hidden: true },
-        ],
-      },
+      // Everything hidden but Chat, whatever the registry holds today.
+      data: { items: SIDEBAR_NAV_ITEM_IDS.map((id) => ({ id, hidden: id !== "chat" })) },
     });
     expect(res.status()).toBe(200);
 

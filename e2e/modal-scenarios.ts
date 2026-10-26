@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { gotoAndSettle } from "./utils";
+import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
 import { FILES_PREVIEW_NAME, mockCouncilFiles, mockCouncilRoom } from "./council-mocks";
 
 /**
@@ -80,8 +81,8 @@ async function seedPendingPluginDialog(page: Page): Promise<string> {
 
 const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
-const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
-const MCP_TAB = "src/app/dashboard/settings/tabs/mcp-tab.tsx";
+const MEMORIES_TAB = "src/app/dashboard/settings/sections/memories-section.tsx";
+const MCP_TAB = "src/app/dashboard/settings/components/mcp-panel.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
@@ -90,7 +91,7 @@ const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
 const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
 const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
-const SETTINGS = "/dashboard/settings";
+const SETTINGS = settingsSection("profile").href;
 
 /** Realistic ED25519 public key  the content that used to widen the dialog. */
 const SSH_PUBLIC_KEY =
@@ -130,8 +131,9 @@ async function clickText(page: Page, text: string) {
   await target.click();
 }
 
-async function openSettingsTab(page: Page, tab: string) {
-  await click(page, `[role="tab"]:has-text(${JSON.stringify(tab)})`);
+/** Settings sections are routes: open one directly, as a phone user would. */
+async function openSettingsSection(page: Page, id: SettingsSectionId) {
+  await gotoAndSettle(page, settingsSection(id).href);
 }
 
 /**
@@ -388,11 +390,6 @@ async function mockMemories(page: Page) {
       },
     }),
   );
-}
-
-/** One contact with a name and email long enough to matter on a phone. */
-async function mockContactsTab(page: Page) {
-  await click(page, '[role="tab"]:has-text("Contacts")');
 }
 
 async function mockContacts(page: Page) {
@@ -764,22 +761,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Jobs ──────────────────────────────────────────────────────────────────
   {
     name: "jobs · new agent job",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/agents",
     sources: ["src/components/jobs/agent-job-dialog.tsx"],
-    open: (page) => click(page, 'button:has-text("New Agent")'),
+    open: (page) => click(page, 'button:has-text("New agent")'),
   },
   {
     name: "jobs · new scheduled job",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/scheduled",
     sources: ["src/components/jobs/job-dialog.tsx"],
-    open: async (page) => {
-      await click(page, '[role="tab"]:has-text("Scheduled Jobs")');
-      await click(page, 'button:has-text("New Job")');
-    },
+    open: (page) => click(page, 'button:has-text("New job")'),
   },
   {
     name: "jobs · agent run messages",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/agents",
     sources: ["src/components/jobs/agent-job-list.tsx"],
     mock: mockAgentRuns,
     open: async (page) => {
@@ -789,16 +783,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "jobs · new watcher",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/watchers",
     // The watcher dialog carries the longest content in the app: a script, a
     // monospace consent list and a script's returned value, all of which used to
     // widen auto-sized overlay tracks.
     sources: ["src/components/jobs/watcher-dialog.tsx"],
     mock: mockWatchers,
-    open: async (page) => {
-      await click(page, '[role="tab"]:has-text("Watchers")');
-      await click(page, 'button:has-text("New Watcher")');
-    },
+    open: (page) => click(page, 'button:has-text("New watcher")'),
   },
 
   // ── Chat ──────────────────────────────────────────────────────────────────
@@ -936,11 +927,17 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
 
   // ── Settings ──────────────────────────────────────────────────────────────
   {
+    name: "settings · section picker",
+    path: settingsSection("models").href,
+    sources: ["src/components/layout/section-picker.tsx"],
+    open: (page) => click(page, '[aria-label^="Settings section:"]'),
+  },
+  {
     name: "settings · add memory",
     path: SETTINGS,
     sources: [MEMORIES_TAB],
     open: async (page) => {
-      await openSettingsTab(page, "Memories");
+      await openSettingsSection(page, "memories");
       await click(page, 'button:has-text("Add Memory")');
     },
   },
@@ -950,7 +947,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MEMORIES_TAB],
     mock: mockMemories,
     open: async (page) => {
-      await openSettingsTab(page, "Memories");
+      await openSettingsSection(page, "memories");
       await openRowMenu(page, "very long memory title");
       await click(page, '[role="menuitem"]:has-text("Edit")');
     },
@@ -961,7 +958,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MEMORIES_TAB],
     mock: mockMemories,
     open: async (page) => {
-      await openSettingsTab(page, "Memories");
+      await openSettingsSection(page, "memories");
       await openRowMenu(page, "very long memory title");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
@@ -971,17 +968,17 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/integrations/telegram-card.tsx"],
     open: async (page) => {
-      await openSettingsTab(page, "Integrations");
+      await openSettingsSection(page, "integrations");
       await click(page, 'button:has-text("Link Telegram")');
     },
   },
   {
     name: "settings · unlink telegram confirmation",
     path: SETTINGS,
-    sources: ["src/app/dashboard/settings/tabs/integrations-tab.tsx"],
+    sources: ["src/app/dashboard/settings/sections/integrations-section.tsx"],
     mock: mockTelegramLinked,
     open: async (page) => {
-      await openSettingsTab(page, "Integrations");
+      await openSettingsSection(page, "integrations");
 
       // Anchor on the mocked display name: it only exists inside the Telegram
       // box, so the row menu is unambiguous even though the shell has its own.
@@ -1000,7 +997,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [PROVIDER_LOGIN_SHEET],
     mock: mockProviderSignIn,
     open: async (page) => {
-      await openSettingsTab(page, "AI & Models");
+      await openSettingsSection(page, "models");
       await click(page, 'button:has-text("Manage providers")');
       await click(page, 'button:has-text("Sign in")');
       await page.locator(':text("Connect OpenCode Zen"):visible').first().waitFor({
@@ -1014,7 +1011,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [PROVIDER_ADD_SHEET],
     mock: mockProviderSignIn,
     open: async (page) => {
-      await openSettingsTab(page, "AI & Models");
+      await openSettingsSection(page, "models");
       await click(page, 'button:has-text("Manage providers")');
       await page
         .locator('input[aria-label="Search providers"]:visible')
@@ -1028,7 +1025,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MODEL_LIMITS_SHEET],
     mock: mockConfigurableModels,
     open: async (page) => {
-      await openSettingsTab(page, "AI & Models");
+      await openSettingsSection(page, "models");
       await click(page, '[title="Set this model\'s context window and output cap"]');
     },
   },
@@ -1038,7 +1035,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MCP_SHEET],
     mock: mockMcpServers,
     open: async (page) => {
-      await openSettingsTab(page, "Integrations");
+      await openSettingsSection(page, "integrations");
       await click(page, '[aria-label="Add server"]');
     },
   },
@@ -1048,7 +1045,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [MCP_TAB],
     mock: mockMcpServers,
     open: async (page) => {
-      await openSettingsTab(page, "Integrations");
+      await openSettingsSection(page, "integrations");
       await click(page, '[aria-label="Remove homeassistant"]');
     },
   },
@@ -1057,7 +1054,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/mail/account-sheet.tsx"],
     open: async (page) => {
-      await openSettingsTab(page, "Email");
+      await openSettingsSection(page, "email");
       await click(page, 'button:has-text("Add Account")');
     },
   },
@@ -1066,7 +1063,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/calendar/calendar-account-dialog.tsx"],
     open: async (page) => {
-      await openSettingsTab(page, "Calendar");
+      await openSettingsSection(page, "calendar");
       await click(page, 'button:has-text("Add CalDAV")');
     },
   },
@@ -1075,17 +1072,17 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/calendar/subscription-dialog.tsx"],
     open: async (page) => {
-      await openSettingsTab(page, "Calendar");
+      await openSettingsSection(page, "calendar");
       await click(page, 'button:has-text("Add Subscription")');
     },
   },
   {
     name: "settings · remove calendar subscription confirmation",
     path: SETTINGS,
-    sources: ["src/app/dashboard/settings/tabs/calendar-tab.tsx"],
+    sources: ["src/app/dashboard/settings/sections/calendar-section.tsx"],
     mock: mockCalendarSubscriptions,
     open: async (page) => {
-      await openSettingsTab(page, "Calendar");
+      await openSettingsSection(page, "calendar");
       await click(page, '[data-slot="dropdown-menu-trigger"]');
       await click(page, '[role="menuitem"]:has-text("Remove")');
     },
@@ -1096,7 +1093,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: ["src/components/integrations/telegram-card.tsx"],
     mock: mockTelegramLinked,
     open: async (page) => {
-      await openSettingsTab(page, "Integrations");
+      await openSettingsSection(page, "integrations");
 
       // Anchor on the mocked link's name  it only exists inside this card, so
       // the row menu is unambiguous even though the shell has its own menus.
@@ -1156,20 +1153,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Contacts ────────────────────────────────────────────────────────────
   {
     name: "contacts · new contact",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contact-sheet.tsx"],
     open: async (page) => {
-      await mockContactsTab(page);
       await click(page, 'button:has-text("New Contact")');
     },
   },
   {
     name: "contacts · edit contact",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contact-sheet.tsx"],
     mock: mockContacts,
     open: async (page) => {
-      await mockContactsTab(page);
       await visible(page, 'div.group:has-text("extremely long contact display name")')
         .first()
         .click();
@@ -1177,11 +1172,10 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "contacts · delete contact confirmation",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contacts-panel.tsx"],
     mock: mockContacts,
     open: async (page) => {
-      await mockContactsTab(page);
       await openRowMenu(page, "extremely long contact display name");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
@@ -1189,7 +1183,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · remove email account confirmation",
     path: SETTINGS,
-    sources: ["src/app/dashboard/settings/tabs/email-tab.tsx"],
+    sources: ["src/app/dashboard/settings/sections/email-section.tsx"],
     skip: "requires a connected IMAP/SMTP account",
   },
 
@@ -1198,7 +1192,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: SETTINGS,
     sources: ["src/components/auth/two-factor-dialog.tsx"],
     open: async (page) => {
-      await openSettingsTab(page, "Account");
+      await openSettingsSection(page, "security");
       await click(page, 'button:has-text("Set up two-factor")');
     },
   },
@@ -1340,7 +1334,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "admin · install plugin",
-    path: "/admin/plugins",
+    path: "/admin/plugins/installed",
     sources: ["src/components/admin/plugin-dialogs.tsx"],
     open: async (page) => {
       await click(page, 'button[aria-label="Install"]');

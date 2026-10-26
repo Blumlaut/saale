@@ -40,12 +40,19 @@ interface ModelPickerProps {
   value: string;
   /** Callback with new value in "provider/modelId" format */
   onChange: (value: string) => void;
-  /** Optional class for the trigger button */
+  /** Optional class for the trigger's inner span (the visual control) */
   className?: string;
+  /** Optional class for the trigger button itself, e.g. to size it in a layout. */
+  triggerClassName?: string;
   /** Placeholder when no model is selected */
   placeholder?: string;
   /** Whether to show the trigger as compact (icon + name only) */
   compact?: boolean;
+  /**
+   * Where the list comes from. The admin pages pick from the instance's
+   * providers, which the user endpoint does not serve.
+   */
+  endpoint?: string;
 }
 
 /**
@@ -62,6 +69,8 @@ export function ModelPicker({
   className,
   placeholder = "Select model",
   compact = false,
+  endpoint = "/api/providers/models",
+  triggerClassName,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -71,7 +80,7 @@ export function ModelPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchJson<ModelsApiResponse>("/api/providers/models")
+    fetchJson<ModelsApiResponse>(endpoint)
       .then((data) => {
         const all: ModelInfo[] = [];
         if (data.models) {
@@ -94,8 +103,11 @@ export function ModelPicker({
         setModels(all);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch((err) => {
+        console.error("Failed to load the models for the picker:", err);
+        setLoading(false);
+      });
+  }, [endpoint]);
 
   // Reset search and highlight when opening
   useEffect(() => {
@@ -177,7 +189,7 @@ export function ModelPicker({
         PopoverTrigger renders as <button>. Never nest a <Button> (also <button>)
         inside it. use a styled <span> instead to avoid hydration errors.
       */}
-      <PopoverTrigger>
+      <PopoverTrigger className={triggerClassName}>
         <span
           className={cn(
             "hover:bg-accent/60 inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium transition-colors",
@@ -190,10 +202,10 @@ export function ModelPicker({
           ) : (
             <Brain className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           )}
-          <span className="truncate text-sm">
+          <span className="min-w-0 flex-1 truncate text-left text-sm">
             {loading ? "Loading..." : selected ? selected.name : placeholder}
           </span>
-          <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
+          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
         </span>
       </PopoverTrigger>
 

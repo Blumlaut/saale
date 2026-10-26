@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -44,6 +44,38 @@ export function SidebarNavEditor({
 
   useEffect(() => setDraft(entries), [entries]);
 
+  /*
+   * Rows animate to their new places: the order lives in state, so without a
+   * before/after measurement a reorder would just teleport.
+   */
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const rowsBefore = useRef(new Map<string, number>());
+
+  const captureRows = useCallback(() => {
+    rowsBefore.current = new Map(
+      [...rowRefs.current].map(([id, element]) => [id, element.getBoundingClientRect().top]),
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    const before = rowsBefore.current;
+    rowsBefore.current = new Map();
+    if (before.size === 0) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    for (const [id, element] of rowRefs.current) {
+      const top = before.get(id);
+      if (top === undefined) continue;
+      const shift = top - element.getBoundingClientRect().top;
+      if (Math.abs(shift) < 1) continue;
+
+      element.animate([{ transform: `translateY(${shift}px)` }, { transform: "translateY(0)" }], {
+        duration: 200,
+        easing: "cubic-bezier(0.2, 0, 0, 1)",
+      });
+    }
+  }, [draft]);
+
   const customized = !isDefaultSidebarNav(entries);
   // Pinned items (Settings) are always visible, so the "last visible" guard only
   // counts the items a user can actually hide.
@@ -52,6 +84,7 @@ export function SidebarNavEditor({
   ).length;
 
   const commit = (next: SidebarNavEntry[]) => {
+    captureRows();
     setDraft(next);
     onChange(next);
   };
@@ -68,6 +101,11 @@ export function SidebarNavEditor({
     event.preventDefault();
     if (!draggingId || draggingId === id) return;
 
+    /*
+     * No slide animation while dragging. The browser picks the drop target from
+     * the row under the pointer, so a row sliding under it re-targets itself and
+     * the list trades places back and forth.
+     */
     setDraft((prev) => {
       const from = prev.findIndex((entry) => entry.id === draggingId);
       const to = prev.findIndex((entry) => entry.id === id);
@@ -125,15 +163,19 @@ export function SidebarNavEditor({
             return (
               <Fragment key={entry.id}>
                 <div
+                  ref={(element) => {
+                    if (element) rowRefs.current.set(entry.id, element);
+                    else rowRefs.current.delete(entry.id);
+                  }}
                   draggable
                   onDragStart={() => setDraggingId(entry.id)}
                   onDragOver={(event) => handleDragOver(event, entry.id)}
                   onDragEnd={handleDragEnd}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors",
+                    "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color,opacity] duration-200",
                     "hover:bg-accent/60",
                     draggingId === entry.id && "bg-accent/60 opacity-60",
-                    entry.hidden && "opacity-50",
+                    entry.hidden && "opacity-40",
                   )}
                 >
                   <GripVertical className="text-muted-foreground/50 hidden h-4 w-4 shrink-0 cursor-grab active:cursor-grabbing md:block" />
