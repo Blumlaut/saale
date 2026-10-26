@@ -452,6 +452,13 @@ model AdminSettings {
   /// Per-plugin switches, keyed by directory name:
   ///   { "my-plugin": { "enabled": false } }
   piPluginStates         Json?
+  /// Branding colours, sparse per mode:
+  ///   { "light": { "primary": "#2563eb" }, "dark": { "primary": "#3b82f6" } }
+  /// A token that is absent keeps the palette in globals.css.
+  themeColors            Json?
+  /// File name of the uploaded agent avatar under <uploads>/branding. Empty
+  /// means the built-in mark is drawn instead.
+  brandingAvatar         String   @default("")
   updatedAt              DateTime @updatedAt
 
   @@map("admin_settings")

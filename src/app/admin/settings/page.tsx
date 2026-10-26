@@ -9,8 +9,11 @@ import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { TelegramBotPanel } from "@/components/admin/telegram-bot-panel";
+import { BrandingPanel } from "@/components/admin/branding-panel";
 import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
+import { normalizeThemeColors, type BrandColors } from "@/lib/branding/theme";
+import { reloadBrandingStyles } from "@/lib/branding/client";
 
 interface AdminSettings {
   signupsEnabled: boolean;
@@ -18,6 +21,8 @@ interface AdminSettings {
   globalModelName: string;
   globalProviderModels: Record<string, unknown> | null;
   featureDefaults: Record<string, boolean> | null;
+  themeColors: unknown;
+  brandingAvatar: string;
 }
 
 export default function AdminSettingsPage() {
@@ -30,6 +35,8 @@ export default function AdminSettingsPage() {
   const [signupsEnabled, setSignupsEnabled] = useState(true);
   const [globalModelId, setGlobalModelId] = useState("");
   const [featureDefaults, setFeatureDefaults] = useState<Record<string, boolean>>({});
+  const [themeColors, setThemeColors] = useState<BrandColors>({ light: {}, dark: {} });
+  const [brandingAvatar, setBrandingAvatar] = useState("");
 
   // Load admin settings
   useEffect(() => {
@@ -38,6 +45,8 @@ export default function AdminSettingsPage() {
         setSettings(data.settings);
         setSignupsEnabled(data.settings.signupsEnabled);
         setFeatureDefaults(data.settings.featureDefaults ?? {});
+        setThemeColors(normalizeThemeColors(data.settings.themeColors));
+        setBrandingAvatar(data.settings.brandingAvatar ?? "");
         const modelStr =
           data.settings.globalModelProvider && data.settings.globalModelName
             ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
@@ -68,14 +77,16 @@ export default function AdminSettingsPage() {
         globalModelProvider: globalModelId ? provider : "",
         globalModelName: globalModelId ? modelParts.join("/") : "",
         featureDefaults,
+        themeColors,
       });
+      reloadBrandingStyles();
       setSaveStatus("success");
     } catch (err) {
       console.error("Failed to save admin settings:", err);
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [signupsEnabled, globalModelId, featureDefaults]);
+  }, [signupsEnabled, globalModelId, featureDefaults, themeColors]);
 
   if (loading) {
     return (
@@ -176,6 +187,13 @@ export default function AdminSettingsPage() {
 
           {/* Shared Telegram bot */}
           <TelegramBotPanel />
+
+          <BrandingPanel
+            colors={themeColors}
+            onColorsChange={setThemeColors}
+            avatar={brandingAvatar}
+            onAvatarChange={setBrandingAvatar}
+          />
         </div>
       </PageScroll>
     </Page>

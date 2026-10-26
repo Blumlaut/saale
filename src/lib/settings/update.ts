@@ -82,6 +82,15 @@ export async function ensureAdminSettings(): Promise<AdminSettings> {
   });
 }
 
+/**
+ * The global admin settings row as it is, or `null` on an instance no admin has
+ * opened yet. Public pages read branding through this. a page view must not
+ * write a row.
+ */
+export async function readAdminSettings(): Promise<AdminSettings | null> {
+  return prisma.adminSettings.findUnique({ where: { id: "global" } });
+}
+
 // ─── Views ───────────────────────────────────────────────────────────────────
 
 function userView(property: UserProperty, row: AppSettings): PropertyView {

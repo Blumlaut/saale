@@ -82,6 +82,8 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     piPluginsEnabled: false,
     piPluginsUi: false,
     piPluginStates: null,
+    themeColors: null,
+    brandingAvatar: "",
     updatedAt: new Date(0),
     ...overrides,
   };
@@ -229,6 +231,22 @@ describe("settings validation", () => {
     expect(accepts("admin.piPluginStates", { alpha: { enabled: false, extra: 1 } })).toBe(false);
   });
 
+  it("validates the branding colours and the avatar name", () => {
+    expect(accepts("admin.themeColors", {})).toBe(true);
+    expect(accepts("admin.themeColors", { light: {}, dark: {} })).toBe(true);
+    expect(accepts("admin.themeColors", { light: { primary: "#f97316", secondary: "#fff" } })).toBe(
+      true,
+    );
+    expect(accepts("admin.themeColors", { light: { primary: "orange" } })).toBe(false);
+    expect(accepts("admin.themeColors", { light: { background: "#ffffff" } })).toBe(false);
+    expect(accepts("admin.themeColors", { sepia: { primary: "#ffffff" } })).toBe(false);
+    expect(accepts("admin.brandingAvatar", "")).toBe(true);
+    expect(accepts("admin.brandingAvatar", "avatar-2f1c0e4a-1b2c-4d5e-8f90-123456789abc.png")).toBe(
+      true,
+    );
+    expect(accepts("admin.brandingAvatar", "../../etc/passwd")).toBe(false);
+  });
+
   it("requires provider:model for model references", () => {
     expect(accepts("models.default", "anthropic:claude-sonnet-4")).toBe(true);
     expect(accepts("models.default", "openrouter:anthropic/claude-sonnet-4")).toBe(true);
@@ -365,6 +383,35 @@ describe("settings projections", () => {
     const restored = apply(property, row, false);
     expect(restored.sidebarItems).toBe(Prisma.DbNull);
     expect(property.read(restored)).toBe(false);
+  });
+
+  it("stores branding colours sparsely and clears the column", () => {
+    const property = findProperty("admin.themeColors")!;
+    if (property.scope !== "admin") throw new Error("expected an admin property");
+    const row = adminRow({
+      themeColors: {
+        light: { primary: "#ABC", background: "#ffffff" },
+        dark: { secondary: "nope" },
+      },
+    });
+
+    // Only brandable tokens survive, normalized to one case.
+    expect(property.read(row)).toEqual({ light: { primary: "#aabbcc" }, dark: {} });
+    expect(property.write(row, { dark: { primary: "#60A5FA" } })).toEqual({
+      themeColors: { light: {}, dark: { primary: "#60a5fa" } },
+    });
+    expect(property.write(row, { light: {} })).toEqual({ themeColors: Prisma.DbNull });
+  });
+
+  it("stores the agent avatar file name, and clears it back to the mark", () => {
+    const property = findProperty("admin.brandingAvatar")!;
+    if (property.scope !== "admin") throw new Error("expected an admin property");
+    const name = "avatar-2f1c0e4a-1b2c-4d5e-8f90-123456789abc.png";
+    const row = adminRow();
+
+    expect(property.read(adminRow({ brandingAvatar: name }))).toBe(name);
+    expect(property.write(row, ` ${name} `)).toEqual({ brandingAvatar: name });
+    expect(property.write(row, null)).toEqual({ brandingAvatar: "" });
   });
 
   it("exposes admin properties only in the admin scope", () => {
