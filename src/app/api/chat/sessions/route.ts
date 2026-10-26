@@ -24,13 +24,15 @@ export async function GET(request: NextRequest) {
   const sessions = await prisma.chatSession.findMany({
     where: { userId: authResult.user.id, projectId },
     // Sort by real chat activity (messages sent, title edited). NOT
-    // updatedAt, which is bumped by tool state and background jobs.
-    orderBy: { lastActivityAt: "desc" },
+    // updatedAt, which is bumped by tool state and background jobs. Pinned
+    // chats come first so the cut never drops one off the list.
+    orderBy: [{ pinned: "desc" }, { lastActivityAt: "desc" }],
     take: 50,
     select: {
       id: true,
       title: true,
       temporary: true,
+      pinned: true,
       messageCount: true,
       createdAt: true,
       updatedAt: true,
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest) {
       id: s.id,
       title: s.title,
       temporary: s.temporary,
+      pinned: s.pinned,
       messageCount: s.messageCount,
       watcherCount: s._count.scriptWatchers,
       isGenerating: activeSessionIds.has(s.id),
