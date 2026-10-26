@@ -104,10 +104,18 @@ describe("limitDrift", () => {
     expect(limitDrift({}, config({ memory: "8g", pids: 512, cpus: 2 }))).toHaveLength(3);
     // Docker reports the limits as numbers; a numeric string still compares.
     expect(limitDrift({ Memory: String(8 * 1024 ** 3) }, config({ memory: "8g" }))).toEqual([
-      "PidsLimit: 0 → 512",
+      "PidsLimit: 0 → 4096",
       "NanoCpus: 0 → 2000000000",
     ]);
     expect(limitDrift(undefined, config())).toEqual([]);
+  });
+
+  it("leaves the process limit to the kernel when it is 0", () => {
+    const unlimited = config({ pids: 0 });
+    const spec = containerSpec("user-abc", unlimited);
+
+    expect(spec.HostConfig.PidsLimit).toBe(0);
+    expect(limitDrift(spec.HostConfig, unlimited)).toEqual([]);
   });
 });
 
@@ -144,7 +152,7 @@ describe("sandboxConfig", () => {
     vi.stubEnv("SANDBOX_MEMORY", "1g");
     vi.stubEnv("SANDBOX_PIDS", "-5");
 
-    expect(sandboxConfig().pids).toBe(512);
+    expect(sandboxConfig().pids).toBe(4096);
     expect(error).toHaveBeenCalledWith(expect.stringContaining("SANDBOX_PIDS"));
     error.mockRestore();
     vi.unstubAllEnvs();
