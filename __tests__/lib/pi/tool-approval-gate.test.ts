@@ -252,6 +252,4 @@ describe("tool-approval-gate", () => {
       expect(second).toBe(false);
     });
   });
-
-  // ─── wrapWithApprovalGate ────────────────────────────────────────────
 });
