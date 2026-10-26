@@ -26,3 +26,14 @@ export function broadcastChatRenamed(): void {
 export function broadcastSessionsDeleted(ids: readonly string[]): void {
   window.dispatchEvent(new CustomEvent(CHAT_SESSIONS_DELETED_EVENT, { detail: { ids } }));
 }
+
+/**
+ * A chat was pinned or unpinned. `detail` carries which chat and its new state,
+ * so the other lists move the row themselves instead of refetching.
+ */
+export const CHAT_PINNED_EVENT = "chat-pinned";
+
+/** Tell every chat list that a chat's pin state changed. */
+export function broadcastChatPinned(id: string, pinned: boolean): void {
+  window.dispatchEvent(new CustomEvent(CHAT_PINNED_EVENT, { detail: { id, pinned } }));
+}

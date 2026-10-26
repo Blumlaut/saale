@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/http";
-import { CHAT_RENAMED_EVENT, CHAT_SESSIONS_DELETED_EVENT } from "@/lib/chat/session-events";
+import {
+  CHAT_PINNED_EVENT,
+  CHAT_RENAMED_EVENT,
+  CHAT_SESSIONS_DELETED_EVENT,
+} from "@/lib/chat/session-events";
 
 /** How a project hands its chats their checkout. */
 export type CoderChatMode = "worktree" | "repo";
@@ -25,6 +29,7 @@ export interface CoderProjectChat {
   id: string;
   title: string;
   lastActivityAt: string;
+  pinned: boolean;
   isGenerating: boolean;
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
@@ -147,11 +152,13 @@ export function useListRefresh(key: string | null = null): string {
 
     window.addEventListener(CHAT_RENAMED_EVENT, bump);
     window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+    window.addEventListener(CHAT_PINNED_EVENT, bump);
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener(CHAT_RENAMED_EVENT, bump);
       window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+      window.removeEventListener(CHAT_PINNED_EVENT, bump);
       window.removeEventListener("focus", onFocus);
     };
   }, [bump]);

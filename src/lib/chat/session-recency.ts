@@ -11,6 +11,28 @@ export interface SessionActivity {
   updatedAt: string;
 }
 
+export interface SessionPin {
+  pinned?: boolean | null;
+}
+
+/**
+ * Lifts the pinned chats out of the list. They sit at the top of the sidebar,
+ * so neither age nor a collapsed card can bury them.
+ */
+export function splitPinnedSessions<T extends SessionPin>(
+  sessions: T[],
+): { pinned: T[]; unpinned: T[] } {
+  const pinned: T[] = [];
+  const unpinned: T[] = [];
+
+  for (const session of sessions) {
+    if (session.pinned) pinned.push(session);
+    else unpinned.push(session);
+  }
+
+  return { pinned, unpinned };
+}
+
 /**
  * Epoch ms of a chat's last real activity. `lastActivityAt` is the source of
  * truth (messages sent, title edits); `updatedAt` only covers legacy rows.

@@ -1,24 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, ChevronLeft, Loader2, MessageSquarePlus, MoreVertical, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Bot, ChevronLeft, Loader2, MessageSquarePlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ChatListRow, PinnedChatGroup } from "@/components/chat/chat-list";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { deleteJson } from "@/lib/http";
 import { broadcastSessionsDeleted } from "@/lib/chat/session-events";
+import { saveChatPin } from "@/lib/chat/pin";
+import { splitPinnedSessions } from "@/lib/chat/session-recency";
 import { formatRelativeDate } from "@/lib/format";
-import { ROW_ACTION, cn } from "@/lib/utils";
 import { useProject, type CoderProjectChat } from "./use-coder-data";
 
 /**
@@ -55,6 +51,56 @@ export function ProjectChats({
     reload();
     if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
   };
+
+  // The list re-reads itself on the pin event, so the row moves once the
+  // server has it, the same way a chat started here shows up.
+  const togglePin = async (chat: CoderProjectChat) => {
+    try {
+      await saveChatPin(chat.id, !chat.pinned);
+    } catch (err) {
+      console.error(`Failed to ${chat.pinned ? "unpin" : "pin"} coder chat ${chat.id}:`, err);
+      toast.error(chat.pinned ? "Could not unpin the chat" : "Could not pin the chat");
+    }
+  };
+
+  const { pinned, unpinned } = useMemo(() => splitPinnedSessions(chats), [chats]);
+
+  const renderRows = (list: readonly CoderProjectChat[]) =>
+    list.map((chat, index) => (
+      <div key={chat.id}>
+        <ChatListRow
+          title={chat.title || "New Chat"}
+          href={`/dashboard/coder/${projectId}/${chat.id}`}
+          active={chat.id === activeSessionId}
+          pinned={chat.pinned}
+          accessories={
+            <>
+              {/* Opened by a watcher fire rather than by a person. */}
+              {chat.origin === "watcher" && (
+                <Badge variant="secondary" className="shrink-0 gap-1 px-1.5 py-0 text-[10px]">
+                  <Bot className="h-3 w-3" />
+                  Bot
+                </Badge>
+              )}
+              {chat.isGenerating && (
+                <Loader2 className="text-primary h-3 w-3 shrink-0 animate-spin" />
+              )}
+            </>
+          }
+          subtitle={
+            <>
+              <span className="shrink-0">{formatRelativeDate(chat.lastActivityAt)}</span>
+              {chat.worktree && (
+                <span className="truncate text-[11px]">{chat.worktree.branch}</span>
+              )}
+            </>
+          }
+          onTogglePin={() => togglePin(chat)}
+          onDelete={() => setDeleting(chat)}
+        />
+        {index < list.length - 1 && <Separator />}
+      </div>
+    ));
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden">
@@ -109,66 +155,9 @@ export function ProjectChats({
           </p>
         )}
 
-        {chats.map((chat, index) => (
-          <div key={chat.id}>
-            <div
-              className={cn(
-                "group hover:bg-accent/60 flex items-center gap-1 px-1 transition-colors",
-                chat.id === activeSessionId && "bg-accent",
-              )}
-            >
-              <Link
-                href={`/dashboard/coder/${projectId}/${chat.id}`}
-                className="flex min-w-0 flex-1 flex-col gap-0.5 py-2.5 pl-2"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {chat.title || "New Chat"}
-                  </span>
-                  {/* Opened by a watcher fire rather than by a person. */}
-                  {chat.origin === "watcher" && (
-                    <Badge variant="secondary" className="shrink-0 gap-1 px-1.5 py-0 text-[10px]">
-                      <Bot className="h-3 w-3" />
-                      Bot
-                    </Badge>
-                  )}
-                  {chat.isGenerating && (
-                    <Loader2 className="text-primary h-3 w-3 shrink-0 animate-spin" />
-                  )}
-                </span>
-                <span className="text-muted-foreground flex items-center gap-2 text-xs">
-                  <span className="shrink-0">{formatRelativeDate(chat.lastActivityAt)}</span>
-                  {chat.worktree && (
-                    <span className="truncate text-[11px]">{chat.worktree.branch}</span>
-                  )}
-                </span>
-              </Link>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={(triggerProps) => (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className={cn("shrink-0", ROW_ACTION)}
-                      aria-label={`Actions for ${chat.title || "this chat"}`}
-                      {...triggerProps}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  )}
-                />
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(chat)}>
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    Delete chat
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            {index < chats.length - 1 && <Separator />}
-          </div>
-        ))}
+        <PinnedChatGroup pinned={pinned} renderRows={renderRows} hasRest={unpinned.length > 0}>
+          {renderRows(unpinned)}
+        </PinnedChatGroup>
       </div>
 
       <ForceDeleteDialog
