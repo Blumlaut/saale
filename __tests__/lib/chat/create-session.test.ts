@@ -101,4 +101,14 @@ describe("createChatSessionRow", () => {
     expect(data.title).toBe("New Chat");
     expect(data.titleSource).toBe("default");
   });
+
+  it("treats the placeholder title as no title at all", async () => {
+    // the web UI always sends "New Chat", so the chat has to stay nameable by
+    // its first message
+    await createChatSessionRow("user-1", { title: "New Chat" });
+
+    const data = mockCreate.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.title).toBe("New Chat");
+    expect(data.titleSource).toBe("default");
+  });
 });
