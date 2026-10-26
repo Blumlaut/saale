@@ -29,10 +29,8 @@ vi.mock("@/lib/pi/chat-session-factory", () => ({
 }));
 
 const mockEmit = vi.fn();
-const mockApprovalGate = vi.fn((..._args: unknown[]) => "gate");
 vi.mock("@/lib/pi/tool-approval-gate", () => ({
   createChatApprovalEmitter: () => mockEmit,
-  createToolApprovalGate: (...args: unknown[]) => mockApprovalGate(...args),
 }));
 
 const mockRegister = vi.fn();
@@ -115,7 +113,7 @@ describe("ensureChatAgent", () => {
     mockClearBuilding.mockResolvedValue(undefined);
   });
 
-  it("builds the agent with the user's settings and the approval gate on a miss", async () => {
+  it("builds the agent with the user's settings and the approval channel on a miss", async () => {
     mockGetPoolEntry.mockReturnValue(undefined);
 
     const { entry, existedAlready } = await ensureChatAgent({
@@ -130,8 +128,8 @@ describe("ensureChatAgent", () => {
     expect(options.customInstructions).toBe("Be brief.");
     expect(options.toolPolicies).toEqual({ bash: "ask" });
     expect(options.toolExposure).toEqual({ email: "codemode" });
-    // Without the gate the session's tools run without the user's policies.
-    expect(options.wrapTool).toBe("gate");
+    // The session's gate publishes through this channel, and it is fixed when
+    // the session is built.
     expect(options.emitApprovalRequest).toBe(mockEmit);
     expect(options.model).toBeUndefined();
   });

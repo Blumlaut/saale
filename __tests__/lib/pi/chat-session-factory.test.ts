@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 /**
  * The factory every chat entry point builds its Pi agent session with.
@@ -102,9 +101,7 @@ describe("chat session factory", () => {
   });
 
   describe("createChatAgentSession", () => {
-    it("forwards the approval gate, prompt, model and tool config", async () => {
-      const gate = (tool: ToolDefinition) => ({ ...tool, gated: true });
-      const wrapTool = vi.fn(gate);
+    it("forwards the approval channel, prompt, model and tool config", async () => {
       const emitApprovalRequest = vi.fn();
 
       const created = await createChatAgentSession({
@@ -114,7 +111,6 @@ describe("chat session factory", () => {
         customInstructions: "Be brief.",
         toolPolicies: { bash: "ask" },
         toolExposure: { email: "deferred" },
-        wrapTool,
         emitApprovalRequest,
       });
 
@@ -122,10 +118,8 @@ describe("chat session factory", () => {
       expect(mockCreatePersistentSession).toHaveBeenCalledTimes(1);
       const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
 
-      // The gate is what enforces tool policies  it must reach the session,
-      // and MCP tools (registered after the session exists) need the same
-      // policies plus an approval channel of their own.
-      expect(options.wrapTool).toBe(wrapTool);
+      // The session's gate publishes its approval requests through this
+      // channel, and it is fixed when the session is built.
       expect(options.emitApprovalRequest).toBe(emitApprovalRequest);
       expect(options.toolPolicies).toEqual({ bash: "ask" });
       expect(options.toolExposure).toEqual({ email: "deferred" });
@@ -150,7 +144,6 @@ describe("chat session factory", () => {
           coderCustomInstructions: "Never add a dependency without asking.",
           toolPolicies: null,
           toolExposure: null,
-          wrapTool: (tool) => tool,
           emitApprovalRequest: vi.fn(),
         });
 
@@ -189,7 +182,6 @@ describe("chat session factory", () => {
         customInstructions: null,
         toolPolicies: null,
         toolExposure: null,
-        wrapTool: (tool) => tool,
         emitApprovalRequest: vi.fn(),
       });
 
@@ -210,7 +202,6 @@ describe("chat session factory", () => {
         customInstructions: null,
         toolPolicies: null,
         toolExposure: null,
-        wrapTool: (tool) => tool,
         emitApprovalRequest: vi.fn(),
       });
 

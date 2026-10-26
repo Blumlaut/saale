@@ -4,13 +4,13 @@ import {
   getAgentDir,
   type AgentSession,
   type ExtensionFactory,
+  type ExtensionUIContext,
   type ResourceDiagnostic,
   type ResourceLoader,
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { createUserMcpExtension } from "@/lib/mcp/servers";
-import { createCodemodeApprovalExtension } from "./codemode-approval";
-import { createMcpToolPolicyExtension } from "./mcp-tool-policy";
+import { createToolApprovalExtension } from "./tool-approval-extension";
 import {
   globalPluginPaths,
   pluginIdForPath,
@@ -225,13 +225,11 @@ export interface AgentResourceOptions {
    */
   workspace?: SessionWorkspace | undefined;
   /**
-   * The user behind the tools Pi registers after the session exists.
+   * The user behind the tools a session can call.
    *
-   * `codemode` comes from its extension and MCP tools from the user's servers
-   * both are registered at `session_start`, so neither passes through
-   * `wrapTool` and each needs a gate of its own. Passing this connects those
-   * servers and gates every registered tool with the user's approval policies;
-   * a run with nobody to ask (an agent job) passes nothing and gets neither.
+   * Passing this connects the user's MCP servers and installs the approval
+   * gate over every call the session makes. a run with nobody to ask (an agent
+   * job) passes nothing and gets neither.
    */
   interactive?: {
     userId: string;
@@ -262,22 +260,20 @@ export async function createAgentResourceLoader(
       ? await createUserMcpExtension(interactive.userId)
       : null;
 
-    // The script gate needs the servers' policies: a script reaches MCP tools
-    // like any other, and whether one of those calls asks is resolved the same
-    // way a direct call resolves it.
+    // One gate for every tool call the session can make, whichever way the
+    // tool was registered: Saale's own, a plugin's, an MCP server's, or a
+    // codemode script's nested call.
     extensionFactories.push(
-      createCodemodeApprovalExtension({
-        ...interactive,
+      createToolApprovalExtension({
+        userId: interactive.userId,
+        sessionId: interactive.sessionId,
+        toolPolicies: interactive.toolPolicies,
         mcpServerPolicies: mcp?.policies ?? {},
+        emitApprovalRequest: interactive.emitApprovalRequest,
       }),
     );
 
-    if (mcp) {
-      extensionFactories.push(
-        mcp.extension,
-        createMcpToolPolicyExtension({ ...interactive, serverPolicies: mcp.policies }),
-      );
-    }
+    if (mcp) extensionFactories.push(mcp.extension);
   }
 
   const workspace = options.workspace;
@@ -339,8 +335,15 @@ const loggingSessions = new WeakSet<AgentSession>();
  * extensions never activate. the user's MCP servers never connect and Pi's
  * `codemode` tool (registered inactive) is never enabled. It must run once per
  * session, after `createAgentSession`.
+ *
+ * `uiContext` is what an extension's `ctx.ui` resolves to. Given, `ctx.hasUI`
+ * is true and dialogs reach the chat; omitted (an unattended run), Pi's no-op
+ * context answers every dialog as cancelled.
  */
-export async function startSessionExtensions(session: AgentSession): Promise<void> {
+export async function startSessionExtensions(
+  session: AgentSession,
+  options: { uiContext?: ExtensionUIContext } = {},
+): Promise<void> {
   // A plugin handler that throws is reported by Pi to this listener and nowhere
   // else. Attached before binding so `session_start` failures are caught too.
   if (!loggingSessions.has(session)) {
@@ -354,7 +357,9 @@ export async function startSessionExtensions(session: AgentSession): Promise<voi
     });
   }
 
-  await session.bindExtensions({});
+  await session.bindExtensions(
+    options.uiContext ? { uiContext: options.uiContext, mode: "rpc" } : {},
+  );
   const active = session.getActiveToolNames();
   const missing = DEFAULT_EXTENSION_TOOLS.filter((name) => !active.includes(name));
   if (missing.length > 0) session.setActiveToolsByName([...active, ...missing]);

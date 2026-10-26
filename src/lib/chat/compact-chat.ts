@@ -6,7 +6,7 @@ import {
   loadChatUserSettings,
   resolveChatModel,
 } from "@/lib/pi/chat-session-factory";
-import { createChatApprovalEmitter, createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
+import { createChatApprovalEmitter } from "@/lib/pi/tool-approval-gate";
 import { clearCompactionInProgress, markCompactionInProgress } from "@/lib/redis";
 
 /**
@@ -81,17 +81,11 @@ export async function compactChatSession(params: {
   }
 
   // Get or create pooled agent (recreates from JSONL if evicted). The approval
-  // gate must be applied here too: this route can be the one that puts the
-  // session into the pool, and tools are only gated when the agent is built.
+  // channel must be built here too: this route can be the one that puts the
+  // session into the pool, and the gate is fixed when the agent is built.
   const poolKey = getPoolKey(userId, sessionId);
   const userSettings = await loadChatUserSettings(userId);
   const emitApprovalRequest = createChatApprovalEmitter(sessionId);
-  const approvalWrapper = createToolApprovalGate({
-    userId,
-    sessionId,
-    toolPolicies: userSettings.toolPolicies,
-    emitApprovalRequest,
-  });
 
   const pooled = await createAndPool(poolKey, () =>
     createChatAgentSession({
@@ -103,7 +97,6 @@ export async function compactChatSession(params: {
       coderCustomInstructions: userSettings.coderCustomInstructions,
       toolPolicies: userSettings.toolPolicies,
       toolExposure: userSettings.toolExposure,
-      wrapTool: approvalWrapper,
       emitApprovalRequest,
     }),
   );

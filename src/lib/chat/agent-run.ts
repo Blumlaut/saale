@@ -22,7 +22,7 @@ import {
   loadChatUserSettings,
   type ChatSessionModelConfig,
 } from "@/lib/pi/chat-session-factory";
-import { createChatApprovalEmitter, createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
+import { createChatApprovalEmitter } from "@/lib/pi/tool-approval-gate";
 import { ensureWorktree } from "@/lib/coder/worktrees";
 import {
   clearAgentBuilding,
@@ -72,16 +72,10 @@ export async function ensureChatAgent(options: {
     entry = await createAndPool(poolKey, async () => {
       options.log?.("pool", "miss. creating new agent");
 
-      // Only on a miss: the settings and the gates they shape are baked into the
+      // Only on a miss: the settings and the gate they shape are baked into the
       // session, which is exactly why this is the one construction path.
       const userSettings = await loadChatUserSettings(userId);
       const emitApprovalRequest = createChatApprovalEmitter(sessionId);
-      const wrapTool = createToolApprovalGate({
-        userId,
-        sessionId,
-        toolPolicies: userSettings.toolPolicies,
-        emitApprovalRequest,
-      });
 
       // A coder chat runs in its worktree and nowhere else. Building it here is
       // what keeps every entry point (browser, telegram, respond-in-chat) off the
@@ -101,7 +95,6 @@ export async function ensureChatAgent(options: {
         toolPolicies: userSettings.toolPolicies,
         toolExposure: userSettings.toolExposure,
         ...(worktree ? { workspaceCwd: worktree.path, checkoutMode: worktree.mode } : {}),
-        wrapTool,
         emitApprovalRequest,
       });
     });

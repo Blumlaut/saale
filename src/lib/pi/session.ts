@@ -79,26 +79,21 @@ export async function buildSessionDeps(options: {
   toolConfig: ToolConfig | null | undefined;
   /** Per-category exposure (`AppSettings.toolExposure`). */
   toolExposure?: ToolExposureConfig | null | undefined;
+  /** Per-tool approval policies (`AppSettings.toolPolicies`). */
+  toolPolicies?: Record<string, string> | null | undefined;
   modelProvider: string | undefined;
   modelName: string | undefined;
-  /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
-  wrapTool?: (tool: ToolDefinition) => ToolDefinition;
 }) {
   const { modelRuntime } = await buildModelRuntime(options.userId);
 
   const enabled = resolveToolConfig(options.toolConfig);
 
-  // Caller-supplied tools get the same wrappers as the resolved ones: without
-  // this they would execute outside the approval gate (and outside the abort
-  // race), i.e. a tool added by a caller would silently be ungated.
-  const allCustomTools: ToolDefinition[] = options.wrapTool
-    ? options.customTools.map((tool) => options.wrapTool!(tool))
-    : [...options.customTools];
+  const allCustomTools: ToolDefinition[] = [...options.customTools];
 
   const resolvedTools = await resolveTools(options.userId, options.sessionId, enabled, {
     createSandboxScopedTools,
-    ...(options.wrapTool ? { wrapWithApproval: options.wrapTool } : {}),
     ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
+    toolPolicies: options.toolPolicies,
   });
   allCustomTools.push(...resolvedTools);
 

@@ -90,7 +90,7 @@ const STALE_GENERATION_POLL_MS = 10_000;
  * Emits: turn_start, token, thinking, tool_pending, tool_start, tool_update,
  * tool_end, turn_end, message_saved, token_usage, compaction_start,
  * compaction_end, done, error, tool_approval_request, queue_update,
- * messages_changed
+ * messages_changed, plugin_ui_request, plugin_notice, plugin_status
  */
 export async function GET(
   request: NextRequest,

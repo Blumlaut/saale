@@ -39,23 +39,12 @@ function tool(name: string): ToolDefinition {
 }
 
 describe("buildSessionDeps", () => {
-  const gate = vi.fn((t: ToolDefinition) => ({ ...t, name: `gated:${t.name}` }));
-
   beforeEach(() => {
     vi.clearAllMocks();
-    gate.mockImplementation((t: ToolDefinition) => ({ ...t, name: `gated:${t.name}` }));
-    mockResolveTools.mockImplementation(
-      async (_userId: string, _sessionId: string, _enabled: unknown, options: unknown) => {
-        const resolver = options as {
-          wrapWithApproval?: (t: ToolDefinition) => ToolDefinition;
-        };
-        const resolved = tool("memory_search");
-        return resolver.wrapWithApproval ? [resolver.wrapWithApproval(resolved)] : [resolved];
-      },
-    );
+    mockResolveTools.mockResolvedValue([tool("memory_search")]);
   });
 
-  it("wraps caller-supplied tools with the same gate as resolved ones", async () => {
+  it("registers caller-supplied tools alongside the resolved ones", async () => {
     const { allCustomTools } = await buildSessionDeps({
       userId: "user-1",
       sessionId: "session-1",
@@ -63,25 +52,9 @@ describe("buildSessionDeps", () => {
       toolConfig: null,
       modelProvider: "custom",
       modelName: "model",
-      wrapTool: gate,
     });
 
-    expect(gate).toHaveBeenCalledWith(expect.objectContaining({ name: "caller_tool" }));
-    expect(allCustomTools.map((t) => t.name)).toEqual(["gated:caller_tool", "gated:memory_search"]);
-  });
-
-  it("leaves caller-supplied tools untouched when no gate is configured", async () => {
-    const custom = tool("caller_tool");
-    const { allCustomTools } = await buildSessionDeps({
-      userId: "user-1",
-      sessionId: "session-1",
-      customTools: [custom],
-      toolConfig: null,
-      modelProvider: "custom",
-      modelName: "model",
-    });
-
-    expect(gate).not.toHaveBeenCalled();
+    // Gating happens on `tool_call`, so no definition is rewritten here.
     expect(allCustomTools.map((t) => t.name)).toEqual(["caller_tool", "memory_search"]);
   });
 
@@ -108,5 +81,27 @@ describe("buildSessionDeps", () => {
     });
 
     expect(enabled).toMatchObject({ terminal: true, email: false, settings: true });
+  });
+
+  it("hands the approval policies to the resolver, which drops the tools set to off", async () => {
+    let policies: Record<string, string> | null | undefined;
+    mockResolveTools.mockImplementationOnce(
+      async (_userId: string, _sessionId: string, _config: unknown, opts: unknown) => {
+        policies = (opts as { toolPolicies?: Record<string, string> }).toolPolicies;
+        return [tool("memory_search")];
+      },
+    );
+
+    await buildSessionDeps({
+      userId: "user-1",
+      sessionId: "session-1",
+      customTools: [],
+      toolConfig: null,
+      toolPolicies: { memory_search: "off" },
+      modelProvider: "custom",
+      modelName: "model",
+    });
+
+    expect(policies).toEqual({ memory_search: "off" });
   });
 });

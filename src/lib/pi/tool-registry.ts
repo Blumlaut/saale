@@ -2,6 +2,7 @@ import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-categories";
 import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
+import { resolveToolPolicy } from "./tool-policy";
 import { isConfigured as isSandboxConfigured } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
@@ -123,12 +124,12 @@ export function getAllToolInfos(): ToolInfo[] {
  * Backward compat: existing sessions may have { files: true } or { bash: true }.
  * These are mapped to { terminal: true } for resolution.
  *
- * @param options.wrapWithApproval - Optional wrapper to apply to each resolved tool.
- *   Receives the tool, userId, sessionId, policy lookup, and approval emitter.
  * @param options.exposure - Per-category exposure (`AppSettings.toolExposure`).
  *   Categories left at their default are resolved from `TOOL_CATEGORIES`;
  *   `codemode`/`deferred` tools are registered but not declared to the model,
  *   and codemode scripts reach them through the tool registry.
+ * @param options.toolPolicies - Per-tool approval policies (`AppSettings.toolPolicies`).
+ *   A tool set to `off` is left out entirely.
  */
 export async function resolveTools(
   userId: string,
@@ -144,10 +145,10 @@ export async function resolveTools(
       edit: ToolDefinition;
       bash: ToolDefinition;
     }>;
-    /** Optional approval gate wrapper. When provided, every tool is wrapped. */
-    wrapWithApproval?: (tool: ToolDefinition) => ToolDefinition;
     /** How each category's tools reach the model. */
     exposure?: ToolExposureConfig | null | undefined;
+    /** Per-tool approval policies (`AppSettings.toolPolicies`). */
+    toolPolicies?: Record<string, string> | null | undefined;
   },
 ): Promise<ToolDefinition[]> {
   const tools: ToolDefinition[] = [];
@@ -195,26 +196,27 @@ export async function resolveTools(
     }
   }
 
+  // ── Drop the tools the user set to "off" ────────────────────────────
+  // The approval gate refuses the call anyway, so declaring the tool only
+  // spends schema tokens and invites a call that cannot run. Tools registered
+  // after the session (plugin, MCP) are not built here, and the gate stays the
+  // one that blocks those.
+  const permitted = tools.filter(
+    (tool) => resolveToolPolicy(tool.name, { toolPolicies: options.toolPolicies }) !== "off",
+  );
+
   // ── Put categories behind codemode ──────────────────────────────────
   // Exposure is how Pi decides whether a tool is declared to the model or only
   // reachable from a codemode script; the gate and abort wrappers below both
   // spread the definition, so it survives them. Categories the user left alone
   // keep their registry default.
-  const exposed = applyToolExposure(tools, options.exposure ?? {});
+  const exposed = applyToolExposure(permitted, options.exposure ?? {});
 
   // ── Make every tool call cancellable ────────────────────────────────
   // Pi awaits tool execution and only checks the abort signal between tool
   // calls, so a Stop that arrives during a tool would otherwise not take effect
-  // until that tool finishes. Applied before the approval wrapper, whose own
-  // wait already honours the signal.
-  const abortable = exposed.map(withAbortSignal);
-
-  // ── Apply approval gate wrapper (if provided) ───────────────────────
-  if (options.wrapWithApproval) {
-    return abortable.map((t) => options.wrapWithApproval!(t));
-  }
-
-  return abortable;
+  // until that tool finishes. Applied here so every resolved tool has it.
+  return exposed.map(withAbortSignal);
 }
 
 /**

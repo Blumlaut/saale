@@ -5,6 +5,9 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
+import { readPluginConfig } from "./plugins";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { createExtensionUiContext } from "@/lib/plugin-ui/ui-context";
 import { createSaaleAgentSession, resolveAgentCwd } from "./agent-session";
 import { sessionWorkspace } from "./project-context";
 import { buildSessionDeps, type ToolConfig } from "./session";
@@ -32,11 +35,10 @@ import type { ApprovalRequest } from "./tool-approval-gate";
  * @param options.modelProvider - Model provider (e.g., "anthropic")
  * @param options.modelName - Model name (e.g., "claude-sonnet-4-5")
  * @param options.thinkingLevel - Thinking level for the model
- * @param options.wrapTool - Optional wrapper applied to every resolved tool (e.g. approval gate)
  * @param options.systemPrompt - Custom system prompt (served via resource loader)
- * @param options.emitApprovalRequest - Approval channel for the tools Pi extensions register (codemode, MCP)
- * @param options.toolPolicies - Per-tool approval policies (those tools are gated by them)
- * @param options.mcp - Give the session its interactive tools: connect the user's MCP servers and gate what the extensions register
+ * @param options.emitApprovalRequest - Approval channel for the session's tool calls
+ * @param options.toolPolicies - Per-tool approval policies
+ * @param options.mcp - Give the session its interactive tools: connect the user's MCP servers and gate every call
  */
 export async function createPersistentSession(options: {
   userId: string;
@@ -51,8 +53,6 @@ export async function createPersistentSession(options: {
   modelProvider?: string;
   modelName?: string;
   thinkingLevel?: string;
-  /** Optional wrapper applied to every resolved tool (e.g. approval gate). */
-  wrapTool?: (tool: ToolDefinition) => ToolDefinition;
   /** System prompt served through the resource loader. */
   systemPrompt: string;
   /** Approval channel for the tools Pi extensions register; without it they are neither connected nor gated. */
@@ -70,9 +70,9 @@ export async function createPersistentSession(options: {
     customTools: options.customTools,
     toolConfig: options.toolConfig,
     toolExposure: options.toolExposure,
+    toolPolicies: options.toolPolicies,
     modelProvider: options.modelProvider,
     modelName: options.modelName,
-    ...(options.wrapTool ? { wrapTool: options.wrapTool } : {}),
   });
 
   // The workspace the session works in: a coder chat's worktree, or the
@@ -131,7 +131,25 @@ export async function createPersistentSession(options: {
   });
 
   // Extensions connect on `session_start`. the user's MCP servers among them.
-  await startSessionExtensions(result.session);
+  // A chat can show what a plugin asks; an unattended run cannot, so it binds
+  // without a UI context and every dialog is cancelled at once.
+  const uiContext = options.mcp ? await buildUiContext(options.userId, options.sessionId) : null;
+  await startSessionExtensions(result.session, uiContext ? { uiContext } : {});
 
   return result;
+}
+
+/** The chat's `ctx.ui`, when an admin has let plugins open dialogs. */
+async function buildUiContext(
+  userId: string,
+  sessionId: string,
+): Promise<ExtensionUIContext | null> {
+  try {
+    const config = await readPluginConfig();
+    if (!config.enabled || !config.ui) return null;
+    return createExtensionUiContext({ userId, sessionId });
+  } catch (err) {
+    console.error(`Failed to build the plugin UI context for ${sessionId}:`, err);
+    return null;
+  }
 }
