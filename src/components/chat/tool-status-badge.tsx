@@ -12,8 +12,7 @@ const TONE_CLASS: Record<ToolStatusTone, string> = {
   danger: "bg-red-500/10 text-red-600 dark:text-red-400",
 };
 
-const TONE_ICON: Record<ToolStatusTone, typeof CheckCircle> = {
-  running: Loader2,
+const TONE_ICON: Record<Exclude<ToolStatusTone, "running">, typeof CheckCircle> = {
   success: CheckCircle,
   danger: AlertCircle,
 };
@@ -21,11 +20,24 @@ const TONE_ICON: Record<ToolStatusTone, typeof CheckCircle> = {
 /**
  * The status badge every tool card shares, plus the share page's redacted card.
  *
+ * A call still working shows a bare spinner; the pill waits for a result to
+ * report.
+ *
  * Kept out of the card shell so the redacted card. which renders no card at
  * all, only a name and a summary. can use the same badge without pulling in
  * the transcript's renderer.
  */
 export function ToolStatusBadge({ status }: { status: ToolStatus }) {
+  if (status.tone === "running") {
+    return (
+      <Loader2
+        role="img"
+        aria-label={status.label}
+        className="text-muted-foreground ml-auto h-2.5 w-2.5 shrink-0 animate-spin"
+      />
+    );
+  }
+
   const Icon = TONE_ICON[status.tone];
 
   return (
@@ -36,7 +48,7 @@ export function ToolStatusBadge({ status }: { status: ToolStatus }) {
         TONE_CLASS[status.tone],
       )}
     >
-      <Icon className={cn("mr-1 h-2.5 w-2.5", status.tone === "running" && "animate-spin")} />
+      <Icon className="mr-1 h-2.5 w-2.5" />
       {status.label}
     </Badge>
   );
