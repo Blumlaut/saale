@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { batchSizeField, emailAccountField, maxEmailAgeField, modelField } from "./_helpers";
+import type { FieldDef } from "@/lib/queue/job-schemas";
 import { extractEventsFromEmails } from "@/lib/calendar/email-extraction";
 
 export const metadata = {
@@ -10,50 +12,23 @@ export const metadata = {
   usesAi: true,
 } as const;
 
-export const fields = [
-  {
-    key: "accountId",
-    label: "Email Account",
-    description: "Leave empty to scan all enabled email accounts",
-    type: "select" as const,
-    default: "",
-    options: [] as Array<{ value: string; label: string }>,
-  },
+export const fields: FieldDef[] = [
+  emailAccountField("Email Account", "Leave empty to scan all enabled email accounts"),
   {
     key: "targetCalendarId",
     label: "Target Calendar",
     description: "Calendar to create events in (leave empty for default calendar)",
-    type: "select" as const,
+    type: "select",
     default: "",
-    options: [] as Array<{ value: string; label: string }>,
+    options: [],
   },
-  {
-    key: "limit",
-    label: "Batch size",
+  batchSizeField({
     description: "Number of emails to scan per run",
-    type: "number" as const,
-    default: 20,
-    min: 1,
+    fallback: 20,
     max: 100,
-    step: 1,
-  },
-  {
-    key: "maxEmailAge",
-    label: "Max email age",
-    description: "Only scan emails received within this many hours (0 = no limit)",
-    type: "number" as const,
-    default: 48,
-    min: 0,
-    max: 720,
-    step: 1,
-  },
-  {
-    key: "modelId",
-    label: "AI Model",
-    description: "Model used for event extraction",
-    type: "model" as const,
-    default: "",
-  },
+  }),
+  maxEmailAgeField({ verb: "scan", fallback: 48 }),
+  modelField("Model used for event extraction"),
 ];
 
 export async function handler(params: {

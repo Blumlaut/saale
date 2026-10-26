@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { dispatchAiJob } from "@/lib/queue/job-handler";
+import { askForJson, scanUnreadEmails } from "@/lib/email/extraction-scan";
 
 export interface ExtractedEvent {
   title: string;
@@ -49,88 +49,40 @@ export async function extractEventsFromEmails(params: {
   eventsSkipped: number;
   errors: string[];
 }> {
-  let emailsScanned = 0;
-  let eventsCreated = 0;
-  let eventsSkipped = 0;
-  const errors: string[] = [];
+  const scan = await scanUnreadEmails({
+    tag: "email-to-calendar",
+    scannedFlag: "calendarScanned",
+    userId: params.userId,
+    accountId: params.accountId,
+    limit: params.limit,
+    maxEmailAge: params.maxEmailAge,
+    process: async (email) => {
+      const extracted = await extractSingleEvent(email, params.userId, params.modelId);
 
-  // Fetch candidate emails
-  const where: Record<string, unknown> = {
-    calendarScanned: false,
-  };
+      // An event the model could not describe, or one that already exists, is
+      // read: the email stays scanned either way.
+      if (!extracted || !validateExtractedEvent(extracted)) return { skipped: 1 };
 
-  if (params.accountId) {
-    where.accountId = params.accountId;
-  }
+      const isDuplicate = await checkDuplicate(extracted, params.userId, params.targetCalendarId);
+      if (isDuplicate) return { skipped: 1 };
 
-  if (params.maxEmailAge && params.maxEmailAge > 0) {
-    const cutoff = new Date();
-    cutoff.setHours(cutoff.getHours() - params.maxEmailAge);
-    where.date = { gte: cutoff };
-  }
-
-  const limit = Math.min(params.limit ?? 20, 100);
-  const emails = await prisma.emailMessage.findMany({
-    where,
-    orderBy: { date: "desc" },
-    take: limit,
-    select: {
-      id: true,
-      subject: true,
-      bodyText: true,
-      bodyPreview: true,
-      date: true,
-      accountId: true,
+      await createCalendarEvent(extracted, params.userId, params.targetCalendarId, email.id);
+      return { created: 1 };
     },
   });
 
-  for (const email of emails) {
-    emailsScanned++;
-
-    try {
-      // Mark as scanned immediately to avoid re-processing on retry
-      await prisma.emailMessage.update({
-        where: { id: email.id },
-        data: { calendarScanned: true },
-      });
-
-      const extracted = await extractSingleEvent(email, params.userId, params.modelId);
-
-      if (!extracted) {
-        eventsSkipped++;
-        continue;
-      }
-
-      // Validate extracted data
-      if (!validateExtractedEvent(extracted)) {
-        eventsSkipped++;
-        continue;
-      }
-
-      // Dedup check (scoped to user's calendars)
-      const isDuplicate = await checkDuplicate(extracted, params.userId, params.targetCalendarId);
-      if (isDuplicate) {
-        eventsSkipped++;
-        continue;
-      }
-
-      // Create calendar event (scoped to user's calendars)
-      await createCalendarEvent(extracted, params.userId, params.targetCalendarId, email.id);
-      eventsCreated++;
-    } catch (err) {
-      const emailErr = err as Error;
-      console.error(`[email-to-calendar] Failed to process email ${email.id}:`, emailErr.message);
-      errors.push(`Failed to process email "${email.subject.slice(0, 50)}": ${emailErr.message}`);
-    }
-  }
-
   // eslint-disable-next-line no-console
   console.log(
-    `[email-to-calendar] Done: ${emailsScanned} scanned, ${eventsCreated} created, ` +
-      `${eventsSkipped} skipped, ${errors.length} errors`,
+    `[email-to-calendar] Done: ${scan.emailsScanned} scanned, ${scan.created} created, ` +
+      `${scan.skipped} skipped, ${scan.errors.length} errors`,
   );
 
-  return { emailsScanned, eventsCreated, eventsSkipped, errors };
+  return {
+    emailsScanned: scan.emailsScanned,
+    eventsCreated: scan.created,
+    eventsSkipped: scan.skipped,
+    errors: scan.errors,
+  };
 }
 
 /**
@@ -149,41 +101,21 @@ async function extractSingleEvent(
   const body = email.bodyText ?? email.bodyPreview ?? "";
   const currentDate = new Date().toISOString().split("T")[0] ?? "";
 
-  const systemPrompt = EXTRACT_EVENTS_PROMPT.replace("{{CURRENT_DATE}}", currentDate);
-
-  const prompt = JSON.stringify({
-    task: "extract_event",
-    instructions: systemPrompt,
-    email: {
-      subject: email.subject,
-      body: body.slice(0, 4000),
+  const extracted = await askForJson<ExtractedEvent>(
+    userId,
+    {
+      task: "extract_event",
+      instructions: EXTRACT_EVENTS_PROMPT.replace("{{CURRENT_DATE}}", currentDate),
+      email: {
+        subject: email.subject,
+        body: body.slice(0, 4000),
+      },
     },
-  });
+    { modelId, tag: "email-to-calendar" },
+  );
 
-  const response = await dispatchAiJob(userId, prompt, {
-    modelId: modelId ?? null,
-  });
-  const text = response.trim();
-
-  if (!text || text === "null" || text === "NULL") {
-    return null;
-  }
-
-  // Parse JSON response
-  try {
-    // Handle markdown code blocks
-    const cleaned = text.replace(/```(?:json)?\n?/g, "").trim();
-    const parsed = JSON.parse(cleaned) as ExtractedEvent;
-
-    if (!parsed || !parsed.title || !parsed.startDate) {
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    console.warn(`[email-to-calendar] Failed to parse AI response:`, text.slice(0, 200));
-    return null;
-  }
+  if (!extracted?.title || !extracted.startDate) return null;
+  return extracted;
 }
 
 /**

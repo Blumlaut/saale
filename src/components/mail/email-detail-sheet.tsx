@@ -1,21 +1,15 @@
 "use client";
 
-import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { getTagColor } from "@/lib/email/tags";
-import { parseAddresses } from "@/lib/email/utils";
+import { formatMessageDate, parseAddresses, senderLabel } from "@/lib/email/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { MessageToolbar } from "./message-toolbar";
+import { EmailMessageBody } from "./email-message-body";
 import type { EmailMessageDetail } from "./types";
-
-function getSender(msg: EmailMessageDetail): string {
-  if (msg.fromName) return msg.fromName;
-  if (msg.fromEmail) return msg.fromEmail;
-  return "Unknown Sender";
-}
 
 interface EmailDetailSheetProps {
   open: boolean;
@@ -65,7 +59,7 @@ export function EmailDetailSheet({
                   {/* Sender info */}
                   <div className="py-3">
                     <div className="flex items-center gap-2 text-sm">
-                      <span className="font-medium">{getSender(message)}</span>
+                      <span className="font-medium">{senderLabel(message)}</span>
                       <span className="text-muted-foreground text-xs">
                         &lt;{message.fromEmail}&gt;
                       </span>
@@ -74,7 +68,7 @@ export function EmailDetailSheet({
                       To: {parseAddresses(message.to).join(", ")}
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs">
-                      {format(new Date(message.date), "MMM d, yyyy 'at' h:mm a")}
+                      {formatMessageDate(message.date)}
                     </p>
                   </div>
 
@@ -98,16 +92,7 @@ export function EmailDetailSheet({
 
                   {/* Message body */}
                   <div className="pb-4">
-                    {message.bodyHtml ? (
-                      <div
-                        className="max-w-none"
-                        dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
-                      />
-                    ) : (
-                      <pre className="text-sm whitespace-pre-wrap">
-                        {message.bodyText || message.bodyPreview}
-                      </pre>
-                    )}
+                    <EmailMessageBody message={message} />
                   </div>
                 </div>
               </>

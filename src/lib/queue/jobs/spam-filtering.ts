@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { batchSizeField, emailAccountField, maxEmailAgeField, modelField } from "./_helpers";
+import type { FieldDef } from "@/lib/queue/job-schemas";
 import { moveMessage, deleteMessage } from "@/lib/email/imap";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
@@ -12,30 +14,18 @@ export const metadata = {
   usesAi: true,
 } as const;
 
-export const fields = [
-  {
-    key: "accountId",
-    label: "Account",
-    description: "Leave empty to process all accounts",
-    type: "select" as const,
-    default: "",
-    options: [] as Array<{ value: string; label: string }>,
-  },
-  {
-    key: "limit",
-    label: "Batch size",
+export const fields: FieldDef[] = [
+  emailAccountField(),
+  batchSizeField({
     description: "Number of emails to scan per run",
-    type: "number" as const,
-    default: 20,
-    min: 1,
+    fallback: 20,
     max: 200,
-    step: 1,
-  },
+  }),
   {
     key: "spamThreshold",
     label: "Spam threshold",
     description: "Score above which the action is applied (0–1)",
-    type: "number" as const,
+    type: "number",
     default: 0.85,
     min: 0,
     max: 1,
@@ -45,30 +35,15 @@ export const fields = [
     key: "spamAction",
     label: "Action on spam",
     description: "What to do with emails that exceed the spam threshold",
-    type: "select" as const,
+    type: "select",
     default: "move_to_spam",
     options: [
       { value: "move_to_spam", label: "Move to Spam folder" },
       { value: "delete", label: "Delete" },
     ],
   },
-  {
-    key: "maxEmailAge",
-    label: "Max email age",
-    description: "Only process emails received within this many hours (0 = no limit)",
-    type: "number" as const,
-    default: 24,
-    min: 0,
-    max: 720,
-    step: 1,
-  },
-  {
-    key: "modelId",
-    label: "AI Model",
-    description: "Override the default model for this job",
-    type: "model" as const,
-    default: "",
-  },
+  maxEmailAgeField({ verb: "process", fallback: 24 }),
+  modelField(),
 ];
 
 export async function handler(params: {

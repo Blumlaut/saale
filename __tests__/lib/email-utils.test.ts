@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { sanitizePostgresString, parseAddresses, splitEmailAddresses } from "@/lib/email/utils";
+import {
+  sanitizePostgresString,
+  parseAddresses,
+  formatMessageDate,
+  senderLabel,
+  splitEmailAddresses,
+} from "@/lib/email/utils";
 
 describe("sanitizePostgresString", () => {
   it("strips null bytes from strings", () => {
@@ -78,5 +84,20 @@ describe("splitEmailAddresses", () => {
   it("returns empty array for empty input", () => {
     expect(splitEmailAddresses("")).toEqual([]);
     expect(splitEmailAddresses(", , ,")).toEqual([]);
+  });
+});
+
+describe("senderLabel", () => {
+  it("prefers the name, then the address, then a placeholder", () => {
+    expect(senderLabel({ fromName: "Ada", fromEmail: "ada@example.com" })).toBe("Ada");
+    expect(senderLabel({ fromName: null, fromEmail: "ada@example.com" })).toBe("ada@example.com");
+    expect(senderLabel({ fromName: null, fromEmail: null })).toBe("Unknown Sender");
+  });
+});
+
+describe("formatMessageDate", () => {
+  it("writes the date and time the way the mail views show it", () => {
+    expect(formatMessageDate("2026-03-01T10:05:00.000Z")).toMatch(/Mar 1, 2026 at \d{1,2}:05/);
+    expect(formatMessageDate(new Date(2026, 2, 1, 10, 5))).toBe("Mar 1, 2026 at 10:05 AM");
   });
 });

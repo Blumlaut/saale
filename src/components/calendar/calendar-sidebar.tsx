@@ -24,23 +24,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { patchJson, deleteJson, postJson } from "@/lib/http";
-
-interface CalendarAccount {
-  id: string;
-  name: string;
-  accountType: string;
-  enabled: boolean;
-  calendars: Array<{
-    id: string;
-    name: string;
-    color: string | null;
-    enabled: boolean;
-    eventCount: number;
-  }>;
-}
+import type { CalendarAccountSummary } from "@/types/shared";
 
 interface CalendarSidebarProps {
-  accounts: CalendarAccount[];
+  accounts: CalendarAccountSummary[];
   onAccountsChange: () => Promise<void>;
 }
 
@@ -56,7 +43,7 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
   const [editingColor, setEditingColor] = useState("");
 
   const totalEvents = accounts.reduce(
-    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + cal.eventCount, 0),
+    (sum, acc) => sum + acc.calendars.reduce((c, cal) => c + (cal.eventCount ?? 0), 0),
     0,
   );
 
@@ -65,8 +52,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
       try {
         await patchJson(`/api/calendar/calendars/${calendarId}`, { enabled });
         await onAccountsChange();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to toggle calendar:", err);
       }
     },
     [onAccountsChange],
@@ -77,8 +64,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
     try {
       await deleteJson(`/api/calendar/calendars/${pendingDelete}`);
       await onAccountsChange();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to delete calendar:", err);
     } finally {
       setAlertOpen(false);
       setPendingDelete(null);
@@ -108,8 +95,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
       });
       closeAddSheet();
       await onAccountsChange();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to create calendar:", err);
     }
   }, [newCalendarName, newCalendarColor, addAccountId, onAccountsChange]);
 
@@ -124,8 +111,8 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
         setEditingCalendarId(null);
         setEditingName("");
         await onAccountsChange();
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to save calendar:", err);
       }
     },
     [editingName, editingColor, onAccountsChange],

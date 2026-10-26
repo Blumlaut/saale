@@ -1,3 +1,5 @@
+import { format } from "date-fns";
+
 /**
  * Strip null bytes and other invalid UTF-8 codepoints that PostgreSQL rejects.
  * Returns `null` for nullish/false inputs.
@@ -32,4 +34,17 @@ export function splitEmailAddresses(input: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** The name to show for a message's sender, falling back to their address. */
+export function senderLabel(message: {
+  fromName: string | null;
+  fromEmail: string | null;
+}): string {
+  return message.fromName || message.fromEmail || "Unknown Sender";
+}
+
+/** A message's date as "Mar 1, 2026 at 10:00 AM". */
+export function formatMessageDate(date: string | Date): string {
+  return format(new Date(date), "MMM d, yyyy 'at' h:mm a");
 }
