@@ -31,7 +31,8 @@ export async function createChatSession(options?: {
   }
 
   const data = await postJson<{ session: { id: string } }>("/api/chat/sessions", {
-    title: options?.title || "New Chat",
+    // A chat with no title of its own stays unnamed until its first message
+    ...(options?.title ? { title: options.title } : {}),
     temporary: options?.temporary || false,
     modelProvider: settings?.defaultModelProvider || undefined,
     modelName: settings?.defaultModelName || undefined,

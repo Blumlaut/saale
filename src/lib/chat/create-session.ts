@@ -15,6 +15,9 @@ import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 /** Longest title the UI renders; longer titles are truncated everywhere. */
 const MAX_TITLE_LENGTH = 50;
 
+/** The title an unnamed chat carries, and what a caller that has none sends. */
+export const DEFAULT_CHAT_TITLE = "New Chat";
+
 export interface NewChatSessionInput {
   /** Defaults to a random id. A caller that names the branch needs it up front. */
   id?: string | undefined;
@@ -44,7 +47,7 @@ export interface NewChatSession {
 
 /** Strip null bytes and cap the length. titles are rendered raw. */
 export function sanitizeChatTitle(title: string | null | undefined): string {
-  return (title || "New Chat").replace(/\0/g, "").slice(0, MAX_TITLE_LENGTH);
+  return (title || DEFAULT_CHAT_TITLE).replace(/\0/g, "").slice(0, MAX_TITLE_LENGTH);
 }
 
 /**
@@ -72,12 +75,15 @@ export async function createChatSessionRow(
         ? await coderToolConfigFor(userId)
         : undefined;
 
+  const title = sanitizeChatTitle(input.title);
+
   const chatSession = await prisma.chatSession.create({
     data: {
       id: input.id ?? crypto.randomUUID(),
       userId,
-      title: sanitizeChatTitle(input.title),
-      titleSource: input.title ? "user" : "default",
+      title,
+      // The placeholder is what a caller with no title sends, so it does not name the chat
+      titleSource: title === DEFAULT_CHAT_TITLE ? "default" : "user",
       temporary: input.temporary ?? false,
       modelProvider: input.modelProvider ?? null,
       modelName: input.modelName ?? null,
