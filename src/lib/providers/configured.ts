@@ -4,13 +4,18 @@
  * they build, so the owner is the only argument.
  */
 
-import { encrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { buildGlobalModelRuntime, buildModelRuntime, fetchOpenAIModels } from "@/lib/pi/models";
 import { providerCatalog, type ProviderCatalogView } from "@/lib/providers/catalog";
 import { CUSTOM_PROVIDER_ID, definesProviderModels } from "@/lib/providers/config";
 import { parseProviderLimits } from "@/lib/providers/limits";
-import { detectAndStoreProviderCapabilities } from "@/lib/providers/provider-capabilities";
+import {
+  detectAndStoreProviderCapabilities,
+  parseModelSettingsEdit,
+  rejectUnconfigurableProvider,
+  setProviderModelSettings,
+} from "@/lib/providers/provider-capabilities";
 
 /** Whose credentials a call reads and writes. `null` is the global config. */
 export interface ProviderOwner {
@@ -279,4 +284,83 @@ function findRow(owner: ProviderOwner, provider: string) {
         where: { userId: null, provider },
         select: { id: true },
       });
+}
+
+/** The key columns the capability routes read, and nothing else. */
+const KEY_COLUMNS = {
+  id: true,
+  provider: true,
+  baseUrl: true,
+  encryptedKey: true,
+  modelCapabilities: true,
+} as const;
+
+/** The owner's row for a provider, or the global one for the admin. */
+function findProviderKey(owner: ProviderOwner, provider: string) {
+  return owner.userId
+    ? prisma.providerApiKey.findUnique({
+        where: { userId_provider: { userId: owner.userId, provider } },
+        select: KEY_COLUMNS,
+      })
+    : prisma.providerApiKey.findFirst({
+        where: { userId: null, provider },
+        select: KEY_COLUMNS,
+      });
+}
+
+/**
+ * Record what one of the owner's models can do and how big its window is.
+ *
+ * A key the body omits is left as stored, and `null` clears it, so the model
+ * inherits the endpoint's default again.
+ */
+export async function saveModelCapabilities(
+  owner: ProviderOwner,
+  body: ConfiguredProviderBody & { modelId?: unknown },
+): Promise<ProviderWriteOutcome> {
+  const providerError = rejectUnconfigurableProvider(body.provider);
+  if (providerError) return { ok: false, status: 400, error: providerError };
+
+  const edit = parseModelSettingsEdit(body);
+  if ("error" in edit) return { ok: false, status: 400, error: edit.error };
+
+  const key = await findProviderKey(owner, String(body.provider));
+  if (!key) return { ok: false, status: 404, error: "Provider is not configured" };
+
+  const modelCapabilities = await setProviderModelSettings({
+    keyId: key.id,
+    stored: key.modelCapabilities,
+    edit,
+  });
+
+  return { ok: true, data: { provider: key.provider, modelCapabilities } };
+}
+
+/**
+ * Ask the owner's endpoint what its models can do and store the answers.
+ *
+ * The probe reads the stored base URL, never one from the request: the route
+ * must not become a way to make the server call an arbitrary host.
+ */
+export async function detectModelCapabilities(
+  owner: ProviderOwner,
+  body: ConfiguredProviderBody,
+): Promise<ProviderWriteOutcome> {
+  const providerError = rejectUnconfigurableProvider(body.provider);
+  if (providerError) return { ok: false, status: 400, error: providerError };
+
+  const key = await findProviderKey(owner, String(body.provider));
+  if (!key) return { ok: false, status: 404, error: "Provider is not configured" };
+  if (!key.baseUrl) {
+    return { ok: false, status: 400, error: "Provider has no base URL to probe" };
+  }
+
+  const summary = await detectAndStoreProviderCapabilities({
+    keyId: key.id,
+    stored: key.modelCapabilities,
+    baseUrl: key.baseUrl,
+    apiKey: decrypt(key.encryptedKey) || undefined,
+  });
+
+  return { ok: true, data: { provider: key.provider, ...summary } };
 }
