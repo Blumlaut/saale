@@ -64,6 +64,25 @@ describe("plugin UI requests", () => {
     await expect(promise).resolves.toEqual({ value: "yes" });
   });
 
+  it("lets one of two answers arriving together win", async () => {
+    const input = { ...base(), kind: "input" as const };
+    const promise = requestPluginUi(input);
+    const [pending] = await vi.waitFor(async () => {
+      const listed = await getPendingPluginUiRequests(input.sessionId);
+      expect(listed).toHaveLength(1);
+      return listed;
+    });
+
+    // A Telegram tap and a click in the chat, in the same instant.
+    const results = await Promise.all([
+      resolvePluginUiRequest(input.sessionId, pending!.id, { value: "from the chat" }),
+      resolvePluginUiRequest(input.sessionId, pending!.id, { value: "from telegram" }),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    await expect(promise).resolves.toEqual({ value: "from the chat" });
+  });
+
   it("answers an unknown id with false", async () => {
     expect(await resolvePluginUiRequest(base().sessionId, "nope", { cancelled: true })).toBe(false);
   });

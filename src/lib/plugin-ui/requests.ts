@@ -89,6 +89,18 @@ export function toPluginUiPayload(request: PluginUiRequest): PluginUiPayload {
 
 const keyOf = (sessionId: string, id: string) => `${KEY_PREFIX}${sessionId}:${id}`;
 
+/** Held by whoever is answering, for as long as recording the answer takes. */
+const CLAIM_SUFFIX = ":claim";
+const claimKeyOf = (sessionId: string, id: string) => `${keyOf(sessionId, id)}${CLAIM_SUFFIX}`;
+
+async function releaseClaim(sessionId: string, id: string): Promise<void> {
+  try {
+    await getRedis().del(claimKeyOf(sessionId, id));
+  } catch (err) {
+    console.error("Failed to release the plugin UI claim in Redis:", err);
+  }
+}
+
 async function store(request: PluginUiRequest): Promise<void> {
   const ttl = Math.ceil((request.expiresAt - Date.now()) / 1000);
   try {
@@ -143,7 +155,7 @@ async function scan(pattern: string): Promise<PluginUiRequest[]> {
     do {
       const [next, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 50);
       cursor = next;
-      keys.push(...batch);
+      keys.push(...batch.filter((key) => !key.endsWith(CLAIM_SUFFIX)));
     } while (cursor !== "0");
     if (keys.length === 0) return [];
 
@@ -176,8 +188,16 @@ export async function resolvePluginUiRequest(
   id: string,
   response: PluginUiResponse,
 ): Promise<boolean> {
+  // Two surfaces can answer the same dialog in the same instant. The claim is
+  // what makes one of them lose, rather than both writing their own answer.
+  const claimed = await getRedis().set(claimKeyOf(sessionId, id), "1", "EX", 30, "NX");
+  if (claimed !== "OK") return false;
+
   const request = await read(sessionId, id);
-  if (!request || request.response) return false;
+  if (!request || request.response) {
+    await releaseClaim(sessionId, id);
+    return false;
+  }
 
   const resolved: PluginUiRequest = { ...request, response };
   const ttl = Math.ceil((request.expiresAt - Date.now()) / 1000);
@@ -185,6 +205,7 @@ export async function resolvePluginUiRequest(
     await getRedis().setex(keyOf(sessionId, id), Math.max(ttl, 30), JSON.stringify(resolved));
   } catch (err) {
     console.error("Failed to record the plugin UI answer in Redis:", err);
+    await releaseClaim(sessionId, id);
   }
 
   await publishSessionEvent(sessionId, "plugin_ui_resolved", {
