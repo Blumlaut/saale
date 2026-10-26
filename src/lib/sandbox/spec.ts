@@ -140,7 +140,9 @@ export function containerSpec(identity: string, config: SandboxConfig): SandboxC
     User: config.user,
     WorkingDir: home,
     Env: [`HOME=${home}`, `PATH=${containerPath(id, config)}`],
-    Labels: { "saale.sandbox": id },
+    // Compose stamps its project label onto the sandbox image and containers
+    // inherit it; blanked here so tenant containers stay out of the app's stack.
+    Labels: { "saale.sandbox": id, "com.docker.compose.project": "" },
     HostConfig: {
       NetworkMode: config.network,
       Mounts: [
