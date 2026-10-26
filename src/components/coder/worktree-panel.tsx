@@ -19,6 +19,7 @@ import { FileBrowser } from "@/components/files/file-browser";
 import { FileView } from "@/components/files/file-view";
 import { PageTabStrip } from "@/components/layout/page";
 import { downloadFile } from "@/lib/download";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { relativeToRoot } from "@/lib/files/paths";
 import { rawFileUrl } from "@/lib/files/urls";
 import type { FileEntry } from "@/lib/files/types";
@@ -116,7 +117,10 @@ export function WorktreePanel({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const [tab, setTab] = useState("changes");
+  // Diff and File hold a target, so only a plain tab is remembered here.
+  const [tab, setTab] = usePersistedState<string>("coder:panelTab", "changes", {
+    validate: oneOf("changes", "files", "terminal", "ports"),
+  });
   // A tab that has been opened keeps its state: leaving the terminal alone
   // must not fold every commit the user just unfolded.
   const [openedTabs, setOpenedTabs] = useState<string[]>(["changes"]);
