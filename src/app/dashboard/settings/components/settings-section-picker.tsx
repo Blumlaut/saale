@@ -61,7 +61,9 @@ export function SettingsSectionPicker() {
 
               return (
                 <div key={group}>
-                  <p className="console-label px-1 pb-1">{SETTINGS_GROUP_LABELS[group]}</p>
+                  <p className="text-muted-foreground px-2 pb-1 text-xs font-medium">
+                    {SETTINGS_GROUP_LABELS[group]}
+                  </p>
                   <div className="space-y-0.5">
                     {sections.map((section) => (
                       <Link

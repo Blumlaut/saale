@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -16,7 +16,6 @@ import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sideba
 import {
   isSettingsPath,
   SETTINGS_GROUPS,
-  SETTINGS_GROUP_LABELS,
   settingsSectionForPath,
   settingsSectionsInGroup,
 } from "@/lib/navigation/settings-nav";
@@ -53,10 +52,10 @@ function navItemClass(active: boolean, extra = "") {
   );
 }
 
-/** A settings section, nested under the Settings item. */
+/** A settings section, nested under the Settings item. Looks like a nav item. */
 function sectionItemClass(active: boolean) {
   return cn(
-    "block truncate rounded-md px-2 py-0.5 text-xs transition-colors duration-150",
+    "flex items-center rounded-lg px-2 py-1 text-sm transition-colors duration-150",
     active
       ? "bg-accent text-foreground font-medium"
       : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -311,14 +310,16 @@ export function DashboardNav() {
         </div>
 
         {settingsExpanded && (
-          <div className="border-border/60 mt-0.5 ml-4 border-l pl-2">
-            {SETTINGS_GROUPS.map((group) => {
+          <div className="border-border/60 mt-1 ml-3.5 border-l pl-1.5">
+            {SETTINGS_GROUPS.map((group, index) => {
               const sections = settingsSectionsInGroup(group);
               if (sections.length === 0) return null;
 
               return (
-                <Fragment key={group}>
-                  <p className="console-label px-2 pt-1">{SETTINGS_GROUP_LABELS[group]}</p>
+                <div
+                  key={group}
+                  className={index > 0 ? "border-border/60 border-t pt-1" : undefined}
+                >
                   {sections.map((section) => (
                     <Link
                       key={section.id}
@@ -326,10 +327,10 @@ export function DashboardNav() {
                       aria-current={activeSection?.id === section.id ? "page" : undefined}
                       className={sectionItemClass(activeSection?.id === section.id)}
                     >
-                      {section.label}
+                      <span className="truncate">{section.label}</span>
                     </Link>
                   ))}
-                </Fragment>
+                </div>
               );
             })}
           </div>
