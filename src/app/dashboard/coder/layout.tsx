@@ -188,6 +188,7 @@ export default function CoderLayout() {
                     </SheetHeader>
                     <div className="h-full">
                       <WorktreePanel
+                        key={sessionId}
                         sessionId={sessionId}
                         state={state}
                         loading={loading}
@@ -214,6 +215,7 @@ export default function CoderLayout() {
         />
         <div className="hidden shrink-0 lg:block" style={{ width: panel.width }}>
           <WorktreePanel
+            key={sessionId}
             sessionId={sessionId}
             state={state}
             loading={loading}
