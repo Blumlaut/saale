@@ -91,8 +91,8 @@ describe("usePersistedState", () => {
   it("updates from the current value", async () => {
     render(<Probe fallback={0} />);
 
-    act(() => setter((current) => (current as number) + 1));
-    act(() => setter((current) => (current as number) + 1));
+    act(() => setter((current: unknown) => (current as number) + 1));
+    act(() => setter((current: unknown) => (current as number) + 1));
 
     expect(value()).toBe(2);
   });
