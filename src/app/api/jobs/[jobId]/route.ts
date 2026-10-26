@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
+import { toStoredModelId } from "@/lib/pi/model-id";
 
 /**
  * PATCH /api/jobs/:jobId. Update a job
@@ -22,10 +23,7 @@ export async function PATCH(
   if (body.type !== undefined) updateData.type = body.type;
   if (body.enabled !== undefined) updateData.enabled = body.enabled;
   if (body.modelId !== undefined) {
-    // Normalize "/" to ":" so modelId is always stored in canonical format
-    updateData.modelId = body.modelId?.includes("/")
-      ? body.modelId.replace("/", ":")
-      : body.modelId;
+    updateData.modelId = body.modelId ? toStoredModelId(body.modelId) : null;
   }
   if (body.config !== undefined) updateData.config = JSON.stringify(body.config);
 

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ModelPicker } from "@/components/shared/model-picker";
+import { formatModelId, toPickerModelId, toStoredModelId } from "@/lib/pi/model-id";
 
 export interface FieldDef {
   key: string;
@@ -95,32 +96,11 @@ export function ConfigForm({ fields, values, onChange }: ConfigFormProps) {
 
             {field.type === "model" && (
               <div className="space-y-1.5">
-                {/*
-                  ModelPicker uses "provider/modelId" format internally.
-                  Job config uses "provider:modelId" format.
-                  Convert between the two.
-                */}
-                {(() => {
-                  const rawValue = (value as string) ?? "";
-                  // Convert "provider:modelId" -> "provider/modelId"
-                  const pickerValue = rawValue.includes(":")
-                    ? rawValue.replace(":", "/")
-                    : rawValue;
-
-                  return (
-                    <ModelPicker
-                      value={pickerValue}
-                      onChange={(pickerVal) => {
-                        // Convert "provider/modelId" -> "provider:modelId"
-                        const configVal = pickerVal.includes("/")
-                          ? pickerVal.split("/").join(":")
-                          : pickerVal;
-                        onChange(field.key, configVal);
-                      }}
-                      placeholder="Auto (use default)"
-                    />
-                  );
-                })()}
+                <ModelPicker
+                  value={toPickerModelId((value as string) ?? "")}
+                  onChange={(pickerVal) => onChange(field.key, toStoredModelId(pickerVal))}
+                  placeholder="Auto (use default)"
+                />
               </div>
             )}
 
@@ -200,16 +180,7 @@ export function ConfigDisplay({
         if (field.type === "boolean") {
           display = value ? "Yes" : "No";
         } else if (field.type === "model") {
-          // Format "provider:modelId" as "modelId (provider)"
-          const rawValue = String(value);
-          // Normalize "/" to ":" for consistent display
-          const normalized = rawValue.includes("/") ? rawValue.replace("/", ":") : rawValue;
-          if (normalized.includes(":")) {
-            const [provider, ...nameParts] = normalized.split(":");
-            display = `${nameParts.join(":")} (${provider})`;
-          } else {
-            display = normalized || "Default";
-          }
+          display = formatModelId(String(value)) ?? "Default";
         } else if (field.type === "select" && field.options) {
           const opt = field.options.find((o) => o.value === String(value));
           display = opt?.label ?? String(value);

@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { syncQueueTaskSchedule } from "@/lib/queue";
+import { toStoredModelId } from "@/lib/pi/model-id";
 
 /**
  * GET /api/jobs. List user's jobs
@@ -92,9 +93,8 @@ export async function POST(request: NextRequest) {
 
   // Extract modelId from config if not provided at top level
   const jobConfig = config ?? {};
-  const rawModelId = modelId ?? jobConfig.modelId ?? null;
-  // Normalize "/" to ":" so modelId is always stored in canonical format
-  const resolvedModelId = rawModelId?.includes("/") ? rawModelId.replace("/", ":") : rawModelId;
+  const rawModelId = (modelId ?? jobConfig.modelId) as string | null | undefined;
+  const resolvedModelId = rawModelId ? toStoredModelId(rawModelId) : null;
   // Remove modelId from config (it's stored separately on the QueueTask model)
   const { modelId: _configModelId, ...cleanConfig } = jobConfig;
 

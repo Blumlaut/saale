@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
+import { formatModelId } from "@/lib/pi/model-id";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
 import { ConfigDisplay } from "@/components/jobs/config-form";
@@ -69,14 +70,6 @@ const cronExamples: Record<string, string> = {
 
 function getCronLabel(expr: string): string {
   return cronExamples[expr] ?? expr;
-}
-
-function getModelLabel(modelId: string | null): string | null {
-  if (!modelId) return null;
-  // Normalize "/" to ":" for consistent display
-  const normalized = modelId.includes("/") ? modelId.replace("/", ":") : modelId;
-  const [provider, ...nameParts] = normalized.split(":");
-  return `${nameParts.join(":")} (${provider})`;
 }
 
 interface JobListProps {
@@ -291,7 +284,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           {schema?.usesAi && job.modelId && (
                             <Badge variant="secondary" className="max-w-[12rem] truncate text-xs">
                               <Brain className="mr-1 h-3 w-3" />
-                              {getModelLabel(job.modelId)}
+                              {formatModelId(job.modelId)}
                             </Badge>
                           )}
                           <Switch
@@ -394,7 +387,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                           AI Model
                         </span>
                         <Badge variant="secondary" className="text-xs">
-                          {getModelLabel(selectedJob.modelId)}
+                          {formatModelId(selectedJob.modelId)}
                         </Badge>
                       </div>
                     )}

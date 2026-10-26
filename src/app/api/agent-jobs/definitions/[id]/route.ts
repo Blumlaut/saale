@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue";
 import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
+import { toStoredModelId } from "@/lib/pi/model-id";
 
 /**
  * GET /api/agent-jobs/definitions/:id. Get a single definition
@@ -82,11 +83,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     enabled,
   } = body;
 
-  // Normalize modelId format
   let resolvedModelId = existing.modelId;
   if (modelId !== undefined) {
-    const raw = modelId || null;
-    resolvedModelId = raw?.includes("/") ? raw.replace("/", ":") : raw;
+    resolvedModelId = modelId ? toStoredModelId(modelId) : null;
   }
 
   // One-off `runAt` and cron are mutually exclusive. Parse both supplied

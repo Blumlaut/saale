@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { scheduleAgentDefinition } from "@/lib/queue";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
+import { toStoredModelId } from "@/lib/pi/model-id";
 
 /**
  * GET /api/agent-jobs/definitions. List user's agent job definitions
@@ -142,9 +143,7 @@ export async function POST(request: NextRequest) {
   // recurring schedule, and a cron job has no single run time.
   const resolvedCron = resolvedRunAt ? null : cronExpression || null;
 
-  // Normalize modelId format
-  const rawModelId = modelId || null;
-  const resolvedModelId = rawModelId?.includes("/") ? rawModelId.replace("/", ":") : rawModelId;
+  const resolvedModelId = modelId ? toStoredModelId(modelId) : null;
 
   const definition = await prisma.agentDefinition.create({
     data: {
