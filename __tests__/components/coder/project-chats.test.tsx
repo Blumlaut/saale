@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 /**
  * A project's chat list in the coder panel.
@@ -12,11 +12,16 @@ import { act, render, screen, waitFor } from "@testing-library/react";
  * page.
  */
 
-const mocks = vi.hoisted(() => ({ fetchJson: vi.fn(), deleteJson: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  fetchJson: vi.fn(),
+  deleteJson: vi.fn(),
+  patchJson: vi.fn(),
+}));
 
 vi.mock("@/lib/http", () => ({
   fetchJson: mocks.fetchJson,
   deleteJson: mocks.deleteJson,
+  patchJson: mocks.patchJson,
 }));
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
@@ -36,24 +41,29 @@ const PROJECT = {
   originUrl: null,
 };
 
-function chat(id: string, title: string) {
+function chat(id: string, title: string, pinned = false) {
   return {
     id,
     title,
     lastActivityAt: NOW,
+    pinned,
     isGenerating: false,
     worktree: { path: `/worktrees/${id}`, branch: `coder/${id}`, status: "active" },
   };
 }
 
-function detail(chats: Array<{ id: string; title: string }>) {
-  return { project: PROJECT, chats: chats.map(({ id, title }) => chat(id, title)) };
+function detail(chats: Array<{ id: string; title: string; pinned?: boolean }>) {
+  return {
+    project: PROJECT,
+    chats: chats.map(({ id, title, pinned }) => chat(id, title, pinned)),
+  };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.fetchJson.mockResolvedValue(detail([chat("s-1", "First chat")]));
   mocks.deleteJson.mockResolvedValue({ ok: true });
+  mocks.patchJson.mockResolvedValue({ ok: true });
 });
 
 describe("ProjectChats", () => {
@@ -106,5 +116,27 @@ describe("ProjectChats", () => {
     act(() => broadcastSessionsDeleted(["s-2"]));
 
     await waitFor(() => expect(screen.queryByText("Second chat")).not.toBeInTheDocument());
+  });
+
+  it("sticks a pinned chat above the others and unpins it from its menu", async () => {
+    mocks.fetchJson.mockResolvedValue(
+      detail([chat("s-1", "First chat"), { ...chat("s-2", "Second chat"), pinned: true }]),
+    );
+    render(<ProjectChats projectId={PROJECT.id} activeSessionId="s-1" />);
+
+    await screen.findByText("Second chat");
+    expect(screen.getByText("Pinned")).toBeInTheDocument();
+    const pinnedRow = screen.getByText("Second chat").closest("[data-slot=session-row]")!;
+    const plainRow = screen.getByText("First chat").closest("[data-slot=session-row]")!;
+    expect(pinnedRow.compareDocumentPosition(plainRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Second chat" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin chat" }));
+
+    expect(mocks.patchJson).toHaveBeenCalledWith("/api/chat/sessions/s-2", { pinned: false });
+    // The pin event is what brings the new order back from the server.
+    await waitFor(() => expect(mocks.fetchJson).toHaveBeenCalledTimes(2));
   });
 });
