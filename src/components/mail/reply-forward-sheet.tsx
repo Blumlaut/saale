@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Send, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { fetchJson, postJson } from "@/lib/http";
-import { parseAddresses, splitEmailAddresses } from "@/lib/email/utils";
-import type { EmailAccount } from "@/types/shared";
+import { parseAddresses } from "@/lib/email/utils";
 import { EmailComposeForm } from "@/components/mail/email-compose-form";
+import { useEmailCompose } from "@/hooks/use-email-compose";
 
 interface ReplyForwardSheetProps {
   open: boolean;
@@ -35,33 +34,10 @@ export function ReplyForwardSheet({
   originalMessage,
   onSuccess,
 }: ReplyForwardSheetProps) {
-  const [accounts, setAccounts] = useState<EmailAccount[]>([]);
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [sending, setSending] = useState(false);
+  const { formProps, loadAccounts, reset, send, setTo, setSubject, setBody, setError } =
+    useEmailCompose({ preferredAccountId: originalMessage?.accountId });
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState("");
   const bodyRef = useRef<HTMLTextAreaElement>(null);
-
-  const loadAccounts = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ accounts: EmailAccount[] }>("/api/email/accounts");
-      const accs = data.accounts ?? [];
-      setAccounts(accs);
-      if (accs.length > 0 && !accountId) {
-        const preferAccount = originalMessage?.accountId
-          ? accs.find((a) => a.id === originalMessage.accountId)
-          : undefined;
-        setAccountId(preferAccount?.id ?? accs[0]!.id);
-      }
-    } catch {
-      // Ignore
-    }
-  }, [accountId, originalMessage]);
 
   // Pre-fill fields when dialog opens or message changes
   useEffect(() => {
@@ -98,46 +74,25 @@ export function ReplyForwardSheet({
     }
 
     setTimeout(() => bodyRef.current?.focus(), 100);
-  }, [open, originalMessage, mode]);
+  }, [open, originalMessage, mode, setTo, setSubject, setBody]);
 
   useEffect(() => {
-    if (open) {
-      loadAccounts();
-    }
+    if (open) void loadAccounts();
   }, [open, loadAccounts]);
 
+  const close = () => {
+    reset();
+    onOpenChange(false);
+  };
+
   const handleSend = async () => {
-    if (!to.trim() || !accountId) return;
-
-    setSending(true);
-    setError("");
-
-    try {
-      const result = await postJson<{ sentFolder: string | null }>(
-        `/api/email/accounts/${accountId}/send`,
-        {
-          to: splitEmailAddresses(to),
-          cc: splitEmailAddresses(cc),
-          bcc: splitEmailAddresses(bcc),
-          subject,
-          body,
-        },
-      );
-
-      if (result.sentFolder) {
-        toast.success("Email sent");
-      } else {
-        toast.warning("Email sent, but no copy could be filed in Sent");
-      }
-      resetAndClose();
-      onSuccess();
-    } catch (err) {
-      const errorMsg = (err as Error).message;
-      setError(errorMsg);
-      toast.error(errorMsg);
-    } finally {
-      setSending(false);
+    const outcome = await send();
+    if (!outcome.ok) {
+      if (outcome.error) toast.error(outcome.error);
+      return;
     }
+    close();
+    onSuccess();
   };
 
   const handleGenerateDraft = async () => {
@@ -212,16 +167,6 @@ export function ReplyForwardSheet({
     }
   };
 
-  const resetAndClose = () => {
-    setTo("");
-    setCc("");
-    setBcc("");
-    setSubject("");
-    setBody("");
-    setError("");
-    onOpenChange(false);
-  };
-
   const modeLabel = mode === "reply" ? "Reply" : mode === "reply_all" ? "Reply All" : "Forward";
 
   const bodyHeader = (
@@ -248,23 +193,9 @@ export function ReplyForwardSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[560px] sm:max-w-none">
         <EmailComposeForm
-          accounts={accounts}
-          accountId={accountId}
-          onAccountIdChange={setAccountId}
-          to={to}
-          onToChange={setTo}
-          cc={cc}
-          onCcChange={setCc}
-          bcc={bcc}
-          onBccChange={setBcc}
-          subject={subject}
-          onSubjectChange={setSubject}
-          body={body}
-          onBodyChange={setBody}
-          error={error}
-          sending={sending}
+          {...formProps}
           onSend={handleSend}
-          onDiscard={resetAndClose}
+          onDiscard={close}
           bodyRef={bodyRef}
           bodyHeader={bodyHeader}
           bodyClassName="min-h-[250px] resize-y rounded-2xl border-0 bg-muted/50 font-mono text-sm shadow-none"
