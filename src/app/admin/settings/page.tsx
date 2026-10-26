@@ -7,10 +7,9 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Page, PageToolbar, PageScroll } from "@/components/layout/page";
 import { fetchJson, patchJson } from "@/lib/http";
-import { ModelPicker } from "@/components/shared/model-picker";
 import { TelegramBotPanel } from "@/components/admin/telegram-bot-panel";
 import { BrandingPanel } from "@/components/admin/branding-panel";
-import { Loader2, CheckCircle, AlertCircle, Brain } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { normalizeThemeColors, type BrandColors } from "@/lib/branding/theme";
 import { reloadBrandingStyles } from "@/lib/branding/client";
@@ -33,7 +32,6 @@ export default function AdminSettingsPage() {
 
   // Local state for toggles
   const [signupsEnabled, setSignupsEnabled] = useState(true);
-  const [globalModelId, setGlobalModelId] = useState("");
   const [featureDefaults, setFeatureDefaults] = useState<Record<string, boolean>>({});
   const [themeColors, setThemeColors] = useState<BrandColors>({ light: {}, dark: {} });
   const [brandingAvatar, setBrandingAvatar] = useState("");
@@ -47,11 +45,6 @@ export default function AdminSettingsPage() {
         setFeatureDefaults(data.settings.featureDefaults ?? {});
         setThemeColors(normalizeThemeColors(data.settings.themeColors));
         setBrandingAvatar(data.settings.brandingAvatar ?? "");
-        const modelStr =
-          data.settings.globalModelProvider && data.settings.globalModelName
-            ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
-            : "";
-        setGlobalModelId(modelStr);
         setLoading(false);
       })
       .catch((err) => {
@@ -71,11 +64,8 @@ export default function AdminSettingsPage() {
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const [provider, ...modelParts] = globalModelId.split("/");
       await patchJson("/api/admin/settings", {
         signupsEnabled,
-        globalModelProvider: globalModelId ? provider : "",
-        globalModelName: globalModelId ? modelParts.join("/") : "",
         featureDefaults,
         themeColors,
       });
@@ -86,7 +76,7 @@ export default function AdminSettingsPage() {
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [signupsEnabled, globalModelId, featureDefaults, themeColors]);
+  }, [signupsEnabled, featureDefaults, themeColors]);
 
   if (loading) {
     return (
@@ -131,26 +121,6 @@ export default function AdminSettingsPage() {
                   </p>
                 </div>
                 <Switch checked={signupsEnabled} onCheckedChange={setSignupsEnabled} />
-              </div>
-            </GlassPanelContent>
-          </GlassPanel>
-
-          {/* Global default model */}
-          <GlassPanel>
-            <GlassPanelHeader title="Default Model" />
-            <GlassPanelContent className="p-0">
-              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <Label className="text-sm font-medium">Global fallback model</Label>
-                  <p className="text-muted-foreground text-xs">
-                    Used when a user hasn&apos;t configured their own model. Leave empty to require
-                    users to select one.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {!globalModelId && <Brain className="text-muted-foreground h-4 w-4" />}
-                  <ModelPicker value={globalModelId} onChange={setGlobalModelId} />
-                </div>
               </div>
             </GlassPanelContent>
           </GlassPanel>

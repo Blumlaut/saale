@@ -1,101 +1,64 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
+  enabledModelIds,
   fromGlobalProviderModels,
+  setModelsEnabled,
   toGlobalProviderModels,
-  type ProviderModelSelection,
 } from "@/lib/admin/model-availability";
 
-/**
- * The two directions of the admin's model availability.
- *
- * What matters here is the difference between "the admin selected nothing for
- * this provider" and "the admin never touched this provider": an empty list in
- * the stored column used to hide every model of the provider, so saving the
- * availability tab without touching a provider switched it off. These tests pin
- * the conversion that keeps that from happening.
- */
-describe("model availability", () => {
-  describe("fromGlobalProviderModels", () => {
-    it("reads a switched-off provider as nothing selected", () => {
-      const selection = fromGlobalProviderModels({ anthropic: { enabled: false } });
+const PROVIDER = "openai";
+const ALL_MODELS = ["gpt-5", "gpt-5-mini", "o4"];
 
-      expect(selection.anthropic).toEqual(new Set());
-    });
+describe("setModelsEnabled", () => {
+  it("switches off only the models it is given", () => {
+    // A provider nobody has touched has everything on, so this is the case a
+    // toggle hits first: one model off, the other two stay.
+    const next = setModelsEnabled({}, PROVIDER, ALL_MODELS, ["gpt-5-mini"], false);
 
-    it("reads an allowlist as the selected models", () => {
-      const selection = fromGlobalProviderModels({
-        openai: { enabled: true, models: ["gpt-5", "gpt-5-mini"] },
-      });
-
-      expect(selection.openai).toEqual(new Set(["gpt-5", "gpt-5-mini"]));
-    });
-
-    it("treats an empty model list as untouched, like a missing entry", () => {
-      // The shape a previous Save wrote for providers nobody had toggled.
-      const selection = fromGlobalProviderModels({
-        custom: { enabled: true, models: [] },
-        groq: { enabled: true },
-      });
-
-      expect(selection).toEqual({});
-    });
-
-    it("ignores a stored value that is not a provider entry", () => {
-      for (const stored of [null, undefined, [], "nonsense", 42, { groq: "nonsense" }]) {
-        expect(fromGlobalProviderModels(stored)).toEqual({});
-      }
-    });
+    expect([...enabledModelIds(next, PROVIDER, ALL_MODELS)]).toEqual(["gpt-5", "o4"]);
   });
 
-  describe("toGlobalProviderModels", () => {
-    it("writes no model list for a provider the admin never touched", () => {
-      const stored = toGlobalProviderModels(["anthropic", "groq"], {});
+  it("covers the rows a search left visible, not the whole provider", () => {
+    const filtered = ["gpt-5", "gpt-5-mini"];
 
-      expect(stored).toEqual({
-        anthropic: { enabled: true },
-        groq: { enabled: true },
-      });
-      // The regression: `models: []` here meant "every model off".
-      expect(stored.anthropic).not.toHaveProperty("models");
-    });
+    const off = setModelsEnabled({}, PROVIDER, ALL_MODELS, filtered, false);
+    expect([...enabledModelIds(off, PROVIDER, ALL_MODELS)]).toEqual(["o4"]);
 
-    it("writes the provider switch for a provider emptied in the list", () => {
-      const selection: ProviderModelSelection = { anthropic: new Set() };
+    const on = setModelsEnabled({}, PROVIDER, ALL_MODELS, filtered, true);
+    expect([...enabledModelIds(on, PROVIDER, ALL_MODELS)].sort()).toEqual([...ALL_MODELS].sort());
+  });
 
-      expect(toGlobalProviderModels(["anthropic"], selection)).toEqual({
-        anthropic: { enabled: false },
-      });
-    });
+  it("leaves other providers alone", () => {
+    const next = setModelsEnabled(
+      { anthropic: new Set(["claude"]) },
+      PROVIDER,
+      ALL_MODELS,
+      ALL_MODELS,
+      false,
+    );
 
-    it("writes an allowlist for a provider with selected models", () => {
-      const selection: ProviderModelSelection = { openai: new Set(["gpt-5"]) };
+    expect(next.anthropic).toEqual(new Set(["claude"]));
+  });
+});
 
-      expect(toGlobalProviderModels(["openai"], selection)).toEqual({
-        openai: { enabled: true, models: ["gpt-5"] },
-      });
-    });
+describe("availability round trip", () => {
+  it("writes a switched-off provider as one entry, and an untouched one as all on", () => {
+    const allOff = setModelsEnabled({}, PROVIDER, ALL_MODELS, ALL_MODELS, false);
+    const stored = toGlobalProviderModels([PROVIDER, "groq"], allOff);
 
-    it("survives a round trip through the stored shape", () => {
-      const selection: ProviderModelSelection = {
-        anthropic: new Set(),
-        openai: new Set(["gpt-5"]),
-      };
+    expect(stored[PROVIDER]).toEqual({ enabled: false });
+    expect(stored.groq).toEqual({ enabled: true });
+    expect(fromGlobalProviderModels(stored)[PROVIDER]).toEqual(new Set());
+  });
 
-      const stored = toGlobalProviderModels(["anthropic", "openai", "groq"], selection);
+  it("keeps a partial selection exact through a reload", () => {
+    const partial = setModelsEnabled({}, PROVIDER, ALL_MODELS, ["gpt-5"], false);
+    const stored = toGlobalProviderModels([PROVIDER], partial);
 
-      expect(fromGlobalProviderModels(stored)).toEqual(selection);
-    });
-
-    it("keeps a switched-off provider off after another save", () => {
-      const loaded = fromGlobalProviderModels({
-        anthropic: { enabled: false },
-        groq: { enabled: true },
-      });
-
-      const saved = toGlobalProviderModels(["anthropic", "groq"], loaded);
-
-      expect(saved).toEqual({ anthropic: { enabled: false }, groq: { enabled: true } });
-    });
+    expect(stored[PROVIDER]).toEqual({ enabled: true, models: ["gpt-5-mini", "o4"] });
+    expect(
+      [...enabledModelIds(fromGlobalProviderModels(stored), PROVIDER, ALL_MODELS)].sort(),
+    ).toEqual(["gpt-5-mini", "o4"].sort());
   });
 });

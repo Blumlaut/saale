@@ -3,48 +3,38 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchJson } from "@/lib/http";
 import { useClickOutside } from "@/hooks/use-click-outside";
 import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
-import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
-import type { EmailAccount } from "@/types/shared";
-import { Separator } from "@/components/ui/separator";
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
-import { NotificationBell } from "@/components/notifications/notification-bell";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
-  Mail,
-  Shield,
-  ChevronRight,
-  ChevronDown,
-  Moon,
-  Sun,
-  Search,
-  X,
-  Loader2,
-} from "lucide-react";
-import { useTheme } from "next-themes";
+  SETTINGS_GROUPS,
+  SETTINGS_GROUP_LABELS,
+  SETTINGS_SECTIONS,
+  settingsSectionsInGroup,
+} from "@/lib/navigation/settings-nav";
+import type { EmailAccount } from "@/types/shared";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  SidebarBrand,
+  SidebarFooter,
+  SidebarFrame,
+  SidebarItem,
+  SidebarSectionList,
+  SidebarSections,
+  SidebarSectionToggle,
+  sidebarSectionItemClass,
+  useRowFlip,
+} from "@/components/layout/sidebar-chrome";
+import { Badge } from "@/components/ui/badge";
+import { Mail, Shield, Search, X, Loader2 } from "lucide-react";
 
 const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
-
-/* Console nav item. active state gets an accent fill + orange edge bar */
-function navItemClass(active: boolean, extra = "") {
-  return cn(
-    "relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-    active
-      ? "bg-accent font-medium text-foreground before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary"
-      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-    extra,
-  );
-}
 
 interface SearchResult {
   type: "chat" | "email";
@@ -57,8 +47,11 @@ interface SearchResult {
 export function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
   const { visibleItems } = useSidebarNav();
+  const rowRef = useRowFlip(visibleItems.map((item) => item.id));
+  const activeAccountId = useSearchParams().get("accountId");
+  const isAccountActive = (accountId: string) =>
+    pathname === "/dashboard/mail" && activeAccountId === accountId;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -66,14 +59,9 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
-  const navWidth = useResizableWidth({
-    storageKey: "saale:ui:nav:width",
-    label: "Resize navigation",
-    defaultWidth: 192,
-    minWidth: 160,
-    maxWidth: 320,
-    handle: "right",
-  });
+  // One nav item's sections are open at a time, and only for the area you are in:
+  // a remembered value left it hanging open on unrelated pages.
+  const [expandedNavId, setExpandedNavId] = useState<string | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const isAdmin = useIsAdmin();
@@ -171,246 +159,252 @@ export function DashboardNav() {
     }
   };
 
-  /* Mail's nav item expands into the user's accounts instead of navigating directly. */
+  /* Mail carries the user's accounts: the row goes to the inbox, the toggle opens them. */
   const renderMailItem = (item: SidebarNavItem) => (
-    <div key={item.id}>
-      <button
-        onClick={() => {
-          if (emailAccounts.length > 0) {
-            setMailExpanded((prev) => !prev);
-          } else {
-            router.push(item.href);
-          }
-        }}
-        className={navItemClass(isSidebarNavActive(item.href, pathname), "w-full")}
-      >
-        <Mail className="h-4 w-4" />
-        {item.label}
-        {emailAccounts.length > 0 && (
-          <span className="ml-auto">
-            {mailExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-          </span>
+    <div key={item.id} ref={rowRef(item.id)}>
+      <SidebarItem
+        href={item.href}
+        label={item.label}
+        icon={Mail}
+        active={isSidebarNavActive(item.href, pathname) && !activeAccountId}
+        trailing={
+          emailAccounts.length > 0 ? (
+            <SidebarSectionToggle
+              label={item.label}
+              expanded={mailExpanded}
+              onToggle={() => setMailExpanded((prev) => !prev)}
+            />
+          ) : undefined
+        }
+      />
+
+      <SidebarSections open={mailExpanded && emailAccounts.length > 0}>
+        {emailLoading ? (
+          <div className="px-2 py-1">
+            <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
+          </div>
+        ) : (
+          emailAccounts.map((account) => {
+            const [local, domain] = account.email.split("@");
+
+            return (
+              <Link
+                key={account.id}
+                href={`/dashboard/mail?accountId=${account.id}`}
+                className={sidebarSectionItemClass(isAccountActive(account.id))}
+              >
+                <div className="bg-muted/50 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold">
+                  {account.email[0]?.toUpperCase() ?? "?"}
+                </div>
+                <span className="truncate">{local}</span>
+                <span className="text-muted-foreground/50 truncate">@{domain}</span>
+                {!account.enabled && <span className="ml-auto text-[9px] opacity-50">off</span>}
+              </Link>
+            );
+          })
         )}
-      </button>
-
-      {/* Expanded email accounts */}
-      {mailExpanded && emailAccounts.length > 0 && (
-        <div className="mt-0.5 space-y-0.5 pl-4">
-          {/* All Mail */}
-          <Link
-            href="/dashboard/mail"
-            className={cn(
-              "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
-              pathname === "/dashboard/mail"
-                ? "bg-accent text-foreground font-medium"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-            )}
-          >
-            All Mail
-          </Link>
-
-          {emailLoading ? (
-            <div className="px-3 py-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" />
-            </div>
-          ) : (
-            emailAccounts.map((acc) => {
-              const shortName = acc.email.split("@")[0];
-              const domain = acc.email.split("@")[1] ?? "";
-
-              return (
-                <Link
-                  key={acc.id}
-                  href={`/dashboard/mail?accountId=${acc.id}`}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-colors",
-                    pathname === "/dashboard/mail" &&
-                      new URLSearchParams(window.location.search).get("accountId") === acc.id
-                      ? "bg-accent text-foreground font-medium"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )}
-                >
-                  <div className="bg-muted/50 flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold">
-                    {acc.email[0]?.toUpperCase() ?? "?"}
-                  </div>
-                  <span className="truncate">{shortName}</span>
-                  <span className="text-muted-foreground/50">@{domain}</span>
-                  {!acc.enabled && <span className="ml-auto text-[9px] opacity-50">off</span>}
-                </Link>
-              );
-            })
-          )}
-        </div>
-      )}
+      </SidebarSections>
     </div>
   );
 
-  return (
-    <nav
-      className="sidebar-nav relative sticky top-6 h-fit shrink-0"
-      style={{ width: navWidth.width }}
-    >
-      <GlassPanel className="shadow-md">
-        <div
-          {...navWidth.handleProps}
-          className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
+  /*
+   * Settings opens its sections instead of a second navigation: the sidebar is
+   * the only nav, so a settings page has nowhere else to pick a section from.
+   */
+  // Arriving in an area opens its sections and leaving closes them again, so the
+  // sidebar always matches the page you are on.
+  const areaId =
+    visibleItems.find(
+      (item) =>
+        (item.id === "settings" || (item.sections?.length ?? 0) > 0) &&
+        isSidebarNavActive(item.href, pathname),
+    )?.id ?? null;
+
+  useEffect(() => {
+    setExpandedNavId(areaId);
+  }, [areaId]);
+
+  /** The sections an item expands into, grouped the way the picker shows them. */
+  const sectionGroupsFor = (item: SidebarNavItem) => {
+    if (item.id === "settings") {
+      return SETTINGS_GROUPS.map((group) => ({
+        label: SETTINGS_GROUP_LABELS[group] ?? null,
+        items: settingsSectionsInGroup(group).map((section) => ({
+          id: section.id,
+          href: section.href,
+          label: section.label,
+        })),
+      })).filter((group) => group.items.length > 0);
+    }
+
+    return [
+      {
+        label: null,
+        items: (item.sections ?? []).map((section) => ({
+          id: section.id,
+          href: section.href,
+          label: section.label,
+        })),
+      },
+    ];
+  };
+
+  const activeSectionId = (item: SidebarNavItem): string | undefined => {
+    const sections = item.id === "settings" ? SETTINGS_SECTIONS : (item.sections ?? []);
+    return sections.find(
+      (section) => pathname === section.href || pathname.startsWith(`${section.href}/`),
+    )?.id;
+  };
+
+  /** A nav item that opens its pages in the sidebar instead of navigating away. */
+  const renderSectionedItem = (item: SidebarNavItem) => {
+    const expanded = expandedNavId === item.id;
+
+    return (
+      <div key={item.id}>
+        <SidebarItem
+          rowRef={rowRef(item.id)}
+          href={item.href}
+          label={item.label}
+          icon={SIDEBAR_NAV_ICONS[item.id]}
+          active={isSidebarNavActive(item.href, pathname)}
+          trailing={
+            <SidebarSectionToggle
+              label={item.label}
+              expanded={expanded}
+              onToggle={() => setExpandedNavId(expanded ? null : item.id)}
+            />
+          }
         />
-        <GlassPanelContent className="p-3">
-          {/* Brand */}
-          <div className="mb-1 flex items-center justify-between px-3 py-2">
-            <Link href="/dashboard/chat" className="flex items-center gap-2">
-              <ChevronRight className="text-primary h-5 w-5" />
-              <span className="text-lg font-bold tracking-tight">Saale</span>
-            </Link>
-            <NotificationBell />
-          </div>
+        <SidebarSections open={expanded}>
+          <SidebarSectionList groups={sectionGroupsFor(item)} activeId={activeSectionId(item)} />
+        </SidebarSections>
+      </div>
+    );
+  };
 
-          <Separator className="my-2" />
+  return (
+    <SidebarFrame>
+      <SidebarBrand />
 
-          {/* Search */}
-          <div className="px-1 pb-2" ref={searchRef}>
-            <div className="relative">
-              <Button
-                variant="ghost"
-                className="text-muted-foreground h-8 w-full justify-start gap-2 rounded-lg px-2"
-                onClick={() => setSearchOpen((prev) => !prev)}
-              >
-                <Search className="h-3.5 w-3.5" />
-                <span className="flex-1 text-left text-xs">Search...</span>
-                <kbd className="bg-muted/50 text-muted-foreground/50 rounded border px-1.5 py-0.5 font-mono text-[10px]">
-                  ⌘K
-                </kbd>
-              </Button>
-
-              {/* Search dropdown. rendered via portal to escape GlassPanel's overflow-hidden */}
-              {searchOpen &&
-                searchPosition &&
-                createPortal(
-                  <div
-                    className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl shadow-2xl"
-                    style={{
-                      top: searchPosition.top,
-                      left: searchPosition.left,
-                    }}
-                  >
-                    <div className="flex items-center gap-2 border-b px-3 py-2">
-                      <Search className="text-muted-foreground h-4 w-4" />
-                      <Input
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search chats, emails..."
-                        className="h-8 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
-                        autoFocus
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          setSearchOpen(false);
-                          setSearchQuery("");
-                        }}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-
-                    <div className="max-h-64 overflow-y-auto p-1">
-                      {searchLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                        </div>
-                      ) : !searchQuery ? null : searchResults.length === 0 ? (
-                        <div className="text-muted-foreground py-4 text-center text-sm">
-                          No results found
-                        </div>
-                      ) : (
-                        searchResults.map((result) => (
-                          <button
-                            key={result.id}
-                            onClick={() => handleResultClick(result)}
-                            className="hover:bg-muted/50 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors"
-                          >
-                            <Badge
-                              variant="secondary"
-                              className="shrink-0 rounded px-1.5 py-0 font-mono text-[10px] tracking-wide uppercase"
-                            >
-                              {result.type}
-                            </Badge>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-medium">{result.title}</div>
-                              <div className="text-muted-foreground truncate text-xs">
-                                {result.snippet}
-                              </div>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>,
-                  document.body,
-                )}
-            </div>
-          </div>
-
-          {/* Nav Items. order and visibility come from the user's layout */}
-          <div className="space-y-0.5">
-            {visibleItems.map((item) => {
-              const Icon = SIDEBAR_NAV_ICONS[item.id];
-              if (item.id === "mail") return renderMailItem(item);
-
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className={navItemClass(isSidebarNavActive(item.href, pathname))}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-
-            {/* Admin link. shown only to admin users */}
-            {isAdmin && (
-              <Link
-                href={adminNavItem.href}
-                className={navItemClass(pathname.startsWith("/admin"))}
-              >
-                <adminNavItem.icon className="h-4 w-4" />
-                {adminNavItem.label}
-              </Link>
-            )}
-          </div>
-        </GlassPanelContent>
-      </GlassPanel>
-
-      {/* Console footer. version + theme toggle */}
-      <div className="border-border/60 mt-4 border-t px-3 pt-3">
-        <div className="flex items-center justify-between">
-          <p className="console-label">
-            Saale{" "}
-            <span className="text-muted-foreground/70 font-mono tracking-normal normal-case">
-              v0.1.0
-            </span>
-          </p>
+      {/* Search */}
+      <div className="px-1 pb-2" ref={searchRef}>
+        <div className="relative">
           <Button
             variant="ghost"
-            size="icon"
-            className="size-7 rounded-md"
-            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-            aria-label="Toggle theme"
+            className="text-muted-foreground h-8 w-full justify-start gap-2 rounded-lg px-2"
+            onClick={() => setSearchOpen((prev) => !prev)}
           >
-            <Sun className="h-3.5 w-3.5 dark:hidden" />
-            <Moon className="hidden h-3.5 w-3.5 dark:block" />
+            <Search className="h-3.5 w-3.5" />
+            <span className="flex-1 text-left text-xs">Search...</span>
+            <kbd className="bg-muted/50 text-muted-foreground/50 rounded border px-1.5 py-0.5 font-mono text-[10px]">
+              ⌘K
+            </kbd>
           </Button>
+
+          {/* Search dropdown. rendered via portal to escape GlassPanel's overflow-hidden */}
+          {searchOpen &&
+            searchPosition &&
+            createPortal(
+              <div
+                className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl shadow-2xl"
+                style={{
+                  top: searchPosition.top,
+                  left: searchPosition.left,
+                }}
+              >
+                <div className="flex items-center gap-2 border-b px-3 py-2">
+                  <Search className="text-muted-foreground h-4 w-4" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search chats, emails..."
+                    className="h-8 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => {
+                      setSearchOpen(false);
+                      setSearchQuery("");
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {searchLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                    </div>
+                  ) : !searchQuery ? null : searchResults.length === 0 ? (
+                    <div className="text-muted-foreground py-4 text-center text-sm">
+                      No results found
+                    </div>
+                  ) : (
+                    searchResults.map((result) => (
+                      <button
+                        key={result.id}
+                        onClick={() => handleResultClick(result)}
+                        className="hover:bg-muted/50 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors"
+                      >
+                        <Badge
+                          variant="secondary"
+                          className="shrink-0 rounded px-1.5 py-0 font-mono text-[10px] tracking-wide uppercase"
+                        >
+                          {result.type}
+                        </Badge>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{result.title}</div>
+                          <div className="text-muted-foreground truncate text-xs">
+                            {result.snippet}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>,
+              document.body,
+            )}
         </div>
-        <div className="bg-primary mt-2 h-0.5 w-8 rounded-full" />
       </div>
-    </nav>
+
+      {/* Nav Items. order and visibility come from the user's layout */}
+      <div className="space-y-0.5">
+        {visibleItems.map((item) => {
+          if (item.id === "mail") return renderMailItem(item);
+          if (item.id === "settings" || (item.sections?.length ?? 0) > 0) {
+            return renderSectionedItem(item);
+          }
+
+          return (
+            <SidebarItem
+              key={item.id}
+              rowRef={rowRef(item.id)}
+              href={item.href}
+              label={item.label}
+              icon={SIDEBAR_NAV_ICONS[item.id]}
+              active={isSidebarNavActive(item.href, pathname)}
+            />
+          );
+        })}
+
+        {/* Admin link. shown only to admin users */}
+        {isAdmin && (
+          <SidebarItem
+            href={adminNavItem.href}
+            label={adminNavItem.label}
+            icon={adminNavItem.icon}
+            active={pathname.startsWith("/admin")}
+          />
+        )}
+      </div>
+
+      <SidebarFooter />
+    </SidebarFrame>
   );
 }

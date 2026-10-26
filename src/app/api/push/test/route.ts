@@ -30,7 +30,7 @@ export async function POST() {
     const delivery = await sendPushToUser(authResult.user.id, {
       title: "Saale",
       body: "Notifications are working. This is a test.",
-      url: "/dashboard/settings?tab=notifications",
+      url: "/dashboard/settings/notifications",
       tag: "saale-test",
     });
 

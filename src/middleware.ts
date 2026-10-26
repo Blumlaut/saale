@@ -1,5 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import {
+  resolveSettingsEntry,
+  SETTINGS_ROOT,
+  settingsSection,
+} from "@/lib/navigation/settings-nav";
 
 /**
  * Rate limiting for API routes.
@@ -47,6 +52,13 @@ function isDevBuild(): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Settings has no page of its own: the bare URL lands on a section, and the
+  // old `?tab=` links still resolve. Done here so it is a real redirect.
+  if (pathname === SETTINGS_ROOT) {
+    const section = settingsSection(resolveSettingsEntry(request.nextUrl.searchParams.get("tab")));
+    return NextResponse.redirect(new URL(section.href, request.url));
+  }
 
   // Rate limiting for API routes (in-memory, best-effort per-instance)
   if (pathname.startsWith("/api/") && isRateLimited(getRateLimitKey(request))) {

@@ -70,3 +70,35 @@ export function toGlobalProviderModels(
 
   return stored;
 }
+
+/**
+ * Turn some of a provider's models on or off.
+ *
+ * `allModelIds` is every model the provider serves, `targetIds` the ones the
+ * switch covers: all of them, or just the ones a search left visible. An
+ * untouched provider starts from "everything on", so switching one model off
+ * does not read as switching the provider off.
+ */
+export function setModelsEnabled(
+  selection: ProviderModelSelection,
+  providerId: string,
+  allModelIds: readonly string[],
+  targetIds: readonly string[],
+  enabled: boolean,
+): ProviderModelSelection {
+  const next = new Set(selection[providerId] ?? allModelIds);
+  for (const id of targetIds) {
+    if (enabled) next.add(id);
+    else next.delete(id);
+  }
+  return { ...selection, [providerId]: next };
+}
+
+/** The models of a provider that are on, given an untouched provider means all. */
+export function enabledModelIds(
+  selection: ProviderModelSelection,
+  providerId: string,
+  allModelIds: readonly string[],
+): Set<string> {
+  return selection[providerId] ?? new Set(allModelIds);
+}

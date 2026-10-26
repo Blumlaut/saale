@@ -1,6 +1,10 @@
-import { requireAdminSection } from "@/lib/permissions/guards";
+import { SectionedAreaShell } from "@/components/layout/sectioned-area-shell";
+import { adminSections } from "@/lib/navigation/admin-sections";
 
-export default async function AdminSectionLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminSection("models");
-  return children;
+export default function AdminModelsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <SectionedAreaShell areaLabel="Models" sections={adminSections("/admin/models")}>
+      {children}
+    </SectionedAreaShell>
+  );
 }

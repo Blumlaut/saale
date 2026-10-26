@@ -1,24 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
 import { hasGrant } from "@/lib/permissions/roles";
 import type { AdminAction } from "@/lib/permissions/statements";
+import { Bot, Users, Settings, KeyRound, ArrowLeft, Puzzle, type LucideIcon } from "lucide-react";
+import { adminSections, isAdminItemPath } from "@/lib/navigation/admin-sections";
 import {
-  ChevronRight,
-  Bot,
-  Users,
-  Settings,
-  KeyRound,
-  ArrowLeft,
-  Puzzle,
-  type LucideIcon,
-} from "lucide-react";
+  SidebarBrand,
+  SidebarFooter,
+  SidebarFrame,
+  SidebarItem,
+  SidebarSectionList,
+  SidebarSections,
+  SidebarSectionToggle,
+  sidebarItemClass,
+  useRowFlip,
+} from "@/components/layout/sidebar-chrome";
 
 export interface AdminNavItem {
   href: string;
@@ -37,68 +37,83 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },
 ];
 
+/**
+ * The admin sidebar. Same frame, rows and footer as the dashboard's: only the
+ * items and the badge differ.
+ */
 export function AdminNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const access = useSessionPermissions();
   const items = access
     ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
     : [];
 
+  // One item's sections are open at a time: the area you are in opens them, and
+  // leaving closes them again.
+  const [expandedHref, setExpandedHref] = useState<string | null>(null);
+  const areaHref =
+    ADMIN_NAV_ITEMS.find(
+      (item) => adminSections(item.href).length > 0 && isAdminItemPath(item.href, pathname),
+    )?.href ?? null;
+
+  useEffect(() => {
+    setExpandedHref(areaHref);
+  }, [areaHref]);
+
+  const rowRef = useRowFlip(items.map((item) => item.href));
+
   return (
-    <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
-      <GlassPanel className="shadow-md">
-        <GlassPanelContent className="p-3">
-          {/* Brand */}
-          <div className="mb-1 flex items-center justify-between px-3 py-2">
-            <Link href="/dashboard/chat" className="flex items-center gap-2">
-              <ChevronRight className="text-primary h-5 w-5" />
-              <span className="text-lg font-bold tracking-tight">Saale</span>
-            </Link>
-            <span className="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[10px] font-medium dark:bg-white/5">
-              Admin
-            </span>
-          </div>
+    <SidebarFrame>
+      <SidebarBrand badge="Admin" />
 
-          <Separator className="my-2" />
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const sections = adminSections(item.href);
+          const expanded = expandedHref === item.href;
+          const activeId = sections.find(
+            (section) => pathname === section.href || pathname.startsWith(`${section.href}/`),
+          )?.id;
 
-          {/* Nav Items */}
-          <div className="space-y-0.5">
-            {items.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-              const Icon = item.icon;
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150",
-                    isActive
-                      ? "bg-accent font-medium dark:bg-white/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </GlassPanelContent>
-      </GlassPanel>
-
-      {/* Back to app */}
-      <div className="mt-4 px-3">
-        <Button
-          variant="ghost"
-          className="text-muted-foreground w-full justify-start gap-2"
-          onClick={() => router.push("/dashboard/chat")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to app
-        </Button>
+          return (
+            <div key={item.href}>
+              <SidebarItem
+                rowRef={rowRef(item.href)}
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                active={isAdminItemPath(item.href, pathname)}
+                trailing={
+                  sections.length > 0 ? (
+                    <SidebarSectionToggle
+                      label={item.label}
+                      expanded={expanded}
+                      onToggle={() => setExpandedHref(expanded ? null : item.href)}
+                    />
+                  ) : undefined
+                }
+              />
+              {sections.length > 0 ? (
+                <SidebarSections open={expanded}>
+                  <SidebarSectionList
+                    groups={[{ label: null, items: sections }]}
+                    activeId={activeId}
+                  />
+                </SidebarSections>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
-    </nav>
+
+      {/* Back to the app, in the same shape as the items above it */}
+      <div className="border-border/60 mt-3 border-t pt-2">
+        <Link href="/dashboard/chat" className={sidebarItemClass(false)}>
+          <ArrowLeft className="h-4 w-4 shrink-0" />
+          <span className="truncate">Back to app</span>
+        </Link>
+      </div>
+
+      <SidebarFooter />
+    </SidebarFrame>
   );
 }
