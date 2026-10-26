@@ -871,16 +871,6 @@ model ScriptWatcher {
 
   /// Script body, run in the codemode sandbox as an async function body.
   script     String   @db.Text
-  /// sha256 of `script` at the moment the user approved its tool calls. A
-  /// mismatch at tick time means the script changed under the approval, so the
-  /// tick is refused until the user approves the new one.
-  scriptHash String
-  /// Tool names approved for this script — and the exact set the sandbox is
-  /// given, so an unapproved call is not merely gated but unavailable.
-  grantedTools String[] @default([])
-  /// The script reaches tools by a computed name, so its tool use cannot be
-  /// read from the source and the grant covers every callable tool instead.
-  grantAll     Boolean  @default(false)
 
   cronExpression String
   enabled        Boolean @default(true)
