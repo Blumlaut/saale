@@ -139,7 +139,7 @@ export function ProjectChats({
                 <span className="text-muted-foreground flex items-center gap-2 text-xs">
                   <span className="shrink-0">{formatRelativeDate(chat.lastActivityAt)}</span>
                   {chat.worktree && (
-                    <span className="truncate font-mono text-[11px]">{chat.worktree.branch}</span>
+                    <span className="truncate text-[11px]">{chat.worktree.branch}</span>
                   )}
                 </span>
               </Link>
