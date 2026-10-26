@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { scheduleAgentDefinition } from "@/lib/queue";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
+import { serializeAgentDefinition } from "@/lib/agent-jobs/serialize";
 import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
@@ -58,48 +59,11 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    definitions: definitions.map(
-      (d: {
-        id: string;
-        name: string;
-        description: string | null;
-        prompt: string;
-        systemPrompt: string | null;
-        toolConfig: unknown;
-        modelId: string | null;
-        thinkingLevel: string;
-        outputChannel: string | null;
-        outputChannelId: string | null;
-        cronExpression: string | null;
-        runAt: Date | null;
-        lastRunAt: Date | null;
-        enabled: boolean;
-        systemManaged: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-        _count: { runs: number };
-      }) => ({
-        id: d.id,
-        name: d.name,
-        description: d.description,
-        prompt: d.prompt,
-        systemPrompt: d.systemPrompt,
-        toolConfig: d.toolConfig as Record<string, boolean> | null,
-        modelId: d.modelId,
-        thinkingLevel: d.thinkingLevel,
-        outputChannel: d.outputChannel,
-        outputChannelId: d.outputChannelId,
-        cronExpression: d.cronExpression,
-        runAt: d.runAt?.toISOString() ?? null,
-        lastRunAt: d.lastRunAt?.toISOString(),
-        enabled: d.enabled,
-        systemManaged: d.systemManaged,
-        runCount: d._count.runs,
-        latestRun: latestRunMap.get(d.id) ?? null,
-        createdAt: d.createdAt.toISOString(),
-        updatedAt: d.updatedAt.toISOString(),
-      }),
-    ),
+    definitions: definitions.map((definition) => ({
+      ...serializeAgentDefinition(definition),
+      runCount: definition._count.runs,
+      latestRun: latestRunMap.get(definition.id) ?? null,
+    })),
   });
 }
 
@@ -173,25 +137,5 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({
-    definition: {
-      id: definition.id,
-      name: definition.name,
-      description: definition.description,
-      prompt: definition.prompt,
-      systemPrompt: definition.systemPrompt,
-      toolConfig: definition.toolConfig as Record<string, boolean> | null,
-      modelId: definition.modelId,
-      thinkingLevel: definition.thinkingLevel,
-      outputChannel: definition.outputChannel,
-      outputChannelId: definition.outputChannelId,
-      cronExpression: definition.cronExpression,
-      runAt: definition.runAt?.toISOString() ?? null,
-      lastRunAt: definition.lastRunAt?.toISOString(),
-      enabled: definition.enabled,
-      systemManaged: false,
-      createdAt: definition.createdAt.toISOString(),
-      updatedAt: definition.updatedAt.toISOString(),
-    },
-  });
+  return NextResponse.json({ definition: serializeAgentDefinition(definition) });
 }
