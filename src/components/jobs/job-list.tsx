@@ -82,9 +82,11 @@ function getModelLabel(modelId: string | null): string | null {
 interface JobListProps {
   onRefresh?: () => void;
   onEdit?: (job: Job) => void;
+  /** The page's action, shown in the panel header. */
+  action?: React.ReactNode;
 }
 
-export function JobList({ onRefresh, onEdit }: JobListProps) {
+export function JobList({ onRefresh, onEdit, action }: JobListProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -257,7 +259,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
       {/* Job list */}
       <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
-          <GlassPanelHeader title="Jobs" />
+          <GlassPanelHeader title="Jobs" action={action} />
           <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">

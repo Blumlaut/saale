@@ -200,40 +200,37 @@ body **never scrolls**. Pages must use the shared layout components in
 `src/components/layout/page.tsx` — never build a page root by hand:
 
 ```tsx
-// List/content page — single full-height panel, first row is the toolbar
+// Any page with one panel — list, form, settings. The panel's first row is the
+// action row, so the page never places its own button.
 <Page className="gap-0">
-  <div className="min-h-0 flex-1">
-    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-      {/* toolbar: functional context left, actions right (icon-only mobile) */}
-      <div className="flex shrink-0 items-center justify-end border-b px-4 py-2">
-        <Button size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={...}>
-          <Plus className="h-4 w-4" />
-          <span className="hidden md:inline">New Item</span>
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {/* list scrolls here — the ONLY scroll region */}
-      </div>
-    </GlassPanel>
-  </div>
+  <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+    <PageActions leading={/* search, count, filters, status */}>
+      <PageAction icon={Plus} label="New Item" onClick={...} />
+    </PageActions>
+    <PageScroll>{/* the ONLY scroll region */}</PageScroll>
+  </GlassPanel>
 </Page>
 
-// Form page — pinned slim action row (status + Save), no title
-<Page>
-  <PageToolbar>
-    <Button size="sm" onClick={...}>Save</Button>
-  </PageToolbar>
-  <PageScroll>{/* form scrolls here */}</PageScroll>
-</Page>
+// Several groups of settings share one panel as sections
+<PageSection title="Signups">{/* rows */}</PageSection>
+
+// A page of two panels puts the action in the first panel's header
+<GlassPanelHeader title="Agent Jobs" action={<PageAction icon={Plus} label="New agent" />} />
 ```
+
+`PageActions`, `PageAction`, `PageStatus` and `PageSection` live in `src/components/layout/page.tsx`. Never hand-roll the row or size the button yourself — a page that does drifts from every other page.
 
 Rules:
 
 - **No page titles** — the nav already names the page. No title text, no subtitle,
   no title+action rows. Empty space is wasted space.
-- **The content owns the toolbar** — a list page's first panel row holds the actions
+- **The content owns the toolbar** — the page's first panel row holds the actions
   (right-aligned, icon-only on mobile, label at `md:`). Functional context (date
   range, account switcher, search) may sit on the left — never a bare page name.
+- **One panel, one action row** — a page with a single panel puts everything in it,
+  however many groups of settings it holds (`PageSection`). Its action row is that
+  panel's first row. A page of two panels puts the action in the first panel's
+  header.
 - **Actions pinned** — the toolbar row is `shrink-0`; actions never scroll away.
 - **Content scrolls inside its panel** (`min-h-0 flex-1 overflow-y-auto`) or inside
   `PageScroll` for form pages — the only scrollable region on the page.

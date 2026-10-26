@@ -113,9 +113,11 @@ function TickBadge({ status }: { status: string }) {
 interface WatcherListProps {
   onRefresh?: () => void;
   onEdit?: (watcher: ScriptWatcher) => void;
+  /** The page's action, shown in the panel header. */
+  action?: React.ReactNode;
 }
 
-export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
+export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const router = useRouter();
   const [watchers, setWatchers] = useState<ScriptWatcher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,7 +238,7 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
       {/* Watchers */}
       <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
-          <GlassPanelHeader title="Watchers" />
+          <GlassPanelHeader title="Watchers" action={action} />
           <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">

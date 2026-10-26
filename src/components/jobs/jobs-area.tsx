@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { Page, PageScroll, PageToolbar } from "@/components/layout/page";
+import { Page, PageAction, PageScroll } from "@/components/layout/page";
 import { JobList } from "@/components/jobs/job-list";
 import { JobDialog } from "@/components/jobs/job-dialog";
 import { AgentJobList } from "@/components/jobs/agent-job-list";
@@ -93,53 +92,29 @@ export function JobsArea({ section }: { section: JobsSection }) {
 
   return (
     <Page>
-      {/* Toolbar. one action for the kind of job on this page */}
-      <PageToolbar>
-        {section === "agents" && (
-          <Button
-            size="icon"
-            className="h-8 w-8 md:h-auto md:w-auto md:px-3"
-            onClick={() => setShowAgentDialog(true)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">New agent</span>
-          </Button>
-        )}
-        {section === "scheduled" && (
-          <Button
-            size="icon"
-            className="h-8 w-8 md:h-auto md:w-auto md:px-3"
-            onClick={() => setShowJobDialog(true)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">New job</span>
-          </Button>
-        )}
-        {section === "watchers" && (
-          <Button
-            size="icon"
-            className="h-8 w-8 md:h-auto md:w-auto md:px-3"
-            onClick={() => setShowWatcherDialog(true)}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden md:inline">New watcher</span>
-          </Button>
-        )}
-      </PageToolbar>
-
       {section === "agents" && (
         <PageScroll>
           <AgentJobList
             key={agentRefreshKey}
             onEdit={handleAgentEdit}
             onRefresh={handleAgentCreated}
+            action={
+              <PageAction icon={Plus} label="New agent" onClick={() => setShowAgentDialog(true)} />
+            }
           />
         </PageScroll>
       )}
 
       {section === "scheduled" && (
         <PageScroll>
-          <JobList key={jobRefreshKey} onEdit={handleJobEdit} onRefresh={handleJobCreated} />
+          <JobList
+            key={jobRefreshKey}
+            onEdit={handleJobEdit}
+            onRefresh={handleJobCreated}
+            action={
+              <PageAction icon={Plus} label="New job" onClick={() => setShowJobDialog(true)} />
+            }
+          />
         </PageScroll>
       )}
 
@@ -149,6 +124,13 @@ export function JobsArea({ section }: { section: JobsSection }) {
             key={watcherRefreshKey}
             onEdit={handleWatcherEdit}
             onRefresh={handleWatcherCreated}
+            action={
+              <PageAction
+                icon={Plus}
+                label="New watcher"
+                onClick={() => setShowWatcherDialog(true)}
+              />
+            }
           />
         </PageScroll>
       )}
