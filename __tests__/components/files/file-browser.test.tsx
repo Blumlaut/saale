@@ -197,6 +197,44 @@ describe("FileBrowser", () => {
     });
   });
 
+  it("starts over at a new root when the caller hands over another worktree", async () => {
+    listingPerRequest();
+    const view = render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+    await screen.findByText("artifacts");
+
+    view.rerender(<FileBrowser target="user" rootPath="worktrees/c-2b3c4d5e" />);
+
+    await waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain(
+        `path=${encodeURIComponent("worktrees/c-2b3c4d5e")}`,
+      );
+    });
+    // The new worktree is home, so there is nowhere above it.
+    expect(screen.queryByRole("button", { name: "Up one folder" })).toBeNull();
+  });
+
+  it("stays in the folder it is filtering when hidden files are toggled", async () => {
+    listingPerRequest();
+    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+
+    fireEvent.click(await screen.findByText("artifacts"));
+    const folder = `${ROOT}/worktrees/c-1a2b3c4d/artifacts`;
+    await waitFor(() => {
+      expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain(
+        `path=${encodeURIComponent(folder)}`,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Show hidden files" }));
+
+    await waitFor(() => {
+      const lastCall = vi.mocked(fetchJson).mock.calls.at(-1)?.[0] ?? "";
+      expect(lastCall).toContain("hideDotfiles=0");
+      expect(lastCall).toContain(`path=${encodeURIComponent(folder)}`);
+    });
+  });
+
   it("says so when the workspace is empty", async () => {
     vi.mocked(fetchJson).mockResolvedValue(listing({ entries: [] }));
 
