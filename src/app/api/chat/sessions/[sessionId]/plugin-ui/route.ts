@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { resolvePluginUiRequest, type PluginUiResponse } from "@/lib/plugin-ui/requests";
+import { clearTelegramPluginDialog } from "@/lib/telegram/plugin-dialogs";
 
 /**
  * POST /api/chat/sessions/:sessionId/plugin-ui. answer a plugin's dialog.
@@ -43,6 +44,9 @@ export async function POST(
   if (!resolved) {
     return NextResponse.json({ error: "Dialog not found or already answered" }, { status: 404 });
   }
+
+  // The same dialog may be sitting in Telegram with its keyboard still up.
+  await clearTelegramPluginDialog(sessionId, body.id);
 
   return NextResponse.json({ ok: true });
 }

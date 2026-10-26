@@ -122,6 +122,13 @@ function senderDisplayName(from: { first_name?: string; last_name?: string }): s
  *   would otherwise run one person's message against another person's account
  *   in front of everyone.
  */
+/** The message a message replies to, when it replies at all. */
+function repliedToMessageId(replyTo: unknown): number | undefined {
+  if (typeof replyTo !== "object" || replyTo === null) return undefined;
+  const id = (replyTo as { message_id?: unknown }).message_id;
+  return typeof id === "number" ? id : undefined;
+}
+
 export async function POST(request: NextRequest) {
   // 1. The instance's bot must exist and be switched on
   const botConfig = await getTelegramBot();
@@ -352,6 +359,7 @@ export async function POST(request: NextRequest) {
       telegramUserId,
       telegramChatId,
       text: content.text,
+      replyToMessageId: repliedToMessageId(message.reply_to_message),
     }).catch((err: unknown): { consumed: boolean; note?: string } => {
       console.error("Failed to take a plugin dialog reply:", err);
       return { consumed: false };

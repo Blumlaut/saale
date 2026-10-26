@@ -30,6 +30,9 @@ const DIALOG_KEY_PREFIX = "saale:plugin-ui-tg:";
 /** The dialog an `input`/`editor` prompt takes its next text message for. */
 const REPLY_KEY_PREFIX = "saale:plugin-ui-tg-reply:";
 
+/** Where a request's keyboard message sits, for clearing it from another surface. */
+const MESSAGE_KEY_PREFIX = "saale:plugin-ui-tg-msg:";
+
 /** How long a keyboard or reply prompt stays usable. */
 const DIALOG_TTL_S = 15 * 60;
 
@@ -54,6 +57,8 @@ interface DialogSession {
   options: string[];
   page: number;
   telegramChatId: string;
+  /** The message the keyboard is attached to. Paging edits it in place. */
+  messageId: number;
 }
 
 /** What a text reply is going to answer. */
@@ -62,12 +67,20 @@ interface ReplySession {
   sessionId: string;
   userId: string;
   telegramChatId: string;
+  /** The prompt. Only a reply to it is taken as the answer. */
   messageId: number;
-  title: string;
 }
 
 const dialogKey = (token: string) => `${DIALOG_KEY_PREFIX}${token}`;
 const replyKey = (telegramUserId: string) => `${REPLY_KEY_PREFIX}${telegramUserId}`;
+const messageKey = (sessionId: string, requestId: string) =>
+  `${MESSAGE_KEY_PREFIX}${sessionId}:${requestId}`;
+
+/** Chat and message of a dialog, so a keyboard can be cleared from elsewhere. */
+interface MessageRef {
+  telegramChatId: string;
+  messageId: number;
+}
 
 /** Escape text for Telegram's HTML parse mode. */
 function escapeHtml(text: string): string {
@@ -104,7 +117,6 @@ export async function notifyTelegramPluginUi(request: PluginUiRequest): Promise<
       userId: request.userId,
       telegramChatId: link.telegramChatId.toString(),
       messageId: sent.message_id,
-      title: request.title,
     };
     await getRedis().setex(
       replyKey(link.telegramUserId.toString()),
@@ -126,13 +138,56 @@ export async function notifyTelegramPluginUi(request: PluginUiRequest): Promise<
     options: request.options ?? [],
     page: 0,
     telegramChatId: link.telegramChatId.toString(),
+    messageId: 0,
   };
 
-  await getRedis().setex(dialogKey(token), DIALOG_TTL_S, JSON.stringify(session));
-  await bot.api.sendMessage(chatId, dialogText(session), {
+  const sent = await bot.api.sendMessage(chatId, dialogText(session), {
     parse_mode: "HTML",
     reply_markup: buildKeyboard(session) as never,
   });
+  session.messageId = sent.message_id;
+
+  const ref: MessageRef = {
+    telegramChatId: session.telegramChatId,
+    messageId: session.messageId,
+  };
+  await Promise.all([
+    getRedis().setex(dialogKey(token), DIALOG_TTL_S, JSON.stringify(session)),
+    getRedis().setex(messageKey(request.sessionId, request.id), DIALOG_TTL_S, JSON.stringify(ref)),
+  ]);
+}
+
+/**
+ * Drop a dialog's keyboard when another surface answered it.
+ *
+ * The chat and Telegram both carry the same dialog, and whichever is answered
+ * first leaves the other one looking open until it is cleared here.
+ */
+export async function clearTelegramPluginDialog(
+  sessionId: string,
+  requestId: string,
+): Promise<void> {
+  const redis = getRedis();
+  const key = messageKey(sessionId, requestId);
+
+  try {
+    const raw = await redis.get(key);
+    if (!raw) return;
+    await redis.del(key);
+
+    const ref = JSON.parse(raw) as MessageRef;
+    const botConfig = await getEnabledTelegramBot();
+    if (!botConfig) return;
+
+    await createBot(botConfig.encryptedToken).api.editMessageText(
+      ref.telegramChatId,
+      ref.messageId,
+      "✅ Answered in the chat.",
+      { reply_markup: { inline_keyboard: [] } as never },
+    );
+  } catch (err) {
+    console.error("Failed to clear a plugin dialog on Telegram:", err);
+  }
 }
 
 /** The question, plus what a tap will do. */
@@ -237,23 +292,66 @@ export async function handlePluginDialogCallback(
     return { handled: true, message: "⚠️ This dialog belongs to a different account." };
   }
 
-  // Paging and the page counter change nothing on the request.
+  const totalPages = Math.max(Math.ceil(session.options.length / OPTIONS_PER_PAGE), 1);
+
+  // Paging changes the keyboard, not the request.
   if (action === "g" && value !== undefined) {
-    const totalPages = Math.max(Math.ceil(session.options.length / OPTIONS_PER_PAGE), 1);
     session.page = Math.min(Math.max(Number(value) || 0, 0), totalPages - 1);
     await redis.setex(dialogKey(token), DIALOG_TTL_S, JSON.stringify(session));
-    return { handled: true };
+    await redrawDialog(botConfig, session);
+    return { handled: true, message: `Page ${session.page + 1}/${totalPages}` };
   }
-  if (action === "n") return { handled: true };
+  if (action === "n") return { handled: true, message: `Page ${session.page + 1}/${totalPages}` };
 
   const answer = answerFrom(session, action, value);
   if (!answer) return { handled: true, message: "⚠️ That option is no longer available." };
 
   const answered = await resolvePluginUiRequest(session.sessionId, session.requestId, answer);
   await redis.del(dialogKey(token));
-  if (!answered) return { handled: true, message: "⚠️ Already answered." };
+  await redis.del(messageKey(session.sessionId, session.requestId));
+  if (!answered) {
+    await settleDialog(botConfig, session, "⚠️ Answered elsewhere.");
+    return { handled: true, message: "⚠️ Already answered." };
+  }
 
-  return { handled: true, message: describeAnswer(answer, session.options) };
+  const text = describeAnswer(answer, session.options);
+  await settleDialog(botConfig, session, text);
+  return { handled: true, message: text };
+}
+
+/** Re-send the keyboard for the page the user moved to. */
+async function redrawDialog(
+  botConfig: { encryptedToken: string },
+  session: DialogSession,
+): Promise<void> {
+  try {
+    await createBot(botConfig.encryptedToken).api.editMessageText(
+      session.telegramChatId,
+      session.messageId,
+      dialogText(session),
+      { parse_mode: "HTML", reply_markup: buildKeyboard(session) as never },
+    );
+  } catch (err) {
+    console.error("Failed to page a plugin dialog on Telegram:", err);
+  }
+}
+
+/** Replace the keyboard with the outcome, so it stops looking open. */
+async function settleDialog(
+  botConfig: { encryptedToken: string },
+  session: DialogSession,
+  text: string,
+): Promise<void> {
+  try {
+    await createBot(botConfig.encryptedToken).api.editMessageText(
+      session.telegramChatId,
+      session.messageId,
+      text,
+      { reply_markup: { inline_keyboard: [] } as never },
+    );
+  } catch (err) {
+    console.error("Failed to settle a plugin dialog on Telegram:", err);
+  }
 }
 
 /** What the plugin receives for a press. */
@@ -271,7 +369,7 @@ function answerFrom(
   return null;
 }
 
-/** The callback toast, also the text the keyboard is replaced with. */
+/** The answer, as the callback toast and as the text the keyboard is replaced with. */
 function describeAnswer(answer: PluginUiResponse, options: string[]): string {
   if (answer.cancelled) return "✖️ Dismissed";
   if (answer.confirmed !== undefined) return answer.confirmed ? "✅ Confirmed" : "❌ Dismissed";
@@ -291,6 +389,8 @@ export async function takePluginDialogReply(params: {
   telegramUserId: bigint;
   telegramChatId: bigint;
   text: string;
+  /** The message this one replies to, when it replies at all. */
+  replyToMessageId?: number | undefined;
 }): Promise<{ consumed: boolean; note?: string }> {
   const key = replyKey(params.telegramUserId.toString());
   const redis = getRedis();
@@ -312,6 +412,10 @@ export async function takePluginDialogReply(params: {
   ) {
     return { consumed: false };
   }
+
+  // The prompt says to reply to it, and anything else is a message meant for
+  // the agent: taking it would swallow a prompt the user never aimed here.
+  if (params.replyToMessageId !== session.messageId) return { consumed: false };
 
   await redis.del(key);
 

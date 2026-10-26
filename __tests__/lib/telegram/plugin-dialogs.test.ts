@@ -7,6 +7,7 @@ const TELEGRAM_USER_ID = BigInt(4242);
 const TELEGRAM_CHAT_ID = BigInt(9001);
 
 const sendMessage = vi.fn(async () => ({ message_id: 11 }));
+const editMessageText = vi.fn(async () => ({}));
 vi.mock("@/lib/telegram/bot", () => ({
   getEnabledTelegramBot: vi.fn(async () => ({
     encryptedToken: "enc-token",
@@ -16,7 +17,7 @@ vi.mock("@/lib/telegram/bot", () => ({
   })),
 }));
 vi.mock("@/lib/telegram/client", () => ({
-  createBot: () => ({ api: { sendMessage } }),
+  createBot: () => ({ api: { sendMessage, editMessageText } }),
   sendTelegramMessage: vi.fn(async () => undefined),
 }));
 vi.mock("@/lib/telegram/links", () => ({
@@ -36,9 +37,11 @@ import { resetMockRedis } from "../../helpers/in-memory-redis";
 import {
   getPendingPluginUiRequests,
   requestPluginUi,
+  resolvePluginUiRequest,
   type PluginUiRequestInput,
 } from "@/lib/plugin-ui/requests";
 import {
+  clearTelegramPluginDialog,
   handlePluginDialogCallback,
   notifyTelegramPluginUi,
   takePluginDialogReply,
@@ -107,6 +110,7 @@ function buttonData(label: string): string {
 beforeEach(() => {
   resetMockRedis();
   sendMessage.mockClear();
+  editMessageText.mockClear();
 });
 
 describe("plugin dialogs on Telegram", () => {
@@ -180,6 +184,7 @@ describe("plugin dialogs on Telegram", () => {
       telegramUserId: TELEGRAM_USER_ID,
       telegramChatId: TELEGRAM_CHAT_ID,
       text: "release/2026.10.26",
+      replyToMessageId: 11,
     };
     await expect(takePluginDialogReply(reply)).resolves.toEqual({ consumed: true });
     await expect(answer).resolves.toEqual({ value: "release/2026.10.26" });
@@ -205,8 +210,96 @@ describe("plugin dialogs on Telegram", () => {
       telegramUserId: TELEGRAM_USER_ID,
       telegramChatId: TELEGRAM_CHAT_ID,
       text: "release/2026.10.26",
+      replyToMessageId: 11,
     });
     expect(result.consumed).toBe(true);
     expect(result.note).toContain("already answered");
+  });
+
+  it("leaves a message that does not reply to the prompt to the agent", async () => {
+    const input = inputDialog();
+    const { answer } = await open(input);
+
+    const result = await takePluginDialogReply({
+      userId: "user-1",
+      telegramUserId: TELEGRAM_USER_ID,
+      telegramChatId: TELEGRAM_CHAT_ID,
+      text: "what is on my calendar?",
+      replyToMessageId: 7,
+    });
+    expect(result.consumed).toBe(false);
+
+    // Still waiting: the prompt was never answered.
+    expect(await getPendingPluginUiRequests(input.sessionId)).toHaveLength(1);
+
+    await takePluginDialogReply({
+      userId: "user-1",
+      telegramUserId: TELEGRAM_USER_ID,
+      telegramChatId: TELEGRAM_CHAT_ID,
+      text: "release/2026.10.26",
+      replyToMessageId: 11,
+    });
+    await expect(answer).resolves.toEqual({ value: "release/2026.10.26" });
+  });
+
+  it("pages the keyboard instead of leaving the first six options on screen", async () => {
+    const options = Array.from({ length: 8 }, (_, index) => `Option ${index + 1}`);
+    const { answer } = await open(base({ options }));
+
+    const result = await handlePluginDialogCallback(
+      buttonData("1/2").replace(":n", ":g:1"),
+      TELEGRAM_USER_ID,
+    );
+    expect(result.handled).toBe(true);
+    expect(result.message).toContain("Page 2/2");
+
+    const call = editMessageText.mock.calls.at(-1) as unknown as [
+      number,
+      number,
+      string,
+      { reply_markup: { inline_keyboard: Array<Array<{ text: string }>> } },
+    ];
+    const labels = call[3].reply_markup.inline_keyboard.flat().map((button) => button.text);
+    expect(labels).toContain("Option 7");
+    expect(labels).toContain("Option 8");
+    expect(labels).not.toContain("Option 1");
+
+    await handlePluginDialogCallback(buttonData("Dismiss"), TELEGRAM_USER_ID);
+    await answer;
+  });
+
+  it("clears the keyboard once an answer is in", async () => {
+    const { answer } = await open(base());
+
+    await handlePluginDialogCallback(buttonData("Deploy now"), TELEGRAM_USER_ID);
+    await answer;
+
+    const call = editMessageText.mock.calls.at(-1) as unknown as [
+      number,
+      number,
+      string,
+      { reply_markup: { inline_keyboard: unknown[] } },
+    ];
+    expect(call[2]).toContain("Deploy now");
+    expect(call[3].reply_markup.inline_keyboard).toEqual([]);
+  });
+
+  it("clears the keyboard when the chat answers the dialog", async () => {
+    const input = base();
+    const { answer } = await open(input);
+
+    // The chat's answer route settles the request, then clears the other surface.
+    const [pending] = await getPendingPluginUiRequests(input.sessionId);
+    await resolvePluginUiRequest(input.sessionId, pending!.id, { value: "Deploy now" });
+    await clearTelegramPluginDialog(input.sessionId, pending!.id);
+    await answer;
+
+    const call = editMessageText.mock.calls.at(-1) as unknown as [
+      number,
+      number,
+      string,
+      { reply_markup: { inline_keyboard: unknown[] } },
+    ];
+    expect(call[3].reply_markup.inline_keyboard).toEqual([]);
   });
 });
