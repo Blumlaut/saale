@@ -27,7 +27,7 @@ export const OVERLAY_SELECTORS = [
   '[data-slot="alert-dialog-content"]',
 ];
 
-/** The same selectors, restricted to visible popups (both app shells render markup). */
+/** The same selectors, restricted to visible popups. */
 export const OVERLAY_VISIBLE_SELECTOR = OVERLAY_SELECTORS.map((s) => `${s}:visible`).join(", ");
 
 /** Wait until an overlay popup is open and settled. */

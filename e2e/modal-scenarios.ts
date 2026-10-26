@@ -27,6 +27,57 @@ export interface ModalScenario {
   skip?: string;
 }
 
+/**
+ * Write a plugin's waiting dialog where `requestPluginUi` would.
+ *
+ * The chat polls `/api/plugin-ui/pending`, so the dialog shows up as it would
+ * after a plugin called `ctx.ui.select`.
+ */
+async function seedPendingPluginDialog(page: Page): Promise<string> {
+  await import("dotenv/config");
+  const { Redis } = await import("ioredis");
+
+  const me = (await (await page.request.get("/api/auth/get-session")).json()) as {
+    user?: { id?: string };
+  };
+  const userId = me.user?.id;
+  if (!userId) throw new Error("e2e: no signed-in user for the plugin dialog");
+
+  const listed = (await (await page.request.get("/api/chat/sessions")).json()) as {
+    sessions?: Array<{ id: string }>;
+  };
+  let sessionId = listed.sessions?.[0]?.id;
+  if (!sessionId) {
+    const created = await page.request.post("/api/chat/sessions", { data: {} });
+    sessionId = ((await created.json()) as { session?: { id?: string } }).session?.id;
+  }
+  if (!sessionId) throw new Error("e2e: could not open a chat for the plugin dialog");
+
+  const now = Date.now();
+  const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
+  try {
+    await redis.setex(
+      `saale:plugin-ui:${sessionId}:e2e-plugin-dialog-${now}`,
+      120,
+      JSON.stringify({
+        id: `e2e-plugin-dialog-${now}`,
+        sessionId,
+        userId,
+        kind: "select",
+        title: "Deploy saale@2026.10.26 to production?",
+        message: "The release script wants to roll the deployment to all three replicas.",
+        options: ["Deploy now", "Deploy to staging first", "Skip this release"],
+        createdAt: now,
+        expiresAt: now + 120_000,
+      }),
+    );
+  } finally {
+    await redis.quit();
+  }
+
+  return sessionId;
+}
+
 const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/tabs/memories-tab.tsx";
@@ -1300,7 +1351,16 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "chat · plugin dialog",
     path: "/dashboard/chat",
     sources: ["src/components/chat/plugin-dialog.tsx"],
-    skip: "requires a plugin that calls ctx.ui mid-run  the dialog is opened by a live Pi extension, not by a page action",
+    // A live plugin opens this one mid-run; seeding the request it would write
+    // gives the same dialog without spending a model call.
+    open: async (page) => {
+      const sessionId = await seedPendingPluginDialog(page);
+      await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
+      await visible(page, "text=Deploy saale@2026.10.26 to production?").waitFor({
+        state: "visible",
+        timeout: 30_000,
+      });
+    },
   },
   {
     name: "admin · add role",
