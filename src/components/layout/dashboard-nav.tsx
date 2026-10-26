@@ -82,10 +82,9 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
-  // The nav item holding sections expands; the area you are in is always open.
-  const [expandedNavId, setExpandedNavId] = usePersistedState("nav:expanded", "", {
-    validate: (value): value is string => typeof value === "string",
-  });
+  // One nav item's sections are open at a time, and only for the area you are in:
+  // a remembered value left it hanging open on unrelated pages.
+  const [expandedNavId, setExpandedNavId] = useState<string | null>(null);
   const navWidth = useResizableWidth({
     storageKey: "saale:ui:nav:width",
     label: "Resize navigation",
@@ -273,6 +272,19 @@ export function DashboardNav() {
    * Settings opens its sections instead of a second navigation: the sidebar is
    * the only nav, so a settings page has nowhere else to pick a section from.
    */
+  // Arriving in an area opens its sections and leaving closes them again, so the
+  // sidebar always matches the page you are on.
+  const areaId =
+    visibleItems.find(
+      (item) =>
+        (item.id === "settings" || (item.sections?.length ?? 0) > 0) &&
+        isSidebarNavActive(item.href, pathname),
+    )?.id ?? null;
+
+  useEffect(() => {
+    setExpandedNavId(areaId);
+  }, [areaId]);
+
   /** The sections an item expands into, grouped the way the picker shows them. */
   const sectionGroupsFor = (item: SidebarNavItem) => {
     if (item.id === "settings") {
@@ -310,8 +322,7 @@ export function DashboardNav() {
     const Icon = SIDEBAR_NAV_ICONS[item.id];
     const groups = sectionGroupsFor(item);
     const activeId = activeSectionId(item);
-    // The area you are in stays open, whatever the toggle was left at.
-    const expanded = activeId !== undefined || expandedNavId === item.id;
+    const expanded = expandedNavId === item.id;
 
     return (
       <div key={item.id}>
@@ -329,7 +340,7 @@ export function DashboardNav() {
             className="text-muted-foreground size-7 shrink-0 rounded-md"
             aria-expanded={expanded}
             aria-label={expanded ? `Hide ${item.label} pages` : `Show ${item.label} pages`}
-            onClick={() => setExpandedNavId(expandedNavId === item.id ? "" : item.id)}
+            onClick={() => setExpandedNavId(expanded ? null : item.id)}
           >
             <ChevronDown
               className={cn(

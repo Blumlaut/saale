@@ -48,13 +48,17 @@ export function AdminNav() {
     ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
     : [];
 
-  // One item's sections are open at a time, and the page you are on opens its own.
+  // One item's sections are open at a time: the area you are in opens them, and
+  // leaving closes them again.
   const [expandedHref, setExpandedHref] = useState<string | null>(null);
-  const ownItem = ADMIN_NAV_ITEMS.find((item) => isAdminItemPath(item.href, pathname));
+  const areaHref =
+    ADMIN_NAV_ITEMS.find(
+      (item) => adminSections(item.href).length > 0 && isAdminItemPath(item.href, pathname),
+    )?.href ?? null;
 
   useEffect(() => {
-    if (ownItem && adminSections(ownItem.href).length > 0) setExpandedHref(ownItem.href);
-  }, [ownItem]);
+    setExpandedHref(areaHref);
+  }, [areaHref]);
 
   return (
     <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
