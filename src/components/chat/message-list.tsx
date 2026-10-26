@@ -35,10 +35,10 @@ import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/brand/agent-avatar";
+import { UserAvatar } from "@/components/profile/user-avatar";
 import type { ApprovalData, Message, AttachmentData } from "./types";
 import {
   Loader2,
-  User,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -631,9 +631,7 @@ function UserMessageItem({
     return (
       <div className="flex flex-row-reverse gap-3">
         {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
-        <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
-          <User className="h-4 w-4" />
-        </div>
+        <UserAvatar className="liquid-glass-pill hidden h-8 w-8 shrink-0 md:flex" />
         <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
           {/* Attachments (read-only during edit) */}
           {attachmentViews && attachmentViews.length > 0 && (
@@ -713,9 +711,7 @@ function UserMessageItem({
   return (
     <div className="group/message flex flex-row-reverse gap-3">
       {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
-      <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
-        <User className="h-4 w-4" />
-      </div>
+      <UserAvatar className="liquid-glass-pill hidden h-8 w-8 shrink-0 md:flex" />
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {/* Attachments */}
         {attachmentViews && attachmentViews.length > 0 && (
