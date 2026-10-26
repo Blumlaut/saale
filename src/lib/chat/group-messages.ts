@@ -33,7 +33,13 @@ export function groupMessages(messages: Message[]): MessageGroup[] {
       i++;
       while (i < messages.length) {
         const next = messages[i]!;
-        if (next.role === "assistant" && next.parentMessageId === rootId) {
+        // A live turn has no parent until its row is saved, and the client
+        // that connected mid-run never learns it: an assistant turn that
+        // follows an assistant turn is continuing that run.
+        if (
+          next.role === "assistant" &&
+          (!next.parentMessageId || next.parentMessageId === rootId)
+        ) {
           turnMessages.push(next);
           i++;
         } else {
