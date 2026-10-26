@@ -556,6 +556,26 @@ export async function readBlobAt(
   return result.stdout;
 }
 
+/**
+ * One path's bytes at a ref, or null when the ref has no such path.
+ *
+ * The exec stream decodes stdout as text, so the bytes travel as base64; a
+ * binary blob read as utf8 would reach the browser mangled.
+ */
+export async function readBlobBytesAt(
+  userId: string,
+  dir: string,
+  ref: string,
+  path: string,
+): Promise<Buffer | null> {
+  const result = await runInWorkspace(userId, {
+    cwd: dir,
+    command: `git --no-pager cat-file blob ${shellQuote(`${ref}:${path}`)} | base64 -w0`,
+  });
+  if (result.exitCode !== 0 || !result.stdout.trim()) return null;
+  return Buffer.from(result.stdout, "base64");
+}
+
 /** One path's size in bytes at a ref, or null when the ref has no such path. */
 export async function blobSizeAt(
   userId: string,

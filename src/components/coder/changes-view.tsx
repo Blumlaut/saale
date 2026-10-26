@@ -5,9 +5,11 @@ import { Check, ChevronDown, GitBranch, Loader2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { fetchJson } from "@/lib/http";
+import { isBinaryFile, previewKindFromPath } from "@/lib/editor/editor-utils";
 import { formatRelativeDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CommitFileList, CommitFilesStatus, splitPath, useCommitFiles } from "./commit-files";
+import { DiffImage } from "./diff-image";
 import type { CoderChange, CoderCommit, CoderSessionState } from "./use-coder-data";
 
 /** One diff line's tint. */
@@ -230,9 +232,13 @@ export function ChangesView({
       return;
     }
     setOpenPath(change.path);
-    setLoadingDiff(true);
+    setLoadingDiff(false);
     setDiffError(null);
     setDiff(null);
+
+    // An image has no lines to diff; the panel shows the picture instead.
+    if (isBinaryFile(change.path)) return;
+    setLoadingDiff(true);
 
     const query = new URLSearchParams({ path: change.path });
     // An unstaged change is shown from the index down; a staged one from HEAD.
@@ -324,6 +330,8 @@ export function ChangesView({
               const { dir, name } = splitPath(change.path);
               const status = statusLetter(change);
               const open = openPath === change.path;
+              const binary = isBinaryFile(change.path);
+              const image = binary && previewKindFromPath(change.path) === "image";
               return (
                 <div key={change.path}>
                   <button
@@ -368,6 +376,14 @@ export function ChangesView({
                         </p>
                       )}
                       {diff !== null && <DiffView diff={diff} />}
+                      {binary &&
+                        (image ? (
+                          <DiffImage sessionId={sessionId} path={change.path} />
+                        ) : (
+                          <p className="text-muted-foreground px-3 py-2 text-xs">
+                            A binary file has no text to show.
+                          </p>
+                        ))}
                     </div>
                   )}
                 </div>

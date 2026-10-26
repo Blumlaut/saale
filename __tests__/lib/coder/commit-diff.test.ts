@@ -101,6 +101,7 @@ describe("loadCommitDiffFile", () => {
       binary: false,
       original: "text",
       modified: "text",
+      preview: null,
     });
     expect(mocks.readBlobAt).toHaveBeenCalledWith(USER, WORKTREE, "def", "src/app.ts");
     expect(mocks.readBlobAt).toHaveBeenCalledWith(
@@ -125,7 +126,13 @@ describe("loadCommitDiffFile", () => {
   it("marks a binary path instead of reading it", async () => {
     mocks.readCommitDiff.mockResolvedValue([diffFile({ status: "A", added: null, deleted: null })]);
     const result = await loadCommitDiffFile(USER, SESSION, "def4567", "src/app.ts");
-    expect(result).toEqual({ path: "src/app.ts", binary: true, original: null, modified: null });
+    expect(result).toEqual({
+      path: "src/app.ts",
+      binary: true,
+      original: null,
+      modified: null,
+      preview: { sha: "def45678901234567890123456789012345678901", path: "src/app.ts" },
+    });
     expect(mocks.readBlobAt).not.toHaveBeenCalled();
   });
 
@@ -136,10 +143,24 @@ describe("loadCommitDiffFile", () => {
     expect(mocks.readBlobAt).not.toHaveBeenCalled();
   });
 
+  it("previews a dropped binary from the commit that still had it", async () => {
+    mocks.readCommitDiff.mockResolvedValue([
+      diffFile({ status: "D", path: "shots/a.png", added: null, deleted: null }),
+    ]);
+    const result = await loadCommitDiffFile(USER, SESSION, "def4567", "shots/a.png");
+    expect(result).toMatchObject({ binary: true, preview: { sha: "def", path: "shots/a.png" } });
+  });
+
   it("reads a deleted file's original side only", async () => {
     mocks.readCommitDiff.mockResolvedValue([diffFile({ status: "D" })]);
     const result = await loadCommitDiffFile(USER, SESSION, "def4567", "src/app.ts");
-    expect(result).toEqual({ path: "src/app.ts", binary: false, original: "text", modified: "" });
+    expect(result).toEqual({
+      path: "src/app.ts",
+      binary: false,
+      original: "text",
+      modified: "",
+      preview: null,
+    });
     expect(mocks.readBlobAt).toHaveBeenCalledTimes(1);
     expect(mocks.readBlobAt).toHaveBeenCalledWith(USER, WORKTREE, "def", "src/app.ts");
   });
@@ -147,7 +168,13 @@ describe("loadCommitDiffFile", () => {
   it("reads a root commit's files against the empty original side", async () => {
     mocks.readCommitDiff.mockResolvedValue([diffFile({ status: "A", baseRef: null })]);
     const result = await loadCommitDiffFile(USER, SESSION, "def4567", "src/app.ts");
-    expect(result).toEqual({ path: "src/app.ts", binary: false, original: "", modified: "text" });
+    expect(result).toEqual({
+      path: "src/app.ts",
+      binary: false,
+      original: "",
+      modified: "text",
+      preview: null,
+    });
     expect(mocks.blobSizeAt).toHaveBeenCalledTimes(1);
   });
 });

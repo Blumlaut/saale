@@ -20,7 +20,7 @@ import type { CommitDiffFile } from "./git-status";
 const MAX_DIFF_FILE_BYTES = 1024 * 1024;
 
 /** A sha as the panel shows it: 7 to 40 hex characters. */
-const SHA_RE = /^[0-9a-f]{7,40}$/;
+export const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/;
 
 /** The paths a commit changed, with their status and line counts. */
 export async function loadCommitDiff(
@@ -28,7 +28,7 @@ export async function loadCommitDiff(
   sessionId: string,
   sha: string,
 ): Promise<CommitDiffFile[] | null> {
-  if (!SHA_RE.test(sha)) return null;
+  if (!COMMIT_SHA_RE.test(sha)) return null;
   const worktree = await worktreeFor(userId, sessionId);
   if (!worktree) return null;
 
@@ -44,6 +44,11 @@ export interface CommitDiffFileContent {
   binary: boolean;
   original: string | null;
   modified: string | null;
+  /**
+   * The blob a preview renders: a commit's copy of the path, or the one that
+   * came before it when the commit dropped it.
+   */
+  preview: { sha: string; path: string } | null;
 }
 
 export async function loadCommitDiffFile(
@@ -52,7 +57,7 @@ export async function loadCommitDiffFile(
   sha: string,
   rawPath: string,
 ): Promise<CommitDiffFileContent | null | { error: string; status: number }> {
-  if (!SHA_RE.test(sha)) return null;
+  if (!COMMIT_SHA_RE.test(sha)) return null;
   let path: string;
   try {
     path = assertRepoRelativePath(rawPath);
@@ -74,7 +79,13 @@ export async function loadCommitDiffFile(
     return { error: "Path is not part of this commit", status: 404 };
   }
   if (file.added === null || file.deleted === null) {
-    return { path: file.path, binary: true, original: null, modified: null };
+    return {
+      path: file.path,
+      binary: true,
+      original: null,
+      modified: null,
+      preview: previewSide(file, fullSha),
+    };
   }
 
   const baseRef = file.baseRef;
@@ -83,7 +94,13 @@ export async function loadCommitDiffFile(
     file.status === "D" ? Promise.resolve(0) : blobSizeAt(userId, worktree, fullSha, file.path),
   ]);
   if ((baseSize ?? 0) > MAX_DIFF_FILE_BYTES || (headSize ?? 0) > MAX_DIFF_FILE_BYTES) {
-    return { path: file.path, binary: true, original: null, modified: null };
+    return {
+      path: file.path,
+      binary: true,
+      original: null,
+      modified: null,
+      preview: previewSide(file, fullSha),
+    };
   }
 
   const [original, modified] = await Promise.all([
@@ -95,7 +112,18 @@ export async function loadCommitDiffFile(
     binary: false,
     original: original ?? "",
     modified: modified ?? "",
+    preview: null,
   };
+}
+
+/**
+ * The blob a preview of `file` reads.
+ *
+ * A commit that dropped a path is shown as it was before that commit.
+ */
+function previewSide(file: CommitDiffFile, fullSha: string): { sha: string; path: string } | null {
+  if (file.status !== "D") return { sha: fullSha, path: file.path };
+  return file.baseRef ? { sha: file.baseRef, path: file.path } : null;
 }
 
 /** The chat's checkout path, or null for a chat with nothing to diff. */

@@ -82,6 +82,8 @@ export interface CommitDiffFileContent {
   binary: boolean;
   original: string | null;
   modified: string | null;
+  /** The copy a preview shows for a path with no text diff, if there is one. */
+  preview: { sha: string; path: string } | null;
 }
 
 /** One stage of building a chat's workspace, as the server reports it. */

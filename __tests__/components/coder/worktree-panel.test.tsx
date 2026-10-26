@@ -134,6 +134,35 @@ describe("WorktreePanel: a commit in the list", () => {
     );
   });
 
+  it("shows a committed image instead of its binary note", async () => {
+    http.fetchJson.mockImplementation((url: string) =>
+      url.includes("path=")
+        ? Promise.resolve({
+            path: "shots/a.png",
+            binary: true,
+            original: null,
+            modified: null,
+            preview: { sha: commit.sha, path: "shots/a.png" },
+          })
+        : Promise.resolve({
+            files: [
+              { path: "shots/a.png", originalPath: null, status: "A", added: null, deleted: null },
+            ],
+          }),
+    );
+    renderPanel({ ...STATE, commits: [commit] });
+
+    fireEvent.click(screen.getByTitle(commit.sha));
+    fireEvent.click(await screen.findByText("a.png"));
+
+    const image = await screen.findByRole("img", { name: "a.png" });
+    expect(image).toHaveAttribute(
+      "src",
+      `/api/coder/sessions/s-1/blob?path=shots%2Fa.png&sha=${commit.sha}`,
+    );
+    expect(screen.queryByText("Binary file")).toBeNull();
+  });
+
   it("keeps the unfolded commit when another tab is opened", async () => {
     mockCommitDiff();
     renderPanel({ ...STATE, commits: [commit] });

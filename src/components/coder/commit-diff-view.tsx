@@ -6,7 +6,8 @@ import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import { fetchJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
-import { basenameOf, languageFromPath } from "@/lib/editor/editor-utils";
+import { basenameOf, languageFromPath, previewKindFromPath } from "@/lib/editor/editor-utils";
+import { DiffImage } from "./diff-image";
 import {
   CommitFileList,
   CommitFilesStatus,
@@ -168,12 +169,22 @@ export function CommitDiffView({
           ) : contentError ? (
             <p className="text-destructive px-3 py-3 text-xs break-words">{contentError}</p>
           ) : content?.binary ? (
-            <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
-              <p className="text-xs font-medium">Binary file</p>
-              <p className="text-muted-foreground text-xs">
-                {basenameOf(content.path)} has no text form, so there is nothing to diff here.
-              </p>
-            </div>
+            content.preview && previewKindFromPath(content.preview.path) === "image" ? (
+              <div className="h-full overflow-auto py-2">
+                <DiffImage
+                  sessionId={sessionId}
+                  path={content.preview.path}
+                  sha={content.preview.sha}
+                />
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+                <p className="text-xs font-medium">Binary file</p>
+                <p className="text-muted-foreground text-xs">
+                  {basenameOf(content.path)} has no text form, so there is nothing to diff here.
+                </p>
+              </div>
+            )
           ) : content ? (
             <MonacoDiffView
               key={content.path}
