@@ -6,7 +6,7 @@ import type Dockerode from "dockerode";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { previewIdentitySlug } from "@/lib/preview/url";
 import { sandboxConfig } from "@/lib/sandbox/config";
-import type { containerSpec } from "@/lib/sandbox/spec";
+import type { containerSpec, ContainerLimits } from "@/lib/sandbox/spec";
 import {
   confineCwd,
   createContainerManager,
@@ -73,11 +73,15 @@ class FakeExec implements ExecHandle {
 
 class FakeContainer implements ContainerHandle {
   readonly execs: FakeExec[] = [];
+  /** Update bodies the manager sent, in order. */
+  readonly updates: ContainerLimits[] = [];
   running = false;
   removed = false;
   startedCount = 0;
   /** The next `start` rejects with this, the way the daemon reports a race. */
   startError: (Error & { statusCode?: number }) | null = null;
+  /** The next `update` rejects with this, the way the daemon refuses a limit. */
+  updateError: Error | null = null;
   readonly created = Date.parse("2026-01-01T00:00:00Z");
 
   constructor(
@@ -99,6 +103,18 @@ class FakeContainer implements ContainerHandle {
 
   async stop(): Promise<void> {
     this.running = false;
+  }
+
+  async update(options: ContainerLimits): Promise<void> {
+    if (this.updateError) {
+      const error = this.updateError;
+      this.updateError = null;
+      throw error;
+    }
+    this.updates.push(options);
+    // The daemon records the patch on the container, so the next inspect agrees.
+    const hostConfig = this.createOptions?.HostConfig as Partial<ContainerLimits> | undefined;
+    if (hostConfig) Object.assign(hostConfig, options);
   }
 
   async remove(): Promise<void> {
@@ -339,9 +355,43 @@ describe("ensure", () => {
     expect(started.startedCount).toBe(2);
   });
 
-  it("replaces a container the limits changed under", async () => {
+  it("applies changed limits to the container instead of replacing it", async () => {
     const stale = (await manager().ensure("user-abc")) as FakeContainer;
     await stale.stop();
+
+    vi.stubEnv("SANDBOX_MEMORY", "8g");
+    config = sandboxConfig();
+    const updated = (await manager().ensure("user-abc")) as FakeContainer;
+
+    expect(updated).toBe(stale);
+    expect(updated.updates).toHaveLength(1);
+    expect(updated.updates[0]!.Memory).toBe(8 * 1024 ** 3);
+    expect(updated.removed).toBe(false);
+    expect(updated.running).toBe(true);
+    expect(docker.createdOptions).toHaveLength(1);
+  });
+
+  it("keeps the updated limits for the next start", async () => {
+    await manager().ensure("user-abc");
+    vi.stubEnv("SANDBOX_MEMORY", "8g");
+    config = sandboxConfig();
+    const updated = (await manager().ensure("user-abc")) as FakeContainer;
+
+    vi.stubEnv("SANDBOX_MEMORY", "4g");
+    config = sandboxConfig();
+    const next = (await manager().ensure("user-abc")) as FakeContainer;
+
+    expect(next).toBe(updated);
+    expect(updated.updates).toHaveLength(2);
+    expect(updated.updates[1]!.Memory).toBe(4 * 1024 ** 3);
+  });
+
+  it("replaces the container when the daemon refuses a limit", async () => {
+    const stale = (await manager().ensure("user-abc")) as FakeContainer;
+    await stale.stop();
+    stale.updateError = Object.assign(new Error("(HTTP code 400) bad parameter"), {
+      statusCode: 400,
+    });
 
     vi.stubEnv("SANDBOX_MEMORY", "8g");
     config = sandboxConfig();
@@ -367,6 +417,7 @@ describe("ensure", () => {
 
     await expect(after.ensure("user-abc")).resolves.toBe(busy);
     expect(busy.removed).toBe(false);
+    expect(busy.updates).toHaveLength(0);
     expect(docker.createdOptions).toHaveLength(1);
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/keeps its old limits/));
 

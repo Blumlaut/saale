@@ -25,6 +25,8 @@ import {
   containerSpec,
   containerWorkspacePath,
   limitDrift,
+  wantedLimits,
+  type ContainerLimits,
 } from "@/lib/sandbox/spec";
 import { ensureWorkspace, identityPath } from "@/lib/sandbox/workspace";
 import { checkMountinfo } from "./mount-check";
@@ -41,6 +43,7 @@ export interface ContainerHandle {
   id?: string;
   start(): Promise<unknown>;
   stop(options?: { t?: number }): Promise<unknown>;
+  update(options: ContainerLimits): Promise<unknown>;
   remove(options?: { force?: boolean }): Promise<unknown>;
   inspect(): Promise<Dockerode.ContainerInspectInfo>;
   exec(options: Dockerode.ExecCreateOptions): Promise<ExecHandle>;
@@ -323,21 +326,25 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
 
     if (existing) {
       const drift = limitDrift(existing.HostConfig, config);
-      // Docker fixes HostConfig at create time and cannot change a memory limit
-      // on a running container, so a changed SANDBOX_MEMORY (or pids/cpus) only
-      // reaches a container that is replaced. Replacing one mid-command would
-      // kill it, so a busy container keeps its old limits until it falls idle.
-      if (drift.length === 0 || registry.idsFor(id).length > 0) {
-        if (drift.length > 0 && !warnedDrift.has(id)) {
+      // Replacing a container mid-command would kill it, so a busy container
+      // keeps its old limits until it falls idle.
+      if (drift.length === 0) return resume(id, name, existing.State.Running);
+
+      if (registry.idsFor(id).length > 0) {
+        if (!warnedDrift.has(id)) {
           warnedDrift.add(id);
           console.warn(
             `[sandbox] container ${name} keeps its old limits while in use: ${drift.join(", ")}`,
           );
         }
-        const container = docker.getContainer(name);
-        if (!existing.State.Running) await startOnce(container);
-        lastUsed.set(id, now());
-        return container;
+        return resume(id, name, existing.State.Running);
+      }
+
+      // Limits are the daemon's to change on a live container, and it records
+      // them on the container. Only a refusal costs the writable layer.
+      if (await applyLimits(name, drift)) {
+        warnedDrift.delete(id);
+        return resume(id, name, existing.State.Running);
       }
 
       console.warn(`[sandbox] replacing container ${name}: ${drift.join(", ")}`);
@@ -354,6 +361,25 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     slugIndex = null;
     lastUsed.set(id, now());
     return container;
+  }
+
+  /** Hand the container back, started if it was stopped. */
+  async function resume(id: string, name: string, running: boolean): Promise<ContainerHandle> {
+    const container = docker.getContainer(name);
+    if (!running) await startOnce(container);
+    lastUsed.set(id, now());
+    return container;
+  }
+
+  /** Put new limits on the running container; false when the daemon refused. */
+  async function applyLimits(name: string, drift: string[]): Promise<boolean> {
+    try {
+      await docker.getContainer(name).update(wantedLimits(config));
+    } catch (err) {
+      console.error(`Failed to update limits on ${name} (${drift.join(", ")}):`, err);
+      return false;
+    }
+    return true;
   }
 
   async function ensure(identity: string): Promise<ContainerHandle> {
