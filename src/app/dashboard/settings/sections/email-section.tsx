@@ -34,7 +34,7 @@ import {
 import { AccountSheet } from "@/components/mail/account-sheet";
 import type { EmailAccount } from "../types";
 
-export function EmailTab() {
+export function EmailSection() {
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);

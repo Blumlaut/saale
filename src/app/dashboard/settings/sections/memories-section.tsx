@@ -88,7 +88,7 @@ const collectionIcons: Record<string, React.ReactNode> = {
 
 const defaultCollections = ["facts", "projects", "people", "preferences", "decisions"];
 
-export function MemoriesTab() {
+export function MemoriesSection() {
   // Data state
   const [memories, setMemories] = useState<Memory[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);

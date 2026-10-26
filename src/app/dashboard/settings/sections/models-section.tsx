@@ -25,6 +25,7 @@ import {
 import { SaveFooter } from "../components/save-footer";
 import { ProviderManagement } from "../components/provider-management";
 import { ModelSidebar } from "../components/model-sidebar";
+import { useUserSettings } from "../components/user-settings-provider";
 import { cn } from "@/lib/utils";
 import { patchJson } from "@/lib/http";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -34,14 +35,6 @@ import type {
   AvailableProvider,
   PurposeModelSelection,
 } from "../types";
-
-interface AiModelsTabProps {
-  settings: UserSettings | null;
-  onSettingsChange: (settings: UserSettings) => void;
-  saving: boolean;
-  saveStatus: "idle" | "success" | "error";
-  onSave: () => Promise<void>;
-}
 
 interface FullModelInfo extends AvailableModel {
   provider: string;
@@ -80,13 +73,14 @@ function resolveEffectiveModel(
 
 /* ─── Main Tab ─── */
 
-export function AiModelsTab({
-  settings,
-  onSettingsChange,
-  saving,
-  saveStatus,
-  onSave,
-}: AiModelsTabProps) {
+export function ModelsSection() {
+  const {
+    settings,
+    updateSettings: onSettingsChange,
+    saving,
+    saveStatus,
+    save: onSave,
+  } = useUserSettings();
   const [search, setSearch] = useState("");
   const [activePurpose, setActivePurpose] = useState("__default__");
   const [allModels, setAllModels] = useState<FullModelInfo[]>([]);

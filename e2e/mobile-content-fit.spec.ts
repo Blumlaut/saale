@@ -77,11 +77,8 @@ test.describe("mobile content fit", () => {
       }),
     );
 
-    await gotoAndSettle(page, "/dashboard/settings");
-    await page.getByRole("tab", { name: "AI & Models" }).click();
-    await expect(
-      page.getByRole("tabpanel", { name: "AI & Models" }).getByText("DeepSeek Reasoner").first(),
-    ).toBeVisible();
+    await gotoAndSettle(page, "/dashboard/settings/models");
+    await expect(page.getByText("DeepSeek Reasoner").first()).toBeVisible();
 
     // Reveal the list, then measure every rendered (visible) model name.
     await page.evaluate(() => {

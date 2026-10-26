@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
-import { McpServerSheet } from "../components/mcp-server-sheet";
+import { McpServerSheet } from "./mcp-server-sheet";
 
 const POLICY_LABELS: Record<string, string> = {
   ask: "Ask",
@@ -30,7 +30,7 @@ const POLICY_LABELS: Record<string, string> = {
  * Settings → MCP. Servers configured here connect to every agent session the
  * user starts, so a configured server "just works" in chat, Telegram and jobs.
  */
-export function McpTab() {
+export function McpPanel() {
   const {
     servers,
     loading,

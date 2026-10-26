@@ -8,16 +8,10 @@ import { useTheme } from "next-themes";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { InstallAppCard } from "@/components/pwa/install-app-card";
 import { SidebarNavEditor } from "../components/sidebar-nav-editor";
-import type { UserSettings } from "../types";
+import { useUserSettings } from "../components/user-settings-provider";
 
-interface AppearanceTabProps {
-  settings: UserSettings | null;
-  /** Persist a partial change immediately. a toggle takes effect on the spot. */
-  onPatch: (patch: Partial<UserSettings>) => Promise<void>;
-  saving: boolean;
-}
-
-export function AppearanceTab({ settings, onPatch, saving }: AppearanceTabProps) {
+export function AppearanceSection() {
+  const { settings, patch: onPatch, saving } = useUserSettings();
   const { theme, setTheme } = useTheme();
   const { entries, saving: savingNav, error, save, reset } = useSidebarNav();
   const compactActivity = settings?.compactActivity ?? true;

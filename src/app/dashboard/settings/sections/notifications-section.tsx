@@ -21,7 +21,7 @@ import {
   type NotificationCategory,
   type NotificationPreferences,
 } from "@/lib/notifications/preferences";
-import type { UserSettings } from "../types";
+import { useUserSettings } from "../components/user-settings-provider";
 
 interface PushConfig {
   enabled: boolean;
@@ -31,14 +31,8 @@ interface PushConfig {
 /** Which state the notification switch has on this device. */
 type DeviceState = "checking" | "unsupported" | "unconfigured" | "denied" | "off" | "on";
 
-interface NotificationsTabProps {
-  settings: UserSettings | null;
-  /** Persist a partial change immediately. a toggle takes effect on the spot. */
-  onPatch: (patch: Partial<UserSettings>) => Promise<void>;
-  saving: boolean;
-}
-
-export function NotificationsTab({ settings, onPatch, saving }: NotificationsTabProps) {
+export function NotificationsSection() {
+  const { settings, patch: onPatch, saving } = useUserSettings();
   const [config, setConfig] = useState<PushConfig | null>(null);
   const [device, setDevice] = useState<DeviceState>("checking");
   const [busy, setBusy] = useState(false);

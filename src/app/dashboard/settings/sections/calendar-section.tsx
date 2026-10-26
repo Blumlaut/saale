@@ -68,7 +68,7 @@ interface Subscription {
   lastSyncedAt: string | null;
 }
 
-export function CalendarTab() {
+export function CalendarSection() {
   const [accounts, setAccounts] = useState<CalendarAccount[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);

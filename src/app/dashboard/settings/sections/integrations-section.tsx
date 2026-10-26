@@ -19,7 +19,7 @@ import type { IntegrationId } from "@/lib/integrations/types";
 import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
 import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/telegram-card";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
-import { McpTab } from "./mcp-tab";
+import { McpPanel } from "../components/mcp-panel";
 
 /** Delete confirmation descriptions per integration */
 const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
@@ -27,7 +27,7 @@ const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
     "This unlinks your Telegram account. Nothing is sent to Telegram, and you can link again at any time.",
 };
 
-export function IntegrationsTab() {
+export function IntegrationsSection() {
   const telegram = useTelegramIntegration();
 
   const initialLoading = telegram.loading;
@@ -107,7 +107,7 @@ export function IntegrationsTab() {
         </GlassPanelContent>
       </GlassPanel>
 
-      <McpTab />
+      <McpPanel />
 
       {/* Link / relink. same dialog, the panel adapts to the current state */}
       <TelegramLinkDialog

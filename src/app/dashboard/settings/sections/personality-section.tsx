@@ -16,8 +16,8 @@ import {
   Terminal,
 } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
+import { useUserSettings } from "../components/user-settings-provider";
 import { useState, useCallback } from "react";
-import type { UserSettings } from "../types";
 
 const CHAT_EXAMPLE_INSTRUCTIONS = [
   {
@@ -197,21 +197,14 @@ function PromptSection({
   );
 }
 
-interface AgentPersonaTabProps {
-  settings: UserSettings | null;
-  onSettingsChange: (settings: UserSettings) => void;
-  saving: boolean;
-  saveStatus: "idle" | "success" | "error";
-  onSave: () => Promise<void>;
-}
-
-export function AgentPersonaTab({
-  settings,
-  onSettingsChange,
-  saving,
-  saveStatus,
-  onSave,
-}: AgentPersonaTabProps) {
+export function PersonalitySection() {
+  const {
+    settings,
+    updateSettings: onSettingsChange,
+    saving,
+    saveStatus,
+    save: onSave,
+  } = useUserSettings();
   const handleCustomInstructionsChange = useCallback(
     (value: string | null) => {
       if (settings) {

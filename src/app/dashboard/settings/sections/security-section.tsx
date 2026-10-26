@@ -26,7 +26,7 @@ interface FormData {
   confirmPassword: string;
 }
 
-export function AccountTab() {
+export function SecuritySection() {
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);

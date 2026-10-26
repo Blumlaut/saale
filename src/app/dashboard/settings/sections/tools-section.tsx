@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/select";
 import { Wrench, Info, ChevronDown, ChevronRight, Code2, GitBranch } from "lucide-react";
 import { SaveFooter } from "../components/save-footer";
-import type { UserSettings, ToolConfig, ToolExposureConfig } from "../types";
+import { useUserSettings } from "../components/user-settings-provider";
+import type { ToolConfig, ToolExposureConfig } from "../types";
 import type { ToolInfo, ToolPolicy } from "@/lib/pi/tool-infos";
 import {
   DEFAULT_TOOL_CONFIG,
@@ -27,26 +28,19 @@ import {
 import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 
-interface ToolsTabProps {
-  settings: UserSettings | null;
-  onSettingsChange: (settings: UserSettings) => void;
-  saving: boolean;
-  saveStatus: "idle" | "success" | "error";
-  onSave: () => Promise<void>;
-}
-
 /** Exposure option descriptions, for the selected value's hint line. */
 const exposureDescriptions = Object.fromEntries(
   TOOL_EXPOSURES.map((option) => [option.value, option.description]),
 ) as Record<ToolExposure, string>;
 
-export function ToolsTab({
-  settings,
-  onSettingsChange,
-  saving,
-  saveStatus,
-  onSave,
-}: ToolsTabProps) {
+export function ToolsSection() {
+  const {
+    settings,
+    updateSettings: onSettingsChange,
+    saving,
+    saveStatus,
+    save: onSave,
+  } = useUserSettings();
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
   const coderToolConfig = resolveCoderToolConfig(settings?.coderToolConfig);
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -13,6 +13,13 @@ import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
+import {
+  isSettingsPath,
+  SETTINGS_GROUPS,
+  SETTINGS_GROUP_LABELS,
+  settingsSectionForPath,
+  settingsSectionsInGroup,
+} from "@/lib/navigation/settings-nav";
 import type { EmailAccount } from "@/types/shared";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
@@ -46,6 +53,16 @@ function navItemClass(active: boolean, extra = "") {
   );
 }
 
+/** A settings section, nested under the Settings item. */
+function sectionItemClass(active: boolean) {
+  return cn(
+    "block truncate rounded-md px-2 py-0.5 text-xs transition-colors duration-150",
+    active
+      ? "bg-accent text-foreground font-medium"
+      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+  );
+}
+
 interface SearchResult {
   type: "chat" | "email";
   id: string;
@@ -66,6 +83,15 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
+  const [settingsExpanded, setSettingsExpanded] = usePersistedState("nav:settingsExpanded", false, {
+    validate: isBoolean,
+  });
+  const inSettings = isSettingsPath(pathname);
+
+  // Arriving in settings opens the section list, wherever it was left last time.
+  useEffect(() => {
+    if (inSettings) setSettingsExpanded(true);
+  }, [inSettings, setSettingsExpanded]);
   const navWidth = useResizableWidth({
     storageKey: "saale:ui:nav:width",
     label: "Resize navigation",
@@ -249,9 +275,72 @@ export function DashboardNav() {
     </div>
   );
 
+  /*
+   * Settings opens its sections instead of a second navigation: the sidebar is
+   * the only nav, so a settings page has nowhere else to pick a section from.
+   */
+  const renderSettingsItem = (item: SidebarNavItem) => {
+    const Icon = SIDEBAR_NAV_ICONS[item.id];
+    const activeSection = settingsSectionForPath(pathname);
+
+    return (
+      <div key={item.id}>
+        <div className="flex items-center gap-1">
+          <Link
+            href={item.href}
+            className={navItemClass(isSidebarNavActive(item.href, pathname), "min-w-0 flex-1")}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{item.label}</span>
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground size-7 shrink-0 rounded-md"
+            aria-expanded={settingsExpanded}
+            aria-label={settingsExpanded ? "Hide settings sections" : "Show settings sections"}
+            onClick={() => setSettingsExpanded((prev) => !prev)}
+          >
+            <ChevronDown
+              className={cn(
+                "h-3.5 w-3.5 transition-transform duration-150",
+                !settingsExpanded && "-rotate-90",
+              )}
+            />
+          </Button>
+        </div>
+
+        {settingsExpanded && (
+          <div className="border-border/60 mt-0.5 ml-4 border-l pl-2">
+            {SETTINGS_GROUPS.map((group) => {
+              const sections = settingsSectionsInGroup(group);
+              if (sections.length === 0) return null;
+
+              return (
+                <Fragment key={group}>
+                  <p className="console-label px-2 pt-1">{SETTINGS_GROUP_LABELS[group]}</p>
+                  {sections.map((section) => (
+                    <Link
+                      key={section.id}
+                      href={section.href}
+                      aria-current={activeSection?.id === section.id ? "page" : undefined}
+                      className={sectionItemClass(activeSection?.id === section.id)}
+                    >
+                      {section.label}
+                    </Link>
+                  ))}
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <nav
-      className="sidebar-nav relative sticky top-6 h-fit shrink-0"
+      className="sidebar-nav no-scrollbar relative sticky top-6 max-h-[calc(100dvh-3rem)] shrink-0 overflow-y-auto"
       style={{ width: navWidth.width }}
     >
       <GlassPanel className="shadow-md">
@@ -362,6 +451,7 @@ export function DashboardNav() {
             {visibleItems.map((item) => {
               const Icon = SIDEBAR_NAV_ICONS[item.id];
               if (item.id === "mail") return renderMailItem(item);
+              if (item.id === "settings") return renderSettingsItem(item);
 
               return (
                 <Link

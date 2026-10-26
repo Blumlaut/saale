@@ -2,9 +2,28 @@
 import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ToolsTab } from "@/app/dashboard/settings/tabs/tools-tab";
+import { ToolsSection } from "@/app/dashboard/settings/sections/tools-section";
 import type { UserSettings } from "@/app/dashboard/settings/types";
 import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
+
+// The section reads the settings load from the settings shell; the cases below
+// only care about what it tells that shell to store.
+const { settingsState, onSettingsChange } = vi.hoisted(() => ({
+  settingsState: { current: null as UserSettings | null },
+  onSettingsChange: vi.fn(),
+}));
+
+vi.mock("@/app/dashboard/settings/components/user-settings-provider", () => ({
+  useUserSettings: () => ({
+    settings: settingsState.current,
+    loading: false,
+    saving: false,
+    saveStatus: "idle",
+    updateSettings: onSettingsChange,
+    save: vi.fn(),
+    patch: vi.fn(),
+  }),
+}));
 
 /**
  * A stored `defaultToolConfig` is sparse and can predate a category: the row
@@ -46,21 +65,14 @@ function categorySwitches(): HTMLElement[] {
 }
 
 function renderTab(settings: UserSettings) {
-  const onSettingsChange = vi.fn();
-  render(
-    <ToolsTab
-      settings={settings}
-      onSettingsChange={onSettingsChange}
-      saving={false}
-      saveStatus="idle"
-      onSave={vi.fn()}
-    />,
-  );
+  settingsState.current = settings;
+  onSettingsChange.mockClear();
+  render(<ToolsSection />);
   const switches = categorySwitches();
   return { onSettingsChange, switches, lastSwitch: switches[switches.length - 1]! };
 }
 
-describe("ToolsTab category toggles", () => {
+describe("Tools category toggles", () => {
   it("reads a category missing from the stored config as enabled by default", () => {
     expect(lastCategory.key).toBe("settings");
     expect(lastCategory.defaultEnabled).toBe(true);
@@ -117,7 +129,7 @@ describe("ToolsTab category toggles", () => {
  * section reads a missing `coderToolConfig` against `CODER_TOOL_DEFAULTS` and
  * writes the whole map back to the `coderToolConfig` column.
  */
-describe("ToolsTab coder defaults", () => {
+describe("Tools coder defaults", () => {
   function coderSwitches(): HTMLElement[] {
     return screen
       .getAllByRole("switch")
@@ -155,7 +167,7 @@ describe("ToolsTab coder defaults", () => {
  * say, so they get a policy of their own and no switch  a switch there would
  * claim to govern them and would not.
  */
-describe("ToolsTab always-active tools", () => {
+describe("Tools always-active tools", () => {
   /**
    * The policy a row is set to. Read from the option list: a closed trigger
    * shows the stored value, not the label of the item it selects.
