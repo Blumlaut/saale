@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ModelPicker } from "@/components/shared/model-picker";
 import { Page, PageScroll } from "@/components/layout/page";
 import {
   fromGlobalProviderModels,
@@ -18,6 +20,7 @@ import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import {
   Bot,
+  Brain,
   Loader2,
   CheckCircle,
   AlertCircle,
@@ -48,6 +51,8 @@ export function ModelAvailability() {
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [modelSearch, setModelSearch] = useState("");
+  /** The instance's fallback model, as `provider/model`. */
+  const [defaultModel, setDefaultModel] = useState("");
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
@@ -109,6 +114,11 @@ export function ModelAvailability() {
     try {
       const data = await fetchJson<{ settings: AdminSettings }>("/api/admin/settings");
       setAdminSettings(data.settings);
+      setDefaultModel(
+        data.settings.globalModelProvider && data.settings.globalModelName
+          ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
+          : "",
+      );
 
       setModelEnabled(fromGlobalProviderModels(data.settings.globalProviderModels));
     } finally {
@@ -189,17 +199,22 @@ export function ModelAvailability() {
     setSaving(true);
 
     const globalProviderModels = toGlobalProviderModels(Object.keys(availableModels), modelEnabled);
+    const [provider, ...modelParts] = defaultModel.split("/");
+    const modelName = modelParts.join("/");
 
     try {
       await patchJson("/api/admin/settings", {
         globalProviderModels,
+        globalModelProvider: defaultModel ? provider : "",
+        globalModelName: defaultModel ? modelName : "",
       });
       setSaveStatus("success");
-    } catch {
+    } catch (err) {
+      console.error("Failed to save the admin model settings:", err);
       setSaveStatus("error");
     }
     setSaving(false);
-  }, [adminSettings, availableModels, modelEnabled]);
+  }, [adminSettings, availableModels, modelEnabled, defaultModel]);
 
   const isLoading = modelsLoading && settingsLoading;
 
@@ -252,6 +267,26 @@ export function ModelAvailability() {
           </div>
 
           <PageScroll className="space-y-6 p-4">
+            {/* The fallback for every account without a pick of its own */}
+            <GlassPanel>
+              <GlassPanelContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <Label className="text-sm font-medium">Default model</Label>
+                  <p className="text-muted-foreground text-xs">
+                    Used by accounts that have not picked a model of their own.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {!defaultModel && <Brain className="text-muted-foreground h-4 w-4" />}
+                  <ModelPicker
+                    value={defaultModel}
+                    onChange={setDefaultModel}
+                    endpoint="/api/admin/providers/models"
+                  />
+                </div>
+              </GlassPanelContent>
+            </GlassPanel>
+
             {modelProviders.length === 0 && (
               <GlassPanel>
                 <GlassPanelContent>

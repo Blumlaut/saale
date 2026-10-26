@@ -46,6 +46,11 @@ interface ModelPickerProps {
   placeholder?: string;
   /** Whether to show the trigger as compact (icon + name only) */
   compact?: boolean;
+  /**
+   * Where the list comes from. The admin pages pick from the instance's
+   * providers, which the user endpoint does not serve.
+   */
+  endpoint?: string;
 }
 
 /**
@@ -62,6 +67,7 @@ export function ModelPicker({
   className,
   placeholder = "Select model",
   compact = false,
+  endpoint = "/api/providers/models",
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -71,7 +77,7 @@ export function ModelPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchJson<ModelsApiResponse>("/api/providers/models")
+    fetchJson<ModelsApiResponse>(endpoint)
       .then((data) => {
         const all: ModelInfo[] = [];
         if (data.models) {
@@ -94,8 +100,11 @@ export function ModelPicker({
         setModels(all);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch((err) => {
+        console.error("Failed to load the models for the picker:", err);
+        setLoading(false);
+      });
+  }, [endpoint]);
 
   // Reset search and highlight when opening
   useEffect(() => {

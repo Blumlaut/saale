@@ -25,8 +25,8 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
     {
       id: "availability",
       href: "/admin/models/availability",
-      label: "Model availability",
-      description: "Which models users can pick",
+      label: "Models",
+      description: "The default model and which models users can pick",
     },
   ],
   "/admin/plugins": [
