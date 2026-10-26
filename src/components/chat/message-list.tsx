@@ -34,10 +34,10 @@ import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { isStreamingMessage } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
+import { AgentAvatar } from "@/components/brand/agent-avatar";
 import type { ApprovalData, Message, AttachmentData } from "./types";
 import {
   Loader2,
-  Bot,
   User,
   CheckCircle,
   ChevronDown,
@@ -932,9 +932,10 @@ function AssistantGroup({
   return (
     <div className="group/message flex gap-3">
       {/* Single avatar for the entire group. desktop-only, saves ~44px per group on mobile */}
-      <div className="liquid-glass-pill hidden h-8 w-8 shrink-0 items-center justify-center rounded-full md:flex">
-        <Bot className="h-4 w-4" />
-      </div>
+      <AgentAvatar
+        className="liquid-glass-pill hidden h-8 w-8 shrink-0 rounded-full md:flex"
+        markClassName="h-4 w-4"
+      />
 
       {/* All turns' content flowing naturally. With the condensed transcript
           the column claims its whole line instead of shrinking to fit: a
