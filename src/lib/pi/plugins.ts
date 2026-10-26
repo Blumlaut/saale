@@ -93,7 +93,7 @@ export async function readPluginConfig(): Promise<PluginConfig> {
     dir: resolvePluginsDir(row?.piPluginsDir),
     dirSetting: row?.piPluginsDir ?? "",
     enabled: row?.piPluginsEnabled ?? false,
-    ui: row?.piPluginsUi ?? false,
+    ui: row?.piPluginsUi ?? true,
     states: normalizePluginStates(row?.piPluginStates),
   };
 }
