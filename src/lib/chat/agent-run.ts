@@ -24,7 +24,12 @@ import {
 } from "@/lib/pi/chat-session-factory";
 import { createChatApprovalEmitter, createToolApprovalGate } from "@/lib/pi/tool-approval-gate";
 import { ensureWorktree } from "@/lib/coder/worktrees";
-import { registerActiveSession, unregisterActiveSession } from "@/lib/redis";
+import {
+  clearAgentBuilding,
+  markAgentBuilding,
+  registerActiveSession,
+  unregisterActiveSession,
+} from "@/lib/redis";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
@@ -58,40 +63,51 @@ export async function ensureChatAgent(options: {
   const poolKey = getPoolKey(userId, sessionId);
   const existing = getPoolEntry(poolKey);
 
-  const entry = await createAndPool(poolKey, async () => {
-    options.log?.("pool", "miss. creating new agent");
+  // A build can take minutes (checkout, fetch, setup script) and no run is
+  // registered for the chat while it happens. Hold the chat busy for it, or a
+  // message sent meanwhile claims a prompt this process cannot deliver.
+  await markAgentBuilding(sessionId);
+  let entry: PooledChatSession;
+  try {
+    entry = await createAndPool(poolKey, async () => {
+      options.log?.("pool", "miss. creating new agent");
 
-    // Only on a miss: the settings and the gates they shape are baked into the
-    // session, which is exactly why this is the one construction path.
-    const userSettings = await loadChatUserSettings(userId);
-    const emitApprovalRequest = createChatApprovalEmitter(sessionId);
-    const wrapTool = createToolApprovalGate({
-      userId,
-      sessionId,
-      toolPolicies: userSettings.toolPolicies,
-      emitApprovalRequest,
+      // Only on a miss: the settings and the gates they shape are baked into the
+      // session, which is exactly why this is the one construction path.
+      const userSettings = await loadChatUserSettings(userId);
+      const emitApprovalRequest = createChatApprovalEmitter(sessionId);
+      const wrapTool = createToolApprovalGate({
+        userId,
+        sessionId,
+        toolPolicies: userSettings.toolPolicies,
+        emitApprovalRequest,
+      });
+
+      // A coder chat runs in its worktree and nowhere else. Building it here is
+      // what keeps every entry point (browser, telegram, respond-in-chat) off the
+      // repo checkout, and a failure rejects the pool creation instead of
+      // falling back to the workspace.
+      const worktree = options.chatSession.projectId
+        ? await ensureWorktree(userId, sessionId)
+        : null;
+
+      return createChatAgentSession({
+        userId,
+        sessionId,
+        chatSession: options.chatSession,
+        ...(options.model ? { model: options.model } : {}),
+        customInstructions: userSettings.customInstructions,
+        coderCustomInstructions: userSettings.coderCustomInstructions,
+        toolPolicies: userSettings.toolPolicies,
+        toolExposure: userSettings.toolExposure,
+        ...(worktree ? { workspaceCwd: worktree.path, checkoutMode: worktree.mode } : {}),
+        wrapTool,
+        emitApprovalRequest,
+      });
     });
-
-    // A coder chat runs in its worktree and nowhere else. Building it here is
-    // what keeps every entry point (browser, telegram, respond-in-chat) off the
-    // repo checkout, and a failure rejects the pool creation instead of
-    // falling back to the workspace.
-    const worktree = options.chatSession.projectId ? await ensureWorktree(userId, sessionId) : null;
-
-    return createChatAgentSession({
-      userId,
-      sessionId,
-      chatSession: options.chatSession,
-      ...(options.model ? { model: options.model } : {}),
-      customInstructions: userSettings.customInstructions,
-      coderCustomInstructions: userSettings.coderCustomInstructions,
-      toolPolicies: userSettings.toolPolicies,
-      toolExposure: userSettings.toolExposure,
-      ...(worktree ? { workspaceCwd: worktree.path, checkoutMode: worktree.mode } : {}),
-      wrapTool,
-      emitApprovalRequest,
-    });
-  });
+  } finally {
+    await clearAgentBuilding(sessionId);
+  }
 
   return { entry, existedAlready: existing !== undefined };
 }

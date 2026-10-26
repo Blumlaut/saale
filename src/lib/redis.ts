@@ -272,17 +272,65 @@ export async function clearCompactionInProgress(sessionId: string): Promise<void
   }
 }
 
+// ─── Agent Build Tracking ────────────────────────────────────────────────────
+
 /**
- * Is the session busy. a generation streaming, or a manual compaction holding
- * it? Both refuse a prompt, so a message sent now has to wait in the send queue
- * instead of being prompted into a rejection.
+ * Marks a chat whose agent is still being built.
+ *
+ * Building is slow before anything streams: a coder chat checks out a worktree,
+ * fetches the repo and runs the project's setup script, which can take minutes.
+ * POST /messages consults this through `isSessionBusy`, so a message sent
+ * during the build waits in the send queue for the run it is building towards
+ * instead of claiming a prompt this process cannot deliver.
+ *
+ * Key format: `chat:building:{sessionId}`, set by whoever builds the agent.
+ */
+
+const BUILDING_PREFIX = "chat:building:";
+
+/** Longer than a build can run: the checkout plus the setup script's own timeout. */
+const BUILDING_TTL_SECONDS = 60 * 60;
+
+/** Mark the chat whose agent is being built. */
+export async function markAgentBuilding(sessionId: string): Promise<void> {
+  try {
+    await getRedis().set(`${BUILDING_PREFIX}${sessionId}`, "1", "EX", BUILDING_TTL_SECONDS);
+  } catch (err) {
+    console.error("Failed to mark the agent build:", err);
+  }
+}
+
+/** Drop the mark once the agent exists, or the build gave up. */
+export async function clearAgentBuilding(sessionId: string): Promise<void> {
+  try {
+    await getRedis().del(`${BUILDING_PREFIX}${sessionId}`);
+  } catch (err) {
+    console.error("Failed to clear the agent build:", err);
+  }
+}
+
+/** Whether this chat's agent is being built right now. */
+export async function isAgentBuilding(sessionId: string): Promise<boolean> {
+  try {
+    return (await getRedis().exists(`${BUILDING_PREFIX}${sessionId}`)) === 1;
+  } catch (err) {
+    console.error("Failed to read the agent build:", err);
+    return false;
+  }
+}
+
+/**
+ * Is the session busy. a generation streaming, a manual compaction holding it,
+ * or the agent still being built? All three refuse a prompt, so a message sent
+ * now has to wait in the send queue instead of being prompted into a rejection.
  */
 export async function isSessionBusy(userId: string, sessionId: string): Promise<boolean> {
-  const [active, compacting] = await Promise.all([
+  const [active, compacting, building] = await Promise.all([
     isSessionActive(userId, sessionId),
     isCompactionInProgress(sessionId),
+    isAgentBuilding(sessionId),
   ]);
-  return active || compacting;
+  return active || compacting || building;
 }
 
 // ─── Pending Prompt Claim ────────────────────────────────────────────────────

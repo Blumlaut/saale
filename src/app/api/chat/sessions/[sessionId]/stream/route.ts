@@ -32,6 +32,7 @@ import {
   claimNextQueuedMessage,
   countQueuedMessages,
   publishQueueUpdate,
+  queueMessage,
   restoreQueuedMessage,
 } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
@@ -445,6 +446,15 @@ export async function GET(
         attachments: lastMessage.attachments,
       });
       if (!pendingRun) {
+        // Another connection got the run, so this one cannot hand its message
+        // over. Queue it behind that run, or it sits in the conversation with
+        // nothing left to answer it. Unless that run is prompting this very
+        // message: then queuing it would deliver it a second time.
+        const ownedElsewhere = getPoolEntry(poolKey)?.lastPromptedMessageId === lastMessage.id;
+        if (!ownedElsewhere && (await queueMessage(sessionId, lastMessage.id))) {
+          log("queue", `queued message ${lastMessage.id} behind the run in flight`);
+          await publishQueueUpdate(sessionId);
+        }
         action = { type: "observe", reason: "prompt already in flight" };
         log("decision", "revised to observe (prompt already in flight)");
       }

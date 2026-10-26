@@ -111,6 +111,24 @@ export async function claimNextQueuedMessage(sessionId: string): Promise<QueuedC
 }
 
 /**
+ * Put a saved message back into the send queue.
+ *
+ * A connection that claimed a prompt can find the chat already running: the
+ * message then waits in the queue for that run's drain. Left in the
+ * conversation it would sit there unanswered, because nothing owns prompting
+ * it any more.
+ *
+ * Returns false when the message is already queued (or gone).
+ */
+export async function queueMessage(sessionId: string, messageId: string): Promise<boolean> {
+  const queued = await prisma.chatMessage.updateMany({
+    where: { id: messageId, sessionId, queuedAt: null },
+    data: { queuedAt: new Date() },
+  });
+  return queued.count === 1;
+}
+
+/**
  * Put a claimed message back at its former queue position.
  *
  * Used when a delivery attempt could not actually prompt (the pooled agent is
