@@ -15,6 +15,7 @@
 
 import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { publishSessionEvent } from "@/lib/pi/session-events";
+import { notifyTelegramPluginUi } from "@/lib/telegram/plugin-dialogs";
 import { PLUGIN_UI_TIMEOUT_MS, requestPluginUi, type PluginUiResponse } from "./requests";
 
 export interface ExtensionUiOptions {
@@ -54,7 +55,17 @@ export function createExtensionUiContext(options: ExtensionUiOptions): Extension
         ...(detail.placeholder === undefined ? {} : { placeholder: detail.placeholder }),
         ...(detail.prefill === undefined ? {} : { prefill: detail.prefill }),
       },
-      { signal: opts?.signal, timeoutMs: timeout },
+      {
+        signal: opts?.signal,
+        timeoutMs: timeout,
+        // The run is blocked, so the dialog has to reach a user who is away
+        // from the browser too.
+        onOpen: (request) => {
+          void notifyTelegramPluginUi(request).catch((err: unknown) => {
+            console.error("Failed to send a plugin dialog to Telegram:", err);
+          });
+        },
+      },
     );
   };
 

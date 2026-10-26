@@ -209,7 +209,12 @@ export type PluginUiRequestInput = Omit<PluginUiRequest, "id" | "createdAt" | "e
  */
 export async function requestPluginUi(
   request: PluginUiRequestInput,
-  options: { signal?: AbortSignal | undefined; timeoutMs?: number } = {},
+  options: {
+    signal?: AbortSignal | undefined;
+    timeoutMs?: number;
+    /** Other surfaces to announce the dialog on. Telegram, for one. */
+    onOpen?: ((request: PluginUiRequest) => void) | undefined;
+  } = {},
 ): Promise<PluginUiResponse> {
   const pending = await getPendingPluginUiRequests(request.sessionId);
   if (pending.length >= PLUGIN_UI_MAX_PENDING) {
@@ -232,6 +237,12 @@ export async function requestPluginUi(
       console.error("Failed to publish plugin UI request:", err);
     },
   );
+
+  try {
+    options.onOpen?.(full);
+  } catch (err) {
+    console.error("Failed to announce a plugin UI request elsewhere:", err);
+  }
 
   return wait(full, options.signal);
 }
