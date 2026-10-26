@@ -253,11 +253,12 @@ Everything with a default is optional. The compose file sets the database and Re
 
 `.env.example` lists the rest, with comments.
 
-Docker fixes a container's limits when it is created, so a changed
-`SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` replaces each identity's
-container on its next command — the workspace directory is untouched. Redeploy
-the stack first: the limits reach the containers only through `sandbox-exec`'s
-environment, and only after that service is recreated.
+A changed `SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` is applied to the
+container on its next command, without replacing it, so an installed package and
+a running service stay where they are. Redeploy the stack first: the limits
+reach the containers only through `sandbox-exec`'s environment, and only after
+that service is recreated. A limit the daemon refuses does replace the
+container, and takes anything on the container's own filesystem with it.
 
 `SANDBOX_CONTAINER_TTL_DAYS` (7 by default) removes a container once it is that
 old, and with it everything installed into the container's own filesystem:
