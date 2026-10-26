@@ -95,7 +95,8 @@ const chatId = BigInt("119075844");
 
 const chat = {
   id: sessionId,
-  title: "CVE watch",
+  title: "New Chat",
+  titleSource: "default",
   modelProvider: null,
   modelName: null,
   thinkingLevel: "off",
@@ -153,6 +154,16 @@ describe("runRoutedTelegramMessage", () => {
     expect(mockAttachTelegramSession).toHaveBeenCalledWith(userId, chatId, pooledSession);
     expect(mockRenderer.finish).toHaveBeenCalledWith(false);
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("names an unnamed chat from the message", async () => {
+    // The phone has no browser tab open: the chat is named by the run itself.
+    await runRoutedTelegramMessage({ ...params, promptText: "fix the flaky e2e test" });
+
+    expect(mockChatSession.update).toHaveBeenCalledWith({
+      where: { id: sessionId, userId },
+      data: expect.objectContaining({ title: "Fix flaky e2e test", titleSource: "auto" }),
+    });
   });
 
   it("refuses a chat that is already generating", async () => {
