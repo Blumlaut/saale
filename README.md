@@ -311,6 +311,10 @@ already uses, and writes only its own block into `.env`. The account it seeds is
 Afterwards `npm run dev:status`, `dev:stop`, `dev:restart` and `dev:logs` drive the two
 background processes. Their pids and logs live in `.dev/`.
 
+Checkouts each get their own database. To have several worktrees share one — same accounts,
+same chats, same settings — set `DATABASE_URL` in `.env` above the block the script writes,
+or in the project's env file, and setup keeps that database instead of creating one.
+
 `npm run docker:dev` runs the whole stack with hot reload instead.
 
 ## How it fits together

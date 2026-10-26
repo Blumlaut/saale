@@ -107,6 +107,21 @@ env_value() { # key — read from .env without sourcing it
   printf '%s' "$value"
 }
 
+# A checkout that shares a database with its siblings pins the URL in .env, above
+# the block this script owns. That block is ignored here, or the URL it wrote last
+# run would answer for the pin.
+pinned_env_value() { # key
+  [ -f .env ] || return 0
+  value="$(awk -v s="$MARKER_START" -v e="$MARKER_END" -v s2="$LEGACY_START" -v e2="$LEGACY_END" '
+    $0 == s || $0 == s2 { skipping = 1; next }
+    $0 == e || $0 == e2 { skipping = 0; next }
+    !skipping { print }
+  ' .env | sed -n "s/^$1=//p" | tail -1)"
+  value="${value%\"}"
+  value="${value#\"}"
+  printf '%s' "$value"
+}
+
 # ─── Services ────────────────────────────────────────────────────────────────
 
 ensure_services() {
@@ -428,6 +443,9 @@ logs() {
 }
 
 setup() {
+  DATABASE_URL="${DATABASE_URL:-$(pinned_env_value DATABASE_URL)}"
+  REDIS_URL="${REDIS_URL:-$(pinned_env_value REDIS_URL)}"
+
   ensure_services
   ensure_database
   PORT="$(configured_port)"
