@@ -78,6 +78,8 @@ test.describe("mobile content fit", () => {
     );
 
     await gotoAndSettle(page, "/dashboard/settings/models");
+    // The inventory is folded away below the pickers.
+    await page.getByText("Models", { exact: true }).last().click();
     await expect(page.getByText("DeepSeek Reasoner").first()).toBeVisible();
 
     // Reveal the list, then measure every rendered (visible) model name.
