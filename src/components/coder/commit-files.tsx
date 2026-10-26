@@ -100,7 +100,7 @@ export function CommitFileList({
           >
             <span
               className={cn(
-                "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+                "w-3 shrink-0 text-center text-[11px] font-semibold",
                 statusStyle(file.status),
               )}
             >
@@ -114,9 +114,9 @@ export function CommitFileList({
               </span>
             </span>
             {file.added === null && file.deleted === null ? (
-              <span className="text-muted-foreground shrink-0 font-mono text-[10px]">binary</span>
+              <span className="text-muted-foreground shrink-0 text-[10px]">binary</span>
             ) : (
-              <span className="shrink-0 font-mono text-[11px]">
+              <span className="shrink-0 text-[11px] tabular-nums">
                 <span className="text-emerald-600 dark:text-emerald-400">+{file.added ?? 0}</span>{" "}
                 <span className="text-red-600 dark:text-red-400">−{file.deleted ?? 0}</span>
               </span>

@@ -142,7 +142,7 @@ export function CommitDiffView({
                   {commit.subject}
                 </span>
               </p>
-              <p className="text-muted-foreground mt-0.5 font-mono text-[10px]">
+              <p className="text-muted-foreground mt-0.5 text-[10px] tabular-nums">
                 {commit.author} · {formatRelativeDate(commit.date)}
               </p>
             </div>
