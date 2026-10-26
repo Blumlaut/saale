@@ -317,6 +317,22 @@ describe("tool approval gate", () => {
       expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
     });
 
+    it("leaves a read-only plugin tool off the card, as a direct call does", async () => {
+      const { call } = setup({
+        tools: [...REGISTRY, { name: "plugin_lookup", readOnly: true }],
+      });
+
+      // Read-only runs on its own, so it is not a call the card has to cover.
+      expect(await call({ toolName: "plugin_lookup", input: {} })).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+
+      // Nothing the script reaches would ask on its own, so it costs no click.
+      expect(
+        await call({ toolName: "codemode", input: { code: "await tools.plugin_lookup({})" } }),
+      ).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
     it("marks a card for a script that reaches tools by a computed name", async () => {
       const { call } = setup({ tools: REGISTRY });
       await call({

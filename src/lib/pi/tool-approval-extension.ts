@@ -248,7 +248,10 @@ function referencedCallsNeedingApproval(
 ): string[] {
   const callable = callableToolNames(pi);
   const covered = references.dynamic ? callable : resolveReferencedTools(references.keys, callable);
-  return covered.filter((toolName) => resolveToolPolicy(toolName, context) === "ask");
+  return covered.filter(
+    (toolName) =>
+      resolveToolPolicy(toolName, context, { readOnly: isReadOnlyTool(pi, toolName) }) === "ask",
+  );
 }
 
 /**
