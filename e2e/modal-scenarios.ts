@@ -392,11 +392,6 @@ async function mockMemories(page: Page) {
   );
 }
 
-/** One contact with a name and email long enough to matter on a phone. */
-async function mockContactsTab(page: Page) {
-  await click(page, '[role="tab"]:has-text("Contacts")');
-}
-
 async function mockContacts(page: Page) {
   await page.route(/\/api\/contacts(\?|$)/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
@@ -766,22 +761,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Jobs ──────────────────────────────────────────────────────────────────
   {
     name: "jobs · new agent job",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/agents",
     sources: ["src/components/jobs/agent-job-dialog.tsx"],
-    open: (page) => click(page, 'button:has-text("New Agent")'),
+    open: (page) => click(page, 'button:has-text("New agent")'),
   },
   {
     name: "jobs · new scheduled job",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/scheduled",
     sources: ["src/components/jobs/job-dialog.tsx"],
-    open: async (page) => {
-      await click(page, '[role="tab"]:has-text("Scheduled Jobs")');
-      await click(page, 'button:has-text("New Job")');
-    },
+    open: (page) => click(page, 'button:has-text("New job")'),
   },
   {
     name: "jobs · agent run messages",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/agents",
     sources: ["src/components/jobs/agent-job-list.tsx"],
     mock: mockAgentRuns,
     open: async (page) => {
@@ -791,16 +783,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "jobs · new watcher",
-    path: "/dashboard/jobs",
+    path: "/dashboard/jobs/watchers",
     // The watcher dialog carries the longest content in the app: a script, a
     // monospace consent list and a script's returned value, all of which used to
     // widen auto-sized overlay tracks.
     sources: ["src/components/jobs/watcher-dialog.tsx"],
     mock: mockWatchers,
-    open: async (page) => {
-      await click(page, '[role="tab"]:has-text("Watchers")');
-      await click(page, 'button:has-text("New Watcher")');
-    },
+    open: (page) => click(page, 'button:has-text("New watcher")'),
   },
 
   // ── Chat ──────────────────────────────────────────────────────────────────
@@ -1164,20 +1153,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Contacts ────────────────────────────────────────────────────────────
   {
     name: "contacts · new contact",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contact-sheet.tsx"],
     open: async (page) => {
-      await mockContactsTab(page);
       await click(page, 'button:has-text("New Contact")');
     },
   },
   {
     name: "contacts · edit contact",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contact-sheet.tsx"],
     mock: mockContacts,
     open: async (page) => {
-      await mockContactsTab(page);
       await visible(page, 'div.group:has-text("extremely long contact display name")')
         .first()
         .click();
@@ -1185,11 +1172,10 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "contacts · delete contact confirmation",
-    path: "/dashboard/mail",
+    path: "/dashboard/contacts",
     sources: ["src/components/contacts/contacts-panel.tsx"],
     mock: mockContacts,
     open: async (page) => {
-      await mockContactsTab(page);
       await openRowMenu(page, "extremely long contact display name");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },

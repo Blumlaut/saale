@@ -14,9 +14,9 @@ import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
 import {
-  isSettingsPath,
   SETTINGS_GROUPS,
-  settingsSectionForPath,
+  SETTINGS_GROUP_LABELS,
+  SETTINGS_SECTIONS,
   settingsSectionsInGroup,
 } from "@/lib/navigation/settings-nav";
 import type { EmailAccount } from "@/types/shared";
@@ -82,15 +82,10 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
-  const [settingsExpanded, setSettingsExpanded] = usePersistedState("nav:settingsExpanded", false, {
-    validate: isBoolean,
+  // The nav item holding sections expands; the area you are in is always open.
+  const [expandedNavId, setExpandedNavId] = usePersistedState("nav:expanded", "", {
+    validate: (value): value is string => typeof value === "string",
   });
-  const inSettings = isSettingsPath(pathname);
-
-  // Arriving in settings opens the section list, wherever it was left last time.
-  useEffect(() => {
-    if (inSettings) setSettingsExpanded(true);
-  }, [inSettings, setSettingsExpanded]);
   const navWidth = useResizableWidth({
     storageKey: "saale:ui:nav:width",
     label: "Resize navigation",
@@ -278,9 +273,45 @@ export function DashboardNav() {
    * Settings opens its sections instead of a second navigation: the sidebar is
    * the only nav, so a settings page has nowhere else to pick a section from.
    */
-  const renderSettingsItem = (item: SidebarNavItem) => {
+  /** The sections an item expands into, grouped the way the picker shows them. */
+  const sectionGroupsFor = (item: SidebarNavItem) => {
+    if (item.id === "settings") {
+      return SETTINGS_GROUPS.map((group) => ({
+        label: SETTINGS_GROUP_LABELS[group] ?? null,
+        items: settingsSectionsInGroup(group).map((section) => ({
+          id: section.id,
+          href: section.href,
+          label: section.label,
+        })),
+      })).filter((group) => group.items.length > 0);
+    }
+
+    return [
+      {
+        label: null,
+        items: (item.sections ?? []).map((section) => ({
+          id: section.id,
+          href: section.href,
+          label: section.label,
+        })),
+      },
+    ];
+  };
+
+  const activeSectionId = (item: SidebarNavItem): string | undefined => {
+    const sections = item.id === "settings" ? SETTINGS_SECTIONS : (item.sections ?? []);
+    return sections.find(
+      (section) => pathname === section.href || pathname.startsWith(`${section.href}/`),
+    )?.id;
+  };
+
+  /** A nav item that opens its pages in the sidebar instead of navigating away. */
+  const renderSectionedItem = (item: SidebarNavItem) => {
     const Icon = SIDEBAR_NAV_ICONS[item.id];
-    const activeSection = settingsSectionForPath(pathname);
+    const groups = sectionGroupsFor(item);
+    const activeId = activeSectionId(item);
+    // The area you are in stays open, whatever the toggle was left at.
+    const expanded = activeId !== undefined || expandedNavId === item.id;
 
     return (
       <div key={item.id}>
@@ -296,43 +327,38 @@ export function DashboardNav() {
             variant="ghost"
             size="icon"
             className="text-muted-foreground size-7 shrink-0 rounded-md"
-            aria-expanded={settingsExpanded}
-            aria-label={settingsExpanded ? "Hide settings sections" : "Show settings sections"}
-            onClick={() => setSettingsExpanded((prev) => !prev)}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Hide ${item.label} pages` : `Show ${item.label} pages`}
+            onClick={() => setExpandedNavId(expandedNavId === item.id ? "" : item.id)}
           >
             <ChevronDown
               className={cn(
                 "h-3.5 w-3.5 transition-transform duration-150",
-                !settingsExpanded && "-rotate-90",
+                !expanded && "-rotate-90",
               )}
             />
           </Button>
         </div>
 
-        {settingsExpanded && (
+        {expanded && (
           <div className="border-border/60 mt-1 ml-3.5 border-l pl-1.5">
-            {SETTINGS_GROUPS.map((group, index) => {
-              const sections = settingsSectionsInGroup(group);
-              if (sections.length === 0) return null;
-
-              return (
-                <div
-                  key={group}
-                  className={index > 0 ? "border-border/60 border-t pt-1" : undefined}
-                >
-                  {sections.map((section) => (
-                    <Link
-                      key={section.id}
-                      href={section.href}
-                      aria-current={activeSection?.id === section.id ? "page" : undefined}
-                      className={sectionItemClass(activeSection?.id === section.id)}
-                    >
-                      <span className="truncate">{section.label}</span>
-                    </Link>
-                  ))}
-                </div>
-              );
-            })}
+            {groups.map((group, index) => (
+              <div
+                key={group.label ?? index}
+                className={index > 0 ? "border-border/60 border-t pt-1" : undefined}
+              >
+                {group.items.map((section) => (
+                  <Link
+                    key={section.id}
+                    href={section.href}
+                    aria-current={activeId === section.id ? "page" : undefined}
+                    className={sectionItemClass(activeId === section.id)}
+                  >
+                    <span className="truncate">{section.label}</span>
+                  </Link>
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -452,7 +478,9 @@ export function DashboardNav() {
             {visibleItems.map((item) => {
               const Icon = SIDEBAR_NAV_ICONS[item.id];
               if (item.id === "mail") return renderMailItem(item);
-              if (item.id === "settings") return renderSettingsItem(item);
+              if (item.id === "settings" || (item.sections?.length ?? 0) > 0) {
+                return renderSectionedItem(item);
+              }
 
               return (
                 <Link

@@ -28,15 +28,19 @@ const DASHBOARD_PAGES = [
   "/dashboard/chat",
   "/dashboard/coder",
   "/dashboard/mail",
+  "/dashboard/contacts",
   "/dashboard/calendar",
   "/dashboard/tasks",
   "/dashboard/jobs",
+  "/dashboard/jobs/watchers",
   "/dashboard/infra",
   "/dashboard/settings",
 ];
 
 const ADMIN_PAGES = [
-  "/admin/models",
+  "/admin/models/providers",
+  "/admin/models/availability",
+  "/admin/plugins/logs",
   "/admin/users",
   "/admin/roles",
   "/admin/plugins",

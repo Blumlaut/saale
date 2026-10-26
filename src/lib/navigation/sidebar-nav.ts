@@ -25,6 +25,7 @@ export const SIDEBAR_NAV_ITEM_IDS = [
   "chat",
   "coder",
   "mail",
+  "contacts",
   "calendar",
   "tasks",
   "jobs",
@@ -35,12 +36,22 @@ export const SIDEBAR_NAV_ITEM_IDS = [
 
 export type SidebarNavItemId = (typeof SIDEBAR_NAV_ITEM_IDS)[number];
 
+export interface SidebarNavSection {
+  id: string;
+  href: string;
+  label: string;
+  /** One line explaining the page, for the phone section picker. */
+  description: string;
+}
+
 export interface SidebarNavItem {
   id: SidebarNavItemId;
   href: string;
   label: string;
   /** Shorter label for the mobile bottom bar, where space is tight. */
   mobileLabel?: string;
+  /** Pages the item expands into in the sidebar, instead of a tab strip. */
+  sections?: readonly SidebarNavSection[];
   /**
    * Registered but not part of the out-of-the-box sidebar: a layout that does
    * not mention the item starts with it hidden, so the user turns it on in
@@ -63,9 +74,33 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
   // without a project should not be offered an empty one.
   coder: { href: "/dashboard/coder", label: "Coder", defaultHidden: true },
   mail: { href: "/dashboard/mail", label: "Mail" },
+  contacts: { href: "/dashboard/contacts", label: "Contacts" },
   calendar: { href: "/dashboard/calendar", label: "Calendar" },
   tasks: { href: "/dashboard/tasks", label: "Tasks" },
-  jobs: { href: "/dashboard/jobs", label: "Jobs" },
+  jobs: {
+    href: "/dashboard/jobs",
+    label: "Jobs",
+    sections: [
+      {
+        id: "agents",
+        href: "/dashboard/jobs/agents",
+        label: "Agent jobs",
+        description: "Prompts that run on a schedule",
+      },
+      {
+        id: "scheduled",
+        href: "/dashboard/jobs/scheduled",
+        label: "Scheduled jobs",
+        description: "Built-in jobs that run on a schedule",
+      },
+      {
+        id: "watchers",
+        href: "/dashboard/jobs/watchers",
+        label: "Watchers",
+        description: "Scripts that react to a file or a repository",
+      },
+    ],
+  },
   // Hidden until enabled: a council costs several models at once, so it is
   // opt-in rather than a default destination.
   council: { href: "/dashboard/council", label: "Council", defaultHidden: true },

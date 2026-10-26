@@ -167,14 +167,16 @@ describe("visibleSidebarNavItems", () => {
       { id: "chat", hidden: false },
     ]);
 
-    expect(visibleSidebarNavItems(entries).map((item) => item.id)).toEqual([
+    // The mentioned ids keep their order; the rest follow in registry order.
+    const expected = [
       "tasks",
       "chat",
-      "calendar",
-      "jobs",
-      "infra",
-      "settings",
-    ]);
+      ...defaultSidebarNav()
+        .map((entry) => entry.id)
+        .filter((id) => !["tasks", "chat", "mail", "coder", "council"].includes(id)),
+    ];
+
+    expect(visibleSidebarNavItems(entries).map((item) => item.id)).toEqual(expected);
   });
 
   it("resolves each item's route and label", () => {
@@ -196,14 +198,14 @@ describe("isSidebarNavActive", () => {
 describe("moveSidebarNavEntry", () => {
   it("moves an entry to a new position", () => {
     const entries = defaultSidebarNav();
+    const indexOf = (id: string) => entries.findIndex((entry) => entry.id === id);
 
-    expect(ids(moveSidebarNavEntry(entries, 0, 2)).slice(0, 3)).toEqual(["coder", "mail", "chat"]);
-    expect(ids(moveSidebarNavEntry(entries, 3, 1)).slice(0, 4)).toEqual([
-      "chat",
-      "calendar",
-      "coder",
-      "mail",
-    ]);
+    // Pulled forward and pushed back, whatever else the registry holds.
+    expect(ids(moveSidebarNavEntry(entries, indexOf("settings"), 0))[0]).toBe("settings");
+    expect(ids(moveSidebarNavEntry(entries, indexOf("chat"), 2))[2]).toBe("chat");
+    // The items that were passed keep their own order.
+    const moved = ids(moveSidebarNavEntry(entries, indexOf("chat"), 2));
+    expect(moved.slice(0, 2)).toEqual(["coder", "mail"]);
   });
 
   it("ignores no-op and out-of-range moves without mutating the input", () => {
