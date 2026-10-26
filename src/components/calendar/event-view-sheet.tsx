@@ -1,16 +1,10 @@
 "use client";
 
-import type { CalendarEvent } from "@/types/shared";
-import type { CalendarAccountSummary } from "@/types/shared";
+import type { CalendarAccountSummary, CalendarEvent } from "@/types/shared";
 import { useState, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
-  AlertCircle,
   Calendar as CalendarIcon,
   Clock,
   Info,
@@ -20,6 +14,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { patchJson, deleteJson } from "@/lib/http";
+import { draftFromEvent, EMPTY_EVENT_DRAFT, eventDraftPayload } from "@/lib/calendar/event-draft";
+import type { EventDraft } from "@/lib/calendar/event-draft";
+import { EventFormFields } from "@/components/calendar/event-form-fields";
 
 interface EventViewSheetProps {
   open: boolean;
@@ -31,12 +28,7 @@ interface EventViewSheetProps {
 
 export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventViewSheetProps) {
   const [mode, setMode] = useState<"view" | "edit">("view");
-  const [summary, setSummary] = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("");
-  const [dtStart, setDtStart] = useState("");
-  const [dtEnd, setDtEnd] = useState("");
-  const [allDay, setAllDay] = useState(false);
+  const [draft, setDraft] = useState<EventDraft>(EMPTY_EVENT_DRAFT);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -54,14 +46,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
       return;
     }
 
-    if (event) {
-      setSummary(event.summary);
-      setDescription(event.description ?? "");
-      setLocation(event.location ?? "");
-      setDtStart(event.dtStart.substring(0, 16));
-      setDtEnd(event.dtEnd ? event.dtEnd.substring(0, 16) : "");
-      setAllDay(event.allDay);
-    }
+    if (event) setDraft(draftFromEvent(event));
   }, [open, event, resetToView]);
 
   const handleSave = async () => {
@@ -70,14 +55,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
     setError("");
 
     try {
-      await patchJson(`/api/calendar/events/${event.id}`, {
-        summary,
-        description: description || null,
-        location: location || null,
-        dtStart: new Date(dtStart).toISOString(),
-        dtEnd: dtEnd ? new Date(dtEnd).toISOString() : null,
-        allDay,
-      });
+      await patchJson(`/api/calendar/events/${event.id}`, eventDraftPayload(draft));
 
       setMode("view");
       onSuccess?.();
@@ -301,82 +279,13 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
 
             {/* Edit form */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <div className="space-y-4">
-                {/* Title */}
-                <div className="space-y-2">
-                  <Label className="text-xs">Title</Label>
-                  <Input
-                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
-                    value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
-                    placeholder="Meeting title"
-                  />
-                </div>
-
-                {/* Date/Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Start</Label>
-                    <Input
-                      className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
-                      type={allDay ? "date" : "datetime-local"}
-                      value={dtStart}
-                      onChange={(e) => setDtStart(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">End</Label>
-                    <Input
-                      className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
-                      type={allDay ? "date" : "datetime-local"}
-                      value={dtEnd}
-                      onChange={(e) => setDtEnd(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* All day toggle */}
-                <div className="liquid-glass-inner flex items-center justify-between rounded-2xl px-4 py-3">
-                  <Label htmlFor="all-day" className="text-sm">
-                    All day
-                  </Label>
-                  <Switch checked={allDay} id="all-day" onCheckedChange={setAllDay} />
-                </div>
-
-                {/* Location */}
-                <div className="space-y-2">
-                  <Label className="text-xs">
-                    <MapPin className="mr-1 inline h-3 w-3" />
-                    Location
-                  </Label>
-                  <Input
-                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Room, address, or video link"
-                  />
-                </div>
-
-                {/* Description */}
-                <div className="space-y-2">
-                  <Label className="text-xs">Description</Label>
-                  <Textarea
-                    className="liquid-glass-inner min-h-[80px] rounded-2xl border-0 bg-transparent px-4 pt-3 shadow-none"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Notes, agenda, etc."
-                    rows={3}
-                  />
-                </div>
-
-                {/* Error */}
-                {error && (
-                  <div className="liquid-glass-destructive flex items-center gap-2 rounded-2xl px-4 py-3">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span className="text-xs">{error}</span>
-                  </div>
-                )}
-              </div>
+              <EventFormFields
+                draft={draft}
+                onFieldChange={(key, value) =>
+                  setDraft((current) => ({ ...current, [key]: value }))
+                }
+                error={error}
+              />
             </div>
 
             {/* Edit footer */}
@@ -391,7 +300,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                 </Button>
                 <Button
                   className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
-                  disabled={saving || !summary || !dtStart}
+                  disabled={saving || !draft.summary || !draft.dtStart}
                   onClick={handleSave}
                 >
                   {saving ? "Saving..." : "Save Changes"}
