@@ -23,6 +23,20 @@ export interface ExtensionUiOptions {
   sessionId: string;
 }
 
+/**
+ * What an extension can style text with.
+ *
+ * Nothing is drawn here, so every accessor hands its text back unchanged. A
+ * plugin that formats a line with `ctx.ui.theme.bold(...)` before handing it
+ * over must not crash on the way into the chat.
+ */
+const passThroughTheme = new Proxy({} as Record<string, unknown>, {
+  get:
+    () =>
+    (...args: unknown[]) =>
+      String(args.at(-1) ?? ""),
+}) as unknown as Theme;
+
 /** Publish a fire-and-forget UI call; a failed publish must not fail the tool. */
 function announce(sessionId: string, event: string, data: unknown): void {
   void publishSessionEvent(sessionId, event, data).catch((err: unknown) => {
@@ -139,8 +153,7 @@ export function createExtensionUiContext(options: ExtensionUiOptions): Extension
       return undefined;
     },
     get theme() {
-      // Extensions that render terminal components have nothing to draw here.
-      return undefined as unknown as Theme;
+      return passThroughTheme;
     },
     getAllThemes() {
       return [];

@@ -107,6 +107,14 @@ describe("extension UI context", () => {
     });
   });
 
+  it("gives a plugin something to style text with", () => {
+    // A plugin formats a line before handing it over; an undefined theme would
+    // throw inside its own handler and lose the dialog it was opening.
+    const theme = context().theme;
+    expect(theme.bold("deploy")).toBe("deploy");
+    expect(theme.fg("error", "failed")).toBe("failed");
+  });
+
   it("answers the terminal-only APIs as unavailable", async () => {
     const ui = context();
     await expect(ui.custom(() => ({}) as never)).resolves.toBeUndefined();
