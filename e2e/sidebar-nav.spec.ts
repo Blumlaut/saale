@@ -82,10 +82,9 @@ function rowIndex(id: SidebarNavItemId): number {
   return index;
 }
 
-/** An item of the desktop sidebar  Mail renders as a button, the rest as links. */
+/** An item of the desktop sidebar. Every row is a link, the section toggle beside it. */
 function sidebarItem(page: Page, label: string) {
-  const sidebar = page.locator("nav.sidebar-nav");
-  return sidebar.getByRole(label === "Mail" ? "button" : "link", { name: label, exact: true });
+  return page.locator("nav.sidebar-nav").getByRole("link", { name: label, exact: true });
 }
 
 /** Labels of the items in the mobile bottom bar, left to right. */
