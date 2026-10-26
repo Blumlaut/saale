@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveChatTitle } from "@/lib/chat/derive-title";
+import { deriveChatTitle, promptTitleFields } from "@/lib/chat/derive-title";
 
 describe("deriveChatTitle", () => {
   it("names the task from an imperative prompt", () => {
@@ -69,5 +69,30 @@ describe("deriveChatTitle", () => {
     const prompt = "the chat list is not scrolling on mobile, it overflows the screen";
     expect(deriveChatTitle(prompt)).toBe(deriveChatTitle(prompt));
     expect(deriveChatTitle(prompt)).toBe("Chat list not scrolling on mobile");
+  });
+});
+
+describe("promptTitleFields", () => {
+  it("names a chat from the prompt that opened it", () => {
+    expect(promptTitleFields("default", "can you fix the flaky e2e test")).toEqual({
+      title: "Fix flaky e2e test",
+      titleSource: "auto",
+    });
+  });
+
+  it("quotes a prompt that says nothing and keeps the chat nameable", () => {
+    expect(promptTitleFields("default", "hi")).toEqual({ title: "hi" });
+  });
+
+  it("leaves a named chat alone", () => {
+    expect(promptTitleFields("user", "add a dark mode toggle")).toBeNull();
+    expect(promptTitleFields("auto", "add a dark mode toggle")).toBeNull();
+    expect(promptTitleFields("ai", "add a dark mode toggle")).toBeNull();
+  });
+
+  it("caps a quoted prompt at the title length", () => {
+    const fields = promptTitleFields("default", "x".repeat(80));
+    expect(fields!.title).toHaveLength(50);
+    expect(fields!.title.endsWith("...")).toBe(true);
   });
 });

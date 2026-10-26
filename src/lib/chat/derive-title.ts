@@ -6,8 +6,8 @@
  * than a keyword bag. Part-of-speech tags come from `compromise`, a rule-based
  * tagger: the same prompt always yields the same title.
  *
- * Returns null when the prompt has nothing to work with, so the caller can
- * fall back to quoting it.
+ * `promptTitleFields` is what a caller writes with the prompt; a prompt the
+ * titler cannot read leaves the chat open, so the next message gets the try.
  */
 
 import nlp from "compromise";
@@ -191,4 +191,34 @@ export function deriveChatTitle(prompt: string): string | null {
   if (title.length < MIN_WORDS) return null;
 
   return (title.charAt(0).toUpperCase() + title.slice(1)).replaceAll(HYPHEN, "-");
+}
+
+/** The title fields to write with a new message. */
+interface PromptTitleFields {
+  title: string;
+  /** Set once the prompt named the chat; an unnamed one stays on "default". */
+  titleSource?: "auto";
+}
+
+/** The prompt quoted as a title, for one the titler cannot read. */
+function quotePrompt(promptText: string): string {
+  const cut = promptText.slice(0, MAX_LENGTH - 3).trimEnd();
+  return promptText.length > cut.length ? `${cut}...` : cut;
+}
+
+/**
+ * The title fields to write with a new message, or null when the chat already
+ * has a name (renamed, named on creation, or titled by the job).
+ */
+export function promptTitleFields(
+  titleSource: string,
+  promptText: string,
+): PromptTitleFields | null {
+  if (titleSource !== "default") return null;
+
+  const derived = deriveChatTitle(promptText);
+  if (derived) return { title: derived, titleSource: "auto" };
+
+  const quoted = quotePrompt(promptText);
+  return quoted ? { title: quoted } : null;
 }

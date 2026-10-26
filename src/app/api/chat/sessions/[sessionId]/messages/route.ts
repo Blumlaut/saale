@@ -22,7 +22,7 @@ import {
   publishQueueUpdate,
   serializeQueuedMessages,
 } from "@/lib/chat/queue";
-import { promptTitleFields } from "@/lib/chat/name-session";
+import { promptTitleFields } from "@/lib/chat/derive-title";
 import { serializeChatMessage } from "@/lib/chat/serialize-message";
 import {
   buildAttachmentPromptText,
