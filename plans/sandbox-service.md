@@ -427,7 +427,7 @@ Three tiers, all reachable from bash:
    today's `OPEN_TERMINAL_PACKAGES` list plus node, npm, `uv` and `pipx`.
 2. **In the workspace.** `$HOME` is `/workspaces/<id>` and
    `$HOME/.local/bin` is on `PATH`, so `pip install --user`,
-   `npm install -g --prefix ~/.local`, `uv tool install`,
+   `npm install -g` (`NPM_CONFIG_PREFIX` is `$HOME/.local`), `uv tool install`,
    `cargo install --root ~/.local` and `go install` with `GOBIN=$HOME/.local/bin`
    land in the volume and outlive the container.
 3. **System packages.** `apt-get install` runs inside the container and lands in
