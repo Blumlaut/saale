@@ -53,7 +53,10 @@
 
 /* ===== Light mode ===== */
 
-:root {
+/* `.light` repeats the palette so a dark page can hold a light island. the
+   branding preview in the admin settings. */
+:root,
+.light {
   --background: #f7f8fa;
   --foreground: #111827;
   --card: #ffffff;

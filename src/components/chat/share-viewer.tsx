@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, User } from "lucide-react";
+import { AgentAvatar } from "@/components/brand/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CompactActivity } from "./compact-activity";
@@ -212,9 +213,10 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
 
   return (
     <div className="flex gap-3">
-      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
-        <Bot className="h-4 w-4" />
-      </div>
+      <AgentAvatar
+        className="liquid-glass-pill h-8 w-8 shrink-0 rounded-full"
+        markClassName="h-4 w-4"
+      />
       {/* Stretched, not shrink-to-fit: the summary cards below are as wide as
           this column, and a shrinking column would resize them per token. */}
       <div className="max-w-[85%] min-w-0 flex-1 space-y-2">

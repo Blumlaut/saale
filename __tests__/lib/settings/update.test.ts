@@ -79,6 +79,8 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     piPluginsEnabled: false,
     piPluginsUi: false,
     piPluginStates: null,
+    themeColors: null,
+    brandingAvatar: "",
     updatedAt: new Date(0),
     ...overrides,
   };

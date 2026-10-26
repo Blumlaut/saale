@@ -2,18 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth";
 import { applyAdminSettingsPatch, ensureAdminSettings, SettingsError } from "@/lib/settings/update";
-import type { AdminSettings } from "@prisma/client";
-
-/** Serialize AdminSettings to the shape sent to the frontend. */
-function serializeSettings(settings: AdminSettings) {
-  return {
-    signupsEnabled: settings.signupsEnabled,
-    globalModelProvider: settings.globalModelProvider,
-    globalModelName: settings.globalModelName,
-    globalProviderModels: settings.globalProviderModels,
-    featureDefaults: settings.featureDefaults,
-  };
-}
+import { serializeAdminSettings } from "@/lib/settings/admin-view";
 
 /**
  * GET /api/admin/settings. Get admin settings
@@ -24,7 +13,7 @@ export async function GET() {
 
   const settings = await ensureAdminSettings();
 
-  return NextResponse.json({ settings: serializeSettings(settings) });
+  return NextResponse.json({ settings: serializeAdminSettings(settings) });
 }
 
 /**
@@ -54,7 +43,7 @@ export async function PATCH(request: NextRequest) {
       authResult.user.id,
       body as Record<string, unknown>,
     );
-    return NextResponse.json({ settings: serializeSettings(settings) });
+    return NextResponse.json({ settings: serializeAdminSettings(settings) });
   } catch (err) {
     if (err instanceof SettingsError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

@@ -38,6 +38,14 @@ import {
 } from "@/lib/navigation/sidebar-nav";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import {
+  BRAND_COLOR_KEYS,
+  BRAND_MODES,
+  isDefaultBrandColors,
+  normalizeHex,
+  normalizeThemeColors,
+} from "@/lib/branding/theme";
+import { isBrandingAvatarName } from "@/lib/branding/avatar-name";
+import {
   DEFAULT_THINKING_LEVEL_SETTING,
   isThinkingLevelSetting,
   THINKING_LEVEL_OPTIONS,
@@ -221,6 +229,7 @@ const GROUP = {
   sidebar: "sidebar",
   notifications: "notifications",
   admin: "admin",
+  branding: "branding",
   plugins: "plugins",
 } as const;
 
@@ -593,6 +602,20 @@ const featureOverridesSchema = z.partialRecord(z.enum(FEATURES), z.boolean());
 
 const pluginStatesSchema = z.record(z.string().min(1), z.object({ enabled: z.boolean() }).strict());
 
+/** One hex colour per brandable token, per mode; an absent token keeps the default. */
+const themeColorsSchema = z.partialRecord(
+  z.enum(BRAND_MODES),
+  z.partialRecord(
+    z.enum(BRAND_COLOR_KEYS),
+    z
+      .string()
+      .refine(
+        (value) => normalizeHex(value) !== undefined,
+        'Use a hex colour, for example "#f97316" or "#f73".',
+      ),
+  ),
+);
+
 /** `piPluginStates` as a plain map: an enabled plugin is stored as absence. */
 export function normalizePluginStates(value: unknown): Record<string, { enabled: boolean }> {
   const source = asRecord(value);
@@ -717,6 +740,44 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     schema: pluginStatesSchema,
     read: (row) => normalizePluginStates(row.piPluginStates),
     write: (_row, value) => ({ piPluginStates: orDbNull(normalizePluginStates(value)) }),
+  },
+  {
+    key: "admin.themeColors",
+    group: GROUP.branding,
+    label: "Branding colours",
+    description:
+      'Accent colours per mode, keyed by mode then token: { "light": { "primary": "#2563eb", "secondary": "#ffffff" }, "dark": { "primary": "#3b82f6" } }. primary is the accent, secondary is the text drawn on it. A token that is absent keeps the built-in palette.',
+    columns: ["themeColors"],
+    apply: "none",
+    scope: "admin",
+    schema: themeColorsSchema,
+    read: (row) => normalizeThemeColors(row.themeColors),
+    write: (_row, value) => {
+      const colors = normalizeThemeColors(value);
+      return {
+        themeColors: isDefaultBrandColors(colors)
+          ? Prisma.DbNull
+          : (colors as Prisma.InputJsonValue),
+      };
+    },
+  },
+  {
+    key: "admin.brandingAvatar",
+    group: GROUP.branding,
+    label: "Agent avatar",
+    description:
+      "File name of the uploaded agent avatar, set by the admin branding page. Without one, the built-in accent mark is drawn.",
+    columns: ["brandingAvatar"],
+    apply: "none",
+    scope: "admin",
+    schema: z
+      .string()
+      .refine(
+        (value) => value === "" || isBrandingAvatarName(value),
+        "Use the file name the upload route returned, or an empty string to fall back to the built-in mark.",
+      ),
+    read: (row) => row.brandingAvatar,
+    write: (_row, value) => ({ brandingAvatar: value === null ? "" : String(value).trim() }),
   },
 ];
 
