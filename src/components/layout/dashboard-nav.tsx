@@ -250,11 +250,14 @@ export function DashboardNav() {
   );
 
   return (
-    <nav className="sidebar-nav relative sticky top-6 h-fit shrink-0" style={{ width: navWidth.width }}>
+    <nav
+      className="sidebar-nav relative sticky top-6 h-fit shrink-0"
+      style={{ width: navWidth.width }}
+    >
       <GlassPanel className="shadow-md">
         <div
           {...navWidth.handleProps}
-          className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-border"
+          className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
         />
         <GlassPanelContent className="p-3">
           {/* Brand */}

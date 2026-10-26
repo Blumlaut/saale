@@ -25,7 +25,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
       <SidebarNavProvider>
         <div className="dashboard-layout h-dvh overflow-hidden">
           {/* Desktop: sidebar + main, flex chain fills the viewport */}
-          <div className="app-shell-padding hidden h-full gap-4 overflow-hidden md:flex">
+          <div className="app-shell-padding hidden h-full gap-3 overflow-hidden md:flex">
             {nav}
             <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {banner}
