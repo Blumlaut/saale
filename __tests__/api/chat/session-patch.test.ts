@@ -159,3 +159,36 @@ describe("PATCH session  live agent session", () => {
     expect(mockBuildModelRuntime).not.toHaveBeenCalled();
   });
 });
+
+describe("PATCH session  pinning", () => {
+  it("stores a pin without counting it as activity", async () => {
+    const res = await patch({ pinned: true });
+
+    expect(res.status).toBe(200);
+    const data = (mockUpdate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    expect(data.pinned).toBe(true);
+    // A pin moves the row to the top of the list, so the recency stamp must stay.
+    expect(data.lastActivityAt).toBeUndefined();
+    expect(await res.json()).toMatchObject({ session: { pinned: true } });
+  });
+
+  it("still stamps the activity time when the same request changes more", async () => {
+    await patch({ pinned: true, title: "Renamed" });
+
+    const data = (mockUpdate.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+    expect(data.pinned).toBe(true);
+    expect(data.lastActivityAt).toBeInstanceOf(Date);
+  });
+
+  it("writes nothing when the pin is already what was asked for", async () => {
+    mockRequireChatSessionOwner.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      session: { ...STORED, pinned: true },
+    });
+
+    await patch({ pinned: true });
+
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});

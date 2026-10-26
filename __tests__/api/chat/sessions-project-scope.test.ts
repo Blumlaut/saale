@@ -101,6 +101,16 @@ describe("GET /api/chat/sessions", () => {
 
     expect(body.sessions[0]?.isGenerating).toBe(true);
   });
+
+  it("returns the pin state and sorts pinned chats first", async () => {
+    mockFindMany.mockResolvedValue([{ ...STORED_ROW, pinned: true }]);
+
+    const res = await GET(listRequest());
+    const args = mockFindMany.mock.calls[0]![0] as { orderBy: unknown };
+    expect(args.orderBy).toEqual([{ pinned: "desc" }, { lastActivityAt: "desc" }]);
+    const body = (await res.json()) as { sessions: Array<{ pinned: boolean }> };
+    expect(body.sessions[0]?.pinned).toBe(true);
+  });
 });
 
 describe("POST /api/chat/sessions with a project", () => {

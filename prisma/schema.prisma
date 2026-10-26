@@ -153,6 +153,8 @@ model ChatSession {
   /// creation). The title job only retitles default and auto.
   titleSource      String        @default("default")
   temporary        Boolean       @default(false) // auto-deleted when user navigates away
+  /// Sticks the chat to the top of the chat list, above the recency groups.
+  pinned           Boolean       @default(false)
   modelProvider    String?
   modelName        String?
   thinkingLevel    String        @default("off")

@@ -105,6 +105,8 @@ export interface CoderProjectChat {
   id: string;
   title: string;
   lastActivityAt: Date;
+  /** Sticks the row to the top of the chat list. */
+  pinned: boolean;
   /** "user", or "watcher" for a chat a watcher fire opened. */
   origin: string;
   worktree: { path: string; branch: string; status: string } | null;
@@ -365,6 +367,7 @@ export async function getProject(
           id: true,
           title: true,
           lastActivityAt: true,
+          pinned: true,
           origin: true,
           coderWorktree: { select: { path: true, branch: true, status: true } },
         },
@@ -387,6 +390,7 @@ export async function getProject(
       id: chat.id,
       title: chat.title,
       lastActivityAt: chat.lastActivityAt,
+      pinned: chat.pinned,
       origin: chat.origin,
       worktree: chat.coderWorktree,
     })),
@@ -595,6 +599,7 @@ export function serializeProjectDetail(
       id: chat.id,
       title: chat.title,
       lastActivityAt: chat.lastActivityAt.toISOString(),
+      pinned: chat.pinned,
       isGenerating: generating.has(chat.id),
       origin: chat.origin,
       worktree: chat.worktree,

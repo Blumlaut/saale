@@ -42,7 +42,7 @@ export async function PATCH(
   if (!authResult.ok) return authResult.response;
 
   const body = await request.json();
-  const { title, temporary, modelProvider, modelName, thinkingLevel, toolConfig } = body;
+  const { title, temporary, pinned, modelProvider, modelName, thinkingLevel, toolConfig } = body;
 
   // Build data only for fields that actually differ from current values (skip unchanged to avoid touching updatedAt)
   const data: Record<string, unknown> = {};
@@ -52,6 +52,7 @@ export async function PATCH(
   }
   if (typeof temporary === "boolean" && temporary !== authResult.session.temporary)
     data.temporary = temporary;
+  if (typeof pinned === "boolean" && pinned !== authResult.session.pinned) data.pinned = pinned;
   if (modelProvider && modelProvider !== authResult.session.modelProvider)
     data.modelProvider = modelProvider;
   if (modelName && modelName !== authResult.session.modelName) data.modelName = modelName;
@@ -62,7 +63,8 @@ export async function PATCH(
 
   // A user-initiated change (e.g. renaming the chat) is real activity
   // advance lastActivityAt so the session list reflects the modification.
-  if (Object.keys(data).length > 0) {
+  // Pinning is not: it must not move a chat's place in the list.
+  if (Object.keys(data).some((field) => field !== "pinned")) {
     data.lastActivityAt = new Date();
   }
 
@@ -85,6 +87,7 @@ export async function PATCH(
     session: {
       id: updated.id,
       title: updated.title,
+      pinned: updated.pinned,
       modelProvider: updated.modelProvider,
       modelName: updated.modelName,
       thinkingLevel: updated.thinkingLevel,
