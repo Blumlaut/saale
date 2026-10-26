@@ -14,6 +14,7 @@ import {
   type ProviderModelConfig,
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { cn } from "@/lib/utils";
 import {
   Bot,
@@ -41,7 +42,11 @@ interface AdminSettings {
 }
 
 export default function AdminModelsPage() {
-  const [activeTab, setActiveTab] = useState<"providers" | "models">("providers");
+  const [activeTab, setActiveTab] = usePersistedState<"providers" | "models">(
+    "admin:models:tab",
+    "providers",
+    { validate: oneOf("providers", "models") },
+  );
 
   // ─── Models tab state ───
   const [availableModels, setAvailableModels] = useState<Record<string, AvailableModel[]>>({});

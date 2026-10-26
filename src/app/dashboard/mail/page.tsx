@@ -8,16 +8,23 @@ import { Inbox } from "@/components/mail/inbox";
 import { ComposeSheet } from "@/components/mail/compose-sheet";
 import { AccountSheet } from "@/components/mail/account-sheet";
 import { ContactsPanel } from "@/components/contacts/contacts-panel";
+import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 
 export default function MailPage() {
-  const [activeTab, setActiveTab] = useState("inbox");
+  const [activeTab, setActiveTab] = usePersistedState<"inbox" | "contacts">("mail:tab", "inbox", {
+    validate: oneOf("inbox", "contacts"),
+  });
   const [showCompose, setShowCompose] = useState(false);
   const [showAddAccount, setShowAddAccount] = useState(false);
 
   return (
     <Page className="gap-0">
       {/* Tabs. strip pinned, content fills remaining height */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as "inbox" | "contacts")}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <PageTabStrip className="shrink-0">
           <TabsList>
             <TabsTrigger value="inbox" className="gap-2">
