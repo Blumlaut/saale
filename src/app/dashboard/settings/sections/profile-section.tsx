@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { fetchJson, deleteJson } from "@/lib/http";
+import { setCurrentUserImage } from "@/hooks/use-current-user-image";
 import { authClient } from "@/lib/auth-client";
 import { isValidUsername, normalizeUsername, USERNAME_RULES } from "@/lib/auth/username";
 import {
@@ -70,6 +71,7 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
         body: form,
       });
       setImage(data.image);
+      setCurrentUserImage(data.image);
       router.refresh();
       toast.success("Photo updated");
     } catch (err) {
@@ -86,6 +88,7 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
     try {
       await deleteJson("/api/profile/avatar");
       setImage(null);
+      setCurrentUserImage(null);
       router.refresh();
       toast.success("Photo removed");
     } catch (err) {
