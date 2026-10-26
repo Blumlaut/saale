@@ -112,6 +112,21 @@ describe("tool card shell", () => {
     expect(screen.getByText("1 email")).toBeInTheDocument();
   });
 
+  it("spins while a call is still working", () => {
+    const { container } = render(
+      <ToolCallView
+        toolCall={makeToolCall({
+          name: "bash",
+          args: { command: "npm run build" },
+          status: "running",
+        })}
+      />,
+    );
+
+    expect(container.querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
+  });
+
   it("reports a command's exit code, and shows its output only once opened", () => {
     render(
       <ToolCallView
