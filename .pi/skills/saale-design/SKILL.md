@@ -52,18 +52,18 @@ When the user asks for a UI element or page:
 
 ### Components (Load When Building UI)
 
-| Component                   | File                         |
-| --------------------------- | ---------------------------- |
-| GlassPanel (main container) | `references/glass-panel.md`  |
-| Buttons (all variants)      | `references/buttons.md`      |
-| Inputs, forms, selects      | `references/inputs.md`       |
-| Lists, rows, tables         | `references/lists.md`        |
-| Navigation, sidebar         | `references/navigation.md`   |
-| Modals, dialogs, sheets     | `references/modals.md`       |
-| Badges, tags, status        | `references/badges.md`       |
-| Cards with media            | `references/cards.md`        |
-| Tool cards (chat transcript) | `references/tool-cards.md`  |
-| Empty states                | `references/empty-states.md` |
+| Component                    | File                         |
+| ---------------------------- | ---------------------------- |
+| GlassPanel (main container)  | `references/glass-panel.md`  |
+| Buttons (all variants)       | `references/buttons.md`      |
+| Inputs, forms, selects       | `references/inputs.md`       |
+| Lists, rows, tables          | `references/lists.md`        |
+| Navigation, sidebar          | `references/navigation.md`   |
+| Modals, dialogs, sheets      | `references/modals.md`       |
+| Badges, tags, status         | `references/badges.md`       |
+| Cards with media             | `references/cards.md`        |
+| Tool cards (chat transcript) | `references/tool-cards.md`   |
+| Empty states                 | `references/empty-states.md` |
 
 ### Integration
 
@@ -128,7 +128,7 @@ export function MyList() {
       <GlassPanelContent className="p-0">
         {items.map((item, i) => (
           <Fragment key={item.id}>
-            <div className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/60">
+            <div className="hover:bg-accent/60 flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors">
               {/* row content */}
             </div>
             {i < items.length - 1 && <Separator className="px-4" />}
@@ -151,7 +151,7 @@ page-sized variant (`py-2.5 md:px-6`) turns a column into a full-page list.
   page layout. `FileBrowser` is the reference.
 - Never nest `GlassPanelContent` inside a `GlassPanel` inside a panel: its `md:`
   gutter doubles the padding on every row. Use a plain `min-h-0 flex-1
-  overflow-y-auto` div for the scroll region.
+overflow-y-auto` div for the scroll region.
 - The guard is `e2e/coder-panel.spec.ts` ("keeps the file rows tight"), which
   measures a row at ≤ 28px. A new side-panel list needs the same measurement.
 
@@ -169,6 +169,29 @@ is working in.
   markdown and HTML preview, the too-large and binary states. Use it in the tab
   and in the sheet, so both render a file the same way.
 - The guard is `e2e/coder-panel.spec.ts` ("opens a file as a tab in the panel").
+
+### Remembered View State
+
+A view preference — a folded list group, a page tab, the file browser's
+hidden files, the calendar mode — goes through `usePersistedState`
+(`@/hooks/use-persisted-state`), so the next visit opens the way the last one
+was left.
+
+```ts
+const [hideDotfiles, setHideDotfiles] = usePersistedState("files:hideDotfiles", true, {
+  validate: isBoolean,
+});
+```
+
+- Keys are short and named by area: `files:hideDotfiles`, `mail:tab`,
+  `tasks:collapsedGroups`.
+- Pass a guard (`isBoolean`, `oneOf(...)`, `arrayOf(...)`) so a value an older
+  build left behind falls back to the default.
+- A caller whose first fetch depends on the value waits for the third tuple
+  element, `restored`.
+- A per-visit decision (an open dialog, a search box, a selection) stays plain
+  `useState`. Settings the user configures belong in the settings registry
+  (`src/lib/settings/properties.ts`).
 
 ### Page Layout (App Shell) — ALWAYS use these
 
@@ -223,7 +246,7 @@ Rules:
 - Grid items containing lists/tables need `min-w-0` (`lg:col-span-2` →
   `min-w-0 lg:col-span-2`) so nowrap text truncates instead of blowing the grid
   track wider than the viewport.
-- **Full-bleed views** — a view that *is* the window (chat) marks its layout root
+- **Full-bleed views** — a view that _is_ the window (chat) marks its layout root
   `full-bleed`: on phones the shell gutter is dropped so it runs to the window
   edges and its panels are square. Desktop keeps the console gutter and rounded
   panels — there is room for the floating nav and the view. See
@@ -262,19 +285,20 @@ Section labels, panel footers, and metadata use the `.console-label` class — s
 
 ## Anti-Patterns (Never Do These)
 
-| Anti-pattern             | Why                                      | Alternative                            |
-| ------------------------ | ---------------------------------------- | -------------------------------------- |
-| Raw HTML elements        | Inconsistent styling, no accessibility   | shadcn/ui components                   |
-| `bg-white/N` overlay fills | Glass idiom — invisible or wrong on flat panels in one of the modes | Token fills: `bg-accent`, `bg-muted` |
-| `backdrop-blur` on panels | Glass residue — console surfaces are opaque | Remove it; borders carry the depth   |
-| Gradients / glows        | Not the console language                 | Flat colors + 1px borders              |
-| Pill-shaped buttons      | Old design                               | `rounded-lg` (12px) rectangular        |
-| Rainbow status colors    | Distracting                              | Muted semantic colors, orange = primary action only |
-| ALL CAPS body text       | Aggressive                               | Sentence case (micro-labels excepted)  |
-| Monospace UI text        | Developer-tool vibe (except data)        | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels |
-| Animated backgrounds     | Distracting                              | Static solid background                |
-| Page-sized rows in a side panel | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e |
-| An editor in a sheet or popover | Its width is fixed and it hides the chat, and Monaco needs the room | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
+| Anti-pattern                           | Why                                                                       | Alternative                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Raw HTML elements                      | Inconsistent styling, no accessibility                                    | shadcn/ui components                                                   |
+| `bg-white/N` overlay fills             | Glass idiom — invisible or wrong on flat panels in one of the modes       | Token fills: `bg-accent`, `bg-muted`                                   |
+| `backdrop-blur` on panels              | Glass residue — console surfaces are opaque                               | Remove it; borders carry the depth                                     |
+| Gradients / glows                      | Not the console language                                                  | Flat colors + 1px borders                                              |
+| Pill-shaped buttons                    | Old design                                                                | `rounded-lg` (12px) rectangular                                        |
+| Rainbow status colors                  | Distracting                                                               | Muted semantic colors, orange = primary action only                    |
+| ALL CAPS body text                     | Aggressive                                                                | Sentence case (micro-labels excepted)                                  |
+| Monospace UI text                      | Developer-tool vibe (except data)                                         | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels       |
+| Animated backgrounds                   | Distracting                                                               | Static solid background                                                |
+| Page-sized rows in a side panel        | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e            |
+| An editor in a sheet or popover        | Its width is fixed and it hides the chat, and Monaco needs the room       | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
+| A view preference in a bare `useState` | Forgotten on the next visit                                               | `usePersistedState`                                                    |
 
 ## Review Checklist
 
