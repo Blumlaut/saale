@@ -12,7 +12,9 @@ import { Label } from "@/components/ui/label";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Page, PageScroll } from "@/components/layout/page";
 import {
+  enabledModelIds,
   fromGlobalProviderModels,
+  setModelsEnabled,
   toGlobalProviderModels,
   type ProviderModelConfig,
 } from "@/lib/admin/model-availability";
@@ -168,30 +170,13 @@ export function ModelAvailability() {
   };
 
   // ─── Model toggle actions ───
-  const handleProviderToggle = (providerId: string, enabled: boolean) => {
-    setModelEnabled((prev) => {
-      const models = availableModels[providerId] ?? [];
-      if (enabled) {
-        // Enable all models
-        return { ...prev, [providerId]: new Set(models.map((m) => m.id)) };
-      } else {
-        // Disable all models
-        return { ...prev, [providerId]: new Set() };
-      }
-    });
-  };
-
-  const handleModelToggle = (providerId: string, modelId: string, enabled: boolean) => {
-    setModelEnabled((prev) => {
-      const current = prev[providerId] ?? new Set();
-      const next = new Set(current);
-      if (enabled) {
-        next.add(modelId);
-      } else {
-        next.delete(modelId);
-      }
-      return { ...prev, [providerId]: next };
-    });
+  /*
+   * Both switches cover exactly the rows under them: with a search on, that is
+   * the matches, not the provider's whole inventory.
+   */
+  const toggleModels = (providerId: string, targetIds: readonly string[], enabled: boolean) => {
+    const allModelIds = (availableModels[providerId] ?? []).map((model) => model.id);
+    setModelEnabled((prev) => setModelsEnabled(prev, providerId, allModelIds, targetIds, enabled));
   };
 
   const handleSaveModels = useCallback(async () => {
@@ -337,10 +322,10 @@ export function ModelAvailability() {
                     provider.name.toLowerCase().includes(q),
                 );
               }
-              const enabledModels =
-                modelEnabled[provider.id] ??
-                new Set((availableModels[provider.id] ?? []).map((m) => m.id));
+              const allModelIds = (availableModels[provider.id] ?? []).map((m) => m.id);
+              const enabledModels = enabledModelIds(modelEnabled, provider.id, allModelIds);
               const allEnabled = models.length > 0 && models.every((m) => enabledModels.has(m.id));
+              const filtered = modelSearch.trim().length > 0;
 
               if (models.length === 0) return null;
 
@@ -351,14 +336,26 @@ export function ModelAvailability() {
                     action={
                       <div className="flex items-center gap-3">
                         <Badge variant="secondary" className="rounded-full text-xs">
-                          {enabledModels.size}/{(availableModels[provider.id] ?? []).length} enabled
+                          {enabledModels.size}/{allModelIds.length} enabled
+                          {filtered ? ` · ${models.length} shown` : ""}
                         </Badge>
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground text-xs">All</span>
+                          <span className="text-muted-foreground text-xs">
+                            {filtered ? "Shown" : "All"}
+                          </span>
                           <Switch
                             checked={allEnabled}
+                            aria-label={
+                              filtered
+                                ? `Turn the ${models.length} shown models of ${provider.name} on or off`
+                                : `Turn all models of ${provider.name} on or off`
+                            }
                             onCheckedChange={(checked) =>
-                              handleProviderToggle(provider.id, checked)
+                              toggleModels(
+                                provider.id,
+                                models.map((model) => model.id),
+                                checked,
+                              )
                             }
                           />
                         </div>
@@ -451,8 +448,9 @@ export function ModelAvailability() {
                               )}
                               <Switch
                                 checked={isModelEnabled}
+                                aria-label={`${model.name} available to users`}
                                 onCheckedChange={(checked) =>
-                                  handleModelToggle(provider.id, model.id, checked)
+                                  toggleModels(provider.id, [model.id], checked)
                                 }
                               />
                             </div>
