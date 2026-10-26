@@ -14,6 +14,7 @@ import {
   SidebarFrame,
   SidebarItem,
   SidebarSectionList,
+  SidebarSections,
   SidebarSectionToggle,
   sidebarItemClass,
 } from "@/components/layout/sidebar-chrome";
@@ -87,11 +88,13 @@ export function AdminNav() {
                   ) : undefined
                 }
               />
-              {sections.length > 0 && expanded ? (
-                <SidebarSectionList
-                  groups={[{ label: null, items: sections }]}
-                  activeId={activeId}
-                />
+              {sections.length > 0 ? (
+                <SidebarSections open={expanded}>
+                  <SidebarSectionList
+                    groups={[{ label: null, items: sections }]}
+                    activeId={activeId}
+                  />
+                </SidebarSections>
               ) : null}
             </div>
           );

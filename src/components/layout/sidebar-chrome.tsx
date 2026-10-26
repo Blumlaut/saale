@@ -27,12 +27,12 @@ export function sidebarItemClass(active: boolean, extra = "") {
   );
 }
 
-/** A nested page under a nav row. Same shape, tighter. */
+/** A nested page under a nav row. Same shape and states, indented. */
 export function sidebarSectionItemClass(active: boolean) {
   return cn(
-    "flex items-center rounded-lg px-2 py-0.5 text-sm transition-colors duration-150",
+    "relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-colors duration-150",
     active
-      ? "bg-accent text-foreground font-medium"
+      ? "bg-accent text-foreground font-medium before:absolute before:top-1/2 before:left-0 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-primary"
       : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
   );
 }
@@ -62,7 +62,7 @@ export function SidebarFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <nav
-      className="sidebar-nav no-scrollbar relative sticky top-6 max-h-[calc(100dvh-3rem)] shrink-0 overflow-y-auto"
+      className="sidebar-nav relative sticky top-6 max-h-[calc(100dvh-3rem)] shrink-0 overflow-y-auto"
       style={{ width: width.width }}
     >
       <GlassPanel className="shadow-md">
@@ -150,6 +150,25 @@ export function SidebarSectionToggle({
   );
 }
 
+/**
+ * The drawer a nav row's pages slide out of. Kept mounted so opening and
+ * closing animate; `inert` keeps the hidden links out of the tab order.
+ */
+export function SidebarSections({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+      )}
+    >
+      <div className="overflow-hidden" inert={!open}>
+        <div className="mt-0.5 ml-3 pb-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /** The pages of one nav row, nested under it. */
 export function SidebarSectionList({
   groups,
@@ -159,7 +178,7 @@ export function SidebarSectionList({
   activeId?: string | undefined;
 }) {
   return (
-    <div className="border-border/60 mt-1 ml-3.5 border-l pl-1.5">
+    <>
       {groups.map((group, index) => (
         <div
           key={group.label ?? index}
@@ -177,7 +196,7 @@ export function SidebarSectionList({
           ))}
         </div>
       ))}
-    </div>
+    </>
   );
 }
 

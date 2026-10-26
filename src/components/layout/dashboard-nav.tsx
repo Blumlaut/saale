@@ -26,6 +26,7 @@ import {
   SidebarFrame,
   SidebarItem,
   SidebarSectionList,
+  SidebarSections,
   SidebarSectionToggle,
   sidebarSectionItemClass,
 } from "@/components/layout/sidebar-chrome";
@@ -175,34 +176,32 @@ export function DashboardNav() {
         }
       />
 
-      {mailExpanded && emailAccounts.length > 0 && (
-        <div className="border-border/60 mt-1 ml-3.5 border-l pl-1.5">
-          {emailLoading ? (
-            <div className="px-2 py-1">
-              <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
-            </div>
-          ) : (
-            emailAccounts.map((account) => {
-              const [local, domain] = account.email.split("@");
+      <SidebarSections open={mailExpanded && emailAccounts.length > 0}>
+        {emailLoading ? (
+          <div className="px-2 py-1">
+            <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
+          </div>
+        ) : (
+          emailAccounts.map((account) => {
+            const [local, domain] = account.email.split("@");
 
-              return (
-                <Link
-                  key={account.id}
-                  href={`/dashboard/mail?accountId=${account.id}`}
-                  className={sidebarSectionItemClass(isAccountActive(account.id))}
-                >
-                  <div className="bg-muted/50 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold">
-                    {account.email[0]?.toUpperCase() ?? "?"}
-                  </div>
-                  <span className="truncate">{local}</span>
-                  <span className="text-muted-foreground/50 truncate">@{domain}</span>
-                  {!account.enabled && <span className="ml-auto text-[9px] opacity-50">off</span>}
-                </Link>
-              );
-            })
-          )}
-        </div>
-      )}
+            return (
+              <Link
+                key={account.id}
+                href={`/dashboard/mail?accountId=${account.id}`}
+                className={sidebarSectionItemClass(isAccountActive(account.id))}
+              >
+                <div className="bg-muted/50 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold">
+                  {account.email[0]?.toUpperCase() ?? "?"}
+                </div>
+                <span className="truncate">{local}</span>
+                <span className="text-muted-foreground/50 truncate">@{domain}</span>
+                {!account.enabled && <span className="ml-auto text-[9px] opacity-50">off</span>}
+              </Link>
+            );
+          })
+        )}
+      </SidebarSections>
     </div>
   );
 
@@ -274,9 +273,9 @@ export function DashboardNav() {
             />
           }
         />
-        {expanded && (
+        <SidebarSections open={expanded}>
           <SidebarSectionList groups={sectionGroupsFor(item)} activeId={activeSectionId(item)} />
-        )}
+        </SidebarSections>
       </div>
     );
   };
