@@ -5,9 +5,9 @@
 /**
  * Format a relative date ("just now", "40m ago", "2h ago", "yesterday", "Mar 15").
  */
-export function formatRelativeDate(dateStr: string): string {
+export function formatRelativeDate(value: string | Date): string {
   try {
-    const date = new Date(dateStr);
+    const date = value instanceof Date ? value : new Date(value);
     if (isNaN(date.getTime())) return "";
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
