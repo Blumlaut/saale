@@ -46,11 +46,13 @@ export function LightboxImage({
   alt,
   className,
   wrapperClassName,
+  onError,
 }: {
   src: string;
   alt: string;
   className?: string;
   wrapperClassName?: string;
+  onError?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -66,7 +68,7 @@ export function LightboxImage({
         className={cn("h-auto shrink-0 cursor-zoom-in overflow-hidden p-0", wrapperClassName)}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- dynamic image served by the app */}
-        <img src={src} alt={alt} className={cn("block max-w-full", className)} />
+        <img src={src} alt={alt} onError={onError} className={cn("block max-w-full", className)} />
       </Button>
       <ImageLightbox open={open} onOpenChange={setOpen} src={src} alt={alt} />
     </>
