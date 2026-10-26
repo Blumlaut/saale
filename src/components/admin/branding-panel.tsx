@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTheme } from "next-themes";
 import { AgentAvatar } from "@/components/brand/agent-avatar";
 import { fetchJson } from "@/lib/http";
 import {
@@ -29,13 +30,17 @@ const MODE_LABELS: Record<BrandMode, string> = { light: "Light", dark: "Dark" };
 function ColorField({
   id,
   label,
+  name,
   value,
   overridden,
   onChange,
   onReset,
 }: {
   id: string;
+  /** The mode this field holds the colour for. */
   label: string;
+  /** The token, so the controls read "Primary light" rather than "Light". */
+  name: string;
   value: string;
   overridden: boolean;
   onChange: (hex: string) => void;
@@ -56,7 +61,7 @@ function ColorField({
     <div className="flex items-center gap-2">
       <input
         type="color"
-        aria-label={`${label} colour`}
+        aria-label={`${name} ${label} colour`}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="border-input h-8 w-8 shrink-0 cursor-pointer rounded-lg border bg-transparent"
@@ -78,7 +83,7 @@ function ColorField({
       <Button
         variant="ghost"
         size="icon"
-        aria-label={`Reset ${label}`}
+        aria-label={`Reset ${name} ${label}`}
         className="text-muted-foreground mt-5 h-7 w-7 shrink-0"
         disabled={!overridden}
         onClick={onReset}
@@ -93,8 +98,8 @@ function ColorField({
  * The accent colours of one mode, drawn on a small console.
  *
  * The wrapper carries the mode's `dark` class and the drafted accent, so the
- * preview shows the colours being typed in that mode rather than the one the
- * admin's browser happens to use.
+ * preview paints the mode the toggle names rather than the one the admin's
+ * browser happens to use.
  */
 function BrandPreview({ mode, colors }: { mode: BrandMode; colors: BrandColors }) {
   const primary = colors[mode].primary ?? DEFAULT_BRAND_COLORS[mode].primary;
@@ -102,7 +107,9 @@ function BrandPreview({ mode, colors }: { mode: BrandMode; colors: BrandColors }
 
   return (
     <div
-      className={cn("bg-background rounded-lg border p-3", mode === "dark" && "dark")}
+      // `text-foreground` sits on the island itself: colour inherits as a value,
+      // so without it the preview would keep the surrounding page's ink.
+      className={cn("bg-background text-foreground rounded-lg border p-3", mode)}
       style={
         {
           "--primary": primary,
@@ -128,10 +135,10 @@ function BrandPreview({ mode, colors }: { mode: BrandMode; colors: BrandColors }
           </p>
           <div className="flex items-center gap-2">
             <Button size="sm" className="h-7 text-xs">
-              Save
+              Primary
             </Button>
             <Button variant="secondary" size="sm" className="h-7 text-xs">
-              Cancel
+              Secondary
             </Button>
             <span className="border-ring ring-ring/50 rounded-md border px-1.5 py-0.5 text-[10px] ring-[3px]">
               focus
@@ -160,6 +167,11 @@ export function BrandingPanel({
 }: BrandingPanelProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  // The preview opens in the mode the admin is looking at, and switches on its own.
+  const { resolvedTheme } = useTheme();
+  const [previewOverride, setPreviewOverride] = useState<BrandMode | null>(null);
+  const previewMode = previewOverride ?? (resolvedTheme === "dark" ? "dark" : "light");
 
   const setToken = (mode: BrandMode, key: BrandColorKey, hex: string | undefined) => {
     const next: BrandColors = { light: { ...colors.light }, dark: { ...colors.dark } };
@@ -270,41 +282,53 @@ export function BrandingPanel({
 
         <Separator />
 
-        <div className="grid gap-4 px-4 py-3 md:grid-cols-2">
-          <Tabs defaultValue="light" className="gap-3">
-            <TabsList className="w-full">
-              {BRAND_MODES.map((mode) => (
-                <TabsTrigger key={mode} value={mode} className="text-xs">
-                  {MODE_LABELS[mode]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {BRAND_MODES.map((mode) => (
-              <TabsContent key={mode} value={mode} className="space-y-3">
-                <p className="text-muted-foreground text-xs">
-                  Saved with the rest of this page. Panels, borders and text keep their palette.
-                </p>
-                {BRAND_COLOR_TOKENS.map((token) => (
+        <div className="space-y-4 px-4 py-3">
+          {BRAND_COLOR_TOKENS.map((token) => (
+            <div key={token.key} className="space-y-2">
+              <div className="min-w-0">
+                <Label className="text-sm font-medium">{token.label}</Label>
+                <p className="text-muted-foreground text-xs">{token.description}</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {BRAND_MODES.map((mode) => (
                   <ColorField
-                    key={token.key}
+                    key={mode}
                     id={`brand-${mode}-${token.key}`}
-                    label={token.label}
+                    label={MODE_LABELS[mode]}
+                    name={token.label}
                     value={colors[mode][token.key] ?? DEFAULT_BRAND_COLORS[mode][token.key]}
                     overridden={Boolean(colors[mode][token.key])}
                     onChange={(hex) => setToken(mode, token.key, hex)}
                     onReset={() => setToken(mode, token.key, undefined)}
                   />
                 ))}
-              </TabsContent>
-            ))}
-          </Tabs>
+              </div>
+            </div>
+          ))}
+          <p className="text-muted-foreground text-xs">
+            Takes effect when you save the page. Panels, borders and text keep their palette.
+          </p>
+        </div>
 
-          <div className="space-y-2">
+        <Separator />
+
+        <div className="space-y-2 px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
             <p className="text-muted-foreground text-xs">Preview</p>
-            {BRAND_MODES.map((mode) => (
-              <BrandPreview key={mode} mode={mode} colors={colors} />
-            ))}
+            <Tabs
+              value={previewMode}
+              onValueChange={(value) => setPreviewOverride(value as BrandMode)}
+            >
+              <TabsList>
+                {BRAND_MODES.map((mode) => (
+                  <TabsTrigger key={mode} value={mode} className="px-2 text-xs">
+                    {MODE_LABELS[mode]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </div>
+          <BrandPreview mode={previewMode} colors={colors} />
         </div>
       </GlassPanelContent>
     </GlassPanel>
