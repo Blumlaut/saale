@@ -27,6 +27,7 @@ export interface SandboxConfig {
   uid: number;
   gid: number;
   memory: string;
+  /** Process limit: threads count too. 0 means no limit. */
   pids: number;
   cpus: number;
   /** Idle minutes before a container is stopped. */
@@ -51,7 +52,12 @@ const DEFAULTS = {
   uid: 1000,
   gid: 1000,
   memory: "4g",
-  pids: 512,
+  // Threads count against this, and a workspace with a running dev server
+  // spends hundreds on its own: turbopack, esbuild, tsc and a language server
+  // each hold a pool, and a build or a browser test adds more. At 512 an exec
+  // failed with "unable to spawn stage-1: Resource temporarily unavailable" and
+  // the container was unusable until whatever held the threads exited.
+  pids: 4096,
   cpus: 2,
   idleMinutes: 240,
   ttlDays: 7,
