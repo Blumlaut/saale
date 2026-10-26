@@ -680,15 +680,27 @@ export function ChatInterface({
         disconnect();
         connect();
       } catch (err) {
-        setIsLoading(false);
-        if (
-          err instanceof Error &&
-          "status" in err &&
-          (err as { status?: number }).status === 409
-        ) {
+        const status =
+          err instanceof Error && "status" in err ? (err as { status?: number }).status : undefined;
+        if (status === 409) {
+          // The run in flight owns the chat: nothing was saved, and the loading
+          // state belongs to that run, not to this edit.
+          toast.info("Still answering", {
+            description: "Edit the message once the current response finishes.",
+          });
           void loadMessages();
           connect();
+          return;
         }
+
+        setIsLoading(false);
+        console.error("Failed to edit the message:", err);
+        toast.error("Failed to edit the message", {
+          description: err instanceof Error ? err.message : "Something went wrong.",
+        });
+        await loadMessages();
+        // Rethrown so the editor keeps the text that did not land.
+        throw err;
       }
     },
     [sessionId, connect, disconnect, loadMessages],
