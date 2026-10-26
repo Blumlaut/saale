@@ -124,6 +124,31 @@ test.describe("chat full-bleed layout", () => {
     });
   }
 
+  test("the bottom bar steps aside while typing on a phone", async ({ browser }) => {
+    test.skip(!sessionId, "could not create a chat session");
+    const { ctx, page } = await openChat(browser, { width: 375, height: 812 });
+
+    try {
+      const bar = page.locator(".mobile-nav");
+      await expect(bar).toBeVisible();
+      const typingGap = async () => {
+        const { composer, viewportHeight } = await measure(page);
+        return viewportHeight - composer!.bottom;
+      };
+      const idleGap = await typingGap();
+
+      // Focus is what raises the phone keyboard, and the bar hides for it.
+      await page.locator("textarea").first().focus();
+
+      await expect(bar).toBeHidden();
+      expect(await typingGap(), "the shell still reserves the bar's height").toBeLessThan(
+        idleGap - 40,
+      );
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test("desktop keeps the console gutter and rounded panels", async ({ browser }) => {
     test.skip(!sessionId, "could not create a chat session");
     const { ctx, page } = await openChat(browser, { width: 1280, height: 800 });

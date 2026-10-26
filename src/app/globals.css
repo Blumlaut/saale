@@ -233,6 +233,20 @@ navigation *and* the view, so the chat is a card there, not a viewport. */
     padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
     padding-left: env(safe-area-inset-left);
   }
+
+  /* Keyboard up: the bar covers the view the user is typing into, so it steps
+     aside and the shell stops reserving its height. */
+  .dashboard-layout[data-text-field-focus="true"] .mobile-nav {
+    display: none;
+  }
+
+  .dashboard-layout[data-text-field-focus="true"] .shell-frame {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .dashboard-layout[data-text-field-focus="true"] .shell-frame:has(.full-bleed) {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 /* ===== Scrollable tab strips =====
