@@ -77,6 +77,7 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     featureDefaults: null,
     piPluginsDir: "",
     piPluginsEnabled: false,
+    piPluginsUi: false,
     piPluginStates: null,
     updatedAt: new Date(0),
     ...overrides,

@@ -445,6 +445,9 @@ model AdminSettings {
   piPluginsDir           String   @default("")
   /// Loads the plugins in `piPluginsDir` into every session.
   piPluginsEnabled       Boolean  @default(false)
+  /// Lets plugins open dialogs in the chat (Pi's `ctx.ui`). Off, a plugin's
+  /// dialog resolves immediately as cancelled.
+  piPluginsUi            Boolean  @default(false)
   /// Per-plugin switches, keyed by directory name:
   ///   { "my-plugin": { "enabled": false } }
   piPluginStates         Json?

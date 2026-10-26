@@ -4,6 +4,7 @@ import {
   getAgentDir,
   type AgentSession,
   type ExtensionFactory,
+  type ExtensionUIContext,
   type ResourceDiagnostic,
   type ResourceLoader,
   type Skill,
@@ -334,8 +335,15 @@ const loggingSessions = new WeakSet<AgentSession>();
  * extensions never activate. the user's MCP servers never connect and Pi's
  * `codemode` tool (registered inactive) is never enabled. It must run once per
  * session, after `createAgentSession`.
+ *
+ * `uiContext` is what an extension's `ctx.ui` resolves to. Given, `ctx.hasUI`
+ * is true and dialogs reach the chat; omitted (an unattended run), Pi's no-op
+ * context answers every dialog as cancelled.
  */
-export async function startSessionExtensions(session: AgentSession): Promise<void> {
+export async function startSessionExtensions(
+  session: AgentSession,
+  options: { uiContext?: ExtensionUIContext } = {},
+): Promise<void> {
   // A plugin handler that throws is reported by Pi to this listener and nowhere
   // else. Attached before binding so `session_start` failures are caught too.
   if (!loggingSessions.has(session)) {
@@ -349,7 +357,9 @@ export async function startSessionExtensions(session: AgentSession): Promise<voi
     });
   }
 
-  await session.bindExtensions({});
+  await session.bindExtensions(
+    options.uiContext ? { uiContext: options.uiContext, mode: "rpc" } : {},
+  );
   const active = session.getActiveToolNames();
   const missing = DEFAULT_EXTENSION_TOOLS.filter((name) => !active.includes(name));
   if (missing.length > 0) session.setActiveToolsByName([...active, ...missing]);

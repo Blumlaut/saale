@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
 import { wireStreamListeners } from "@/components/chat/use-chat-stream";
-import type { ApprovalData, Message } from "@/components/chat/types";
+import type { ApprovalData, Message, PluginDialogData } from "@/components/chat/types";
 
 /**
  * `tool_end` carries the tool name so the UI can react to specific tools —
@@ -39,6 +39,7 @@ function wire(onToolEnd?: (toolName: string) => void) {
     setMessages: vi.fn(),
     setIsLoading: vi.fn(),
     setPendingApprovals: vi.fn() as Dispatch<SetStateAction<ApprovalData[]>>,
+    setPluginDialogs: vi.fn() as Dispatch<SetStateAction<PluginDialogData[]>>,
     markDone: vi.fn(),
     onReload: vi.fn(),
     ...(onToolEnd ? { onToolEnd } : {}),

@@ -1297,6 +1297,12 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "chat · plugin dialog",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/plugin-dialog.tsx"],
+    skip: "requires a plugin that calls ctx.ui mid-run  the dialog is opened by a live Pi extension, not by a page action",
+  },
+  {
     name: "admin · add role",
     path: "/admin/roles",
     sources: ["src/app/admin/roles/page.tsx"],

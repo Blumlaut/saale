@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { MessageList, type MessageListHandle } from "./message-list";
 import { InputBar, type InputBarHandle } from "./input-bar";
+import { PluginDialog } from "./plugin-dialog";
+import { PluginInteractionBar, PluginStatusStrip, PluginWidgetPanel } from "./plugin-interactions";
 import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
@@ -30,7 +32,14 @@ import { sendChatMessage } from "@/lib/chat/send-message";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
-import type { Message, ApprovalData, TokenUsage } from "./types";
+import type {
+  Message,
+  ApprovalData,
+  PluginDialogData,
+  PluginStatusData,
+  PluginWidgetData,
+  TokenUsage,
+} from "./types";
 import { ChatHeader } from "./chat-header";
 import { SharedFileSessionProvider } from "./workspace-file";
 import { SessionLinksPanel, SessionLinksSheet, useSessionLinks } from "./session-links-panel";
@@ -106,6 +115,12 @@ export function ChatInterface({
 
   // Session state
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalData[]>([]);
+  // Dialogs a plugin opened (`ctx.ui`). The run waits, so one is always shown
+  // until it is answered or dismissed.
+  const [pluginDialogs, setPluginDialogs] = useState<PluginDialogData[]>([]);
+  const [pluginDialogHidden, setPluginDialogHidden] = useState(false);
+  const [pluginStatuses, setPluginStatuses] = useState<PluginStatusData[]>([]);
+  const [pluginWidgets, setPluginWidgets] = useState<PluginWidgetData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
   const [isCompacting, setIsCompacting] = useState(false);
   // Tool Pi is running right now (from GET /messages. refresh recovery when
@@ -235,6 +250,16 @@ export function ChatInterface({
     [loadMessages],
   );
 
+  // A fresh dialog is an interruption worth showing even if the last one was
+  // dismissed, and an empty queue hides the "needs your input" row again.
+  useEffect(() => {
+    setPluginDialogHidden(false);
+  }, [pluginDialogs.length]);
+
+  const handlePluginDialogSettled = useCallback((id: string) => {
+    setPluginDialogs((prev) => prev.filter((dialog) => dialog.id !== id));
+  }, []);
+
   // Shared stream orchestration (declared before the message handlers it
   // references; `onGenerationEnd` is only invoked after mount, by which time
   // `handleSend` is initialized).
@@ -244,6 +269,27 @@ export function ChatInterface({
     setMessages,
     setIsLoading,
     setPendingApprovals,
+    setPluginDialogs,
+    onPluginNotice: (notice) => {
+      const notify =
+        notice.type === "error"
+          ? toast.error
+          : notice.type === "warning"
+            ? toast.warning
+            : toast.info;
+      notify(notice.message);
+    },
+    onPluginStatus: (status) =>
+      setPluginStatuses((prev) => {
+        const rest = prev.filter((entry) => entry.key !== status.key);
+        return status.text === null ? rest : [...rest, status];
+      }),
+    onPluginWidget: (widget) =>
+      setPluginWidgets((prev) => {
+        const rest = prev.filter((entry) => entry.key !== widget.key);
+        return widget.lines === null ? rest : [...rest, widget];
+      }),
+    onPluginComposerText: (text) => setDraft(text),
     markDone,
     onGenerationEnd: () => {
       // The generation ended, so any in-flight retry did too. The send queue
@@ -902,6 +948,15 @@ export function ChatInterface({
             onCancel={handleCancelQueued}
           />
 
+          <PluginWidgetPanel widgets={pluginWidgets} placement="aboveEditor" />
+
+          <PluginStatusStrip statuses={pluginStatuses} />
+
+          <PluginInteractionBar
+            count={pluginDialogHidden ? pluginDialogs.length : 0}
+            onReview={() => setPluginDialogHidden(false)}
+          />
+
           <InputBar
             ref={inputBarRef}
             onSend={handleSend}
@@ -916,6 +971,15 @@ export function ChatInterface({
             isCompacting={isCompacting}
             onCompact={handleCompact}
           />
+
+          {pluginDialogs.length > 0 && !pluginDialogHidden && sessionId && (
+            <PluginDialog
+              key={pluginDialogs[0]!.id}
+              sessionId={sessionId}
+              dialog={pluginDialogs[0]!}
+              onSettled={handlePluginDialogSettled}
+            />
+          )}
 
           <CommandSheet
             open={commandPrompt !== null}

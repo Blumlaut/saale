@@ -5,6 +5,9 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
+import { readPluginConfig } from "./plugins";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
+import { createExtensionUiContext } from "@/lib/plugin-ui/ui-context";
 import { createSaaleAgentSession, resolveAgentCwd } from "./agent-session";
 import { sessionWorkspace } from "./project-context";
 import { buildSessionDeps, type ToolConfig } from "./session";
@@ -127,7 +130,25 @@ export async function createPersistentSession(options: {
   });
 
   // Extensions connect on `session_start`. the user's MCP servers among them.
-  await startSessionExtensions(result.session);
+  // A chat can show what a plugin asks; an unattended run cannot, so it binds
+  // without a UI context and every dialog is cancelled at once.
+  const uiContext = options.mcp ? await buildUiContext(options.userId, options.sessionId) : null;
+  await startSessionExtensions(result.session, uiContext ? { uiContext } : {});
 
   return result;
+}
+
+/** The chat's `ctx.ui`, when an admin has let plugins open dialogs. */
+async function buildUiContext(
+  userId: string,
+  sessionId: string,
+): Promise<ExtensionUIContext | null> {
+  try {
+    const config = await readPluginConfig();
+    if (!config.enabled || !config.ui) return null;
+    return createExtensionUiContext({ userId, sessionId });
+  } catch (err) {
+    console.error(`Failed to build the plugin UI context for ${sessionId}:`, err);
+    return null;
+  }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "piPluginsUi" BOOLEAN NOT NULL DEFAULT false;

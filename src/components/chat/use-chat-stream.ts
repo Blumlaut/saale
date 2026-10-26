@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { ApprovalData, Message, TokenUsage } from "./types";
+import type {
+  ApprovalData,
+  Message,
+  PluginDialogData,
+  PluginStatusData,
+  PluginWidgetData,
+  TokenUsage,
+} from "./types";
 import { streamReducer, type StreamAction } from "@/lib/chat/stream-reducer";
 
 /**
@@ -76,6 +83,16 @@ export interface ChatStreamOptions {
   setMessages: Dispatch<SetStateAction<Message[]>>;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setPendingApprovals: Dispatch<SetStateAction<ApprovalData[]>>;
+  /** Dialogs a plugin opened in this chat. */
+  setPluginDialogs: Dispatch<SetStateAction<PluginDialogData[]>>;
+  /** A plugin asked to tell the user something. Shown as a toast. */
+  onPluginNotice?: (notice: { message: string; type: "info" | "warning" | "error" }) => void;
+  /** A plugin set (or cleared) a status line. */
+  onPluginStatus?: (status: PluginStatusData) => void;
+  /** A plugin set (or cleared) a panel above/below the composer. */
+  onPluginWidget?: (widget: PluginWidgetData) => void;
+  /** A plugin put text in the composer. */
+  onPluginComposerText?: (text: string) => void;
   markDone: (id: string) => void;
   onTokenUsage?: (usage: TokenUsage) => void;
   onCompactionStart?: () => void;
@@ -295,6 +312,7 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
     // A `done` means the generation ended, so its approvals are resolved or
     // moot. drop any card that a missed resolution event left behind.
     opts.setPendingApprovals([]);
+    opts.setPluginDialogs([]);
     rootMessageIdRef.current = null;
     opts.markDone(opts.sessionId);
     // Pi's followUp semantics: anything queued while Pi was busy is delivered
@@ -479,6 +497,48 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
     const parsed = parseEvent<{ approvals?: ApprovalData[] }>(event.data);
     if (!parsed) return;
     opts.setPendingApprovals(parsed.approvals ?? []);
+  });
+
+  // ── Plugin UI (Pi's `ctx.ui` from a plugin) ───────────────────────────
+  eventSource.addEventListener("plugin_ui_request", (event: MessageEvent) => {
+    markLoading();
+    const parsed = parseEvent<PluginDialogData>(event.data);
+    if (!parsed) return;
+    opts.setPluginDialogs((prev) =>
+      prev.some((dialog) => dialog.id === parsed.id) ? prev : [...prev, parsed],
+    );
+  });
+
+  eventSource.addEventListener("plugin_ui_resolved", (event: MessageEvent) => {
+    const parsed = parseEvent<{ id: string }>(event.data);
+    if (!parsed) return;
+    opts.setPluginDialogs((prev) => prev.filter((dialog) => dialog.id !== parsed.id));
+  });
+
+  eventSource.addEventListener("plugin_ui_snapshot", (event: MessageEvent) => {
+    const parsed = parseEvent<{ dialogs?: PluginDialogData[] }>(event.data);
+    if (!parsed) return;
+    opts.setPluginDialogs(parsed.dialogs ?? []);
+  });
+
+  eventSource.addEventListener("plugin_notice", (event: MessageEvent) => {
+    const parsed = parseEvent<{ message: string; type: "info" | "warning" | "error" }>(event.data);
+    if (parsed) opts.onPluginNotice?.(parsed);
+  });
+
+  eventSource.addEventListener("plugin_status", (event: MessageEvent) => {
+    const parsed = parseEvent<PluginStatusData>(event.data);
+    if (parsed) opts.onPluginStatus?.(parsed);
+  });
+
+  eventSource.addEventListener("plugin_widget", (event: MessageEvent) => {
+    const parsed = parseEvent<PluginWidgetData>(event.data);
+    if (parsed) opts.onPluginWidget?.(parsed);
+  });
+
+  eventSource.addEventListener("plugin_composer_text", (event: MessageEvent) => {
+    const parsed = parseEvent<{ text: string }>(event.data);
+    if (parsed) opts.onPluginComposerText?.(parsed.text);
   });
 
   // ── Send queue ────────────────────────────────────────────────────────
