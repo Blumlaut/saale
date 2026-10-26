@@ -5,8 +5,6 @@ import { ChevronDown, ChevronRight, Lightbulb, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { plural, truncate } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
-import { ToolStatusBadge } from "./tool-status-badge";
-import { aggregateToolStatus } from "./tool-status";
 import type { ToolCallRenderer } from "./collapsed-tool-calls";
 import type { ToolMark } from "./tool-mark-model";
 import type { ToolCallData } from "./types";
@@ -192,10 +190,6 @@ function ToolsRow({
             ))}
           </span>
         </Button>
-
-        <div className="flex shrink-0 items-center gap-1.5 pr-3">
-          <ToolStatusBadge status={aggregateToolStatus(toolCalls)} />
-        </div>
       </div>
 
       {open && (

@@ -393,18 +393,20 @@ describe("compact activity", () => {
     expect(images[1]).toBeNull();
   });
 
-  it("reports a run as failed when one of its calls failed", () => {
+  it("leaves the run's status off the row (edge case)", () => {
     renderTranscript([
       step({ id: "a1", toolCalls: [exec("tc-1", "uptime"), exec("tc-2", "df -h", "error")] }),
     ]);
 
-    expect(screen.getByText("failed")).toHaveClass("text-red-600");
+    expect(screen.getByText("Used 2 tools")).toBeInTheDocument();
+    expect(screen.queryByText("failed")).not.toBeInTheDocument();
   });
 
-  it("still shows a running call as running", () => {
+  it("keeps a running call off the row too", () => {
     renderTranscript([step({ id: "a1", toolCalls: [exec("tc-1", "uptime", "running")] })]);
 
-    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("Used 1 tool")).toBeInTheDocument();
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
   });
 
   it("keeps a shown file open while the work beside it stays folded", () => {
