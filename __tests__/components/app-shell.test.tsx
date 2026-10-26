@@ -89,12 +89,9 @@ describe("AppShell", () => {
     const expected = ["Jobs", "Chat", "Settings", "Mail", "Calendar", "Servers"];
     await waitFor(() => expect(mobileNavLabels()).toEqual(expected));
 
-    // Both shells render the page, and both see the provider's layout.
+    // One page, one set of state: the shell cannot mount it per breakpoint.
     const probes = await probeText();
-    expect(probes).toEqual([
-      "jobs chat settings mail calendar infra",
-      "jobs chat settings mail calendar infra",
-    ]);
+    expect(probes).toEqual(["jobs chat settings mail calendar infra"]);
 
     expect(screen.getByTestId("desktop-nav")).toBeInTheDocument();
   });

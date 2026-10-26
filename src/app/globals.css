@@ -158,24 +158,6 @@
 
 /* Mobile adjustments */
 @media (max-width: 767px) {
-  .dashboard-layout > div {
-    padding: 0;
-  }
-
-  /* Mobile shell. flex column, fixed to viewport. */
-  .mobile-shell {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    overflow: hidden;
-  }
-
-  .mobile-shell > main {
-    min-height: 0;
-    flex: 1;
-    overflow: hidden;
-  }
-
   /* Bottom nav safe area */
   .h-safe-area-inset-bottom {
     height: env(safe-area-inset-bottom, 0px);
@@ -189,25 +171,45 @@ notches, the status bar and the home indicator. These paddings add the device
 insets on top of the shell's own spacing. `env()` resolves to 0 in a normal
 browser tab, so the values below degrade to exactly the previous padding. */
 
-/* Desktop shell: 1.25rem / 1.5rem, matching the old `md:p-5 lg:p-6`. */
-.app-shell-padding {
-  --shell-padding: 1.25rem;
-  padding: calc(var(--shell-padding) + env(safe-area-inset-top))
-    calc(var(--shell-padding) + env(safe-area-inset-right))
-    calc(var(--shell-padding) + env(safe-area-inset-bottom))
-    calc(var(--shell-padding) + env(safe-area-inset-left));
+/* The shell frame holds the page once and reshapes itself: a column over the
+phone bottom bar, a sidebar row on desktop. */
+.shell-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  /* Phone gutter, with bottom clearance for the fixed bottom nav. */
+  padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
+    calc(5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
 }
 
-@media (min-width: 1024px) {
-  .app-shell-padding {
-    --shell-padding: 1.5rem;
+.shell-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Desktop: 1.25rem / 1.5rem, matching the old `md:p-5 lg:p-6`. */
+@media (min-width: 768px) {
+  .shell-frame {
+    --shell-padding: 1.25rem;
+    flex-direction: row;
+    /* Matches the row gap main settled on between the nav and the page. */
+    gap: 0.75rem;
+    padding: calc(var(--shell-padding) + env(safe-area-inset-top))
+      calc(var(--shell-padding) + env(safe-area-inset-right))
+      calc(var(--shell-padding) + env(safe-area-inset-bottom))
+      calc(var(--shell-padding) + env(safe-area-inset-left));
   }
 }
 
-/* Mobile shell: 1rem, with bottom clearance for the fixed bottom nav. */
-.mobile-shell-content {
-  padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
-    calc(5rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left));
+@media (min-width: 1024px) {
+  .shell-frame {
+    --shell-padding: 1.5rem;
+  }
 }
 
 /* ===== Full-bleed views =====
@@ -221,11 +223,13 @@ and the home indicator).
 
 Desktop keeps the console gutter: the wider window has room for the floating
 navigation *and* the view, so the chat is a card there, not a viewport. */
-.mobile-shell-content:has(.full-bleed) {
-  padding-top: env(safe-area-inset-top);
-  padding-right: env(safe-area-inset-right);
-  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
-  padding-left: env(safe-area-inset-left);
+@media (max-width: 767px) {
+  .shell-frame:has(.full-bleed) {
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+  }
 }
 
 /* ===== Scrollable tab strips =====
