@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 import { bootstrapSession, type E2ESession } from "./utils";
+import { SIDEBAR_NAV_ITEMS, type SidebarNavItemId } from "@/lib/navigation/sidebar-nav";
 
 /**
  * Sidebar customization.
@@ -61,6 +62,13 @@ async function sidebarOrder(page: Page): Promise<string[]> {
   }, NAV_LABELS_ANY);
 }
 
+/** Row index in the editor, which lists the whole registry including hidden items. */
+function rowIndex(id: SidebarNavItemId): number {
+  const index = SIDEBAR_NAV_ITEMS.findIndex((item) => item.id === id);
+  if (index === -1) throw new Error(`e2e: ${id} is not a sidebar item`);
+  return index;
+}
+
 /** An item of the desktop sidebar  Mail renders as a button, the rest as links. */
 function sidebarItem(page: Page, label: string) {
   const sidebar = page.locator("nav.sidebar-nav");
@@ -83,10 +91,9 @@ async function persistedIds(ctx: BrowserContext): Promise<string[]> {
 
 /** Open Settings → Appearance and wait for the sidebar editor. */
 async function openAppearance(page: Page) {
-  if (!page.url().includes("/dashboard/settings")) {
-    await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
+  if (!page.url().endsWith("/dashboard/settings/appearance")) {
+    await page.goto("/dashboard/settings/appearance", { waitUntil: "domcontentloaded" });
   }
-  await page.getByRole("tab", { name: "Appearance" }).click();
   await expect(page.getByRole("heading", { name: "Sidebar" })).toBeVisible();
 }
 
@@ -105,8 +112,11 @@ test.describe("sidebar customization", () => {
     expect(await sidebarOrder(page)).toEqual(NAV_LABELS);
 
     await openAppearance(page);
-    for (let i = 0; i < 6; i++) {
-      await page.getByRole("button", { name: "Move Settings up" }).click();
+    // The layout also holds hidden items, so Settings needs as many clicks as
+    // the registry has entries above it. Click until it reaches the top.
+    const moveUp = page.getByRole("button", { name: "Move Settings up" });
+    for (let i = 0; i < 20 && !(await moveUp.isDisabled()); i++) {
+      await moveUp.click();
     }
 
     // Settings is first now  in the editor and in the sidebar itself.
@@ -134,9 +144,9 @@ test.describe("sidebar customization", () => {
     await openAppearance(page);
 
     const rows = page.locator('div[draggable="true"]');
-    await expect(rows).toHaveCount(7);
-    // Drag the 4th row (Tasks) onto the first (Chat).
-    await rows.nth(3).dragTo(rows.nth(0));
+    await expect(rows).toHaveCount(SIDEBAR_NAV_ITEMS.length);
+    // Drag Tasks onto Chat.
+    await rows.nth(rowIndex("tasks")).dragTo(rows.nth(rowIndex("chat")));
 
     await expect(page.getByRole("button", { name: "Move Tasks up" })).toBeDisabled();
     await expect
@@ -209,7 +219,7 @@ test.describe("sidebar customization", () => {
     expect(res.status()).toBe(200);
     const { items } = (await res.json()) as { items: { id: string; hidden: boolean }[] };
     // Items the layout doesn't mention keep showing, appended after the ordered ones.
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(SIDEBAR_NAV_ITEMS.length);
     expect(items.find((item) => item.id === "tasks")?.hidden).toBe(true);
     expect(items.find((item) => item.id === "calendar")?.hidden).toBe(false);
 
@@ -219,9 +229,13 @@ test.describe("sidebar customization", () => {
 
     await page.getByRole("button", { name: "Reset" }).click();
 
-    const switches = page.getByRole("switch");
-    await expect(switches).toHaveCount(7);
+    // Only the editor's rows: the appearance page has switches of its own.
+    const switches = page.locator('div[draggable="true"]').getByRole("switch");
+    await expect(switches).toHaveCount(SIDEBAR_NAV_ITEMS.length);
     for (const item of await switches.all()) {
+      // The opt-in items start hidden, so only the everyday ones are on.
+      const optIn = (await item.getAttribute("aria-label"))?.match(/^Show (\w+) in the sidebar$/);
+      if (optIn && (optIn[1] === "Coder" || optIn[1] === "Council")) continue;
       await expect(item).toBeChecked();
     }
     await expect(page.getByRole("button", { name: "Reset" })).toBeDisabled();
