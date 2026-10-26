@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 /**
  * `/compact` can be the request that brings a chat's agent into the pool (after
@@ -76,19 +75,6 @@ function compact() {
   return compactChatSession({ userId: USER_ID, sessionId: SESSION_ID });
 }
 
-function makeTool(name: string, executed: () => void): ToolDefinition {
-  return {
-    name,
-    label: name,
-    description: "test tool",
-    parameters: {} as never,
-    execute: async () => {
-      executed();
-      return { content: [{ type: "text", text: "ok" }], details: {} };
-    },
-  } as unknown as ToolDefinition;
-}
-
 describe("compactChatSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -108,27 +94,18 @@ describe("compactChatSession", () => {
     mockCompact.mockResolvedValue({ summary: "Sum", tokensBefore: 1000 });
   });
 
-  it("builds the chat session with the user's approval gate", async () => {
+  it("builds the chat session with the user's approval channel", async () => {
     const result = await compact();
     expect(result).toEqual({ ok: true, tokensBefore: 1000 });
 
     expect(mockCreateChatAgentSession).toHaveBeenCalledTimes(1);
     const options = mockCreateChatAgentSession.mock.calls[0]![0] as {
       customInstructions: string | null;
-      wrapTool: (tool: ToolDefinition) => ToolDefinition;
+      emitApprovalRequest: (request: unknown) => void;
     };
     expect(options.customInstructions).toBe("Be brief.");
-    expect(typeof options.wrapTool).toBe("function");
-
-    // The gate is real: the user disabled `bash`, so a bash call must be
-    // rejected without reaching the tool.
-    let executed = false;
-    await expect(
-      options
-        .wrapTool(makeTool("bash", () => (executed = true)))
-        .execute("tc-1", { cmd: "rm -rf /" }, undefined, undefined, {} as never),
-    ).rejects.toThrow(/disabled/);
-    expect(executed).toBe(false);
+    // The gate lives in the session's extensions and publishes through this.
+    expect(typeof options.emitApprovalRequest).toBe("function");
   });
 
   it("persists the summary so the chat shows it", async () => {

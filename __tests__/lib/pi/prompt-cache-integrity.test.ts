@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { normalizeToolResult } from "@/lib/pi/message-replay";
-import { wrapWithApprovalGate } from "@/lib/pi/tool-approval-gate";
 import { getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { buildAgentSystemPrompt } from "@/lib/pi/processing-state";
 
@@ -146,52 +145,13 @@ describe("system prompt stability", () => {
 describe("tool definition stability", () => {
   /**
    * Tools are resolved during session creation and registered with the agent.
-   * They should NOT change during the session's lifetime.
-   *
-   * The approval gate wrapper wraps the execute function, not the tool
-   * definition itself  so name, description, and parameters are stable.
+   * They should NOT change during the session's lifetime: the approval gate
+   * runs on `tool_call`, so no definition is rewritten for the model.
    */
   it("tool definitions are stable across multiple resolutions", () => {
     // Same tool name → same policy
     expect(getDefaultPolicy("memory_search")).toBe(getDefaultPolicy("memory_search"));
     expect(getDefaultPolicy("web_search")).toBe(getDefaultPolicy("web_search"));
-  });
-
-  /**
-   * The approval gate wraps tool.execute() but does NOT modify the tool's
-   * name, description, or parameters. This means the tool definition sent
-   * to the provider is unchanged by the approval wrapper.
-   */
-  it("approval gate does not modify tool definition shape", () => {
-    const originalTool = {
-      name: "test_tool",
-      label: "Test Tool",
-      description: "A test tool",
-      parameters: {
-        type: "object" as const,
-        properties: { query: { type: "string" as const } },
-        required: ["query"] as string[],
-      },
-      execute: async (args: Record<string, unknown>) => ({
-        content: [{ type: "text" as const, text: String(args.query) }],
-      }),
-    } as unknown as import("@earendil-works/pi-coding-agent").ToolDefinition;
-
-    const wrapped = wrapWithApprovalGate(
-      originalTool,
-      "user-123",
-      "session-456",
-      async () => "allow" as const,
-      () => {}, // noop dispatcher
-    );
-
-    // Tool definition fields must be identical
-    expect(wrapped.name).toBe(originalTool.name);
-    expect(wrapped.description).toBe(originalTool.description);
-    expect(wrapped.parameters).toEqual(originalTool.parameters);
-
-    // Only execute is replaced
-    expect(wrapped.execute).not.toBe(originalTool.execute);
   });
 });
 

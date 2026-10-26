@@ -576,18 +576,15 @@ describe("resolveTools", () => {
       expect(exposureOf(tools, "not_in_catalog")).toBeUndefined();
     });
 
-    it("survives the wrappers applied after resolution", async () => {
-      // The approval gate and abort race both spread the definition; a spread
-      // that dropped `exposure` would silently retake the context budget.
-      const gate = (tool: ToolDefinition) => ({ ...tool, gated: true });
+    it("survives the abort wrapper applied after resolution", async () => {
+      // The abort wrapper spreads the definition; a spread that dropped
+      // `exposure` would silently retake the context budget.
       const tools = await resolveTools(userId, sessionId, ALL_ON, {
         ...options,
-        wrapWithApproval: gate,
         exposure: { memory: "codemode" },
       });
 
       expect(exposureOf(tools, "memory_search")).toBe("codemode");
-      expect(tools.find((t) => t.name === "memory_search")).toHaveProperty("gated", true);
     });
   });
 });

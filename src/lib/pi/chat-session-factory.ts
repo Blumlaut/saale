@@ -1,4 +1,4 @@
-import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { getSessionDir } from "./agent-pool";
 import { resolveModelForPurpose } from "./model-resolution";
@@ -18,10 +18,8 @@ import type { ChatMode } from "@/lib/coder/checkout";
  * The single place a chat session's Pi agent is created.
  *
  * Every entry point that can bring a chat's agent into the pool must build it
- * identically. most importantly the tool approval gate, which is applied to
- * the tool definitions at creation time and is the ONLY thing that enforces a
- * user's per-tool policies. A session created without it runs tools
- * unapproved for the rest of the pool entry's life (see `wrapTool`).
+ * identically. most importantly the approval channel, which the session's gate
+ * publishes through and which is fixed at creation.
  */
 
 /** AppSettings fields a chat agent session is built from. */
@@ -96,14 +94,8 @@ export interface CreateChatAgentSessionOptions {
   /** Per-category exposure (`AppSettings.toolExposure`). */
   toolExposure: ToolExposureConfig | null | undefined;
   /**
-   * Wraps every resolved tool. Always pass the approval gate. tools resolved
-   * without it execute without the user's approval policy.
-   */
-  wrapTool: (tool: ToolDefinition) => ToolDefinition;
-  /**
-   * Approval channel for MCP tool calls. MCP tools are registered by Pi's MCP
-   * extension after the session exists, so they never pass through `wrapTool`;
-   * their gate publishes through this instead (`lib/pi/mcp-tool-policy.ts`).
+   * Approval channel for the session's tool calls. Every call goes through the
+   * gate this feeds (`lib/pi/tool-approval-extension.ts`).
    */
   emitApprovalRequest: (request: ApprovalRequest) => void;
   /**
@@ -183,7 +175,6 @@ export async function createChatAgentSession(
     toolExposure: options.toolExposure,
     ...(model ? { modelProvider: model.provider, modelName: model.name } : {}),
     ...(chatSession.thinkingLevel ? { thinkingLevel: chatSession.thinkingLevel } : {}),
-    wrapTool: options.wrapTool,
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies: options.toolPolicies,
     mcp: true,
