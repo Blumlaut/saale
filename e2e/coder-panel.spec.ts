@@ -366,12 +366,31 @@ test.describe("coder panel", () => {
     await page.locator('button:has-text("README.md")').first().click();
 
     // The editor gets the width the user dragged the panel to.
-    await expect(shown(page, '[role="tab"]:has-text("README.md")')).toBeVisible();
+    await expect(shown(page, '[role="tab"][aria-label="README.md"]')).toBeVisible();
     await expect(shown(page, '[aria-label="Download README.md"]')).toBeVisible();
     await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0);
 
     await shown(page, '[aria-label="Close the file tab"]').click();
-    await expect(page.locator('[role="tab"]:has-text("README.md")')).toHaveCount(0);
+    await expect(page.locator('[role="tab"][aria-label="README.md"]')).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test("keeps the panel tabs on one row when a file is open", async ({ browser }) => {
+    test.skip(!session, "login failed");
+    const context = await browser.newContext({ storageState: session!.storageState });
+    const page = await context.newPage();
+    await mockCoder(page);
+
+    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await shown(page, '[role="tab"]:text-is("Files")').click();
+    await page.locator('button:has-text("README.md")').first().click();
+    await expect(shown(page, '[role="tab"][aria-label="README.md"]')).toBeVisible();
+
+    // A wrapped row is clipped by the strip, so the tabs it holds go unseen.
+    const first = (await shown(page, '[role="tab"]:text-is("Project")').boundingBox())!;
+    const last = (await shown(page, '[role="tab"]:text-is("Ports")').boundingBox())!;
+    expect(Math.abs(first.y - last.y)).toBeLessThanOrEqual(1);
 
     await context.close();
   });

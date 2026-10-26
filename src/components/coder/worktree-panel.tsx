@@ -152,9 +152,10 @@ export function WorktreePanel({
 
       <Tabs value={tab} onValueChange={openTab} className="flex min-h-0 flex-1 flex-col gap-0">
         {/* A container query, because the panel is 280px on a phone sheet and
-            720px when dragged wide; the icons only earn their room when it is. */}
+            720px when dragged wide; the icons and the open file's name only earn
+            their room when it is. */}
         <PageTabStrip className="@container border-b px-2 py-1.5">
-          <TabsList className="h-auto flex-wrap">
+          <TabsList>
             <TabsTrigger value="changes" className="gap-1.5 text-xs">
               <GitBranch className="hidden h-3.5 w-3.5 @min-[390px]:block" />
               Project
@@ -176,9 +177,11 @@ export function WorktreePanel({
               </TabsTrigger>
             )}
             {fileTarget && (
-              <TabsTrigger value="file" className="gap-1.5 text-xs">
-                <FileText className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-                <span className="max-w-24 truncate">{fileTarget.name}</span>
+              <TabsTrigger value="file" aria-label={fileTarget.name} className="gap-1.5 text-xs">
+                <FileText className="h-3.5 w-3.5" />
+                <span className="hidden max-w-24 truncate @min-[520px]:inline">
+                  {fileTarget.name}
+                </span>
                 <CloseTab label="Close the file tab" onClose={closeFileTab} />
               </TabsTrigger>
             )}
