@@ -256,6 +256,45 @@ export function ChatInterface({
     setPluginDialogHidden(false);
   }, [pluginDialogs.length]);
 
+  // The server is the authority on what is still waiting: the run is blocked
+  // until it is answered, so a dialog has to survive a reload or a reconnect.
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const response = await fetch("/api/plugin-ui/pending");
+        if (!response.ok) return;
+        const data = (await response.json()) as {
+          pending?: Array<{ sessionId: string; dialog: PluginDialogData }>;
+        };
+        if (cancelled) return;
+        const next = (data.pending ?? [])
+          .filter((entry) => entry.sessionId === sessionId)
+          .map((entry) => entry.dialog);
+        // Same queue, same state: no re-render every poll.
+        setPluginDialogs((prev) =>
+          prev.length === next.length &&
+          prev.every((dialog, index) => dialog.id === next[index]?.id)
+            ? prev
+            : next,
+        );
+      } catch (err) {
+        console.error("Failed to load the pending plugin dialogs:", err);
+      }
+    };
+
+    void load();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [sessionId]);
+
   const handlePluginDialogSettled = useCallback((id: string) => {
     setPluginDialogs((prev) => prev.filter((dialog) => dialog.id !== id));
   }, []);
@@ -978,6 +1017,7 @@ export function ChatInterface({
               sessionId={sessionId}
               dialog={pluginDialogs[0]!}
               onSettled={handlePluginDialogSettled}
+              onHide={() => setPluginDialogHidden(true)}
             />
           )}
 

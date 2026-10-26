@@ -509,18 +509,6 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
     );
   });
 
-  eventSource.addEventListener("plugin_ui_resolved", (event: MessageEvent) => {
-    const parsed = parseEvent<{ id: string }>(event.data);
-    if (!parsed) return;
-    opts.setPluginDialogs((prev) => prev.filter((dialog) => dialog.id !== parsed.id));
-  });
-
-  eventSource.addEventListener("plugin_ui_snapshot", (event: MessageEvent) => {
-    const parsed = parseEvent<{ dialogs?: PluginDialogData[] }>(event.data);
-    if (!parsed) return;
-    opts.setPluginDialogs(parsed.dialogs ?? []);
-  });
-
   eventSource.addEventListener("plugin_notice", (event: MessageEvent) => {
     const parsed = parseEvent<{ message: string; type: "info" | "warning" | "error" }>(event.data);
     if (parsed) opts.onPluginNotice?.(parsed);

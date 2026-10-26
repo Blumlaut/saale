@@ -17,19 +17,22 @@ import type { PluginDialogData } from "./types";
 /**
  * A dialog a plugin opened through Pi's `ctx.ui`.
  *
- * The run is blocked until it is answered, so every way out is a decision:
- * the buttons answer it, dismissing it cancels it. The plugin gets Pi's own
- * values back, `undefined`/`false`, exactly as a terminal dialog would give it.
+ * The run is blocked until it is answered. The buttons answer it and the
+ * plugin gets Pi's own values back, `undefined`/`false`, exactly as a terminal
+ * dialog would give it. "Not now" hides the dialog behind the alert row.
  */
 export function PluginDialog({
   sessionId,
   dialog,
   onSettled,
+  onHide,
 }: {
   sessionId: string;
   dialog: PluginDialogData;
   /** Called once the answer (or the cancellation) reached the server. */
   onSettled: (id: string) => void;
+  /** Dismissed without deciding: the dialog stays pending behind the alert row. */
+  onHide: () => void;
 }) {
   const [text, setText] = useState(dialog.prefill ?? "");
   const [busy, setBusy] = useState(false);
@@ -61,12 +64,9 @@ export function PluginDialog({
   const cancel = () => void answer({ cancelled: true });
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) cancel();
-      }}
-    >
+    // Controlled open: Escape and the backdrop leave the dialog alone. The
+    // run is blocked either way, so hiding it is a button, not an accident.
+    <Dialog open>
       <DialogContent
         className="max-h-[85dvh] overflow-y-auto sm:max-w-md"
         // The plugin's answer is the only way out besides cancelling.
@@ -100,11 +100,17 @@ export function PluginDialog({
                 <span className="break-words">{option}</span>
               </Button>
             ))}
+            <Button variant="ghost" size="sm" className="justify-start" onClick={onHide}>
+              Not now
+            </Button>
           </div>
         )}
 
         {dialog.kind === "confirm" && (
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button variant="ghost" disabled={busy} onClick={onHide}>
+              Not now
+            </Button>
             <Button variant="secondary" disabled={busy} onClick={cancel}>
               Cancel
             </Button>
@@ -140,6 +146,9 @@ export function PluginDialog({
               />
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="ghost" disabled={busy} onClick={onHide}>
+                Not now
+              </Button>
               <Button type="button" variant="secondary" disabled={busy} onClick={cancel}>
                 Cancel
               </Button>

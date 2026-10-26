@@ -37,7 +37,6 @@ import {
 } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
 import { getPendingApprovals, toApprovalPayload } from "@/lib/pi/tool-approval-gate";
-import { getPendingPluginUiRequests, toPluginUiPayload } from "@/lib/plugin-ui/requests";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -555,13 +554,6 @@ export async function GET(
           const pendingApprovals = await getPendingApprovals(sessionId);
           dispatcher.emitLocal(controller, "approvals_snapshot", {
             approvals: pendingApprovals.map(toApprovalPayload),
-          });
-
-          // A plugin's dialog waits for an answer just like an approval, and
-          // is restored the same way so a reload cannot hide a blocked run.
-          const pendingDialogs = await getPendingPluginUiRequests(sessionId);
-          dispatcher.emitLocal(controller, "plugin_ui_snapshot", {
-            dialogs: pendingDialogs.map(toPluginUiPayload),
           });
 
           // ── Idle: nothing to stream right now. emit done so the client
