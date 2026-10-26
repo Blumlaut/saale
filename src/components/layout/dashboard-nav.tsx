@@ -65,6 +65,10 @@ export function DashboardNav() {
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
   });
+  const [navWidth, setNavWidth] = usePersistedState("nav:width", 192, {
+    validate: (v): v is number => typeof v === "number" && v >= 160 && v <= 320,
+  });
+  const resizingNav = useRef(false);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [emailLoading, setEmailLoading] = useState(true);
   const isAdmin = useIsAdmin();
@@ -240,9 +244,36 @@ export function DashboardNav() {
     </div>
   );
 
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingNav.current) return;
+      const newW = Math.min(320, Math.max(160, e.clientX - 24));
+      setNavWidth(newW);
+    };
+    const onUp = () => {
+      resizingNav.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [setNavWidth]);
+
   return (
-    <nav className="sidebar-nav sticky top-6 h-fit w-56 shrink-0">
+    <nav className="sidebar-nav relative sticky top-6 h-fit shrink-0" style={{ width: navWidth }}>
       <GlassPanel className="shadow-md">
+        <div
+          className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/40"
+          onMouseDown={() => {
+            resizingNav.current = true;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          }}
+        />
         <GlassPanelContent className="p-3">
           {/* Brand */}
           <div className="mb-1 flex items-center justify-between px-3 py-2">
