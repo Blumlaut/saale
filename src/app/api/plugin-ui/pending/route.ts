@@ -1,20 +1,37 @@
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { getPendingPluginUiRequestsForUser, toPluginUiPayload } from "@/lib/plugin-ui/requests";
+import { getSession, requireChatSessionOwner } from "@/lib/auth";
+import {
+  getPendingPluginUiRequests,
+  getPendingPluginUiRequestsForUser,
+  toPluginUiPayload,
+} from "@/lib/plugin-ui/requests";
 
 /**
- * GET /api/plugin-ui/pending. the dialogs waiting on this user, any chat.
+ * GET /api/plugin-ui/pending. the dialogs still waiting for this user.
  *
- * The chat's own stream carries the dialog for the chat that is open; this is
- * how the rest of the app knows one is waiting somewhere, so the sidebar can
- * point at it instead of the user finding it by accident.
+ * `?sessionId=` keeps the read to that chat's keys, which is what an open chat
+ * polls: the run is blocked until the dialog is answered, so it has to survive a
+ * reload or a reconnect. Without it the answer covers every chat the user has,
+ * for a client that points at the chat holding one.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const sessionId = request.nextUrl.searchParams.get("sessionId");
+
+  if (sessionId) {
+    const authResult = await requireChatSessionOwner(sessionId);
+    if (!authResult.ok) return authResult.response;
+
+    const requests = await getPendingPluginUiRequests(sessionId);
+    return NextResponse.json({
+      pending: requests.map((dialog) => ({ sessionId, dialog: toPluginUiPayload(dialog) })),
+    });
+  }
+
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const userId = session.user.id;
-  const chats = await getPendingPluginUiRequestsForUser(userId);
+  const chats = await getPendingPluginUiRequestsForUser(session.user.id);
 
   return NextResponse.json({
     pending: chats.map((entry) => ({

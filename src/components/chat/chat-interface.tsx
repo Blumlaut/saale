@@ -263,7 +263,9 @@ export function ChatInterface({
 
     const load = async () => {
       try {
-        const response = await fetch("/api/plugin-ui/pending");
+        const response = await fetch(
+          `/api/plugin-ui/pending?sessionId=${encodeURIComponent(sessionId)}`,
+        );
         if (!response.ok) return;
         const data = (await response.json()) as {
           pending?: Array<{ sessionId: string; dialog: PluginDialogData }>;
@@ -1010,6 +1012,8 @@ export function ChatInterface({
             isCompacting={isCompacting}
             onCompact={handleCompact}
           />
+
+          <PluginWidgetPanel widgets={pluginWidgets} placement="belowEditor" />
 
           {pluginDialogs.length > 0 && !pluginDialogHidden && sessionId && (
             <PluginDialog
