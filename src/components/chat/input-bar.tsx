@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, useMemo } from "react";
 import { insertQuote as insertQuoteAtCaret } from "@/lib/chat/quote-insert";
+import { isSendKey } from "@/lib/chat/enter-to-send";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -208,7 +209,7 @@ export function InputBar({
       }
     }
 
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (isSendKey(e)) {
       e.preventDefault();
       handleSubmit();
     }
