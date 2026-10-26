@@ -171,7 +171,7 @@ function ToolsRow({
           <ChevronRight className="text-muted-foreground size-3 shrink-0" />
         )}
         {/* The count absorbs the pressure, so a run's marks never widen the row. */}
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+        <span className="min-w-0 shrink truncate text-xs font-medium">
           Used {plural(toolCalls.length, "tool", "tools")}
         </span>
 
@@ -196,7 +196,9 @@ function ToolsRow({
           ))}
         </span>
 
-        {isActive && <Loader2 className="text-muted-foreground size-3 shrink-0 animate-spin" />}
+        {isActive && (
+          <Loader2 className="text-muted-foreground ml-auto size-3 shrink-0 animate-spin" />
+        )}
       </Button>
 
       {open && (
