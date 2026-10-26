@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Page } from "@/components/layout/page";
+import { Page, PageAction, PageActions, PageStatus } from "@/components/layout/page";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +33,7 @@ import {
   type RoleDefinition,
   type RolePermissions,
 } from "@/lib/permissions/roles";
-import { KeyRound, Loader2, Plus, CheckCircle, AlertCircle, Pencil, Trash2 } from "lucide-react";
+import { KeyRound, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 
 interface AdminRole extends RoleDefinition {
   userCount: number;
@@ -205,30 +205,16 @@ export default function AdminRolesPage() {
     <Page className="gap-0">
       <div className="min-h-0 flex-1">
         <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2">
-            <div className="flex items-center gap-2">
-              {saveStatus === "success" && (
-                <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                  <CheckCircle className="h-3.5 w-3.5" /> Saved
-                </span>
-              )}
-              {saveStatus === "error" && (
-                <span className="text-destructive flex items-center gap-1 text-xs">
-                  <AlertCircle className="h-3.5 w-3.5" /> Something went wrong
-                </span>
-              )}
-            </div>
-            <Button
-              size="sm"
-              className="h-8 gap-1.5"
+          <PageActions>
+            <PageStatus status={saveStatus} failedLabel="Something went wrong" />
+            <PageAction
+              icon={Plus}
+              label="New role"
               onClick={openCreate}
               disabled={!canManage}
               title={canManage ? "Create a role" : "Your role cannot manage roles"}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden md:inline">New role</span>
-            </Button>
-          </div>
+            />
+          </PageActions>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (

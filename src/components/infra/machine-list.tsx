@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageActions, PageAction } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -91,12 +92,9 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
   };
 
   const toolbar = (
-    <div className="border-border/30 flex shrink-0 items-center justify-end border-b px-4 py-2">
-      <Button variant="default" size="icon" className="h-8 w-8 md:w-auto md:px-3" onClick={onAdd}>
-        <Plus className="h-4 w-4" />
-        <span className="hidden md:inline">Add Machine</span>
-      </Button>
-    </div>
+    <PageActions>
+      <PageAction icon={Plus} label="Add Machine" onClick={onAdd} />
+    </PageActions>
   );
 
   if (loading) {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Page } from "@/components/layout/page";
+import { Page, PageAction, PageActions, PageStatus } from "@/components/layout/page";
 import {
   Dialog,
   DialogContent,
@@ -29,16 +29,7 @@ import {
 } from "@/lib/permissions/roles";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
-import {
-  Users,
-  Loader2,
-  Plus,
-  CheckCircle,
-  AlertCircle,
-  Trash2,
-  Pencil,
-  UserCog,
-} from "lucide-react";
+import { Users, Loader2, Plus, Trash2, Pencil, UserCog } from "lucide-react";
 
 interface AdminUser {
   id: string;
@@ -261,47 +252,37 @@ export default function AdminUsersPage() {
     <Page className="gap-0">
       {/* User list. fills height, owns its toolbar (search + add) */}
       <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
-        <div className="border-border/30 flex shrink-0 items-center gap-2 border-b px-4 py-2">
-          <Input
-            placeholder="Search by email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 min-w-0 flex-1 md:max-w-sm"
+        <PageActions
+          leading={
+            <>
+              <Input
+                placeholder="Search by email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 min-w-0 flex-1 md:max-w-sm"
+              />
+              {search && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => setSearch("")}
+                >
+                  Clear
+                </Button>
+              )}
+            </>
+          }
+        >
+          <PageStatus status={saveStatus} />
+          <PageAction
+            icon={Plus}
+            label="Add user"
+            onClick={() => setShowCreate(true)}
+            disabled={!can("create")}
+            title={can("create") ? "Add a user" : "Your role cannot create users"}
           />
-          {search && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 shrink-0"
-              onClick={() => setSearch("")}
-            >
-              Clear
-            </Button>
-          )}
-          <div className="flex shrink-0 items-center gap-2">
-            {saveStatus === "success" && (
-              <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                <CheckCircle className="h-3.5 w-3.5" /> Saved
-              </span>
-            )}
-            {saveStatus === "error" && (
-              <span className="text-destructive flex items-center gap-1 text-xs">
-                <AlertCircle className="h-3.5 w-3.5" /> Error
-              </span>
-            )}
-            <Button
-              variant="default"
-              size="icon"
-              className="h-8 w-8 md:w-auto md:px-3"
-              onClick={() => setShowCreate(true)}
-              disabled={!can("create")}
-              title={can("create") ? "Add a user" : "Your role cannot create users"}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden md:inline">Add</span>
-            </Button>
-          </div>
-        </div>
+        </PageActions>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {users.length === 0 ? (

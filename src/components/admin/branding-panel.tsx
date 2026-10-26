@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { PageSection } from "@/components/layout/page";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +157,8 @@ export interface BrandingPanelProps {
   /** File name of the uploaded avatar, empty for the built-in mark. */
   avatar: string;
   onAvatarChange: (fileName: string) => void;
+  /** Renders as a section of the page's panel instead of a panel of its own. */
+  flat?: boolean;
 }
 
 /** Admin branding: the agent avatar and the accent colours, with a live preview. */
@@ -164,6 +167,7 @@ export function BrandingPanel({
   onColorsChange,
   avatar,
   onAvatarChange,
+  flat,
 }: BrandingPanelProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -216,121 +220,136 @@ export function BrandingPanel({
     setUploading(false);
   };
 
-  return (
-    <GlassPanel>
-      <GlassPanelHeader
-        title="Branding"
-        action={
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetColors}>
-            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-            Defaults
-          </Button>
-        }
-      />
-      <GlassPanelContent className="p-0">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <Label className="text-sm font-medium">Agent avatar</Label>
-            <p className="text-muted-foreground text-xs">
-              Shown beside every reply, in place of the built-in mark. Square images work best.
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <AgentAvatar
-              className="border-border h-9 w-9 rounded-lg border"
-              markClassName="h-5 w-5"
-              version={avatar}
-            />
-            <input
-              ref={fileInput}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void upload(file);
-              }}
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={uploading}
-              onClick={() => fileInput.current?.click()}
-            >
-              {uploading ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ImagePlus className="mr-1 h-3.5 w-3.5" />
-              )}
-              {avatar ? "Replace" : "Upload"}
-            </Button>
-            {avatar && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Remove the agent avatar"
-                className="text-muted-foreground h-8 w-8"
-                disabled={uploading}
-                onClick={() => void clearAvatar()}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
+  /*
+   * A panel here, a section of the page's panel on the admin settings page, so
+   * the row of colours does not become a card inside a card.
+   */
+  const defaults = (
+    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetColors}>
+      <RotateCcw className="mr-1 h-3.5 w-3.5" />
+      Defaults
+    </Button>
+  );
 
-        <Separator />
-
-        <div className="space-y-4 px-4 py-3">
-          {BRAND_COLOR_TOKENS.map((token) => (
-            <div key={token.key} className="space-y-2">
-              <div className="min-w-0">
-                <Label className="text-sm font-medium">{token.label}</Label>
-                <p className="text-muted-foreground text-xs">{token.description}</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {BRAND_MODES.map((mode) => (
-                  <ColorField
-                    key={mode}
-                    id={`brand-${mode}-${token.key}`}
-                    label={MODE_LABELS[mode]}
-                    name={token.label}
-                    value={colors[mode][token.key] ?? DEFAULT_BRAND_COLORS[mode][token.key]}
-                    overridden={Boolean(colors[mode][token.key])}
-                    onChange={(hex) => setToken(mode, token.key, hex)}
-                    onReset={() => setToken(mode, token.key, undefined)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+  const body = (
+    <GlassPanelContent className="p-0">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <Label className="text-sm font-medium">Agent avatar</Label>
           <p className="text-muted-foreground text-xs">
-            Takes effect when you save the page. Panels, borders and text keep their palette.
+            Shown beside every reply, in place of the built-in mark. Square images work best.
           </p>
         </div>
-
-        <Separator />
-
-        <div className="space-y-2 px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-muted-foreground text-xs">Preview</p>
-            <Tabs
-              value={previewMode}
-              onValueChange={(value) => setPreviewOverride(value as BrandMode)}
+        <div className="flex shrink-0 items-center gap-2">
+          <AgentAvatar
+            className="border-border h-9 w-9 rounded-lg border"
+            markClassName="h-5 w-5"
+            version={avatar}
+          />
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void upload(file);
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileInput.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ImagePlus className="mr-1 h-3.5 w-3.5" />
+            )}
+            {avatar ? "Replace" : "Upload"}
+          </Button>
+          {avatar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Remove the agent avatar"
+              className="text-muted-foreground h-8 w-8"
+              disabled={uploading}
+              onClick={() => void clearAvatar()}
             >
-              <TabsList>
-                {BRAND_MODES.map((mode) => (
-                  <TabsTrigger key={mode} value={mode} className="px-2 text-xs">
-                    {MODE_LABELS[mode]}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </div>
-          <BrandPreview mode={previewMode} colors={colors} />
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
-      </GlassPanelContent>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-4 px-4 py-3">
+        {BRAND_COLOR_TOKENS.map((token) => (
+          <div key={token.key} className="space-y-2">
+            <div className="min-w-0">
+              <Label className="text-sm font-medium">{token.label}</Label>
+              <p className="text-muted-foreground text-xs">{token.description}</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {BRAND_MODES.map((mode) => (
+                <ColorField
+                  key={mode}
+                  id={`brand-${mode}-${token.key}`}
+                  label={MODE_LABELS[mode]}
+                  name={token.label}
+                  value={colors[mode][token.key] ?? DEFAULT_BRAND_COLORS[mode][token.key]}
+                  overridden={Boolean(colors[mode][token.key])}
+                  onChange={(hex) => setToken(mode, token.key, hex)}
+                  onReset={() => setToken(mode, token.key, undefined)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        <p className="text-muted-foreground text-xs">
+          Takes effect when you save the page. Panels, borders and text keep their palette.
+        </p>
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2 px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs">Preview</p>
+          <Tabs
+            value={previewMode}
+            onValueChange={(value) => setPreviewOverride(value as BrandMode)}
+          >
+            <TabsList>
+              {BRAND_MODES.map((mode) => (
+                <TabsTrigger key={mode} value={mode} className="px-2 text-xs">
+                  {MODE_LABELS[mode]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+        <BrandPreview mode={previewMode} colors={colors} />
+      </div>
+    </GlassPanelContent>
+  );
+
+  if (flat) {
+    return (
+      <PageSection title="Branding" action={defaults}>
+        {body}
+      </PageSection>
+    );
+  }
+
+  return (
+    <GlassPanel>
+      <GlassPanelHeader title="Branding" action={defaults} />
+      {body}
     </GlassPanel>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PageSection } from "@/components/layout/page";
 import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,7 +122,7 @@ function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
  * this one. so the token lives here, behind the admin API, and is never sent
  * back to the browser.
  */
-export function TelegramBotPanel() {
+export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
   const [bot, setBot] = useState<AdminTelegramBot | null>(null);
   const [login, setLogin] = useState<TelegramLoginStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -209,102 +210,46 @@ export function TelegramBotPanel() {
     }
   }, []);
 
-  return (
-    <GlassPanel>
-      <GlassPanelHeader title="Telegram" />
-      <GlassPanelContent className="p-0">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-          </div>
-        ) : bot?.configured ? (
-          <div className="space-y-4 px-4 py-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Label className="text-sm font-medium">Shared bot</Label>
-                  {bot.botUsername && (
-                    <Badge variant="secondary" className="rounded-full">
-                      @{bot.botUsername}
-                    </Badge>
-                  )}
-                  {!bot.enabled && (
-                    <Badge variant="outline" className="rounded-full">
-                      Disabled
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-muted-foreground mt-0.5 text-xs break-all">
-                  {bot.linkCount ?? 0} linked account{bot.linkCount === 1 ? "" : "s"}
-                  {bot.updatedAt ? ` · saved ${new Date(bot.updatedAt).toLocaleDateString()}` : ""}
-                </p>
+  const content = (
+    <GlassPanelContent className="p-0">
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+        </div>
+      ) : bot?.configured ? (
+        <div className="space-y-4 px-4 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-sm font-medium">Shared bot</Label>
+                {bot.botUsername && (
+                  <Badge variant="secondary" className="rounded-full">
+                    @{bot.botUsername}
+                  </Badge>
+                )}
+                {!bot.enabled && (
+                  <Badge variant="outline" className="rounded-full">
+                    Disabled
+                  </Badge>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">Enabled</span>
-                <Switch
-                  checked={bot.enabled ?? false}
-                  onCheckedChange={toggleEnabled}
-                  disabled={toggling}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs">Replace bot token</Label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  type="password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="123456:aBcDeF_gHiJkLmNoP-q"
-                  className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveToken();
-                  }}
-                />
-                <Button
-                  size="sm"
-                  className="h-9 shrink-0 rounded-full"
-                  onClick={saveToken}
-                  disabled={saving || !token.trim()}
-                >
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
-                </Button>
-              </div>
-              <p className="text-muted-foreground text-xs">
-                Users are told which bot to message, so changing it means everyone must link again.
+              <p className="text-muted-foreground mt-0.5 text-xs break-all">
+                {bot.linkCount ?? 0} linked account{bot.linkCount === 1 ? "" : "s"}
+                {bot.updatedAt ? ` · saved ${new Date(bot.updatedAt).toLocaleDateString()}` : ""}
               </p>
             </div>
-
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-8 rounded-full text-xs"
-              onClick={() => setRemoveOpen(true)}
-            >
-              Remove bot
-            </Button>
-
-            {login && <TelegramLoginBlock login={login} />}
-          </div>
-        ) : (
-          <div className="space-y-3 px-4 py-3">
-            <div>
-              <Label className="text-sm font-medium">Bot token</Label>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                Create a bot with{" "}
-                <a
-                  href="https://t.me/BotFather"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline underline-offset-2"
-                >
-                  @BotFather
-                  <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
-                </a>{" "}
-                and paste its token here. Every user links their own Telegram account to this bot.
-              </p>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs">Enabled</span>
+              <Switch
+                checked={bot.enabled ?? false}
+                onCheckedChange={toggleEnabled}
+                disabled={toggling}
+              />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">Replace bot token</Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="password"
@@ -322,29 +267,95 @@ export function TelegramBotPanel() {
                 onClick={saveToken}
                 disabled={saving || !token.trim()}
               >
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <MessageCircle className="mr-2 h-3.5 w-3.5" />
-                    Save bot
-                  </>
-                )}
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
               </Button>
             </div>
+            <p className="text-muted-foreground text-xs">
+              Users are told which bot to message, so changing it means everyone must link again.
+            </p>
           </div>
-        )}
 
-        {error && (
-          <div className="text-destructive bg-destructive/10 mx-4 mb-3 flex items-start gap-2 rounded-xl px-4 py-2.5 text-sm">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="break-all">{error}</span>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-8 rounded-full text-xs"
+            onClick={() => setRemoveOpen(true)}
+          >
+            Remove bot
+          </Button>
+
+          {login && <TelegramLoginBlock login={login} />}
+        </div>
+      ) : (
+        <div className="space-y-3 px-4 py-3">
+          <div>
+            <Label className="text-sm font-medium">Bot token</Label>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Create a bot with{" "}
+              <a
+                href="https://t.me/BotFather"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-2"
+              >
+                @BotFather
+                <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
+              </a>{" "}
+              and paste its token here. Every user links their own Telegram account to this bot.
+            </p>
           </div>
-        )}
-      </GlassPanelContent>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="123456:aBcDeF_gHiJkLmNoP-q"
+              className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveToken();
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-9 shrink-0 rounded-full"
+              onClick={saveToken}
+              disabled={saving || !token.trim()}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <MessageCircle className="mr-2 h-3.5 w-3.5" />
+                  Save bot
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="text-destructive bg-destructive/10 mx-4 mb-3 flex items-start gap-2 rounded-xl px-4 py-2.5 text-sm">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="break-all">{error}</span>
+        </div>
+      )}
+    </GlassPanelContent>
+  );
+
+  return (
+    <>
+      {flat ? (
+        <PageSection title="Telegram">{content}</PageSection>
+      ) : (
+        <GlassPanel>
+          <GlassPanelHeader title="Telegram" />
+          {content}
+        </GlassPanel>
+      )}
 
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
         <AlertDialogContent>
@@ -370,6 +381,6 @@ export function TelegramBotPanel() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </GlassPanel>
+    </>
   );
 }

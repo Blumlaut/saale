@@ -46,9 +46,11 @@ function getCronLabel(expr: string): string {
 interface AgentJobListProps {
   onRefresh?: () => void;
   onEdit?: (job: AgentJobDefinition) => void;
+  /** The page's action, shown in the panel header. */
+  action?: React.ReactNode;
 }
 
-export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
+export function AgentJobList({ onRefresh, onEdit, action }: AgentJobListProps) {
   const [jobs, setJobs] = useState<AgentJobDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -211,7 +213,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
       {/* Job list */}
       <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
-          <GlassPanelHeader title="Agent Jobs" />
+          <GlassPanelHeader title="Agent Jobs" action={action} />
           <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">

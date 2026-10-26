@@ -32,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageAction, PageActions } from "@/components/layout/page";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { deleteJson, patchJson, postJson } from "@/lib/http";
@@ -301,26 +302,28 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Key className="text-muted-foreground h-4 w-4" />
-          <span className="text-sm font-medium">Providers</span>
-          {linked.length > 0 && (
-            <Badge variant="secondary" className="rounded-full">
-              {linked.length}
-            </Badge>
-          )}
-        </div>
-        <Button variant="secondary" size="sm" className="h-8" onClick={openAddSheet}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          Manage providers
-        </Button>
-      </div>
+      <GlassPanel className="overflow-hidden p-0">
+        <PageActions
+          leading={
+            <>
+              <Key className="text-muted-foreground h-4 w-4" />
+              <span className="text-sm font-medium">Providers</span>
+              {linked.length > 0 && (
+                <Badge variant="secondary" className="rounded-full">
+                  {linked.length}
+                </Badge>
+              )}
+            </>
+          }
+        >
+          <PageAction icon={Plus} label="Manage providers" onClick={openAddSheet} />
+        </PageActions>
 
-      {loading ? (
-        <Loader2 className="text-muted-foreground mx-1 h-4 w-4 animate-spin" />
-      ) : linked.length === 0 ? (
-        <GlassPanel className="overflow-hidden p-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+          </div>
+        ) : linked.length === 0 ? (
           <GlassPanelContent>
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <Key className="text-muted-foreground/50 mb-3 h-7 w-7" />
@@ -334,24 +337,24 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
               </Button>
             </div>
           </GlassPanelContent>
-        </GlassPanel>
-      ) : (
-        <GlassPanel className="overflow-hidden p-0">
-          {linked.map((entry, index) => (
-            <div key={entry.id}>
-              <ProviderRow
-                entry={entry}
-                readOnly={scope === "user" && entry.isGlobal}
-                onConfigureEndpoint={openEndpointForm}
-                onDisconnect={handleDisconnect}
-                onDetect={handleDetectCapabilities}
-                detecting={detecting === entry.id}
-              />
-              {index < linked.length - 1 && <Separator className="px-4" />}
-            </div>
-          ))}
-        </GlassPanel>
-      )}
+        ) : (
+          <div>
+            {linked.map((entry, index) => (
+              <div key={entry.id}>
+                <ProviderRow
+                  entry={entry}
+                  readOnly={scope === "user" && entry.isGlobal}
+                  onConfigureEndpoint={openEndpointForm}
+                  onDisconnect={handleDisconnect}
+                  onDetect={handleDetectCapabilities}
+                  detecting={detecting === entry.id}
+                />
+                {index < linked.length - 1 && <Separator className="px-4" />}
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassPanel>
 
       {/* Status + discovery feedback */}
       <div className="flex flex-wrap items-center gap-3">

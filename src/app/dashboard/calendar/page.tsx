@@ -8,7 +8,7 @@ import { fetchJson } from "@/lib/http";
 import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
 import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
-import { Page, PageScroll } from "@/components/layout/page";
+import { Page, PageAction, PageScroll } from "@/components/layout/page";
 import { ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { CalendarSidebar } from "@/components/calendar/calendar-sidebar";
 import { MonthView } from "@/components/calendar/month-view";
@@ -202,17 +202,14 @@ export default function CalendarPage() {
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
-                    <Button
-                      size="icon"
-                      className="h-8 w-8 md:w-auto md:px-3"
+                    <PageAction
+                      icon={Plus}
+                      label="New Event"
                       onClick={() => {
                         setSelectedDate(new Date());
                         setCreateDialogOpen(true);
                       }}
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span className="hidden md:inline">New Event</span>
-                    </Button>
+                    />
                   </div>
                 </div>
 

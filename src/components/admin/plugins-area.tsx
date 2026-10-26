@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { PageAction, PageActions } from "@/components/layout/page";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,39 +72,6 @@ function formatDate(iso: string | null): string | null {
 }
 
 /** Panel toolbar button: icon-only on a phone, icon and label from `md` up. */
-function ToolbarButton({
-  icon,
-  label,
-  variant = "secondary",
-  busy = false,
-  disabled = false,
-  className,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  variant?: "primary" | "secondary" | "ghost";
-  busy?: boolean;
-  disabled?: boolean;
-  className?: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant={variant === "primary" ? "default" : variant}
-      size="sm"
-      className={cn("h-8 w-8 shrink-0 gap-0 px-0 md:w-auto md:gap-2 md:px-3", className)}
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
-      <span className="hidden md:inline">{label}</span>
-    </Button>
-  );
-}
-
 /** A one-line explanation behind an info icon. */
 function Hint({ text }: { text: string }) {
   return (
@@ -326,13 +294,16 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
       {section === "installed" && (
         <div className="min-h-0 flex-1 overflow-hidden">
           <GlassPanel className="flex h-full flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
-              <div className="min-w-0">
-                <p className="console-label">Global plugins</p>
-                <p className="text-muted-foreground truncate font-mono text-[11px]">
-                  {data?.config.dir}
-                </p>
-              </div>
+            <PageActions
+              leading={
+                <div className="min-w-0">
+                  <p className="console-label">Global plugins</p>
+                  <p className="text-muted-foreground truncate font-mono text-[11px]">
+                    {data?.config.dir}
+                  </p>
+                </div>
+              }
+            >
               <div className="flex shrink-0 items-center gap-1.5">
                 <Button
                   variant="ghost"
@@ -345,24 +316,25 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                 >
                   <RefreshCw className="h-4 w-4" />
                 </Button>
-                <ToolbarButton
-                  icon={<PackagePlus className="h-4 w-4" />}
+                <PageAction
+                  icon={PackagePlus}
                   label="Install"
-                  variant="primary"
                   disabled={busy !== null}
                   onClick={() => setInstallOpen(true)}
                 />
-                <ToolbarButton
-                  icon={<CloudDownload className="h-4 w-4" />}
+                <PageAction
+                  icon={CloudDownload}
                   label="Check updates"
+                  variant="secondary"
                   busy={busy === "updates"}
                   disabled={busy !== null}
                   onClick={() => void checkUpdates()}
                   className="hidden md:inline-flex"
                 />
-                <ToolbarButton
-                  icon={<RotateCcw className="h-4 w-4" />}
+                <PageAction
+                  icon={RotateCcw}
                   label="Rebuild sessions"
+                  variant="secondary"
                   busy={busy === "reload"}
                   disabled={busy !== null}
                   onClick={() => void reloadSessions()}
@@ -397,7 +369,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </div>
+            </PageActions>
 
             {!data?.config.enabled && (
               <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2 text-xs">
@@ -619,20 +591,16 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
       {section === "configuration" && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <GlassPanel>
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
-              <p className="console-label">Plugin configuration</p>
+            <PageActions leading={<p className="console-label">Plugin configuration</p>}>
               {dirDirty && (
-                <Button
-                  size="sm"
-                  className="h-8"
+                <PageAction
+                  label="Save"
+                  busy={busy === "save"}
                   disabled={busy !== null}
                   onClick={() => void save({ dir }, "Directory saved")}
-                >
-                  {busy === "save" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Save
-                </Button>
+                />
               )}
-            </div>
+            </PageActions>
 
             <GlassPanelContent className="space-y-4">
               <div className="flex items-center justify-between gap-3">
@@ -769,30 +737,34 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
       {section === "logs" && (
         <div className="min-h-0 flex-1 overflow-hidden">
           <GlassPanel className="flex h-full flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
-              <div className="min-w-0">
-                <p className="console-label">Plugin log</p>
-                <p className="text-muted-foreground truncate text-xs">
-                  Load and runtime errors from this process
-                </p>
-              </div>
+            <PageActions
+              leading={
+                <div className="min-w-0">
+                  <p className="console-label">Plugin log</p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    Load and runtime errors from this process
+                  </p>
+                </div>
+              }
+            >
               <div className="flex shrink-0 items-center gap-1.5">
-                <ToolbarButton
-                  icon={<RefreshCw className="h-4 w-4" />}
+                <PageAction
+                  icon={RefreshCw}
                   label="Refresh"
                   variant="ghost"
                   disabled={busy !== null}
                   onClick={() => void load()}
                 />
-                <ToolbarButton
-                  icon={<Trash2 className="h-4 w-4" />}
+                <PageAction
+                  icon={Trash2}
                   label="Clear"
+                  variant="secondary"
                   busy={busy === "clear"}
                   disabled={busy !== null}
                   onClick={() => void clearLog()}
                 />
               </div>
-            </div>
+            </PageActions>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
               {(data?.log.length ?? 0) === 0 ? (

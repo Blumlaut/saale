@@ -100,6 +100,31 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    /*
+     * A page action is `PageAction` and its row is `PageActions`
+     * (`src/components/layout/page.tsx`). Copying either is how the nine pages
+     * this rule was written for ended up with their own sizes and placements,
+     * and `e2e/page-actions.spec.ts` measures the result.
+     */
+    files: ["src/**/*.tsx"],
+    ignores: ["src/components/layout/page.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...["h-8 w-8 md:w-auto", "items-center justify-end border-b px-4"].flatMap((pattern) => [
+          {
+            selector: `Literal[value=/${pattern}/]`,
+            message: `Hand-rolled page action (${pattern}). Use PageActions and PageAction from @/components/layout/page.`,
+          },
+          {
+            selector: `TemplateElement[value.raw=/${pattern}/]`,
+            message: `Hand-rolled page action (${pattern}). Use PageActions and PageAction from @/components/layout/page.`,
+          },
+        ]),
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
