@@ -25,7 +25,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
       <SidebarNavProvider>
         <div className="dashboard-layout h-dvh overflow-hidden">
           {/* Desktop: sidebar + main, flex chain fills the viewport */}
-          <div className="app-shell-padding hidden h-full gap-6 overflow-hidden md:flex">
+          <div className="app-shell-padding hidden h-full gap-4 overflow-hidden md:flex">
             {nav}
             <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {banner}
@@ -33,7 +33,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
               <div className="min-h-0 flex-1">
                 <div className="page-wrapper h-full">
                   {/* Inner. h-full fills page-wrapper so child pages can flex-1 */}
-                  <div className="flex h-full flex-col gap-6 overflow-hidden">{children}</div>
+                  <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
                 </div>
               </div>
             </main>
