@@ -130,6 +130,11 @@ function hollowBubbles(): NodeListOf<Element> {
   return document.querySelectorAll(".liquid-glass-inner.rounded-2xl");
 }
 
+/** The card a summary row sits in: rows of one run share it. */
+function cardOf(row: HTMLElement): Element | null {
+  return row.parentElement?.parentElement ?? null;
+}
+
 /** Document order: what a reader meets first. */
 function before(a: Node, b: Node): boolean {
   return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
@@ -255,10 +260,10 @@ describe("compact activity", () => {
     expect(screen.getByText("That much is clear.")).toBeInTheDocument();
   });
 
-  it("reads a step's sentence before the tools it asked for", () => {
+  it("keeps a step's reasoning in the card that holds its calls", () => {
     // A step reasons, says its piece ("let me look:"), then calls its tools.
-    // The cost of folding the step's work in above its prose is that the call
-    // the sentence introduced reads as the *next* step's.
+    // Splitting the reasoning away from the calls leaves one card wondering
+    // why it is there and the other looking unexplained.
     renderTranscript([
       step({
         id: "a1",
@@ -278,23 +283,26 @@ describe("compact activity", () => {
     expect(reasoning).toHaveLength(2);
     expect(tools).toHaveLength(2);
 
+    for (const [index, row] of reasoning.entries()) {
+      expect(cardOf(row)).toBe(cardOf(tools[index]!));
+      expect(before(row, tools[index]!)).toBe(true);
+    }
+
+    // The sentence is read after the card that did the work it describes.
     const sentence = screen.getByText("The remote wants a token:");
-    expect(before(reasoning[0]!, sentence)).toBe(true);
-    expect(before(sentence, tools[0]!)).toBe(true);
-    expect(before(tools[0]!, reasoning[1]!)).toBe(true);
-    expect(before(reasoning[1]!, tools[1]!)).toBe(true);
+    expect(before(tools[0]!, sentence)).toBe(true);
+    expect(before(sentence, reasoning[1]!)).toBe(true);
   });
 
-  it("folds work that follows a sentence into one row", () => {
-    // Sealing the run at prose separates the next step's reasoning; it does not
-    // stop the calls that follow the sentence from counting together.
+  it("starts a new run once a step has spoken", () => {
     renderTranscript([
       step({ id: "a1", content: "Checking both machines:", toolCalls: [exec("tc-1", "uptime")] }),
       step({ id: "a2", toolCalls: [exec("tc-2", "df -h")] }),
     ]);
 
-    expect(screen.getAllByRole("button", { name: /Used \d+ tool/ })).toHaveLength(1);
-    expect(toolsRow()).toHaveTextContent("Used 2 tools");
+    const tools = screen.getAllByRole("button", { name: /Used \d+ tool/ });
+    expect(tools).toHaveLength(2);
+    expect(before(tools[0]!, screen.getByText("Checking both machines:"))).toBe(true);
   });
 
   it("shows no bubble for a turn that only wrote whitespace", () => {
@@ -478,6 +486,36 @@ describe("compact activity", () => {
     expect(column).not.toHaveClass("flex-1");
     const bubble = screen.getByText("Both machines are healthy.").closest(".liquid-glass-inner")!;
     expect(bubble).not.toHaveClass("w-fit");
+  });
+
+  it("keeps a step's reasoning and calls in one card while it streams", () => {
+    // The order the server publishes a step in: reasoning, then its text, then
+    // the calls it announced. Rebuilding the transcript per event used to pull
+    // the reasoning out of the card its calls landed in, so the two rows were
+    // split apart mid-run and merged again by the next step.
+    const events: StreamAction[] = [
+      { type: "turn_start", turnId: "t1" },
+      { type: "thinking", turnId: "t1", thinking: "The dialog never mounts." },
+      { type: "token", turnId: "t1", text: "Looking at the render path:" },
+      { type: "tool_pending", turnId: "t1", toolCallId: "tc-1", toolName: "bash", args: {} },
+      { type: "tool_start", turnId: "t1", toolCallId: "tc-1", toolName: "bash", args: {} },
+      { type: "message_saved", turnId: "t1", messageId: "a1" },
+    ];
+
+    let state = streamReducer({ messages: [], rootMessageId: null }, events[0]!);
+    const { rerender } = renderTranscript(state.messages, true, true);
+
+    for (const event of events.slice(1)) {
+      state = streamReducer(state, event);
+      rerender(<MessageList messages={state.messages} compactActivity isLoading />);
+
+      const reasoning = screen.getByRole("button", { name: /Thinking/ });
+      const tools = screen.queryByRole("button", { name: /Used \d+ tool/ });
+      if (tools) expect(cardOf(reasoning)).toBe(cardOf(tools));
+    }
+
+    expect(cardOf(reasoningRow())).toBe(cardOf(toolsRow()));
+    expect(before(toolsRow(), screen.getByText(/Looking at the render path/))).toBe(true);
   });
 
   it("reports progress for the whole turn, tools included", () => {
