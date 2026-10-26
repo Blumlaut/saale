@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { fetchJson, postJson, type FetchError } from "@/lib/http";
 import { HIDE_DOTFILES_DEFAULT } from "@/lib/files/config";
+import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
 import type { FileEntry, FileListing } from "@/lib/files/types";
 
 /** Where the browser is, what it is showing, and what is selected. */
@@ -119,7 +120,11 @@ export function useFileBrowser({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [hideDotfiles, setHideDotfiles] = useState(HIDE_DOTFILES_DEFAULT);
+  const [hideDotfiles, setHideDotfiles, preferenceRead] = usePersistedState(
+    "files:hideDotfiles",
+    HIDE_DOTFILES_DEFAULT,
+    { validate: isBoolean },
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const sequence = useRef(0);
@@ -192,9 +197,12 @@ export function useFileBrowser({
     [fetchListing],
   );
 
+  // The first listing waits for the stored preference, so a browser that was
+  // last left showing dotfiles opens on them instead of asking twice.
   useEffect(() => {
+    if (!preferenceRead) return;
     void load(start.current);
-  }, [load]);
+  }, [load, preferenceRead]);
 
   /** Re-read the current folder after a write, keeping the listing on screen. */
   const afterMutation = useCallback(async () => {
