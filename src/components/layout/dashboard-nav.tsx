@@ -55,7 +55,7 @@ function navItemClass(active: boolean, extra = "") {
 /** A settings section, nested under the Settings item. Looks like a nav item. */
 function sectionItemClass(active: boolean) {
   return cn(
-    "flex items-center rounded-lg px-2 py-1 text-sm transition-colors duration-150",
+    "flex items-center rounded-lg px-2 py-0.5 text-sm transition-colors duration-150",
     active
       ? "bg-accent text-foreground font-medium"
       : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",

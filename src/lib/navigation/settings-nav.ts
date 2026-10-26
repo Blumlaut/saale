@@ -19,6 +19,7 @@ export const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
 };
 
 export const SETTINGS_SECTION_IDS = [
+  "profile",
   "appearance",
   "notifications",
   "models",
@@ -44,6 +45,13 @@ export interface SettingsSection {
 }
 
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
+  {
+    id: "profile",
+    group: "you",
+    href: "/dashboard/settings/profile",
+    label: "Profile",
+    description: "Your name, photo and sign-in details",
+  },
   {
     id: "appearance",
     group: "you",
@@ -120,7 +128,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 export const SETTINGS_ROOT = "/dashboard/settings";
 
 /** Where `/dashboard/settings` lands. */
-export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = "models";
+export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = "profile";
 
 /** Old `?tab=` values, so bookmarks and push messages still land. */
 export const LEGACY_SETTINGS_TABS: Readonly<Record<string, SettingsSectionId>> = {
@@ -137,6 +145,15 @@ export const LEGACY_SETTINGS_TABS: Readonly<Record<string, SettingsSectionId>> =
   mcp: "integrations",
   tools: "tools",
 };
+
+/**
+ * Where `/dashboard/settings` sends a visitor: the section an old `?tab=` names,
+ * or the default one. Unknown and missing tabs both land on the default.
+ */
+export function resolveSettingsEntry(tab: string | null | undefined): SettingsSectionId {
+  if (!tab) return DEFAULT_SETTINGS_SECTION;
+  return LEGACY_SETTINGS_TABS[tab] ?? DEFAULT_SETTINGS_SECTION;
+}
 
 const SETTINGS_SECTION_BY_ID = new Map<string, SettingsSection>(
   SETTINGS_SECTIONS.map((section) => [section.id, section]),

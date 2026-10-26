@@ -86,7 +86,7 @@ test.describe("settings navigation", () => {
     const page = await ctx.newPage();
 
     await page.goto(`${SETTINGS_ROOT}?tab=bogus`, { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/dashboard\/settings\/models$/);
+    await expect(page).toHaveURL(/\/dashboard\/settings\/profile$/);
 
     await ctx.close();
   });

@@ -11,6 +11,7 @@ import {
   SETTINGS_SECTION_IDS,
   isSettingsPath,
   isSettingsSectionId,
+  resolveSettingsEntry,
   settingsSection,
   settingsSectionForPath,
   settingsSectionsInGroup,
@@ -71,6 +72,14 @@ describe("settings sections registry", () => {
     expect(isSettingsPath(`${SETTINGS_ROOT}/models`)).toBe(true);
     expect(isSettingsPath("/dashboard/settingsfoo")).toBe(false);
     expect(isSettingsPath("/dashboard/chat")).toBe(false);
+  });
+
+  it("resolves the settings entry URL to a section", () => {
+    expect(resolveSettingsEntry(null)).toBe(DEFAULT_SETTINGS_SECTION);
+    expect(resolveSettingsEntry("memories")).toBe("memories");
+    expect(resolveSettingsEntry("ai")).toBe("models");
+    expect(resolveSettingsEntry("mcp")).toBe("integrations");
+    expect(resolveSettingsEntry("bogus")).toBe(DEFAULT_SETTINGS_SECTION);
   });
 
   it("points every legacy ?tab= value at a real section", () => {
