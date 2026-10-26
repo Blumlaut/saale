@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { syncQueueTaskSchedule } from "@/lib/queue";
-import { toStoredModelId } from "@/lib/pi/model-id";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * GET /api/jobs. List user's jobs

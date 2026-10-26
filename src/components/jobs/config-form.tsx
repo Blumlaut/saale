@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ModelPicker } from "@/components/shared/model-picker";
-import { formatModelId, toPickerModelId, toStoredModelId } from "@/lib/pi/model-id";
+import { formatModelId, toPickerModelId, toStoredModelId } from "@/lib/pi/model-ref";
 
 export interface FieldDef {
   key: string;

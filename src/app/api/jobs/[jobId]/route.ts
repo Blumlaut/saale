@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireJobOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from "@/lib/queue";
-import { toStoredModelId } from "@/lib/pi/model-id";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * PATCH /api/jobs/:jobId. Update a job

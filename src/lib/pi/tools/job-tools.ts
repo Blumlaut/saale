@@ -5,7 +5,7 @@ import { syncQueueTaskSchedule, triggerQueueTaskRun, unscheduleQueueTask } from 
 import { jobTypeSchemas } from "@/lib/queue/job-schemas";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
-import { toStoredModelId } from "@/lib/pi/model-id";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /** A job as job_list reports it (config parsed, dates as ISO strings). */
 const jobListEntrySchema = Type.Object({

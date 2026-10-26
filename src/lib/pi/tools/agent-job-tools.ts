@@ -6,7 +6,7 @@ import { scheduleAgentDefinition, unscheduleAgentDefinition } from "@/lib/queue"
 import { SYSTEM_MANAGED_ERROR } from "@/lib/agent-jobs/system-managed";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
-import { toStoredModelId } from "@/lib/pi/model-id";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * An agent job definition as list, create and update report it. The three tools

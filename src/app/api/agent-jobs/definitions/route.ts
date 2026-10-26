@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { scheduleAgentDefinition } from "@/lib/queue";
 import { normalizeRunAt } from "@/lib/agent-jobs/schedule";
-import { toStoredModelId } from "@/lib/pi/model-id";
+import { toStoredModelId } from "@/lib/pi/model-ref";
 
 /**
  * GET /api/agent-jobs/definitions. List user's agent job definitions

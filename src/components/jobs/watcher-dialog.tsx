@@ -17,6 +17,7 @@ import {
 import { fetchJson, patchJson, postJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
+import { getCronLabel } from "@/lib/jobs/cron-label";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Loader2, Play, Radar } from "lucide-react";
 import type { ScriptWatcher } from "@/types/shared";
@@ -56,14 +57,15 @@ const WORKTREE_MODE_OPTIONS = [
   { value: "sticky", label: "One chat and worktree for the whole thread" },
 ];
 
+/** The schedules offered as one-tap presets, named by the shared cron labels. */
 const CRON_PRESETS = [
-  { value: "*/5 * * * *", label: "Every 5 minutes" },
-  { value: "*/10 * * * *", label: "Every 10 minutes" },
-  { value: "*/30 * * * *", label: "Every 30 minutes" },
-  { value: "0 * * * *", label: "Every hour" },
-  { value: "0 */6 * * *", label: "Every 6 hours" },
-  { value: "0 9 * * *", label: "Daily at 9am" },
-];
+  "*/5 * * * *",
+  "*/10 * * * *",
+  "*/30 * * * *",
+  "0 * * * *",
+  "0 */6 * * *",
+  "0 9 * * *",
+].map((value) => ({ value, label: getCronLabel(value) }));
 
 const STARTER_SCRIPT = `const seen = load('seen') ?? [];
 const mails = await tools.mail_list({ folder: 'INBOX', limit: 20 });
