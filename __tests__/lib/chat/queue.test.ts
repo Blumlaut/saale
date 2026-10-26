@@ -44,6 +44,7 @@ import {
   claimNextQueuedMessage,
   claimQueuedMessage,
   getQueuedMessage,
+  queueMessage,
   removeQueuedMessage,
   restoreQueuedMessage,
   updateQueuedMessageContent,
@@ -149,6 +150,24 @@ describe("restoreQueuedMessage", () => {
     await restoreQueuedMessage(SESSION_ID, "msg-gone", new Date());
 
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("msg-gone"));
+  });
+});
+
+describe("queueMessage", () => {
+  it("sends a message that lost its run back to the queue", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+
+    expect(await queueMessage(SESSION_ID, "msg-1")).toBe(true);
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { id: "msg-1", sessionId: SESSION_ID, queuedAt: null },
+      data: { queuedAt: expect.any(Date) },
+    });
+  });
+
+  it("leaves a message that is already queued alone", async () => {
+    mockUpdateMany.mockResolvedValue({ count: 0 });
+
+    expect(await queueMessage(SESSION_ID, "msg-1")).toBe(false);
   });
 });
 

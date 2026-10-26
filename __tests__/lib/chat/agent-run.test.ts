@@ -37,9 +37,13 @@ vi.mock("@/lib/pi/tool-approval-gate", () => ({
 
 const mockRegister = vi.fn();
 const mockUnregister = vi.fn();
+const mockMarkBuilding = vi.fn();
+const mockClearBuilding = vi.fn();
 vi.mock("@/lib/redis", () => ({
   registerActiveSession: (...args: unknown[]) => mockRegister(...args),
   unregisterActiveSession: (...args: unknown[]) => mockUnregister(...args),
+  markAgentBuilding: (...args: unknown[]) => mockMarkBuilding(...args),
+  clearAgentBuilding: (...args: unknown[]) => mockClearBuilding(...args),
 }));
 
 const mockPublish = vi.fn();
@@ -107,6 +111,8 @@ describe("ensureChatAgent", () => {
     });
     mockCreateChatAgentSession.mockResolvedValue({ session: {}, sessionDir: "/sessions/chat-1" });
     mockCreateAndPool.mockImplementation(async (_key: string, create: () => unknown) => create());
+    mockMarkBuilding.mockResolvedValue(undefined);
+    mockClearBuilding.mockResolvedValue(undefined);
   });
 
   it("builds the agent with the user's settings and the approval gate on a miss", async () => {
@@ -197,6 +203,46 @@ describe("ensureChatAgent", () => {
 
     // No fallback to the workspace: a coder agent without a worktree must not exist.
     expect(mockCreateChatAgentSession).not.toHaveBeenCalled();
+  });
+
+  it("holds the chat busy for the whole build", async () => {
+    mockGetPoolEntry.mockReturnValue(undefined);
+    const order: string[] = [];
+    mockMarkBuilding.mockImplementation(async () => {
+      order.push("mark");
+    });
+    mockEnsureWorktree.mockImplementation(async () => {
+      order.push("worktree");
+      return { path: "worktrees/saale/c-chat1", branch: "wt/c-chat1", mode: "worktree" };
+    });
+    mockClearBuilding.mockImplementation(async () => {
+      order.push("clear");
+    });
+
+    await ensureChatAgent({
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      chatSession: { ...CHAT, projectId: "proj-1" },
+    });
+
+    // A message sent during the build has to queue behind it instead of
+    // claiming a prompt the build is not going to deliver.
+    expect(order).toEqual(["mark", "worktree", "clear"]);
+  });
+
+  it("releases the chat when the build fails", async () => {
+    mockGetPoolEntry.mockReturnValue(undefined);
+    mockEnsureWorktree.mockRejectedValue(new Error("checkout gone"));
+
+    await expect(
+      ensureChatAgent({
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        chatSession: { ...CHAT, projectId: "proj-1" },
+      }),
+    ).rejects.toThrow(/checkout gone/);
+
+    expect(mockClearBuilding).toHaveBeenCalledWith(SESSION_ID);
   });
 });
 
