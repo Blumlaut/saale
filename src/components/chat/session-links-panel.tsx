@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/format";
 import { fetchJson } from "@/lib/http";
 
 export interface SessionLink {
@@ -58,15 +59,6 @@ export function useSessionLinks(sessionId: string) {
   return { links, reload };
 }
 
-function ago(iso: string | null): string {
-  if (!iso) return "never";
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "now";
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
-}
-
 function LinkRow({ link }: { link: SessionLink }) {
   return (
     <div className="px-4 py-2">
@@ -79,7 +71,9 @@ function LinkRow({ link }: { link: SessionLink }) {
       </div>
       <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-6 text-[11px]">
         <span className="whitespace-nowrap">{link.cronExpression}</span>
-        <span className="whitespace-nowrap">· {ago(link.lastTickAt)}</span>
+        <span className="whitespace-nowrap">
+          · {link.lastTickAt ? formatRelativeDate(link.lastTickAt) : "never"}
+        </span>
         <span className="whitespace-nowrap">· {link.fireCount}x</span>
       </div>
       {link.lastError && (

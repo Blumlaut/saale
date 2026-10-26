@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Bell, CheckCircle, AlertCircle, Mail, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { formatRelativeDate } from "@/lib/format";
 import { fetchJson, patchJson } from "@/lib/http";
 
 interface Notification {
@@ -130,9 +130,7 @@ export function NotificationBell() {
                   <div className="text-sm font-medium">{notification.title}</div>
                   <div className="text-muted-foreground text-xs">{notification.message}</div>
                   <div className="text-muted-foreground/60 mt-1 text-xs">
-                    {formatDistanceToNow(new Date(notification.createdAt), {
-                      addSuffix: true,
-                    })}
+                    {formatRelativeDate(notification.createdAt)}
                   </div>
                 </div>
                 {!notification.read && (

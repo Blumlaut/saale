@@ -16,11 +16,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchJson, patchJson, postJson } from "@/lib/http";
+import { formatRelativeDate } from "@/lib/format";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { AlertTriangle, Loader2, Play, Radar, ShieldCheck } from "lucide-react";
 import type { ScriptWatcher, WatcherConsentPreview } from "@/types/shared";
-import { formatDistanceToNow } from "date-fns";
 
 /** The part of a conversation the target picker needs. */
 interface ChatOption {
@@ -650,9 +650,9 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
 
           {watcher?.lastTickAt && (
             <p className="text-muted-foreground text-xs">
-              Last checked {formatDistanceToNow(new Date(watcher.lastTickAt), { addSuffix: true })}
+              Last checked {formatRelativeDate(watcher.lastTickAt)}
               {watcher.lastFiredAt
-                ? `, last delivered ${formatDistanceToNow(new Date(watcher.lastFiredAt), { addSuffix: true })}`
+                ? `, last delivered ${formatRelativeDate(watcher.lastFiredAt)}`
                 : ", nothing delivered yet"}
               .
             </p>

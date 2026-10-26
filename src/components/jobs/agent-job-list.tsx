@@ -23,8 +23,8 @@ import {
   Lock,
   Ban,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/format";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { formatToolArgs } from "@/components/chat/tool-args";
 import type { AgentJobDefinition, AgentJobRun } from "@/types/shared";
@@ -268,9 +268,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                         {job.lastRunAt && (
                           <>
                             <span>·</span>
-                            <span>
-                              {formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}
-                            </span>
+                            <span>{formatRelativeDate(job.lastRunAt)}</span>
                           </>
                         )}
                       </div>
@@ -422,11 +420,7 @@ export function AgentJobList({ onRefresh, onEdit }: AgentJobListProps) {
                             <div className="flex items-center gap-2">
                               {getStatusBadge(run.status)}
                               <span className="text-muted-foreground text-xs">
-                                {run.startedAt
-                                  ? formatDistanceToNow(new Date(run.startedAt), {
-                                      addSuffix: true,
-                                    })
-                                  : ""}
+                                {run.startedAt ? formatRelativeDate(run.startedAt) : ""}
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -547,7 +541,7 @@ function RunMessagesDialog({
                       {msg.role}
                     </Badge>
                     <span className="text-muted-foreground text-xs">
-                      {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                      {formatRelativeDate(msg.createdAt)}
                     </span>
                   </div>
                   {msg.content && <p className="mt-2 text-sm whitespace-pre-wrap">{msg.content}</p>}

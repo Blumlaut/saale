@@ -15,6 +15,7 @@ import {
 import { Fragment } from "react";
 import { MoreVertical, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
 import { cn, ROW_ACTION } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/format";
 import type { Contact } from "@/types/shared";
 
 interface ContactListProps {
@@ -23,15 +24,6 @@ interface ContactListProps {
   onAdd: () => void;
   onEdit: (contact: Contact) => void;
   onDelete: (contact: Contact) => void;
-}
-
-function relativeSentLabel(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
 }
 
 export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: ContactListProps) {
@@ -128,7 +120,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
                 </div>
                 {contact.lastSentAt && (
                   <span className="console-label text-muted-foreground hidden shrink-0 md:block">
-                    sent {relativeSentLabel(contact.lastSentAt)}
+                    sent {formatRelativeDate(contact.lastSentAt)}
                   </span>
                 )}
                 <DropdownMenu>

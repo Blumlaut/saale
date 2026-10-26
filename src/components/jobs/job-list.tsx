@@ -18,8 +18,8 @@ import {
   Brain,
   Pencil,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/format";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
 import { ConfigDisplay } from "@/components/jobs/config-form";
@@ -309,11 +309,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                           {job.lastRunAt && (
                             <>
                               <span>·</span>
-                              <span>
-                                {formatDistanceToNow(new Date(job.lastRunAt), {
-                                  addSuffix: true,
-                                })}
-                              </span>
+                              <span>{formatRelativeDate(job.lastRunAt)}</span>
                             </>
                           )}
                         </div>
@@ -452,11 +448,7 @@ export function JobList({ onRefresh, onEdit }: JobListProps) {
                           <div className="flex items-center justify-between">
                             {getStatusBadge(run.status)}
                             <span className="text-muted-foreground text-xs">
-                              {run.startedAt
-                                ? formatDistanceToNow(new Date(run.startedAt), {
-                                    addSuffix: true,
-                                  })
-                                : ""}
+                              {run.startedAt ? formatRelativeDate(run.startedAt) : ""}
                             </span>
                           </div>
                           {run.error && (

@@ -33,8 +33,8 @@ import {
   Zap,
   Ban,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { cn, ROW_ACTION } from "@/lib/utils";
+import { formatRelativeDate } from "@/lib/format";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
 import type { ScriptWatcher, ScriptWatcherTick } from "@/types/shared";
 
@@ -108,12 +108,6 @@ function TickBadge({ status }: { status: string }) {
         </Badge>
       );
   }
-}
-
-/** A timestamp rendered as "3 minutes ago", or a dash when it never happened. */
-function ago(value: string | null): string {
-  if (!value) return "never";
-  return formatDistanceToNow(new Date(value), { addSuffix: true });
 }
 
 interface WatcherListProps {
@@ -438,7 +432,7 @@ export function WatcherList({ onRefresh, onEdit }: WatcherListProps) {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <TickBadge status={tick.status} />
                           <span className="text-muted-foreground font-mono text-xs">
-                            {ago(tick.createdAt)} · {tick.durationMs}ms
+                            {formatRelativeDate(tick.createdAt)} · {tick.durationMs}ms
                             {tick.callCount > 0 && ` · ${tick.callCount} call(s)`}
                           </span>
                         </div>
