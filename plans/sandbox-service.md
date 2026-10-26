@@ -427,7 +427,7 @@ Three tiers, all reachable from bash:
    today's `OPEN_TERMINAL_PACKAGES` list plus node, npm, `uv` and `pipx`.
 2. **In the workspace.** `$HOME` is `/workspaces/<id>` and
    `$HOME/.local/bin` is on `PATH`, so `pip install --user`,
-   `npm install -g --prefix ~/.local`, `uv tool install`,
+   `npm install -g` (`NPM_CONFIG_PREFIX` is `$HOME/.local`), `uv tool install`,
    `cargo install --root ~/.local` and `go install` with `GOBIN=$HOME/.local/bin`
    land in the volume and outlive the container.
 3. **System packages.** `apt-get install` runs inside the container and lands in
@@ -447,10 +447,11 @@ Installs need egress, which the sandbox network provides. `apt-get`, `pip` and
 
 Container lifetime follows from tier 3: `reapIdle()` stops a container past
 `SANDBOX_IDLE_MINUTES` and the writable layer survives, so an installed package
-is still there next time. Removal happens past `SANDBOX_CONTAINER_TTL_DAYS`, and
-deploying a new image means the next container is created from it. Anything that
-must survive is either in the image (tier 1) or installed into `$HOME`
-(tier 2).
+is still there next time. A changed limit is applied to the container with the
+update API, which records it on the container, so a limit change does not cost
+the layer. Removal happens past `SANDBOX_CONTAINER_TTL_DAYS`, and deploying a new
+image means the next container is created from it. Anything that must survive is
+either in the image (tier 1) or installed into `$HOME` (tier 2).
 
 ## Container spec
 

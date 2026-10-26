@@ -76,7 +76,7 @@ export function memoryBytes(memory: string): number {
   return Math.round(Number(match[1]) * (factors[unit] ?? 1));
 }
 
-/** The cgroup limits the config asks for, as the create API takes them. */
+/** The cgroup limits the config asks for: create options, and an update body. */
 export interface ContainerLimits {
   Memory: number;
   PidsLimit: number;
@@ -103,9 +103,9 @@ const LIMIT_FIELDS = ["Memory", "PidsLimit", "NanoCpus"] as const;
 /**
  * Which limits an existing container disagrees with the config on.
  *
- * Docker fixes `HostConfig` at create time and cannot change a memory limit on
- * a running container, so anything listed here needs the container replaced
- * before the new setting takes effect. Reported as `field: have → want`.
+ * Every one of them can be applied to the live container, so a listed field is
+ * a patch rather than a reason to replace the container. Reported as
+ * `field: have → want`.
  */
 export function limitDrift(existing: ExistingLimits | undefined, config: SandboxConfig): string[] {
   if (!existing) return [];

@@ -58,9 +58,11 @@ RUN pip install --break-system-packages --no-cache-dir yt-dlp \
     && apt-get clean
 
 # $HOME is the mounted workspace, and ~/.local/bin is on PATH so anything
-# installed there is found by the next command.
+# installed there is found by the next command. npm's global prefix is that
+# directory, so `npm install -g` lands on the volume too.
 ENV HOME=/w
 ENV PATH="/w/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV NPM_CONFIG_PREFIX=/w/.local
 ENV LANG=C.UTF-8
 
 WORKDIR /w
