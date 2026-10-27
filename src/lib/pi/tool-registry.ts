@@ -3,7 +3,7 @@ import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-cat
 import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
 import { resolveToolPolicy } from "./tool-policy";
-import { isConfigured as isSandboxConfigured } from "@/lib/sandbox/client";
+import { canExec as canRunCommands } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
@@ -165,12 +165,12 @@ export async function resolveTools(
     features.terminal;
 
   // ── Terminal tools (shell + file ops via open-terminal) ───────────────
-  if (terminalEnabled && isSandboxConfigured()) {
+  if (terminalEnabled && canRunCommands()) {
     const sandboxTools = await options.createSandboxScopedTools(userId, sessionId);
     tools.push(sandboxTools.read, sandboxTools.write, sandboxTools.edit, sandboxTools.bash);
     tools.push(createShowFileTool(userId, sessionId));
   } else if (terminalEnabled) {
-    console.warn("Terminal enabled but SANDBOX_URL is not set. Terminal tools unavailable.");
+    console.warn("Terminal enabled but commands cannot run here. Terminal tools unavailable.");
   }
 
   // ── Custom tools (dispatched via registry) ────────────────────────────
