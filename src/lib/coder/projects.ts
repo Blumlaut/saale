@@ -112,6 +112,11 @@ export interface CoderProjectChat {
   worktree: { path: string; branch: string; status: string } | null;
 }
 
+/** One chat across every project, as the landing page's recent list shows it. */
+export interface CoderRecentChat extends CoderProjectChat {
+  project: { id: string; name: string; slug: string };
+}
+
 /** The settings the panel edits, and what the detail response carries. */
 export interface ProjectSettings {
   id: string;
@@ -397,6 +402,51 @@ export async function getProject(
   };
 }
 
+/**
+ * The user's coder chats across every project, newest activity first.
+ *
+ * `limit + 1` rows are read so the caller can tell a full window from the last
+ * one without a second count. The list widens its window instead of paging, so
+ * a chat that was just used cannot shift a page boundary under the user.
+ */
+export async function listRecentChats(
+  userId: string,
+  limit: number,
+): Promise<{ chats: CoderRecentChat[]; hasMore: boolean }> {
+  const rows = await prisma.chatSession.findMany({
+    where: { userId, projectId: { not: null } },
+    orderBy: [{ lastActivityAt: "desc" }, { id: "desc" }],
+    take: limit + 1,
+    select: {
+      id: true,
+      title: true,
+      lastActivityAt: true,
+      pinned: true,
+      origin: true,
+      coderWorktree: { select: { path: true, branch: true, status: true } },
+      project: { select: { id: true, name: true, slug: true } },
+    },
+  });
+
+  const chats = rows.slice(0, limit).flatMap((chat) =>
+    chat.project
+      ? [
+          {
+            id: chat.id,
+            title: chat.title,
+            lastActivityAt: chat.lastActivityAt,
+            pinned: chat.pinned,
+            origin: chat.origin,
+            worktree: chat.coderWorktree,
+            project: chat.project,
+          },
+        ]
+      : [],
+  );
+
+  return { chats, hasMore: rows.length > limit };
+}
+
 /** One project's settings, without its chats. Null when it is not this user's. */
 export async function getProjectSettings(
   userId: string,
@@ -578,6 +628,31 @@ export function serializeCreatedProject(project: CoderProject) {
   };
 }
 
+/** One chat row, with whether it is generating right now. */
+function serializeChat(chat: CoderProjectChat, generating: ReadonlySet<string>) {
+  return {
+    id: chat.id,
+    title: chat.title,
+    lastActivityAt: chat.lastActivityAt.toISOString(),
+    pinned: chat.pinned,
+    isGenerating: generating.has(chat.id),
+    origin: chat.origin,
+    worktree: chat.worktree,
+  };
+}
+
+/** The recent chat list body. */
+export function serializeRecentChats(
+  chats: CoderRecentChat[],
+  hasMore: boolean,
+  generating: ReadonlySet<string>,
+) {
+  return {
+    chats: chats.map((chat) => ({ ...serializeChat(chat, generating), project: chat.project })),
+    hasMore,
+  };
+}
+
 /** The detail response body, with which chats are generating right now. */
 export function serializeProjectDetail(
   project: CoderProjectDetail,
@@ -595,14 +670,6 @@ export function serializeProjectDetail(
       setupScript: project.setupScript,
       chatMode: project.chatMode,
     },
-    chats: project.chats.map((chat) => ({
-      id: chat.id,
-      title: chat.title,
-      lastActivityAt: chat.lastActivityAt.toISOString(),
-      pinned: chat.pinned,
-      isGenerating: generating.has(chat.id),
-      origin: chat.origin,
-      worktree: chat.worktree,
-    })),
+    chats: project.chats.map((chat) => serializeChat(chat, generating)),
   };
 }
