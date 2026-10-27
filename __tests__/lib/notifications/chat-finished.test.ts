@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockChatSession, mockAbortRequested, mockNotifyUser, mockWaitTeardown } = vi.hoisted(
-  () => ({
+const { mockChatSession, mockAbortRequested, mockNotifyUser, mockWaitTeardown, mockGetChatSeenAt } =
+  vi.hoisted(() => ({
     mockChatSession: { findFirst: vi.fn() },
     mockAbortRequested: vi.fn(),
     mockNotifyUser: vi.fn(),
     mockWaitTeardown: vi.fn(),
-  }),
-);
+    mockGetChatSeenAt: vi.fn(),
+  }));
 
 vi.mock("@/lib/db", () => ({ prisma: { chatSession: mockChatSession } }));
 vi.mock("@/lib/pi/abort-request", () => ({
@@ -15,6 +15,9 @@ vi.mock("@/lib/pi/abort-request", () => ({
 }));
 vi.mock("@/lib/pi/session-persistence", () => ({
   waitForPersistenceTeardown: (...args: unknown[]) => mockWaitTeardown(...args),
+}));
+vi.mock("@/lib/redis", () => ({
+  getChatSeenAt: (...args: unknown[]) => mockGetChatSeenAt(...args),
 }));
 vi.mock("@/lib/notifications/notify", () => ({
   notifyUser: (...args: unknown[]) => mockNotifyUser(...args),
@@ -26,10 +29,19 @@ import { notifyChatFinished } from "@/lib/notifications/chat-finished";
 
 const params = { userId: "user-1", sessionId: "chat-1" };
 
+/** The notification path waits out a grace period before sending. */
+async function notify(): Promise<void> {
+  const pending = notifyChatFinished(params);
+  await vi.runAllTimersAsync();
+  await pending;
+}
+
 describe("chat finished notifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     mockAbortRequested.mockReturnValue(false);
+    mockGetChatSeenAt.mockResolvedValue(null);
     mockNotifyUser.mockResolvedValue(undefined);
     mockWaitTeardown.mockResolvedValue(undefined);
     mockChatSession.findFirst.mockResolvedValue({
@@ -41,8 +53,12 @@ describe("chat finished notifications", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("notifies that a normal chat finished, opening that chat", async () => {
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockWaitTeardown).toHaveBeenCalledWith("chat-1");
     expect(mockChatSession.findFirst).toHaveBeenCalledWith(
@@ -67,7 +83,7 @@ describe("chat finished notifications", () => {
       messages: [{ content: `# Plan\n\n- ${"item ".repeat(60)}` }],
     });
 
-    await notifyChatFinished(params);
+    await notify();
 
     const body = mockNotifyUser.mock.calls[0]?.[0].body as string;
     expect(body.startsWith("# Plan - item item")).toBe(true);
@@ -84,7 +100,7 @@ describe("chat finished notifications", () => {
       messages: [{ content: "   " }],
     });
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Weekly planning" }),
@@ -100,7 +116,7 @@ describe("chat finished notifications", () => {
       messages: [],
     });
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).toHaveBeenCalledWith(
       expect.objectContaining({ body: "Weekly planning" }),
@@ -116,7 +132,7 @@ describe("chat finished notifications", () => {
       messages: [{ content: "Fixed it: the worker was reused across tests." }],
     });
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -131,7 +147,7 @@ describe("chat finished notifications", () => {
   it("stays quiet when the user stopped the run themselves", async () => {
     mockAbortRequested.mockReturnValue(true);
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).not.toHaveBeenCalled();
     expect(mockWaitTeardown).not.toHaveBeenCalled();
@@ -147,7 +163,7 @@ describe("chat finished notifications", () => {
       messages: [{ content: "Temporary answer" }],
     });
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).not.toHaveBeenCalled();
   });
@@ -155,7 +171,7 @@ describe("chat finished notifications", () => {
   it("stays quiet when the chat is gone", async () => {
     mockChatSession.findFirst.mockResolvedValue(null);
 
-    await notifyChatFinished(params);
+    await notify();
 
     expect(mockNotifyUser).not.toHaveBeenCalled();
   });
@@ -163,8 +179,35 @@ describe("chat finished notifications", () => {
   it("never throws out of a finished run", async () => {
     mockChatSession.findFirst.mockRejectedValue(new Error("db down"));
 
-    await expect(notifyChatFinished(params)).resolves.toBeUndefined();
+    await expect(notify()).resolves.toBeUndefined();
 
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it("stays quiet when the reply landed on a screen the user was looking at", async () => {
+    mockGetChatSeenAt.mockResolvedValue(Date.now() + 200);
+
+    await notify();
+
+    expect(mockGetChatSeenAt).toHaveBeenCalledWith("user-1", "chat-1");
+    expect(mockNotifyUser).not.toHaveBeenCalled();
+  });
+
+  it("notifies when the chat was last on screen before the turn finished", async () => {
+    mockGetChatSeenAt.mockResolvedValue(Date.now() - 60_000);
+
+    await notify();
+
+    expect(mockNotifyUser).toHaveBeenCalled();
+  });
+
+  it("reads what the user has seen after the grace period, not before it", async () => {
+    const pending = notifyChatFinished(params);
+    expect(mockGetChatSeenAt).not.toHaveBeenCalled();
+
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(mockGetChatSeenAt).toHaveBeenCalledWith("user-1", "chat-1");
   });
 });
