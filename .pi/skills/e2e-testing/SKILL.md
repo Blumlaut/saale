@@ -17,7 +17,7 @@ Most requests are "does this panel look right?". Do not build a spec for it.
 ```bash
 npm run shot -- /dashboard/infra --click "Add Machine"
 npm run shot -- /dashboard/settings/models --viewport 375,320,1280
-npm run shot -- /dashboard/chat --click-text ... # every flag is in scripts/shot.ts
+npm run shot -- /dashboard/chat --click "New Chat" --full-page
 ```
 
 `scripts/shot.ts` signs in as the dev account (`dev@saale.local`), opens each
@@ -107,9 +107,9 @@ Rules that keep a run fast and honest:
   when the assertion depends on data fetched after paint; it is capped at 2s
   because a page with a poll or an SSE stream never goes idle.
 - **No `waitForTimeout` for state.** Use `expect.poll`, `expect(...).toBeVisible()`,
-  `locator.waitFor`, `waitForResponse`, or wait for the effect (fonts, animations
-  via `waitForOverlay`'). A fixed sleep is either too short (flaky) or too long
-  (slow), usually both.
+  `locator.waitFor`, `waitForResponse`, or wait for the effect itself (fonts,
+  an overlay's entry animation). A fixed sleep is either too short (flaky) or
+  too long (slow), usually both.
 - **Mock the API, do not drive it.** `page.route` before navigating. Model calls,
   sandboxes, IMAP and Telegram are not part of a layout test. See
   `e2e/council-mocks.ts` and the `mock*` helpers in `e2e/modal-scenarios.ts`.
