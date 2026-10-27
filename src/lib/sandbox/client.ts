@@ -10,6 +10,13 @@
  */
 
 import { sandboxConfig } from "./config";
+import {
+  execLocally,
+  isLocalExecId,
+  killLocally,
+  localExecAllowed,
+  writeInputLocally,
+} from "./local";
 
 /** A command that exited or was killed. */
 export interface SandboxExit {
@@ -47,9 +54,19 @@ export class SandboxApiError extends Error {
   }
 }
 
-/** Whether commands are available on this deployment (`SANDBOX_URL` is set). */
+/** Whether the sandbox service is configured on this deployment. */
 export function isConfigured(): boolean {
   return !!(sandboxConfig().url && sandboxConfig().apiKey);
+}
+
+/**
+ * Whether commands can run at all: the service, or this host in development.
+ *
+ * Ports and council sandboxes need the service itself, so they ask
+ * `isConfigured`; everything that only wants to run a command asks this.
+ */
+export function canExec(): boolean {
+  return isConfigured() || localExecAllowed();
 }
 
 function serviceUrl(): string {
@@ -92,6 +109,19 @@ export async function health(): Promise<{ status: string }> {
  * process, not just stop listening to it.
  */
 export async function* exec(options: SandboxExecOptions): AsyncGenerator<SandboxEvent> {
+  // A checkout without the service runs commands itself, and says so once.
+  if (!sandboxConfig().url) {
+    if (!localExecAllowed()) throw new Error("SANDBOX_URL is not set");
+    if (!warnedLocalExec) {
+      warnedLocalExec = true;
+      console.warn(
+        "No SANDBOX_URL: commands run on this host. Development only, never production.",
+      );
+    }
+    yield* execLocally(options);
+    return;
+  }
+
   const { identity, command, cwd, env, timeoutSeconds, interactive, signal } = options;
 
   const response = await fetch(`${serviceUrl()}/exec`, {
@@ -139,6 +169,9 @@ export async function* exec(options: SandboxExecOptions): AsyncGenerator<Sandbox
   }
 }
 
+/** The local fallback's notice is worth one line, not one per command. */
+let warnedLocalExec = false;
+
 function parseBlock(block: string): SandboxEvent | null {
   let name = "";
   const data: string[] = [];
@@ -179,6 +212,10 @@ function parseBlock(block: string): SandboxEvent | null {
 
 /** Signal a running command's process group. */
 export async function kill(execId: string): Promise<void> {
+  if (isLocalExecId(execId)) {
+    killLocally(execId);
+    return;
+  }
   const response = await fetch(`${serviceUrl()}/exec/${encodeURIComponent(execId)}`, {
     method: "DELETE",
     headers: authHeaders("user-none"),
@@ -193,6 +230,10 @@ export async function kill(execId: string): Promise<void> {
  * taking the command's output with it.
  */
 export async function writeInput(execId: string, identity: string, data: Buffer | string) {
+  if (isLocalExecId(execId)) {
+    writeInputLocally(execId, data);
+    return;
+  }
   const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : data;
   const response = await fetch(`${serviceUrl()}/exec/${encodeURIComponent(execId)}/input`, {
     method: "POST",
