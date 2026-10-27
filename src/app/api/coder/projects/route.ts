@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
+import { getActiveSessions } from "@/lib/redis";
 import { CHAT_MODES } from "@/lib/coder/checkout";
 import {
   CoderProjectError,
@@ -32,14 +33,22 @@ const createProjectSchema = z.object({
   setupScript: z.string().nullable().optional(),
 });
 
-/** GET /api/coder/projects: the user's projects, most recent first. */
+/**
+ * GET /api/coder/projects: the user's projects, most recent first.
+ *
+ * Each project carries its latest chats, which is what the landing page lists
+ * under it. `isGenerating` comes from Redis, the same source the chat list uses.
+ */
 export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
   try {
-    const projects = await listProjects(authResult.user.id);
-    return NextResponse.json(serializeProjectList(projects));
+    const [projects, generating] = await Promise.all([
+      listProjects(authResult.user.id),
+      getActiveSessions(authResult.user.id),
+    ]);
+    return NextResponse.json(serializeProjectList(projects, generating));
   } catch (err) {
     console.error("Failed to list coder projects:", err);
     return NextResponse.json({ error: "Failed to list projects" }, { status: 500 });

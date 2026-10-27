@@ -94,13 +94,13 @@ vi.mock("@/lib/sandbox/workspace", () => ({
 }));
 
 import {
+  CHATS_PER_PROJECT,
   CoderProjectError,
   DEFAULT_GITIGNORE,
   createProject,
   getProject,
   listProjects,
-  listRecentChats,
-  serializeRecentChats,
+  serializeProjectList,
 } from "@/lib/coder/projects";
 
 const USER = "user-1";
@@ -330,7 +330,7 @@ describe("createProject: clone", () => {
 });
 
 describe("listProjects", () => {
-  it("scopes by user and counts active worktrees only", async () => {
+  it("scopes by user, counts active worktrees and carries the latest chats", async () => {
     mockProjectFindMany.mockResolvedValue([
       {
         id: "p1",
@@ -341,7 +341,16 @@ describe("listProjects", () => {
         chatMode: "worktree",
         worktrees: [{ id: "w1" }, { id: "w2" }],
         _count: { chats: 3 },
-        chats: [{ lastActivityAt: NOW }],
+        chats: [
+          {
+            id: "c1",
+            title: "Fix the build",
+            lastActivityAt: NOW,
+            pinned: true,
+            origin: "user",
+            coderWorktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+          },
+        ],
       },
       {
         id: "p2",
@@ -361,11 +370,17 @@ describe("listProjects", () => {
     const args = mockProjectFindMany.mock.calls[0]![0] as {
       where: { userId: string };
       orderBy: { updatedAt: string };
-      select: { worktrees: { where: { status: string } } };
+      select: {
+        worktrees: { where: { status: string } };
+        chats: { take: number; orderBy: Array<Record<string, string>> };
+      };
     };
     expect(args.where).toEqual({ userId: USER });
     expect(args.orderBy).toEqual({ updatedAt: "desc" });
     expect(args.select.worktrees.where).toEqual({ status: "active" });
+    // The fold: a few, the pinned ones first, newest activity otherwise.
+    expect(args.select.chats.take).toBe(CHATS_PER_PROJECT);
+    expect(args.select.chats.orderBy).toEqual([{ pinned: "desc" }, { lastActivityAt: "desc" }]);
 
     expect(projects).toEqual([
       {
@@ -378,6 +393,16 @@ describe("listProjects", () => {
         worktreeCount: 2,
         chatCount: 3,
         lastActivityAt: NOW,
+        chats: [
+          {
+            id: "c1",
+            title: "Fix the build",
+            lastActivityAt: NOW,
+            pinned: true,
+            origin: "user",
+            worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+          },
+        ],
       },
       {
         id: "p2",
@@ -389,6 +414,7 @@ describe("listProjects", () => {
         worktreeCount: 0,
         chatCount: 0,
         lastActivityAt: null,
+        chats: [],
       },
     ]);
   });
@@ -439,111 +465,45 @@ describe("getProject", () => {
   });
 });
 
-describe("listRecentChats", () => {
-  it("scopes by user, keeps coder chats only and reads one row past the window", async () => {
-    mockSessionFindMany.mockResolvedValue([
-      {
-        id: "c1",
-        title: "Fix the build",
-        lastActivityAt: NOW,
-        pinned: false,
-        origin: "user",
-        coderWorktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
-        project: { id: "p1", name: "One", slug: "one" },
-      },
-    ]);
-
-    const recent = await listRecentChats(USER, 8);
-
-    const args = mockSessionFindMany.mock.calls[0]![0] as {
-      where: { userId: string; projectId: { not: null } };
-      take: number;
-      select: Record<string, unknown>;
-    };
-    expect(args.where).toEqual({ userId: USER, projectId: { not: null } });
-    expect(args.take).toBe(9);
-    expect(recent.hasMore).toBe(false);
-    expect(recent.chats).toEqual([
-      {
-        id: "c1",
-        title: "Fix the build",
-        lastActivityAt: NOW,
-        pinned: false,
-        origin: "user",
-        worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
-        project: { id: "p1", name: "One", slug: "one" },
-      },
-    ]);
-  });
-
-  it("cuts the extra row and reports that there is more", async () => {
-    mockSessionFindMany.mockResolvedValue(
-      ["c1", "c2", "c3"].map((id) => ({
-        id,
-        title: id,
-        lastActivityAt: NOW,
-        pinned: false,
-        origin: "user",
-        coderWorktree: null,
-        project: { id: "p1", name: "One", slug: "one" },
-      })),
-    );
-
-    const recent = await listRecentChats(USER, 2);
-
-    expect(recent.chats.map((chat) => chat.id)).toEqual(["c1", "c2"]);
-    expect(recent.hasMore).toBe(true);
-  });
-
-  it("drops a chat whose project is gone", async () => {
-    mockSessionFindMany.mockResolvedValue([
-      {
-        id: "c1",
-        title: "Orphan",
-        lastActivityAt: NOW,
-        pinned: false,
-        origin: "user",
-        coderWorktree: null,
-        project: null,
-      },
-    ]);
-
-    expect(await listRecentChats(USER, 8)).toEqual({ chats: [], hasMore: false });
-  });
-});
-
-describe("serializeRecentChats", () => {
-  it("carries the project, the branch and whether the chat is generating", () => {
-    const body = serializeRecentChats(
+describe("serializeProjectList", () => {
+  it("carries each folded chat, with the branch and whether it is generating", () => {
+    const body = serializeProjectList(
       [
         {
-          id: "c1",
-          title: "Fix the build",
+          id: "p1",
+          name: "One",
+          slug: "one",
+          repoPath: "projects/one",
+          defaultBranch: "main",
+          chatMode: "worktree",
+          worktreeCount: 1,
+          chatCount: 4,
           lastActivityAt: NOW,
-          pinned: true,
-          origin: "watcher",
-          worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
-          project: { id: "p1", name: "One", slug: "one" },
+          chats: [
+            {
+              id: "c1",
+              title: "Fix the build",
+              lastActivityAt: NOW,
+              pinned: false,
+              origin: "watcher",
+              worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+            },
+          ],
         },
       ],
-      true,
       new Set(["c1"]),
     );
 
-    expect(body).toEqual({
-      hasMore: true,
-      chats: [
-        {
-          id: "c1",
-          title: "Fix the build",
-          lastActivityAt: NOW.toISOString(),
-          pinned: true,
-          isGenerating: true,
-          origin: "watcher",
-          worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
-          project: { id: "p1", name: "One", slug: "one" },
-        },
-      ],
-    });
+    expect(body.projects[0]!.chats).toEqual([
+      {
+        id: "c1",
+        title: "Fix the build",
+        lastActivityAt: NOW.toISOString(),
+        pinned: false,
+        isGenerating: true,
+        origin: "watcher",
+        worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+      },
+    ]);
   });
 });

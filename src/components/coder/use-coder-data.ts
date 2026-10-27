@@ -24,6 +24,8 @@ export interface CoderProjectSummary {
   worktreeCount: number;
   chatCount: number;
   lastActivityAt: string | null;
+  /** The latest chats, listed under the project on the landing page. */
+  chats: CoderProjectChat[];
 }
 
 /** One of a project's chats. */
@@ -51,14 +53,6 @@ export interface CoderProjectDetail {
     chatMode: CoderChatMode;
   };
   chats: CoderProjectChat[];
-}
-
-/** The first window the landing page's recent chats open with. */
-const RECENT_CHATS_PAGE_SIZE = 8;
-
-/** One chat across every project, as the landing page lists it. */
-export interface CoderRecentChat extends CoderProjectChat {
-  project: { id: string; name: string; slug: string };
 }
 
 /** One changed path in a chat's worktree. */
@@ -223,6 +217,12 @@ function useLoad<T>(
   return { data, loading, error, reload };
 }
 
+/**
+ * The user's projects, each with the latest chats under it.
+ *
+ * The same re-read signal the chat lists use: a chat created in the panel, a
+ * title the server assigned, a delete or a pin anywhere all reach this list.
+ */
 export function useProjects() {
   const refreshKey = useListRefresh();
   const { data, loading, error, reload } = useLoad<{ projects: CoderProjectSummary[] }>(
@@ -245,33 +245,6 @@ export function useProject(projectId: string | null, activeSessionId: string | n
     refreshKey,
   );
   return { project: data?.project ?? null, chats: data?.chats ?? [], loading, error, reload };
-}
-
-/**
- * The coder chats across every project, widest window the user has asked for.
- *
- * "Show more" asks for a wider window rather than a cursor, so the list a user
- * is reading cannot lose a row to a chat that was just used somewhere else.
- * `loading` stays true for that wider read while the rows already on screen
- * wait for it, which is what the button's spinner shows.
- */
-export function useRecentChats() {
-  const refreshKey = useListRefresh();
-  const [windowSize, setWindowSize] = useState(RECENT_CHATS_PAGE_SIZE);
-  const { data, loading, error } = useLoad<{ chats: CoderRecentChat[]; hasMore: boolean }>(
-    `/api/coder/chats?limit=${windowSize}`,
-    refreshKey,
-  );
-
-  const loadMore = useCallback(() => setWindowSize((size) => size + RECENT_CHATS_PAGE_SIZE), []);
-
-  return {
-    chats: data?.chats ?? [],
-    hasMore: data?.hasMore ?? false,
-    loading,
-    error,
-    loadMore,
-  };
 }
 
 /**
