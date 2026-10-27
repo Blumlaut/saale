@@ -14,6 +14,7 @@ const {
   mockProjectFindMany,
   mockProjectFindFirst,
   mockProjectCreate,
+  mockSessionFindMany,
   mockInitRepo,
   mockCloneRepo,
   mockRunGit,
@@ -48,6 +49,7 @@ const {
     mockProjectFindMany: vi.fn(),
     mockProjectFindFirst: vi.fn(),
     mockProjectCreate: vi.fn(),
+    mockSessionFindMany: vi.fn(),
     mockInitRepo: vi.fn(),
     mockCloneRepo: vi.fn(),
     mockRunGit: vi.fn(),
@@ -67,6 +69,7 @@ vi.mock("@/lib/db", () => ({
       findFirst: mockProjectFindFirst,
       create: mockProjectCreate,
     },
+    chatSession: { findMany: mockSessionFindMany },
   },
 }));
 
@@ -96,6 +99,8 @@ import {
   createProject,
   getProject,
   listProjects,
+  listRecentChats,
+  serializeRecentChats,
 } from "@/lib/coder/projects";
 
 const USER = "user-1";
@@ -109,6 +114,7 @@ beforeEach(() => {
     email: "ada@example.com",
   });
   mockProjectFindMany.mockResolvedValue([]);
+  mockSessionFindMany.mockResolvedValue([]);
   mockEnsureGitconfig.mockResolvedValue(`/workspaces/user-${USER}/.gitconfig`);
   mockInitRepo.mockResolvedValue(undefined);
   mockCloneRepo.mockResolvedValue(undefined);
@@ -430,5 +436,114 @@ describe("getProject", () => {
       },
       { id: "c2", title: "New Chat", lastActivityAt: NOW, worktree: null },
     ]);
+  });
+});
+
+describe("listRecentChats", () => {
+  it("scopes by user, keeps coder chats only and reads one row past the window", async () => {
+    mockSessionFindMany.mockResolvedValue([
+      {
+        id: "c1",
+        title: "Fix the build",
+        lastActivityAt: NOW,
+        pinned: false,
+        origin: "user",
+        coderWorktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
+        project: { id: "p1", name: "One", slug: "one" },
+      },
+    ]);
+
+    const recent = await listRecentChats(USER, 8);
+
+    const args = mockSessionFindMany.mock.calls[0]![0] as {
+      where: { userId: string; projectId: { not: null } };
+      take: number;
+      select: Record<string, unknown>;
+    };
+    expect(args.where).toEqual({ userId: USER, projectId: { not: null } });
+    expect(args.take).toBe(9);
+    expect(recent.hasMore).toBe(false);
+    expect(recent.chats).toEqual([
+      {
+        id: "c1",
+        title: "Fix the build",
+        lastActivityAt: NOW,
+        pinned: false,
+        origin: "user",
+        worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
+        project: { id: "p1", name: "One", slug: "one" },
+      },
+    ]);
+  });
+
+  it("cuts the extra row and reports that there is more", async () => {
+    mockSessionFindMany.mockResolvedValue(
+      ["c1", "c2", "c3"].map((id) => ({
+        id,
+        title: id,
+        lastActivityAt: NOW,
+        pinned: false,
+        origin: "user",
+        coderWorktree: null,
+        project: { id: "p1", name: "One", slug: "one" },
+      })),
+    );
+
+    const recent = await listRecentChats(USER, 2);
+
+    expect(recent.chats.map((chat) => chat.id)).toEqual(["c1", "c2"]);
+    expect(recent.hasMore).toBe(true);
+  });
+
+  it("drops a chat whose project is gone", async () => {
+    mockSessionFindMany.mockResolvedValue([
+      {
+        id: "c1",
+        title: "Orphan",
+        lastActivityAt: NOW,
+        pinned: false,
+        origin: "user",
+        coderWorktree: null,
+        project: null,
+      },
+    ]);
+
+    expect(await listRecentChats(USER, 8)).toEqual({ chats: [], hasMore: false });
+  });
+});
+
+describe("serializeRecentChats", () => {
+  it("carries the project, the branch and whether the chat is generating", () => {
+    const body = serializeRecentChats(
+      [
+        {
+          id: "c1",
+          title: "Fix the build",
+          lastActivityAt: NOW,
+          pinned: true,
+          origin: "watcher",
+          worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
+          project: { id: "p1", name: "One", slug: "one" },
+        },
+      ],
+      true,
+      new Set(["c1"]),
+    );
+
+    expect(body).toEqual({
+      hasMore: true,
+      chats: [
+        {
+          id: "c1",
+          title: "Fix the build",
+          lastActivityAt: NOW.toISOString(),
+          pinned: true,
+          isGenerating: true,
+          origin: "watcher",
+          worktree: { path: "worktrees/p1/c1", branch: "wt/c1", status: "active" },
+          project: { id: "p1", name: "One", slug: "one" },
+        },
+      ],
+    });
   });
 });
