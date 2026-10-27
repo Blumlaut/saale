@@ -293,7 +293,9 @@ npx prisma generate
 npm run dev          # http://localhost:3630, hot reload
 npm run check        # lint, types, formatting, tests
 npm test             # unit tests only
-npm run test:e2e     # Playwright
+npm run test:e2e     # Playwright, against a production build
+npm run test:e2e:dev # Playwright, against the dev server
+npm run shot -- /dashboard/infra --click "Add Machine"   # screenshots a route
 ```
 
 Outside Docker the app needs `DATABASE_URL`, `REDIS_URL` and a running Postgres and Redis.
