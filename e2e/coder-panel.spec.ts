@@ -43,6 +43,17 @@ const PROJECT = {
   originUrl: null,
 };
 
+const RECENT_CHAT = {
+  id: "e2e-recent-chat",
+  title: "The chat the landing page opens in one click",
+  lastActivityAt: NOW,
+  pinned: false,
+  isGenerating: false,
+  origin: "user",
+  worktree: { path: WORKTREE, branch: BRANCH, status: "active" },
+  project: { id: PROJECT_ID, name: PROJECT.name, slug: PROJECT.slug },
+};
+
 const CHAT = {
   id: CHAT_ID,
   title: "A coder chat with a long title that has to wrap instead of widening the row",
@@ -131,6 +142,14 @@ const DIFF = [
 
 /** Every coder route the panel reads, stubbed. */
 async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
+  await page.route(/\/api\/coder\/chats\?/, (route) => {
+    return route.fulfill({ json: { chats: [RECENT_CHAT], hasMore: false } });
+  });
+  // The recent chat is a stub, so its conversation has to answer too.
+  await page.route(new RegExp(`/api/chat/sessions/${RECENT_CHAT.id}/messages$`), (route) =>
+    route.fulfill({ json: { messages: [], session: { title: RECENT_CHAT.title } } }),
+  );
+
   await page.route(/\/api\/coder\/projects$/, (route) => {
     if (route.request().method() === "POST") {
       return route.fulfill({ status: 201, json: { project: PROJECT } });
@@ -267,7 +286,7 @@ async function openCoder(browser: Browser, path: string) {
 test.describe("coder panel", () => {
   test("lists projects and opens one", async ({ browser }) => {
     const { context, page } = await openCoder(browser, "/dashboard/coder");
-    const project = page.locator("text=" + PROJECT.name).first();
+    const project = page.locator('[data-slot="project-row"]').first();
     await expect(project).toBeVisible();
 
     // A dev server can hand the page over before the row answers a click.
@@ -278,6 +297,24 @@ test.describe("coder panel", () => {
       ).toBeVisible({ timeout: 3_000 });
     }).toPass();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
+
+    await context.close();
+  });
+
+  test("opens the latest chat from the landing page in one click", async ({ browser }) => {
+    const { context, page } = await openCoder(browser, "/dashboard/coder");
+    const row = shown(page, '[data-slot="session-row"]');
+    await expect(row).toContainText(RECENT_CHAT.title);
+    // The project it belongs to is what tells two chats with similar names apart.
+    await expect(row).toContainText(PROJECT.name);
+
+    await row.click();
+
+    await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${RECENT_CHAT.id}$`));
+    // The chat itself, not just its URL: its worktree panel is beside it.
+    await expect(
+      shown(page, '[role="separator"][aria-label="Resize the worktree panel"]'),
+    ).toBeVisible();
 
     await context.close();
   });

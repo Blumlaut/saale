@@ -9,12 +9,11 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { ChatListRow, PinnedChatGroup } from "@/components/chat/chat-list";
-import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
-import { deleteJson } from "@/lib/http";
-import { broadcastSessionsDeleted } from "@/lib/chat/session-events";
+import { deleteChat } from "@/lib/chat/delete-chat";
 import { saveChatPin } from "@/lib/chat/pin";
 import { splitPinnedSessions } from "@/lib/chat/session-recency";
 import { formatRelativeDate } from "@/lib/format";
+import { DeleteCoderChatDialog } from "./delete-chat-dialog";
 import { useProject, type CoderProjectChat } from "./use-coder-data";
 
 /**
@@ -38,16 +37,11 @@ export function ProjectChats({
 
   const remove = async (chat: CoderProjectChat, force: boolean) => {
     try {
-      await deleteJson(
-        `/api/chat/sessions/${encodeURIComponent(chat.id)}${force ? "?force=1" : ""}`,
-      );
+      await deleteChat(chat.id, force);
     } catch (err) {
       console.error(`Failed to delete coder chat ${chat.id}:`, err);
       throw err;
     }
-    // The chat list's other copy (desktop panel, phone sheet) and the main
-    // sidebar all still show the row.
-    broadcastSessionsDeleted([chat.id]);
     reload();
     if (chat.id === activeSessionId) router.push(`/dashboard/coder/${projectId}`);
   };
@@ -160,14 +154,7 @@ export function ProjectChats({
         </PinnedChatGroup>
       </div>
 
-      <ForceDeleteDialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete this chat?"
-        description="This will delete all data in this worktree."
-        discard="this chat's uncommitted changes"
-        onDelete={(force) => (deleting ? remove(deleting, force) : Promise.resolve())}
-      />
+      <DeleteCoderChatDialog chat={deleting} onCancel={() => setDeleting(null)} onDelete={remove} />
     </GlassPanel>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchJson } from "@/lib/http";
+import { createChatSession } from "@/lib/chat-session";
 import {
   CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
@@ -49,6 +51,14 @@ export interface CoderProjectDetail {
     chatMode: CoderChatMode;
   };
   chats: CoderProjectChat[];
+}
+
+/** The first window the landing page's recent chats open with. */
+const RECENT_CHATS_PAGE_SIZE = 8;
+
+/** One chat across every project, as the landing page lists it. */
+export interface CoderRecentChat extends CoderProjectChat {
+  project: { id: string; name: string; slug: string };
 }
 
 /** One changed path in a chat's worktree. */
@@ -235,6 +245,55 @@ export function useProject(projectId: string | null, activeSessionId: string | n
     refreshKey,
   );
   return { project: data?.project ?? null, chats: data?.chats ?? [], loading, error, reload };
+}
+
+/**
+ * The coder chats across every project, widest window the user has asked for.
+ *
+ * "Show more" asks for a wider window rather than a cursor, so the list a user
+ * is reading cannot lose a row to a chat that was just used somewhere else.
+ * `loading` stays true for that wider read while the rows already on screen
+ * wait for it, which is what the button's spinner shows.
+ */
+export function useRecentChats() {
+  const refreshKey = useListRefresh();
+  const [windowSize, setWindowSize] = useState(RECENT_CHATS_PAGE_SIZE);
+  const { data, loading, error } = useLoad<{ chats: CoderRecentChat[]; hasMore: boolean }>(
+    `/api/coder/chats?limit=${windowSize}`,
+    refreshKey,
+  );
+
+  const loadMore = useCallback(() => setWindowSize((size) => size + RECENT_CHATS_PAGE_SIZE), []);
+
+  return {
+    chats: data?.chats ?? [],
+    hasMore: data?.hasMore ?? false,
+    loading,
+    error,
+    loadMore,
+  };
+}
+
+/**
+ * Starts an empty chat in a project and goes to it.
+ *
+ * The project's own panel and the landing page's project rows both need this,
+ * and a chat created here has no message yet: the page claims nothing, the
+ * user types the first one.
+ */
+export function useCoderChatStarter() {
+  const router = useRouter();
+
+  return useCallback(
+    (projectId: string) => {
+      createChatSession({ projectId })
+        .then((session) => router.push(`/dashboard/coder/${projectId}/${session.id}`))
+        .catch((err: unknown) => {
+          console.error(`Failed to create a coder chat in ${projectId}:`, err);
+        });
+    },
+    [router],
+  );
 }
 
 /**
