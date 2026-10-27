@@ -164,6 +164,56 @@ export async function getActiveSessions(userId: string): Promise<Set<string>> {
   }
 }
 
+// ─── Chat Seen Tracking ─────────────────────────────────────────────────────
+
+/**
+ * When the user last had a chat on screen, as a wall-clock timestamp.
+ *
+ * The chat page reports this when an answer lands in front of it, when it
+ * mounts, and when the tab comes back. `notifyChatFinished` compares it against
+ * the moment the turn finished, so a reply the user watched arrive is not also
+ * pushed to their other devices. A timestamp beats a "recently active" flag:
+ * someone who glanced at the chat before the answer existed did not see it.
+ *
+ * Keyed by user rather than by device: any device having the chat on screen
+ * counts. Key format: `chat:seen:{userId}:{sessionId}`.
+ */
+
+const CHAT_SEEN_PREFIX = "chat:seen:";
+const CHAT_SEEN_TTL_SECONDS = 3600;
+
+const chatSeenKey = (userId: string, sessionId: string) =>
+  `${CHAT_SEEN_PREFIX}${userId}:${sessionId}`;
+
+/** Record that the user has this chat on screen right now. */
+export async function markChatSeen(userId: string, sessionId: string): Promise<void> {
+  try {
+    const redis = getRedis();
+    await redis.set(
+      chatSeenKey(userId, sessionId),
+      String(Date.now()),
+      "EX",
+      CHAT_SEEN_TTL_SECONDS,
+    );
+  } catch (err) {
+    console.error(`Failed to record chat ${sessionId} as seen:`, err);
+  }
+}
+
+/** When the user last had that chat on screen, or null if they had not. */
+export async function getChatSeenAt(userId: string, sessionId: string): Promise<number | null> {
+  try {
+    const redis = getRedis();
+    const value = await redis.get(chatSeenKey(userId, sessionId));
+    if (value === null) return null;
+    const seenAt = Number(value);
+    return Number.isFinite(seenAt) ? seenAt : null;
+  } catch (err) {
+    console.error(`Failed to read when chat ${sessionId} was seen:`, err);
+    return null;
+  }
+}
+
 // ─── Coder Terminal Tracking ────────────────────────────────────────────────
 
 /**

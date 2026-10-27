@@ -12,6 +12,7 @@ import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
+import { useChatSeen } from "@/hooks/use-chat-seen";
 import { loadDraft } from "@/lib/chat/draft";
 import { shouldAutoDeleteSession } from "@/lib/chat/auto-delete";
 import { useCompactActivity } from "@/hooks/use-compact-activity";
@@ -138,6 +139,7 @@ export function ChatInterface({
     errorMessage: string;
   } | null>(null);
   const { markStreaming, markDone } = useStreamingSessions();
+  const reportSeen = useChatSeen(sessionId);
   // Slash command waiting for a choice (an interactive command's prompt).
   const [commandPrompt, setCommandPrompt] = useState<{
     name: string;
@@ -863,6 +865,14 @@ export function ChatInterface({
       markDone(sessionId);
     }
   }, [isLoading, sessionId, markStreaming, markDone]);
+
+  // A turn that finished while this chat was on screen is one the user read, so
+  // the push is skipped on their other devices.
+  const wasLoadingRef = useRef(false);
+  useEffect(() => {
+    if (wasLoadingRef.current && !isLoading) reportSeen();
+    wasLoadingRef.current = isLoading;
+  }, [isLoading, reportSeen]);
 
   // Re-sync from the DB when the tab becomes visible again. The SSE keep-alive
   // connection self-heals on its own, but a server restart mid-generation can
