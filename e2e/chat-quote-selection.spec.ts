@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { bootstrapSession, type E2ESession } from "./utils";
+import { createChatSession, discardChatSessions, sessionContext } from "./utils";
 
 /**
  * Selection quote guardrail.
@@ -21,7 +21,6 @@ const WORD = "electroencephalography";
 const MESSAGE_COUNT = 16;
 const BTN_LABEL = "Quote selection into your reply";
 
-let session: E2ESession | null = null;
 let sessionId = "";
 
 /**
@@ -116,42 +115,22 @@ async function geometry(page: Page) {
 }
 
 test.describe("selection quote", () => {
+  // A live transcript, a scroll and a selection: the budget this one needs.
   test.describe.configure({ timeout: 180_000 });
 
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-
-    const ctx = await browser.newContext({ storageState: session.storageState });
-    const page = await ctx.newPage();
-    try {
-      await page.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
-      const res = await page.request.post("/api/chat/sessions", {
-        data: { title: "quote selection guardrail" },
-      });
-      expect(res.ok(), `creating a chat session failed (${res.status()})`).toBe(true);
-      const body = (await res.json()) as { session?: { id?: string } };
-      sessionId = body.session?.id ?? "";
-      if (sessionId) await seedTranscript();
-    } finally {
-      await ctx.close();
-    }
+  test.beforeAll(async ({ request }) => {
+    sessionId = await createChatSession(request, "quote selection guardrail");
+    await seedTranscript();
   });
 
   test.afterAll(async ({ request }) => {
-    if (!sessionId) return;
-    await request.delete(`/api/chat/sessions/${sessionId}`).catch((err) => {
-      console.error(`e2e: cleaning up chat ${sessionId} failed`, err);
-    });
+    await discardChatSessions(request, sessionId ? [sessionId] : []);
   });
 
   test("marking text in a scrolled transcript shows the pill next to the selection", async ({
     browser,
   }) => {
-    test.skip(!sessionId, "could not create a chat session");
-    const ctx = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
 
     try {

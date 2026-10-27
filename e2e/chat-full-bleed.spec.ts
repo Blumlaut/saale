@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
-import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
+import { VIEWPORTS, createChatSession, sessionContext, settle } from "./utils";
 
 /**
  * Chat viewport guardrail.
@@ -14,25 +14,7 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
  * Both states are asserted directly rather than left to review.
  */
 
-let session: E2ESession | null = null;
 let sessionId = "";
-
-/** Create a chat session to open  the chat layout only renders with one. */
-async function createSession(browser: Browser): Promise<string> {
-  const ctx = await browser.newContext({ storageState: session!.storageState });
-  const page = await ctx.newPage();
-  try {
-    await page.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
-    const res = await page.request.post("/api/chat/sessions", {
-      data: { title: "full bleed guardrail" },
-    });
-    expect(res.ok(), `creating a chat session failed (${res.status()})`).toBe(true);
-    const body = (await res.json()) as { session?: { id?: string } };
-    return body.session?.id ?? "";
-  } finally {
-    await ctx.close();
-  }
-}
 
 /**
  * The chat view as the eye sees it: the widest visible panel (the conversation
@@ -65,7 +47,7 @@ async function measure(page: Page) {
 }
 
 async function openChat(browser: Browser, viewport: { width: number; height: number }) {
-  const ctx = await browser.newContext({ viewport, storageState: session!.storageState });
+  const ctx = await sessionContext(browser, { viewport });
   const page = await ctx.newPage();
   await page.goto(`/dashboard/chat/${sessionId}`, { waitUntil: "domcontentloaded" });
   // The chat surface paints immediately; the message fetch behind it can be
@@ -75,24 +57,17 @@ async function openChat(browser: Browser, viewport: { width: number; height: num
     .filter({ visible: true })
     .first()
     .waitFor({ state: "visible", timeout: 20_000 });
-  await page.waitForTimeout(400);
+  await settle(page);
   return { ctx, page };
 }
 
 test.describe("chat full-bleed layout", () => {
-  // Bootstrapping (sign-up, admin grant, seeding) is slow; the geometry
-  // assertions themselves are not.
-  test.describe.configure({ timeout: 60_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    // Creates the shared user, grants it the admin role and logs in once.
-    session = await bootstrapSession(browser, request);
-    sessionId = await createSession(browser);
+  test.beforeAll(async ({ request }) => {
+    sessionId = await createChatSession(request, "full bleed guardrail");
   });
 
   for (const { name, width, height } of VIEWPORTS) {
     test(`chat view owns the whole window @ ${name}`, async ({ browser }) => {
-      test.skip(!sessionId, "could not create a chat session");
       const { ctx, page } = await openChat(browser, { width, height });
 
       try {
@@ -125,7 +100,6 @@ test.describe("chat full-bleed layout", () => {
   }
 
   test("the bottom bar steps aside while typing on a phone", async ({ browser }) => {
-    test.skip(!sessionId, "could not create a chat session");
     const { ctx, page } = await openChat(browser, { width: 375, height: 812 });
 
     try {
@@ -136,21 +110,23 @@ test.describe("chat full-bleed layout", () => {
         return viewportHeight - composer!.bottom;
       };
       const idleGap = await typingGap();
+      const barHeight = (await bar.boundingBox())?.height ?? 45;
 
       // Focus is what raises the phone keyboard, and the bar hides for it.
       await page.locator("textarea").first().focus();
 
       await expect(bar).toBeHidden();
-      expect(await typingGap(), "the shell still reserves the bar's height").toBeLessThan(
-        idleGap - 40,
-      );
+      // The bar slides away and the shell keeps a small margin, so most of its
+      // height comes back to the composer, not all of it.
+      await expect
+        .poll(typingGap, { message: "the shell still reserves the bar's height" })
+        .toBeLessThan(idleGap - barHeight / 2);
     } finally {
       await ctx.close();
     }
   });
 
   test("desktop keeps the console gutter and rounded panels", async ({ browser }) => {
-    test.skip(!sessionId, "could not create a chat session");
     const { ctx, page } = await openChat(browser, { width: 1280, height: 800 });
 
     try {

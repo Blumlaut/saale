@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
 
-import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
+import { VIEWPORTS, createChatSession, sessionContext, settle } from "./utils";
 
 /**
  * File drag & drop on the chat.
@@ -13,7 +13,6 @@ import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
  * in the same pending strip the paperclip fills.
  */
 
-let session: E2ESession | null = null;
 let sessionId = "";
 
 const DROP_HINT = "Drop files to attach";
@@ -25,30 +24,14 @@ function visible(page: Page, selector: string): Locator {
   return page.locator(selector).filter({ visible: true }).first();
 }
 
-/** Create a chat session to open  the chat layout only renders with one. */
-async function createSession(browser: Browser): Promise<string> {
-  const ctx = await browser.newContext({ storageState: session!.storageState });
-  const page = await ctx.newPage();
-  try {
-    await page.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
-    const res = await page.request.post("/api/chat/sessions", {
-      data: { title: "file drop guardrail" },
-    });
-    expect(res.ok(), `creating a chat session failed (${res.status()})`).toBe(true);
-    const body = (await res.json()) as { session?: { id?: string } };
-    return body.session?.id ?? "";
-  } finally {
-    await ctx.close();
-  }
-}
-
+/** Open the chat at a given viewport and wait for the composer. */
 async function openChat(browser: Browser, viewport: { width: number; height: number }) {
-  const ctx = await browser.newContext({ viewport, storageState: session!.storageState });
+  const ctx = await sessionContext(browser, { viewport });
   const page = await ctx.newPage();
   await page.goto(`/dashboard/chat/${sessionId}`, { waitUntil: "domcontentloaded" });
   await visible(page, DROP_ZONE).waitFor({ state: "visible", timeout: 20_000 });
   await visible(page, COMPOSER).waitFor({ state: "visible", timeout: 20_000 });
-  await page.waitForTimeout(400);
+  await settle(page);
   return { ctx, page };
 }
 
@@ -73,16 +56,12 @@ async function dragFileOver(page: Page, target: Locator, name: string, type: str
 }
 
 test.describe("chat file drop", () => {
-  test.describe.configure({ timeout: 60_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-    sessionId = await createSession(browser);
+  test.beforeAll(async ({ request }) => {
+    sessionId = await createChatSession(request, "file drop guardrail");
   });
 
   for (const { name, width, height } of VIEWPORTS) {
     test(`a dropped file is staged in the composer @ ${name}`, async ({ browser }) => {
-      test.skip(!sessionId, "could not create a chat session");
       const { ctx, page } = await openChat(browser, { width, height });
 
       try {
@@ -141,7 +120,6 @@ test.describe("chat file drop", () => {
   }
 
   test("previews an image, and leaves a text drag alone", async ({ browser }) => {
-    test.skip(!sessionId, "could not create a chat session");
     const { ctx, page } = await openChat(browser, { width: 1280, height: 800 });
 
     try {

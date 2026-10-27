@@ -1,6 +1,6 @@
-import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-import { bootstrapSession, type E2ESession } from "./utils";
+import { sessionContext } from "./utils";
 import { SETTINGS_ROOT } from "@/lib/navigation/settings-nav";
 
 /**
@@ -12,21 +12,6 @@ import { SETTINGS_ROOT } from "@/lib/navigation/settings-nav";
  * section the user is on.
  */
 
-const DESKTOP = { width: 1280, height: 900 };
-
-let session: E2ESession | null = null;
-
-// Each case loads real pages on a cold dev server.
-test.describe.configure({ mode: "serial", timeout: 120_000 });
-
-test.beforeAll(async ({ browser, request }) => {
-  session = await bootstrapSession(browser, request);
-});
-
-function newContext(browser: Browser): Promise<BrowserContext> {
-  return browser.newContext({ viewport: DESKTOP, storageState: session!.storageState });
-}
-
 /** The sidebar item for a settings section. */
 function sidebarSection(page: Page, label: string) {
   return page.locator("nav.sidebar-nav").getByRole("link", { name: label, exact: true });
@@ -34,8 +19,7 @@ function sidebarSection(page: Page, label: string) {
 
 test.describe("settings navigation", () => {
   test("lands on a section instead of a bare settings URL", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await newContext(browser);
+    const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
 
     await page.goto(SETTINGS_ROOT, { waitUntil: "domcontentloaded" });
@@ -47,8 +31,7 @@ test.describe("settings navigation", () => {
   });
 
   test("marks the current section in the sidebar", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await newContext(browser);
+    const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
 
     // One per group: the sidebar nests the sections under Settings, and the one
@@ -60,17 +43,14 @@ test.describe("settings navigation", () => {
       { href: `${SETTINGS_ROOT}/security`, label: "Security" },
     ]) {
       await page.goto(section.href, { waitUntil: "domcontentloaded" });
-      await expect(sidebarSection(page, section.label)).toHaveAttribute("aria-current", "page", {
-        timeout: 20_000,
-      });
+      await expect(sidebarSection(page, section.label)).toHaveAttribute("aria-current", "page");
     }
 
     await ctx.close();
   });
 
   test("still resolves the old ?tab= links", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await newContext(browser);
+    const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
 
     await page.goto(`${SETTINGS_ROOT}?tab=memories`, { waitUntil: "domcontentloaded" });
@@ -81,8 +61,7 @@ test.describe("settings navigation", () => {
   });
 
   test("falls back to the default section for an unknown tab", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await newContext(browser);
+    const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 900 } });
     const page = await ctx.newPage();
 
     await page.goto(`${SETTINGS_ROOT}?tab=bogus`, { waitUntil: "domcontentloaded" });

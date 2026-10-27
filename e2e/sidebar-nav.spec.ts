@@ -1,6 +1,12 @@
-import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 
-import { bootstrapSession, type E2ESession } from "./utils";
+import { sessionContext } from "./utils";
 import {
   SIDEBAR_NAV_ITEM_IDS,
   SIDEBAR_NAV_ITEMS,
@@ -42,28 +48,20 @@ const NAV_LABELS = [
 ];
 const NAV_LABELS_ANY = [...NAV_LABELS, "Council"];
 
-let session: E2ESession | null = null;
-
 test.describe.configure({ mode: "serial" });
 
-async function resetLayout(browser: Browser): Promise<void> {
-  if (!session) return;
-  const ctx = await browser.newContext({ storageState: session.storageState });
-  const res = await ctx.request.patch("/api/settings/sidebar-nav", { data: { items: null } });
+/** The layout lives on the shared user, so every test starts from the default. */
+async function resetLayout(request: APIRequestContext): Promise<void> {
+  const res = await request.patch("/api/settings/sidebar-nav", { data: { items: null } });
   if (!res.ok()) console.warn(`e2e: sidebar layout reset failed (${res.status()})`);
-  await ctx.close();
 }
 
-test.beforeAll(async ({ browser, request }) => {
-  session = await bootstrapSession(browser, request);
+test.beforeEach(async ({ request }) => {
+  await resetLayout(request);
 });
 
-test.beforeEach(async ({ browser }) => {
-  await resetLayout(browser);
-});
-
-test.afterAll(async ({ browser }) => {
-  await resetLayout(browser);
+test.afterAll(async ({ request }) => {
+  await resetLayout(request);
 });
 
 /** The desktop sidebar's item labels, top to bottom. */
@@ -91,14 +89,19 @@ function sidebarItem(page: Page, label: string) {
 async function mobileNavLabels(page: Page): Promise<string[]> {
   const bar = page.locator("nav.md\\:hidden");
   await expect(bar).toBeVisible();
-  return (await bar.locator("a").allInnerTexts()).map((label) => label.trim());
+  // The bar is icons only: the name lives in the link's label.
+  return await bar
+    .locator("a")
+    .evaluateAll((links) => links.map((link) => (link.getAttribute("aria-label") ?? "").trim()));
 }
 
 /** The visible item ids as the server stores them  proves a save landed. */
 async function persistedIds(ctx: BrowserContext): Promise<string[]> {
   const res = await ctx.request.get("/api/settings/sidebar-nav");
-  const { items } = (await res.json()) as { items: { id: string; hidden: boolean }[] };
-  return items.filter((item) => !item.hidden).map((item) => item.id);
+  const body = (await res.json()) as { items?: { id: string; hidden: boolean }[] };
+  // A failed read leaves the poll nothing to compare, so say what went wrong.
+  if (!body.items) throw new Error(`e2e: reading the sidebar layout failed (${res.status()})`);
+  return body.items.filter((item) => !item.hidden).map((item) => item.id);
 }
 
 /** Open Settings → Appearance and wait for the sidebar editor. */
@@ -113,11 +116,7 @@ test.describe("sidebar customization", () => {
   test("reorders an item with the arrow buttons and keeps it after a reload", async ({
     browser,
   }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: DESKTOP,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: DESKTOP });
     const page = await ctx.newPage();
     await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
 
@@ -156,11 +155,7 @@ test.describe("sidebar customization", () => {
   });
 
   test("reorders an item by dragging it", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: DESKTOP,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: DESKTOP });
     const page = await ctx.newPage();
     await openAppearance(page);
 
@@ -187,11 +182,7 @@ test.describe("sidebar customization", () => {
   });
 
   test("hides an item from the desktop sidebar and the mobile bar", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: DESKTOP,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: DESKTOP });
     const page = await ctx.newPage();
     await openAppearance(page);
 
@@ -209,10 +200,7 @@ test.describe("sidebar customization", () => {
     await ctx.close();
 
     // Same layout on a phone: the bottom bar drops the item and keeps the order.
-    const mobile = await browser.newContext({
-      viewport: MOBILE,
-      storageState: session!.storageState,
-    });
+    const mobile = await sessionContext(browser, { viewport: MOBILE });
     const mobilePage = await mobile.newPage();
     await mobilePage.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
 
@@ -231,11 +219,7 @@ test.describe("sidebar customization", () => {
   test("reflects a layout saved elsewhere and restores the default on reset", async ({
     browser,
   }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: DESKTOP,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: DESKTOP });
     const page = await ctx.newPage();
 
     const res = await ctx.request.patch("/api/settings/sidebar-nav", {
@@ -275,11 +259,7 @@ test.describe("sidebar customization", () => {
   });
 
   test("keeps the last visible item from being hidden", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: DESKTOP,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: DESKTOP });
     const page = await ctx.newPage();
 
     const res = await ctx.request.patch("/api/settings/sidebar-nav", {
@@ -311,11 +291,7 @@ test.describe("sidebar customization", () => {
   });
 
   test("fits the editor on a 320px screen", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const phone = await browser.newContext({
-      viewport: { width: 320, height: 667 },
-      storageState: session!.storageState,
-    });
+    const phone = await sessionContext(browser, { viewport: { width: 320, height: 667 } });
     const phonePage = await phone.newPage();
     await openAppearance(phonePage);
 

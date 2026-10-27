@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { bootstrapSession, gotoAndSettle, type E2ESession } from "./utils";
+import { createChatSession, gotoAndSettle, sessionContext, settle } from "./utils";
 
 /**
  * Mobile content-fit guardrails.
@@ -53,18 +53,9 @@ const MODEL_LIST_BODY = {
   disabledModels: [],
 };
 
-let session: E2ESession | null = null;
-
 test.describe("mobile content fit", () => {
-  test.describe.configure({ timeout: 90_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-  });
-
   test("model names stay readable beside their badges on a phone", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({ viewport: MOBILE, storageState: session!.storageState });
+    const ctx = await sessionContext(browser, { viewport: MOBILE });
     const page = await ctx.newPage();
 
     // The e2e user has no providers; the list only renders with a stubbed one.
@@ -78,8 +69,8 @@ test.describe("mobile content fit", () => {
     );
 
     await gotoAndSettle(page, "/dashboard/settings/models");
-    // The inventory is folded away below the pickers.
-    await page.getByText("Models", { exact: true }).last().click();
+    // The inventory lives under a fold, and only the fold's title names it.
+    await page.locator('button:has-text("Hide the models you never pick.")').click();
     await expect(page.getByText("DeepSeek Reasoner").first()).toBeVisible();
 
     // Reveal the list, then measure every rendered (visible) model name.
@@ -94,7 +85,7 @@ test.describe("mobile content fit", () => {
         }
       }
     });
-    await page.waitForTimeout(300);
+    await settle(page);
 
     const names = await page.evaluate(() =>
       [...document.querySelectorAll("span.truncate.text-sm")]
@@ -122,18 +113,13 @@ test.describe("mobile content fit", () => {
   test("mobile session sheet offers a New Chat action that opens a fresh chat", async ({
     browser,
   }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({ viewport: MOBILE, storageState: session!.storageState });
+    const ctx = await sessionContext(browser, { viewport: MOBILE });
     const page = await ctx.newPage();
 
     // Open an existing session so the header (and its sheet trigger) renders.
-    const created = await page.request.post("/api/chat/sessions", {
-      data: { title: "E2E content-fit session" },
-    });
-    expect(created.ok()).toBeTruthy();
-    const { session: active } = (await created.json()) as { session: { id: string } };
+    const activeId = await createChatSession(page.request, "E2E content-fit session");
 
-    await gotoAndSettle(page, `/dashboard/chat/${active.id}`);
+    await gotoAndSettle(page, `/dashboard/chat/${activeId}`);
     await page.getByRole("button", { name: "Open session list" }).first().click();
 
     const sheet = page.locator('[data-slot="sheet-content"]');
@@ -141,11 +127,15 @@ test.describe("mobile content fit", () => {
 
     const newChat = sheet.getByRole("button", { name: "New Chat" });
     await expect(newChat).toBeVisible();
+    // The button creates the chat before it navigates to it.
+    const created = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" && response.url().endsWith("/api/chat/sessions"),
+    );
     await newChat.click();
+    expect((await created).ok(), "creating the new chat failed").toBe(true);
 
-    await expect(page).toHaveURL(new RegExp(`/dashboard/chat/(?!${active.id}$)[0-9a-f-]{36}$`), {
-      timeout: 15_000,
-    });
+    await expect(page).toHaveURL(new RegExp(`/dashboard/chat/(?!${activeId}$)[0-9a-f-]{36}$`));
     // The sheet closes with the navigation, not left open over the new chat.
     await expect(sheet).toBeHidden();
 
@@ -153,11 +143,7 @@ test.describe("mobile content fit", () => {
   });
 
   test("the icon bar keeps every item inside its cell on a 320px phone", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const ctx = await browser.newContext({
-      viewport: SMALL_PHONE,
-      storageState: session!.storageState,
-    });
+    const ctx = await sessionContext(browser, { viewport: SMALL_PHONE });
     const page = await ctx.newPage();
 
     // Default 7-item layout is the one that used to squeeze "Calendar".
