@@ -62,6 +62,11 @@ A full run is ~3 minutes. What makes it fast:
 - **Four workers.** More workers against the same server queue behind each
   other. `workers` in the config is not a knob to raise casually.
 
+A dev server is for one file at a time (`E2E_SERVER=dev`, or just reuse the dev
+server you have open). Under four workers it compiles routes on demand and a
+client-side transition can take seconds; the suite is tuned for the built
+server, so judge a full run by the default command.
+
 `BASE_URL` overrides the target (a preview, a deployment). Then the app under
 test must share this checkout's database or the admin grant fails loudly on
 purpose.

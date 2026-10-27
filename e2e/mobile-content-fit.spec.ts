@@ -135,7 +135,10 @@ test.describe("mobile content fit", () => {
     await newChat.click();
     expect((await created).ok(), "creating the new chat failed").toBe(true);
 
-    await expect(page).toHaveURL(new RegExp(`/dashboard/chat/(?!${activeId}$)[0-9a-f-]{36}$`));
+    // The route transition is client-side: a dev server can take a while.
+    await expect(page).toHaveURL(new RegExp(`/dashboard/chat/(?!${activeId}$)[0-9a-f-]{36}$`), {
+      timeout: 30_000,
+    });
     // The sheet closes with the navigation, not left open over the new chat.
     await expect(sheet).toBeHidden();
 
