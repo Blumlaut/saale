@@ -59,6 +59,9 @@ export const auth = betterAuth({
     expiresIn: SESSION_EXPIRES_IN_SECONDS,
     updateAge: SESSION_REFRESH_WINDOW_SECONDS,
   },
+  // The limit keys on the client IP, and the e2e suite reaches the server from
+  // one address: every run would answer 429 halfway through.
+  rateLimit: { enabled: process.env.AUTH_RATE_LIMIT !== "off" },
   hooks: {
     // Usernames are the login handle, so a credential account created without
     // one could not be signed into. both entry points must carry it.

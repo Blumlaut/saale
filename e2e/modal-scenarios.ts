@@ -605,6 +605,7 @@ async function mockCoderChat(page: Page) {
           path: "worktrees/e2e-project-with-a-long-name/c-1a2b3c4d",
           branch: "wt/c-1a2b3c4d",
           baseSha: "0".repeat(40),
+          mode: "worktree",
         },
         project: {
           id: "e2e-project",
@@ -618,6 +619,7 @@ async function mockCoderChat(page: Page) {
         behind: 0,
         changes: [],
         commits: [],
+        scripts: [],
       },
     }),
   );
@@ -1020,6 +1022,8 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockConfigurableModels,
     open: async (page) => {
       await openSettingsSection(page, "models");
+      // The inventory lives under a fold, and only the fold's title names it.
+      await click(page, 'button:has-text("Hide the models you never pick.")');
       await click(page, '[title="Set this model\'s context window and output cap"]');
     },
   },
@@ -1344,9 +1348,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       const sessionId = await seedPendingPluginDialog(page);
       await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
-      await visible(page, "text=Deploy saale@2026.10.26 to production?").waitFor({
-        state: "visible",
-        timeout: 30_000,
+      const dialog = visible(page, "text=Deploy saale@2026.10.26 to production?");
+      // The chat polls for pending dialogs every few seconds; a seed the server
+      // read before it was written is worth another seed, not a failed run.
+      await dialog.waitFor({ state: "visible", timeout: 15_000 }).catch(async (err) => {
+        console.warn("e2e: the plugin dialog never showed, seeding it again", err);
+        await seedPendingPluginDialog(page);
+        await dialog.waitFor({ state: "visible", timeout: 15_000 });
       });
     },
   },

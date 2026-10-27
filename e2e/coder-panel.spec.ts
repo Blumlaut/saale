@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 
-import { bootstrapSession, gotoAndSettle, VIEWPORTS, type E2ESession } from "./utils";
+import { gotoAndSettle, sessionContext, VIEWPORTS } from "./utils";
 
 /**
  * The coder panel's UI contract.
@@ -29,6 +29,11 @@ function shown(page: Page, selector: string) {
   return page.locator(`${selector}:visible`).first();
 }
 
+/** The on-screen copy of an element found by its text. */
+function shownText(page: Page, text: string) {
+  return page.locator(`text=${text}`).filter({ visible: true }).first();
+}
+
 const PROJECT = {
   id: PROJECT_ID,
   name: "e2e-project-with-a-long-name",
@@ -47,7 +52,7 @@ const CHAT = {
 };
 
 const STATUS = {
-  worktree: { path: WORKTREE, branch: BRANCH, baseSha: "0".repeat(40) },
+  worktree: { path: WORKTREE, branch: BRANCH, baseSha: "0".repeat(40), mode: "worktree" },
   project: { id: PROJECT_ID, name: PROJECT.name, slug: PROJECT.slug },
   branch: BRANCH,
   head: "1".repeat(40),
@@ -74,6 +79,8 @@ const STATUS = {
       untracked: false,
     },
   ],
+  // The panel renders a run button per script; the field is required.
+  scripts: [{ name: "test", command: "npm test", runCommand: "npm test" }],
   commits: [
     {
       sha: "abcdef1234567890",
@@ -248,22 +255,18 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
   );
 }
 
-let session: E2ESession | null = null;
+/** A coder page with the API stubbed, on the route this test measures. */
+async function openCoder(browser: Browser, path: string) {
+  const context = await sessionContext(browser);
+  const page = await context.newPage();
+  await mockCoder(page);
+  await gotoAndSettle(page, path);
+  return { context, page };
+}
 
 test.describe("coder panel", () => {
-  test.describe.configure({ timeout: 90_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-  });
-
   test("lists projects and opens one", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, "/dashboard/coder");
+    const { context, page } = await openCoder(browser, "/dashboard/coder");
     await expect(page.locator("text=" + PROJECT.name).first()).toBeVisible();
 
     await page
@@ -281,12 +284,7 @@ test.describe("coder panel", () => {
   test("shows the branch, the changed files and a diff of the one that is open", async ({
     browser,
   }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
     await expect(page.getByText("notes.md", { exact: false }).first()).toBeVisible();
 
@@ -300,14 +298,9 @@ test.describe("coder panel", () => {
   test("widens the worktree panel by dragging its edge and remembers the width", async ({
     browser,
   }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     const handle = shown(page, '[role="separator"][aria-label="Resize the worktree panel"]');
-    const panel = page.locator("text=Project").first();
+    const panel = shownText(page, "Project");
 
     const before = (await handle.boundingBox())!;
     await page.mouse.move(before.x + before.width / 2, before.y + 200);
@@ -337,12 +330,7 @@ test.describe("coder panel", () => {
   });
 
   test("keeps the file rows tight in the worktree panel", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Files")').click();
 
     const name = page.locator('button:has-text("README.md")').first();
@@ -356,12 +344,7 @@ test.describe("coder panel", () => {
   });
 
   test("opens a file as a tab in the panel", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Files")').click();
     await page.locator('button:has-text("README.md")').first().click();
 
@@ -377,12 +360,7 @@ test.describe("coder panel", () => {
   });
 
   test("keeps the panel tabs on one row when a file is open", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Files")').click();
     await page.locator('button:has-text("README.md")').first().click();
     await expect(shown(page, '[role="tab"][aria-label="README.md"]')).toBeVisible();
@@ -396,12 +374,7 @@ test.describe("coder panel", () => {
   });
 
   test("runs a command in the worktree from the terminal tab", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Terminal")').click();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
 
@@ -416,18 +389,13 @@ test.describe("coder panel", () => {
   });
 
   test("lists the ports a dev server took, each with a link that opens it", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Ports")').click();
 
-    await expect(page.locator("text=5173").first()).toBeVisible();
+    await expect(shownText(page, "5173")).toBeVisible();
     // A loopback bind is listed with a hint rather than a link.
-    await expect(page.locator("text=8080").first()).toBeVisible();
-    await expect(page.locator("text=loopback").first()).toBeVisible();
+    await expect(shownText(page, "8080")).toBeVisible();
+    await expect(shownText(page, "loopback")).toBeVisible();
     await expect(page.locator('[aria-label="Open port 8080 in a new tab"]')).toHaveCount(0);
 
     const open = page.locator('[aria-label="Open port 5173 in a new tab"]');
@@ -439,12 +407,7 @@ test.describe("coder panel", () => {
   });
 
   test("stops a dev server from the port row menu", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
-    const page = await context.newPage();
-    await mockCoder(page);
-
-    await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Ports")').click();
     await shown(page, '[aria-label="Port 5173 actions"]').click();
 
@@ -456,8 +419,7 @@ test.describe("coder panel", () => {
   });
 
   test("keeps the chat when git refuses to remove its worktree", async ({ browser }) => {
-    test.skip(!session, "login failed");
-    const context = await browser.newContext({ storageState: session!.storageState });
+    const context = await sessionContext(browser);
     const page = await context.newPage();
     await mockCoder(page, { deleteStatus: 409 });
     await page.route(/\/api\/chat\/sessions\/[^/]+$/, (route) =>
@@ -482,12 +444,9 @@ test.describe("coder panel", () => {
   });
 
   test("fits the project list and the chat page at phone widths", async ({ browser }) => {
-    test.skip(!session, "login failed");
-
     for (const viewport of VIEWPORTS) {
-      const context = await browser.newContext({
+      const context = await sessionContext(browser, {
         viewport: { width: viewport.width, height: viewport.height },
-        storageState: session!.storageState,
       });
       const page = await context.newPage();
       await mockCoder(page);
@@ -505,7 +464,7 @@ test.describe("coder panel", () => {
       await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
       await shown(page, '[aria-label="Open worktree panel"]').click();
       await shown(page, '[role="tab"]:text-is("Ports")').click();
-      await expect(page.locator("text=5173").first()).toBeVisible();
+      await expect(shownText(page, "5173")).toBeVisible();
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );

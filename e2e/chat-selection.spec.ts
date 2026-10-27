@@ -1,6 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
-import { bootstrapSession, type E2ESession } from "./utils";
+import { createChatSession, discardChatSessions, sessionContext } from "./utils";
 
 /**
  * Chat multi-select guardrail.
@@ -21,22 +21,12 @@ const BETA = "selection beta";
 const DELTA = "selection delta";
 const EPSILON = "selection epsilon";
 
-let session: E2ESession | null = null;
-
 /** Fixtures arrive through the real API; each test removes what it created. */
 async function createChats(browser: Browser, titles: string[]): Promise<string[]> {
-  const ctx = await browser.newContext({ storageState: session!.storageState });
-  const page = await ctx.newPage();
+  const ctx = await sessionContext(browser);
   try {
-    await page.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
     const ids: string[] = [];
-    for (const title of titles) {
-      const res = await page.request.post("/api/chat/sessions", { data: { title } });
-      expect(res.ok(), `creating "${title}" failed (${res.status()})`).toBe(true);
-      const body = (await res.json()) as { session?: { id?: string } };
-      if (!body.session?.id) throw new Error(`no session id for "${title}" (${res.status()})`);
-      ids.push(body.session.id);
-    }
+    for (const title of titles) ids.push(await createChatSession(ctx.request, title));
     return ids;
   } finally {
     await ctx.close();
@@ -45,10 +35,9 @@ async function createChats(browser: Browser, titles: string[]): Promise<string[]
 
 /** The chat list with its rows on screen. `/dashboard/chat` is the empty view. */
 async function openList(browser: Browser) {
-  const ctx = await browser.newContext({
+  const ctx = await sessionContext(browser, {
     viewport: { width: 768, height: 900 },
     hasTouch: true,
-    storageState: session!.storageState,
   });
   const page = await ctx.newPage();
   await page.goto("/dashboard/chat", { waitUntil: "domcontentloaded" });
@@ -83,20 +72,10 @@ async function holdTouch(page: Page, x: number, y: number, ms: number) {
 }
 
 async function discard(page: Page, ids: string[]) {
-  for (const id of ids) {
-    await page.request.delete(`/api/chat/sessions/${id}`).catch((err) => {
-      console.error(`e2e: cleaning up chat ${id} failed`, err);
-    });
-  }
+  await discardChatSessions(page.request, ids);
 }
 
 test.describe("chat multi-select", () => {
-  test.describe.configure({ timeout: 120_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-  });
-
   test("a tap picks a chat anywhere on its row", async ({ browser }) => {
     const chats = await createChats(browser, [ALPHA, BETA]);
     const { ctx, page } = await openList(browser);

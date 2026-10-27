@@ -13,8 +13,9 @@ import {
  * For cross-instance rate limiting, handle it at the reverse proxy level (nginx/Traefik).
  */
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 60;
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000);
+// The e2e suite sends every request from one address, so a run raises this.
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 60);
 
 function isRateLimited(key: string): boolean {
   const now = Date.now();

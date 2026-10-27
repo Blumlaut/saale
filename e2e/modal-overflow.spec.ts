@@ -2,7 +2,7 @@ import { test } from "@playwright/test";
 
 import { MODAL_SCENARIOS } from "./modal-scenarios";
 import { expectOverlayFits, waitForOverlay } from "./overlay-layout";
-import { VIEWPORTS, bootstrapSession, gotoAndSettle, type E2ESession } from "./utils";
+import { VIEWPORTS, gotoAndSettle, sessionContext } from "./utils";
 
 /**
  * Modal layout guardrails.
@@ -17,16 +17,7 @@ import { VIEWPORTS, bootstrapSession, gotoAndSettle, type E2ESession } from "./u
  * `modal-scenarios.ts`.
  */
 
-let session: E2ESession | null = null;
-
 test.describe("modal layout guardrails", () => {
-  // Bootstrap logs in and seeds fixtures  slower than a single page visit.
-  test.describe.configure({ timeout: 90_000 });
-
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-  });
-
   for (const { name, width, height } of VIEWPORTS) {
     for (const scenario of MODAL_SCENARIOS) {
       const title = `${scenario.name} @ ${name}`;
@@ -37,12 +28,7 @@ test.describe("modal layout guardrails", () => {
       }
 
       test(title, async ({ browser }) => {
-        test.skip(!session, "login failed");
-
-        const ctx = await browser.newContext({
-          viewport: { width, height },
-          storageState: session!.storageState,
-        });
+        const ctx = await sessionContext(browser, { viewport: { width, height } });
         const page = await ctx.newPage();
 
         try {

@@ -1,23 +1,43 @@
-import type { APIRequestContext, Browser, BrowserContext, Page } from "@playwright/test";
+import type {
+  APIRequestContext,
+  Browser,
+  BrowserContext,
+  BrowserContextOptions,
+  Page,
+} from "@playwright/test";
 
-/**
- * Shared helpers for the layout guardrail suites (`mobile-overflow.spec.ts`,
- * `modal-overflow.spec.ts`).
- */
+import { SESSION_FILE } from "./env";
 
+/** The account every suite runs as. Created and seeded by `global-setup.ts`. */
 export const E2E_EMAIL = "e2e-mobile@saale.local";
 export const E2E_USERNAME = "e2e-mobile";
 export const E2E_PASSWORD = "TestPass123!";
 
-/** Phone widths every guardrail runs at  see AGENTS.md "Mobile-First Layouts". */
+/** Phone widths the layout guardrails run at  see AGENTS.md "Mobile-First Layouts". */
 export const VIEWPORTS = [
   { name: "375px", width: 375, height: 667 }, // iPhone SE
   { name: "320px", width: 320, height: 667 }, // smallest common phone
 ];
 
-export type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
+/** The page region every dashboard and admin route renders into. */
+const SHELL = "main";
 
-/** Sign the shared e2e user up. An existing user is fine (any non-2xx is ignored). */
+export type StorageState = Awaited<ReturnType<APIRequestContext["storageState"]>>;
+
+/**
+ * A context carrying the signed-in session.
+ *
+ * `browser.newContext()` does not inherit `use.storageState`, only the built-in
+ * `context`/`page` fixtures do  specs that pick their own viewport call this.
+ */
+export function sessionContext(
+  browser: Browser,
+  options: BrowserContextOptions = {},
+): Promise<BrowserContext> {
+  return browser.newContext({ ...options, storageState: SESSION_FILE });
+}
+
+/** Sign the suite's user up. An existing user is fine (any non-2xx is ignored). */
 export async function ensureUser(request: APIRequestContext): Promise<void> {
   await request.post("/api/auth/sign-up/email", {
     data: {
@@ -27,6 +47,30 @@ export async function ensureUser(request: APIRequestContext): Promise<void> {
       username: E2E_USERNAME,
     },
   });
+}
+
+/**
+ * Sign in through the API and keep the cookies.
+ *
+ * The UI form would cost a navigation and a compile of the login route for the
+ * same cookie. `login()` stays for the specs that drive the form on purpose.
+ */
+export async function signIn(request: APIRequestContext): Promise<void> {
+  const response = await request.post("/api/auth/sign-in/email", {
+    data: { email: E2E_EMAIL, password: E2E_PASSWORD },
+  });
+  if (!response.ok()) {
+    throw new Error(`e2e: sign-in failed (${response.status()})  did global setup run?`);
+  }
+}
+
+/** Log the shared e2e user in and wait for the dashboard shell. */
+export async function login(page: Page): Promise<void> {
+  await page.goto("/auth/login");
+  await page.fill('input[name="username"]', E2E_USERNAME);
+  await page.fill('input[name="password"]', E2E_PASSWORD);
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/dashboard/**", { timeout: 20_000 });
 }
 
 /**
@@ -117,15 +161,6 @@ async function ensureSeed(request: APIRequestContext, spec: SeedSpec): Promise<v
   }
 }
 
-/** Log the shared e2e user in and wait for the dashboard shell. */
-export async function login(page: Page): Promise<void> {
-  await page.goto("/auth/login");
-  await page.fill('input[name="username"]', E2E_USERNAME);
-  await page.fill('input[name="password"]', E2E_PASSWORD);
-  await page.click('button[type="submit"]');
-  await page.waitForURL("**/dashboard/**", { timeout: 20_000 });
-}
-
 /**
  * Ensure the user has a local calendar account. The app creates it on demand;
  * the modal guardrails need it to reach calendar overlays.
@@ -136,11 +171,6 @@ export async function ensureLocalCalendarAccount(request: APIRequestContext): Pr
     return null;
   });
   if (res && !res.ok()) console.warn(`e2e seed: local calendar account (${res.status()})`);
-}
-
-export interface E2ESession {
-  storageState: StorageState;
-  isAdmin: boolean;
 }
 
 /**
@@ -159,7 +189,7 @@ export interface E2ESession {
  * `BASE_URL` at an app whose database this isn't means no admin coverage, which
  * must be a failure rather than a silent skip.
  */
-async function grantAdminRole(): Promise<void> {
+export async function grantAdminRole(): Promise<void> {
   // Loaded lazily: this module is also imported by unit tests, which have no
   // business booting a database client.
   await import("dotenv/config");
@@ -188,40 +218,67 @@ async function grantAdminRole(): Promise<void> {
 }
 
 /**
- * Create the e2e user (if needed), grant it the admin role, log in, seed stress
- * data and capture the session. Seeding runs through the logged-in context
- * API routes are user-scoped and reject unauthenticated requests.
+ * Let a freshly loaded route finish painting: the shell is on screen, the fonts
+ * that decide text widths are in place, and two frames have gone by so layout
+ * has settled.
+ *
+ * `quietNetwork` additionally waits for the fetches behind the first paint. It
+ * is bounded on purpose: a page with a poll or an event stream never goes idle,
+ * and `networkidle` alone used to cost a whole test timeout per page.
  */
-export async function bootstrapSession(
-  browser: Browser,
-  request: APIRequestContext,
-): Promise<E2ESession> {
-  await ensureUser(request);
-  await grantAdminRole();
-
-  const ctx = await browser.newContext({ viewport: { width: 375, height: 667 } });
-  const page = await ctx.newPage();
-  await login(page);
-
-  await seedStressData(page.request);
-  await ensureLocalCalendarAccount(page.request);
-
-  const role = await page.evaluate(async () => {
-    const res = await fetch("/api/auth/get-session");
-    if (!res.ok) return null;
-    const data = (await res.json()) as { user?: { role?: string | null } } | null;
-    return data?.user?.role ?? null;
+export async function settle(page: Page, { quietNetwork = false } = {}): Promise<void> {
+  // `load` lands after every chunk has run, which is where hydration happens: a
+  // click before it does nothing and the test measures a page nobody wired up.
+  await page.waitForLoadState("load").catch((err) => {
+    console.warn(`e2e: the page never finished loading ${page.url()}`, err);
   });
-
-  const storageState = await ctx.storageState();
-  await ctx.close();
-
-  return { storageState, isAdmin: role === "admin" };
+  await page.locator(SHELL).first().waitFor({ state: "visible", timeout: 30_000 });
+  if (quietNetwork) {
+    await page.waitForLoadState("networkidle", { timeout: 2_000 }).catch(() => {});
+  }
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+  });
 }
 
-/** Open a route and let lazy transitions / polling settle. */
-export async function gotoAndSettle(page: Page, path: string): Promise<void> {
-  await page.goto(path, { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle").catch(() => {});
-  await page.waitForTimeout(400);
+/**
+ * Open a route and let lazy transitions settle. Returns the navigation response
+ * for the suites that assert the route rendered at all.
+ */
+export async function gotoAndSettle(
+  page: Page,
+  path: string,
+  options?: { quietNetwork?: boolean },
+): Promise<Awaited<ReturnType<Page["goto"]>>> {
+  const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+  await settle(page, options);
+  return response;
+}
+
+/** A chat to open: the chat layout only renders with one. */
+export async function createChatSession(
+  request: APIRequestContext,
+  title: string,
+): Promise<string> {
+  const response = await request.post("/api/chat/sessions", { data: { title } });
+  if (!response.ok())
+    throw new Error(`e2e: creating the chat "${title}" failed (${response.status()})`);
+  const body = (await response.json()) as { session?: { id?: string } };
+  if (!body.session?.id) throw new Error(`e2e: no session id for "${title}"`);
+  return body.session.id;
+}
+
+/** Remove chats a test created. Failures are logged, never thrown. */
+export async function discardChatSessions(
+  request: APIRequestContext,
+  ids: string[],
+): Promise<void> {
+  for (const id of ids) {
+    await request.delete(`/api/chat/sessions/${id}`).catch((err) => {
+      console.error(`e2e: cleaning up chat ${id} failed`, err);
+    });
+  }
 }

@@ -1,6 +1,6 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-import { VIEWPORTS, bootstrapSession, type E2ESession } from "./utils";
+import { VIEWPORTS, gotoAndSettle, sessionContext } from "./utils";
 import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
 
 /**
@@ -18,10 +18,9 @@ import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
  *      every internal scroll container, the last interactive element must be
  *      visible. A page without an internal scroll container fails this check.
  *
- * The test seeds a small amount of long-named content through the real API so
- * the layout is exercised with data that *would* overflow if truncation/min-w-0
- * handling regressed. Seeding failures are ignored  the structural checks run
- * regardless.
+ * The suite runs against long-named content seeded through the real API
+ * (`global-setup.ts`), so the layout is exercised with data that *would*
+ * overflow if truncation/min-w-0 handling regressed.
  */
 
 const DASHBOARD_PAGES = [
@@ -57,8 +56,6 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   ...COUNCIL_ROUTES.map((path) => ({ path, prepare: mockCouncilWorkspace })),
   ...ADMIN_PAGES.map((path) => ({ path })),
 ];
-
-let session: E2ESession | null = null;
 
 interface LayoutViolations {
   documentOverflow: boolean;
@@ -160,63 +157,46 @@ async function measureLayout(page: Page): Promise<LayoutViolations> {
   });
 }
 
-/**
- * The app-shell contract for one route: the route must actually render (not a
- * crashed shell) and every layout rule below must hold.
- */
-async function assertRoute(
-  browser: Browser,
-  path: string,
-  viewport: { width: number; height: number },
-  prepare?: (page: Page) => Promise<void>,
-): Promise<void> {
-  const ctx = await browser.newContext({ viewport, storageState: session!.storageState });
-  const page = await ctx.newPage();
-
-  try {
-    await prepare?.(page);
-    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(400); // settle lazy transitions / polling
-
-    // A shell that throws in render still satisfies every measurement below
-    // the error boundary is a well-behaved full-height panel. That is how
-    // /admin/* shipped broken (missing sidebar provider → 500), so assert the
-    // route itself rendered, and that nothing bounced us elsewhere.
-    expect(response?.status(), `${path}: responded ${response?.status()}`).toBeLessThan(400);
-    expect(page.url(), `${path}: landed on ${page.url()}`).toContain(path);
-    await expect(page.getByText("Something went wrong")).toHaveCount(0);
-
-    const v = await measureLayout(page);
-
-    expect(v.documentOverflow, `${path}: document overflows horizontally`).toBe(false);
-    expect(
-      v.offenders,
-      `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
-    ).toEqual([]);
-    expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(0);
-    expect(v.bodyScrolls, `${path}: body scrolls  content must scroll inside a panel`).toBe(false);
-    expect(
-      v.lastElementReachable,
-      `${path}: last interactive element (${v.lastElementLabel}) unreachable  page lacks an internal scroll container`,
-    ).toBe(true);
-  } finally {
-    await ctx.close();
-  }
-}
-
 test.describe("mobile layout guardrails", () => {
-  test.beforeAll(async ({ browser, request }) => {
-    // Creates the shared user, grants it the admin role, seeds stress data and
-    // logs in once.
-    session = await bootstrapSession(browser, request);
-  });
-
   for (const { name, width, height } of VIEWPORTS) {
     for (const { path, prepare } of PAGES) {
       test(`${path} @ ${name}`, async ({ browser }) => {
-        test.skip(!session, "login failed");
-        await assertRoute(browser, path, { width, height }, prepare);
+        const ctx = await sessionContext(browser, { viewport: { width, height } });
+        const page = await ctx.newPage();
+
+        try {
+          await prepare?.(page);
+          const response = await gotoAndSettle(page, path, { quietNetwork: true });
+
+          // A shell that throws in render still satisfies every measurement
+          // below the error boundary is a well-behaved full-height panel. That
+          // is how /admin/* shipped broken (missing sidebar provider → 500), so
+          // assert the route itself rendered, and that nothing bounced us
+          // elsewhere.
+          expect(response?.status(), `${path}: responded ${response?.status()}`).toBeLessThan(400);
+          expect(page.url(), `${path}: landed on ${page.url()}`).toContain(path);
+          await expect(page.getByText("Something went wrong")).toHaveCount(0);
+
+          const v = await measureLayout(page);
+
+          expect(v.documentOverflow, `${path}: document overflows horizontally`).toBe(false);
+          expect(
+            v.offenders,
+            `${path}: elements extend past viewport: ${v.offenders.join(", ")}`,
+          ).toEqual([]);
+          expect(v.squeezedTabStrips, `${path}: tab strip triggers are squeezed/overlapping`).toBe(
+            0,
+          );
+          expect(v.bodyScrolls, `${path}: body scrolls  content must scroll inside a panel`).toBe(
+            false,
+          );
+          expect(
+            v.lastElementReachable,
+            `${path}: last interactive element (${v.lastElementLabel}) unreachable  page lacks an internal scroll container`,
+          ).toBe(true);
+        } finally {
+          await ctx.close();
+        }
       });
     }
   }

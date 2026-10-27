@@ -1,6 +1,6 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-import { bootstrapSession, type E2ESession } from "./utils";
+import { gotoAndSettle, sessionContext } from "./utils";
 import { mockCouncilWorkspace } from "./council-mocks";
 
 /**
@@ -43,8 +43,6 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/admin/plugins/logs" },
   { path: "/admin/settings" },
 ];
-
-let session: E2ESession | null = null;
 
 interface ActionRow {
   /** What the first labelled button says, so a failure names it. */
@@ -90,49 +88,35 @@ async function measureActionRow(page: Page): Promise<ActionRow | null> {
   });
 }
 
-async function assertPageActions(
-  browser: Browser,
-  path: string,
-  prepare?: (page: Page) => Promise<void>,
-): Promise<void> {
-  const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-    storageState: session!.storageState,
-  });
-  const page = await ctx.newPage();
+async function assertPageActions(page: Page, path: string): Promise<void> {
+  const row = await measureActionRow(page);
+  test.skip(!row, `${path} has no labelled action`);
 
-  try {
-    await prepare?.(page);
-    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(400);
-
-    expect(response?.status(), `${path}: responded ${response?.status()}`).toBeLessThan(400);
-    await expect(page.getByText("Something went wrong")).toHaveCount(0);
-
-    const row = await measureActionRow(page);
-    test.skip(!row, `${path} has no labelled action`);
-
-    expect(row!.inFirstPanel, `${path}: ${row!.label} is outside the first panel`).toBe(true);
-    expect(row!.height, `${path}: ${row!.label} is ${row!.height}px tall`).toBe(ACTION_HEIGHT);
-    expect(
-      row!.rowHeights.every((height) => height === ACTION_HEIGHT),
-      `${path}: the action row mixes heights ${row!.rowHeights.join(", ")}`,
-    ).toBe(true);
-  } finally {
-    await ctx.close();
-  }
+  expect(row!.inFirstPanel, `${path}: ${row!.label} is outside the first panel`).toBe(true);
+  expect(row!.height, `${path}: ${row!.label} is ${row!.height}px tall`).toBe(ACTION_HEIGHT);
+  expect(
+    row!.rowHeights.every((height) => height === ACTION_HEIGHT),
+    `${path}: the action row mixes heights ${row!.rowHeights.join(", ")}`,
+  ).toBe(true);
 }
 
 test.describe("page action rows", () => {
-  test.beforeAll(async ({ browser, request }) => {
-    session = await bootstrapSession(browser, request);
-  });
-
   for (const { path, prepare } of PAGES) {
     test(path, async ({ browser }) => {
-      test.skip(!session, "login failed");
-      await assertPageActions(browser, path, prepare);
+      const ctx = await sessionContext(browser, { viewport: { width: 1280, height: 900 } });
+      const page = await ctx.newPage();
+
+      try {
+        await prepare?.(page);
+        const response = await gotoAndSettle(page, path, { quietNetwork: true });
+
+        expect(response?.status(), `${path}: responded ${response?.status()}`).toBeLessThan(400);
+        await expect(page.getByText("Something went wrong")).toHaveCount(0);
+
+        await assertPageActions(page, path);
+      } finally {
+        await ctx.close();
+      }
     });
   }
 });

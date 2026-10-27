@@ -30,15 +30,23 @@ export const OVERLAY_SELECTORS = [
 /** The same selectors, restricted to visible popups. */
 export const OVERLAY_VISIBLE_SELECTOR = OVERLAY_SELECTORS.map((s) => `${s}:visible`).join(", ");
 
-/** Wait until an overlay popup is open and settled. */
+/** Wait until an overlay popup is open and its entry animation has finished. */
 export async function waitForOverlay(page: Page): Promise<void> {
-  await page
-    .locator(OVERLAY_VISIBLE_SELECTOR)
-    .last()
-    .waitFor({ state: "visible", timeout: 10_000 });
-  // Sheets/dialogs animate in (fade + zoom, or a slide from off-screen)  measure
+  const popup = page.locator(OVERLAY_VISIBLE_SELECTOR).last();
+  await popup.waitFor({ state: "visible", timeout: 10_000 });
+  // Sheets/dialogs animate in (fade + zoom, or a slide from off-screen): measure
   // the settled box, not a mid-flight transform.
-  await page.waitForTimeout(350);
+  await popup
+    .evaluate(async (element) => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const finished = Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      ).catch(() => []);
+      await Promise.race([finished, new Promise((resolve) => setTimeout(resolve, 1_500))]);
+    })
+    .catch((err) => {
+      console.warn("e2e: waiting for the overlay animation failed", err);
+    });
 }
 
 export interface OverlayLayout {
@@ -158,11 +166,28 @@ export async function measureOverlay(page: Page): Promise<OverlayLayout> {
 }
 
 /**
+ * Measure the topmost overlay once it has held still for two reads.
+ *
+ * A page can mount a popup, lose it to a re-render (a poll tick, a late settings
+ * fetch) and mount it again; a single read can land in that gap.
+ */
+async function measureSettledOverlay(page: Page): Promise<OverlayLayout> {
+  let previous = await measureOverlay(page);
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await page.waitForTimeout(100);
+    const current = await measureOverlay(page);
+    if (current.present && previous.present) return current;
+    previous = current;
+  }
+  return previous;
+}
+
+/**
  * Assert the overlay contract for the currently open overlay.
  * `label` is used in failure messages (test title + scenario step).
  */
 export async function expectOverlayFits(page: Page, label: string): Promise<void> {
-  const m = await measureOverlay(page);
+  const m = await measureSettledOverlay(page);
 
   expect(m.present, `${label}: no overlay is open`).toBe(true);
   expect(

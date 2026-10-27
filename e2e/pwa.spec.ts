@@ -12,6 +12,10 @@ import { ensureUser, login } from "./utils";
 
 const REQUIRED_ICON_SIZES = ["192x192", "512x512"];
 
+// Everything here happens before a browser has a session, or between two
+// launches of the installed app, so it starts signed out.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 /** Pathnames currently held in Cache Storage, across every cache. */
 async function cachedPathnames(page: Page) {
   return page.evaluate(async () => {
