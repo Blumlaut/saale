@@ -18,7 +18,9 @@ export default defineConfig({
   // eating the run. Generous enough for a dev server compiling a route on its
   // first hit; the suites with a slower step (a live chat turn) raise it.
   timeout: 90_000,
-  expect: { timeout: 10_000 },
+  // Time spent here only shows up when an assertion fails, so it buys room for
+  // a dev server compiling the next route without slowing a passing run.
+  expect: { timeout: 15_000 },
   // Signs in once and seeds the shared fixtures (see `e2e/global-setup.ts`).
   globalSetup: "./e2e/global-setup.ts",
   outputDir: "test-results",

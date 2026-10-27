@@ -267,15 +267,16 @@ async function openCoder(browser: Browser, path: string) {
 test.describe("coder panel", () => {
   test("lists projects and opens one", async ({ browser }) => {
     const { context, page } = await openCoder(browser, "/dashboard/coder");
-    await expect(page.locator("text=" + PROJECT.name).first()).toBeVisible();
+    const project = page.locator("text=" + PROJECT.name).first();
+    await expect(project).toBeVisible();
 
-    await page
-      .locator("text=" + PROJECT.name)
-      .first()
-      .click();
-    await expect(
-      page.getByText("A coder chat with a long title", { exact: false }).first(),
-    ).toBeVisible();
+    // A dev server can hand the page over before the row answers a click.
+    await expect(async () => {
+      await project.click();
+      await expect(
+        page.getByText("A coder chat with a long title", { exact: false }).first(),
+      ).toBeVisible({ timeout: 3_000 });
+    }).toPass();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
 
     await context.close();

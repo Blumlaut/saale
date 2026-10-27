@@ -22,6 +22,18 @@ export const VIEWPORTS = [
 /** The page region every dashboard and admin route renders into. */
 const SHELL = "main";
 
+/**
+ * Whether React has hydrated the shell.
+ *
+ * Playwright cannot see event listeners, and a click before hydration is a
+ * click nobody handles. React tags every element it renders with a fiber, so
+ * its presence is the one honest signal.
+ */
+const HYDRATED = () => {
+  const shell = document.querySelector(".dashboard-layout");
+  return !!shell && Object.keys(shell).some((key) => key.startsWith("__reactFiber$"));
+};
+
 export type StorageState = Awaited<ReturnType<APIRequestContext["storageState"]>>;
 
 /**
@@ -227,10 +239,13 @@ export async function grantAdminRole(): Promise<void> {
  * and `networkidle` alone used to cost a whole test timeout per page.
  */
 export async function settle(page: Page, { quietNetwork = false } = {}): Promise<void> {
-  // `load` lands after every chunk has run, which is where hydration happens: a
-  // click before it does nothing and the test measures a page nobody wired up.
+  // `load` lands after every chunk has run; hydration is what makes the page
+  // answer a click, and on a dev server it can trail `load` by a second.
   await page.waitForLoadState("load").catch((err) => {
     console.warn(`e2e: the page never finished loading ${page.url()}`, err);
+  });
+  await page.waitForFunction(HYDRATED, undefined, { timeout: 15_000 }).catch((err) => {
+    console.warn(`e2e: the shell at ${page.url()} never hydrated`, err);
   });
   await page.locator(SHELL).first().waitFor({ state: "visible", timeout: 30_000 });
   if (quietNetwork) {
