@@ -43,15 +43,14 @@ const PROJECT = {
   originUrl: null,
 };
 
-const RECENT_CHAT = {
-  id: "e2e-recent-chat",
-  title: "The chat the landing page opens in one click",
+const FOLDED_CHAT = {
+  id: "e2e-folded-chat",
+  title: "The chat the landing page lists under its project",
   lastActivityAt: NOW,
   pinned: false,
   isGenerating: false,
   origin: "user",
   worktree: { path: WORKTREE, branch: BRANCH, status: "active" },
-  project: { id: PROJECT_ID, name: PROJECT.name, slug: PROJECT.slug },
 };
 
 const CHAT = {
@@ -142,12 +141,9 @@ const DIFF = [
 
 /** Every coder route the panel reads, stubbed. */
 async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
-  await page.route(/\/api\/coder\/chats\?/, (route) => {
-    return route.fulfill({ json: { chats: [RECENT_CHAT], hasMore: false } });
-  });
-  // The recent chat is a stub, so its conversation has to answer too.
-  await page.route(new RegExp(`/api/chat/sessions/${RECENT_CHAT.id}/messages$`), (route) =>
-    route.fulfill({ json: { messages: [], session: { title: RECENT_CHAT.title } } }),
+  // The folded chat is a stub, so its conversation has to answer too.
+  await page.route(new RegExp(`/api/chat/sessions/${FOLDED_CHAT.id}/messages$`), (route) =>
+    route.fulfill({ json: { messages: [], session: { title: FOLDED_CHAT.title } } }),
   );
 
   await page.route(/\/api\/coder\/projects$/, (route) => {
@@ -164,8 +160,9 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
             repoPath: PROJECT.repoPath,
             defaultBranch: "main",
             worktreeCount: 1,
-            chatCount: 1,
+            chatCount: 2,
             lastActivityAt: NOW,
+            chats: [FOLDED_CHAT],
           },
         ],
       },
@@ -301,16 +298,21 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
-  test("opens the latest chat from the landing page in one click", async ({ browser }) => {
+  test("opens a project's chat from the landing page in one click", async ({ browser }) => {
     const { context, page } = await openCoder(browser, "/dashboard/coder");
     const row = shown(page, '[data-slot="session-row"]');
-    await expect(row).toContainText(RECENT_CHAT.title);
-    // The project it belongs to is what tells two chats with similar names apart.
-    await expect(row).toContainText(PROJECT.name);
+    await expect(row).toContainText(FOLDED_CHAT.title);
+    // The branch is what tells two chats of one project apart.
+    await expect(row).toContainText(BRANCH);
+    // The project has more chats than the fold shows, so the rest is one link.
+    await expect(page.getByRole("link", { name: "All 2 chats" })).toHaveAttribute(
+      "href",
+      `/dashboard/coder/${PROJECT_ID}`,
+    );
 
     await row.click();
 
-    await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${RECENT_CHAT.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${FOLDED_CHAT.id}$`));
     // The chat itself, not just its URL: its worktree panel is beside it.
     await expect(
       shown(page, '[role="separator"][aria-label="Resize the worktree panel"]'),
