@@ -15,9 +15,12 @@ test-results
 .env.*
 !.env.example
 
-# Tests, docs and host tooling not needed at build time
+# Tests, docs and host tooling not needed at build time. `e2e/env.ts` is the
+# one test file the build reads: the playwright config and scripts/shot.ts
+# import it, and the type check covers every file tsconfig includes.
 __tests__
-e2e
+e2e/**
+!e2e/env.ts
 .github
 .pi
 docs
