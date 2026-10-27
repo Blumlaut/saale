@@ -4,11 +4,12 @@ Production app, live data. Never lose it.
 
 ## Skills — load before the work
 
-| Area                                                  | File                                      |
-| ----------------------------------------------------- | ----------------------------------------- |
-| Migrations, any DB change                             | `.pi/skills/database-migrations/SKILL.md` |
-| Any UI (pages, panels, forms, lists, modals, styling) | `.pi/skills/saale-design/SKILL.md`        |
-| Pi sessions, prompts, models, tools                   | `.pi/skills/pi-agent-usage/SKILL.md`      |
+| Area                                                    | File                                      |
+| ------------------------------------------------------- | ----------------------------------------- |
+| Migrations, any DB change                               | `.pi/skills/database-migrations/SKILL.md` |
+| Any UI (pages, panels, forms, lists, modals, styling)   | `.pi/skills/saale-design/SKILL.md`        |
+| Pi sessions, prompts, models, tools                     | `.pi/skills/pi-agent-usage/SKILL.md`      |
+| E2E: the suite, and looking at a page without a harness | `.pi/skills/e2e-testing/SKILL.md`         |
 
 Never edit `prisma.config.mjs` — it loads env; a change breaks deploys.
 
