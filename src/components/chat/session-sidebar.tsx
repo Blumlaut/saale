@@ -14,6 +14,7 @@ import {
   CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
   CHAT_SESSIONS_DELETED_EVENT,
+  CHAT_WATCHERS_EVENT,
 } from "@/lib/chat/session-events";
 import { saveChatPin } from "@/lib/chat/pin";
 import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
@@ -26,6 +27,7 @@ import {
   GitBranch,
   ChevronRight,
   MessageSquarePlus,
+  Radar,
   X,
 } from "lucide-react";
 
@@ -35,7 +37,7 @@ interface ChatSession {
   temporary: boolean;
   pinned: boolean;
   messageCount: number;
-  watcherCount?: number;
+  watcherCount: number;
   updatedAt: string;
   lastActivityAt?: string;
   isGenerating?: boolean;
@@ -49,6 +51,10 @@ interface BulkDeleteResponse {
 }
 
 const TITLE_MAX_CHARS = 25;
+
+function watcherLabel(count: number): string {
+  return `${count} ${count === 1 ? "watcher" : "watchers"} attached`;
+}
 
 function formatDate(dateStr: string) {
   const date = new Date(dateStr);
@@ -102,6 +108,9 @@ export function SessionSidebar({
   // used. both events keep this list in step with the server.
   useEffect(() => {
     const onRenamed = () => fetchSessions();
+    // A watcher bound to a chat rides along with it on delete, so the mark has
+    // to appear and vanish as watchers come and go elsewhere in the app.
+    const onWatchers = () => fetchSessions();
     const onDeleted = (event: Event) => {
       const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids;
       if (!ids || ids.length === 0) return;
@@ -122,10 +131,12 @@ export function SessionSidebar({
     window.addEventListener(CHAT_RENAMED_EVENT, onRenamed);
     window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
     window.addEventListener(CHAT_PINNED_EVENT, onPinned);
+    window.addEventListener(CHAT_WATCHERS_EVENT, onWatchers);
     return () => {
       window.removeEventListener(CHAT_RENAMED_EVENT, onRenamed);
       window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
       window.removeEventListener(CHAT_PINNED_EVENT, onPinned);
+      window.removeEventListener(CHAT_WATCHERS_EVENT, onWatchers);
     };
   }, [fetchSessions]);
 
@@ -249,6 +260,18 @@ export function SessionSidebar({
             <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
           )}
           {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
+          {session.watcherCount > 0 && (
+            // Watchers go when the chat goes, and are otherwise only visible
+            // inside the conversation, so the list has to own up to them.
+            <span
+              role="img"
+              title={watcherLabel(session.watcherCount)}
+              aria-label={watcherLabel(session.watcherCount)}
+              className="text-muted-foreground flex shrink-0 items-center"
+            >
+              <Radar className="h-3.5 w-3.5" />
+            </span>
+          )}
         </>
       }
       subtitle={

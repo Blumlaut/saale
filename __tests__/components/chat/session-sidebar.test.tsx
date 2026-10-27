@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
+import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import { LONG_PRESS_MS } from "@/hooks/use-long-press";
 
 /**
@@ -270,6 +271,37 @@ describe("SessionSidebar older chats", () => {
       const trigger = screen.getByRole("button", { name: `Actions for ${title}` });
       expect(trigger).toHaveClass("any-pointer-coarse:opacity-100");
     }
+  });
+});
+
+describe("SessionSidebar watcher mark", () => {
+  it("marks the chats a watcher rides along with, and only those", async () => {
+    mockSessions([
+      session("s-watched", "Watched chat", 0.2, 2),
+      session("s-plain", "Plain chat", 0.5),
+    ]);
+
+    await renderSidebar(undefined, "Watched chat");
+
+    expect(screen.getByRole("img", { name: "2 watchers attached" })).toBeInTheDocument();
+    expect(screen.getAllByRole("img", { name: /watchers? attached/ })).toHaveLength(1);
+  });
+
+  it("marks a chat as soon as a watcher is bound to it", async () => {
+    const list = [session("s-plain", "Plain chat", 0.2)];
+    mockSessions(list);
+
+    await renderSidebar(undefined, "Plain chat");
+    expect(screen.queryByRole("img", { name: /watcher/ })).not.toBeInTheDocument();
+
+    // A watcher created in the chat or on the jobs page broadcasts; the list
+    // re-reads rather than trusting a count it was never given.
+    list[0] = session("s-plain", "Plain chat", 0.2, 1);
+    act(() => {
+      broadcastWatchersChanged();
+    });
+
+    expect(await screen.findByRole("img", { name: "1 watcher attached" })).toBeInTheDocument();
   });
 });
 

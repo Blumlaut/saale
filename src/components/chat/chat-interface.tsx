@@ -29,6 +29,7 @@ import {
   settleSentMessage,
 } from "@/lib/chat/outbound-message";
 import { sendChatMessage } from "@/lib/chat/send-message";
+import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
@@ -367,7 +368,9 @@ export function ChatInterface({
     onToolEnd: (toolName) => {
       // A watcher tool just finished, so the session's linked watchers may
       // have changed mid-conversation. Refresh before the next navigation.
-      if (toolName.startsWith("watcher_")) void reloadLinks();
+      if (!toolName.startsWith("watcher_")) return;
+      void reloadLinks();
+      broadcastWatchersChanged();
     },
     onRetryStart: (retry) => setRetryNotice(retry),
     onRetryEnd: () => setRetryNotice(null),

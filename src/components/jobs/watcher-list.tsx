@@ -35,6 +35,7 @@ import { cn, ROW_ACTION } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import { getCronLabel } from "@/lib/jobs/cron-label";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import type { ScriptWatcher, ScriptWatcherTick } from "@/types/shared";
 
 /** The tick outcome, as a badge the user can read at a glance. */
@@ -199,6 +200,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
         setSelectedId(null);
         setTicks([]);
       }
+      broadcastWatchersChanged();
       onRefresh?.();
     } catch (err) {
       console.error("Failed to delete watcher:", err);

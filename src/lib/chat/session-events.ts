@@ -37,3 +37,15 @@ export const CHAT_PINNED_EVENT = "chat-pinned";
 export function broadcastChatPinned(id: string, pinned: boolean): void {
   window.dispatchEvent(new CustomEvent(CHAT_PINNED_EVENT, { detail: { id, pinned } }));
 }
+
+/**
+ * A watcher was added to a chat, moved off it, or deleted. The lists show a
+ * mark on chats that owe their life to a watcher, so they re-read the sessions.
+ * Which chat changed is not carried: the count comes back with the list.
+ */
+export const CHAT_WATCHERS_EVENT = "chat-watchers-changed";
+
+/** Tell every chat list that the watchers bound to chats changed. */
+export function broadcastWatchersChanged(): void {
+  window.dispatchEvent(new CustomEvent(CHAT_WATCHERS_EVENT));
+}

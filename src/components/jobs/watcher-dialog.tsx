@@ -18,6 +18,7 @@ import { fetchJson, patchJson, postJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import { getCronLabel } from "@/lib/jobs/cron-label";
+import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Loader2, Play, Radar } from "lucide-react";
 import type { ScriptWatcher } from "@/types/shared";
@@ -238,6 +239,8 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
         await postJson("/api/watchers", payload);
       }
 
+      // The chat lists mark the conversations a watcher rides along with.
+      broadcastWatchersChanged();
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {
