@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { fetchJson } from "@/lib/http";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,6 @@ interface SessionData {
 }
 
 export function ImpersonationBanner() {
-  const router = useRouter();
   const [session, setSession] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [stopping, setStopping] = useState(false);
@@ -49,14 +47,15 @@ export function ImpersonationBanner() {
 
   const handleStop = async () => {
     setStopping(true);
-    try {
-      await authClient.admin.stopImpersonating();
-      // Navigate back to admin panel
-      router.push("/admin/users");
-    } catch (err) {
-      console.error("Failed to stop impersonating:", err);
+    const { error } = await authClient.admin.stopImpersonating();
+    if (error) {
+      console.error("Failed to stop impersonating:", error);
       setStopping(false);
+      return;
     }
+    // The admin session comes back in new cookies, so every cache starts over.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.href = "/admin/users";
   };
 
   const displayName = session.user.name || session.user.email || "Unknown user";
