@@ -17,7 +17,6 @@ import {
   Loader2,
   Menu,
   MoreVertical,
-  Pencil,
   RefreshCw,
   Trash2,
   Upload,
@@ -33,9 +32,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { FileDeleteDialog } from "./file-delete-dialog";
+import { FileRowMenuItems, type FileRowActions } from "./file-row-menu";
 import { FilePromptSheet } from "./file-prompt-sheet";
 import { FileViewer } from "./file-viewer";
 import { useFileBrowser } from "./use-file-browser";
@@ -149,6 +150,23 @@ export function FileBrowser({
     if (single?.kind === "file") void downloadFile(browser.downloadUrl(single));
     else void downloadFile(browser.zipUrl());
   }, [browser, single]);
+
+  const rowActions = useCallback(
+    (entry: FileEntry): FileRowActions => ({
+      openFile,
+      download: (target) =>
+        void downloadFile(
+          target.kind === "file" ? browser.downloadUrl(target) : browser.zipUrlFor([target]),
+        ),
+      rename: (target) => setPrompt({ mode: "rename", entry: target }),
+      remove: (target) => setDeleting([target]),
+      toggleSelect: (target) => browser.toggle(target),
+      selected: browser.selected.has(entry.path),
+      canRename: capabilities.rename,
+      canRemove: capabilities.remove,
+    }),
+    [openFile, browser, capabilities.rename, capabilities.remove],
+  );
 
   const onDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -387,128 +405,108 @@ export function FileBrowser({
             const Icon = iconFor(entry);
             const selected = browser.selected.has(entry.path);
 
+            const actions = rowActions(entry);
+
             return (
               <div key={entry.path}>
-                <div
-                  className={cn(
-                    "group hover:bg-accent/60 flex items-center transition-colors",
-                    dense ? "gap-2 px-2 py-0.5" : "gap-3 px-4 py-2.5 md:px-6",
-                    selected && "bg-accent/70",
-                  )}
-                >
-                  <Checkbox
-                    checked={selected}
-                    aria-label={`Select ${entry.name}`}
-                    className={cn("shrink-0", ROW_ACTION)}
-                    onCheckedChange={() => browser.toggle(entry)}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      // Modifier-clicks select instead of opening, the way a file
-                      // list is expected to behave.
-                      if (event.shiftKey || event.metaKey || event.ctrlKey) {
-                        browser.toggle(entry, { range: event.shiftKey });
-                        return;
-                      }
-                      openEntry(entry);
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <Icon
-                      className={cn(
-                        "text-muted-foreground shrink-0",
-                        dense ? "h-3.5 w-3.5" : "h-4 w-4",
-                      )}
-                      aria-hidden
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={cn("block truncate font-medium", dense ? "text-xs" : "text-sm")}
-                      >
-                        {entry.name}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-muted-foreground block truncate md:hidden",
-                          dense ? "text-[11px]" : "text-xs",
-                        )}
-                      >
-                        {entry.kind === "file" ? formatFileSize(entry.size) : "Folder"}
-                      </span>
-                    </span>
-                  </button>
-
-                  <span
+                {/* The row is the right-click target; the button below is the
+                    same menu for a pointer that never asks for one. */}
+                <ContextMenu>
+                  <ContextMenuTrigger
                     className={cn(
-                      "text-muted-foreground hidden shrink-0 md:block",
-                      dense ? "text-[11px]" : "text-xs",
+                      "group hover:bg-accent/60 flex items-center transition-colors",
+                      dense ? "gap-2 px-2 py-0.5" : "gap-3 px-4 py-2.5 md:px-6",
+                      selected && "bg-accent/70",
                     )}
                   >
-                    {entry.kind === "file" ? formatFileSize(entry.size) : ""}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-muted-foreground hidden shrink-0 lg:block",
-                      dense ? "text-[11px]" : "text-xs",
-                    )}
-                  >
-                    {formatRelativeDate(new Date(entry.modified).toISOString())}
-                  </span>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={(triggerProps) => (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className={cn("shrink-0", dense && "h-6 w-6", ROW_ACTION)}
-                          aria-label={`Actions for ${entry.name}`}
-                          {...triggerProps}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      )}
+                    <Checkbox
+                      checked={selected}
+                      aria-label={`Select ${entry.name}`}
+                      className={cn("shrink-0", ROW_ACTION)}
+                      onCheckedChange={() => browser.toggle(entry)}
                     />
-                    <DropdownMenuContent align="end">
-                      {entry.kind === "file" && (
-                        <DropdownMenuItem onClick={() => openFile(entry)}>
-                          <FileText className="mr-2 h-3.5 w-3.5" />
-                          Preview
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        onClick={() =>
-                          void downloadFile(
-                            entry.kind === "file"
-                              ? browser.downloadUrl(entry)
-                              : browser.zipUrlFor([entry]),
-                          )
+
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        // Modifier-clicks select instead of opening, the way a file
+                        // list is expected to behave.
+                        if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                          browser.toggle(entry, { range: event.shiftKey });
+                          return;
                         }
-                      >
-                        <Download className="mr-2 h-3.5 w-3.5" />
-                        {entry.kind === "file" ? "Download" : "Download as zip"}
-                      </DropdownMenuItem>
-                      {capabilities.rename && (
-                        <DropdownMenuItem onClick={() => setPrompt({ mode: "rename", entry })}>
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Rename
-                        </DropdownMenuItem>
-                      )}
-                      {capabilities.remove && (
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setDeleting([entry])}
+                        openEntry(entry);
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <Icon
+                        className={cn(
+                          "text-muted-foreground shrink-0",
+                          dense ? "h-3.5 w-3.5" : "h-4 w-4",
+                        )}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            "block truncate font-medium",
+                            dense ? "text-xs" : "text-sm",
+                          )}
                         >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
-                        </DropdownMenuItem>
+                          {entry.name}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-muted-foreground block truncate md:hidden",
+                            dense ? "text-[11px]" : "text-xs",
+                          )}
+                        >
+                          {entry.kind === "file" ? formatFileSize(entry.size) : "Folder"}
+                        </span>
+                      </span>
+                    </button>
+
+                    <span
+                      className={cn(
+                        "text-muted-foreground hidden shrink-0 md:block",
+                        dense ? "text-[11px]" : "text-xs",
                       )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                    >
+                      {entry.kind === "file" ? formatFileSize(entry.size) : ""}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-muted-foreground hidden shrink-0 lg:block",
+                        dense ? "text-[11px]" : "text-xs",
+                      )}
+                    >
+                      {formatRelativeDate(new Date(entry.modified).toISOString())}
+                    </span>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={(triggerProps) => (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className={cn("shrink-0", dense && "h-6 w-6", ROW_ACTION)}
+                            aria-label={`Actions for ${entry.name}`}
+                            {...triggerProps}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        )}
+                      />
+                      <DropdownMenuContent align="end">
+                        <FileRowMenuItems entry={entry} actions={actions} />
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <FileRowMenuItems entry={entry} actions={actions} />
+                  </ContextMenuContent>
+                </ContextMenu>
                 {index < entries.length - 1 && <Separator />}
               </div>
             );
