@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { MAX_PREVIEW_BYTES } from "@/lib/files/config";
-import { mimeTypeForName, previewKindFor } from "@/lib/files/mime";
+import { looksBinary, mimeTypeForName, previewKindFor } from "@/lib/files/mime";
 import { rawFileUrl } from "@/lib/files/urls";
 import { languageFromPath, previewKindFromPath, type PreviewKind } from "@/lib/editor/editor-utils";
 import { useFileSave } from "./use-file-save";
@@ -106,14 +106,14 @@ export function FileView({
           const body = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? `Could not open this file (${response.status}).`);
         }
-        const body = await response.text();
-        // The extension says text, the bytes disagree: a NUL anywhere in the
-        // first megabyte is not prose.
-        if (body.slice(0, 1024 * 1024).includes("\u0000")) {
+        // The extension says text, so the bytes decide whether it is: a name
+        // that lies still gets the refusal rather than a screen of mojibake.
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (looksBinary(bytes)) {
           setBinaryDetected(true);
           return;
         }
-        setFile({ text: body, modified: entry.modified });
+        setFile({ text: new TextDecoder().decode(bytes), modified: entry.modified });
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error("[file-view] failed to read file:", err);

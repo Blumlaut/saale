@@ -52,13 +52,24 @@ const LISTING = {
       modified: 1_791_904_714_445,
       writable: true,
     },
+    {
+      name: "misnamed.md",
+      path: `${ROOT}/misnamed.md`,
+      kind: "file",
+      size: 64,
+      modified: 1_791_904_714_445,
+      writable: true,
+    },
   ],
 };
 
 async function mockFiles(page: Page) {
   await page.route(/\/api\/files\/list/, (route) => route.fulfill({ json: LISTING }));
   await page.route(/\/api\/files\/raw/, (route) =>
-    route.fulfill({ body: "# e2e notes\n", contentType: "text/markdown; charset=utf-8" }),
+    route.request().url().includes("misnamed.md")
+      ? // A `.md` whose bytes are not text: the name alone does not decide.
+        route.fulfill({ body: "\u0000\u0001\u0002 binary\n", contentType: "text/markdown" })
+      : route.fulfill({ body: "# e2e notes\n", contentType: "text/markdown; charset=utf-8" }),
   );
   await page.route(/\/api\/files\/write/, (route) => route.fulfill({ json: { modified: 1 } }));
   await page.route(/\/api\/files\/zip/, (route) =>
@@ -138,6 +149,19 @@ test.describe("files page", () => {
     await expect(
       page.locator("text=This file cannot be shown here").filter({ visible: true }),
     ).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test("refuses a file whose bytes are not text, whatever its name", async ({ browser }) => {
+    const { context, page } = await openFiles(browser);
+
+    await page.locator('button:has-text("misnamed.md")').first().click();
+
+    await expect(
+      page.locator("text=This file cannot be shown here").filter({ visible: true }),
+    ).toBeVisible();
+    await expect(page.locator(".monaco-editor:visible")).toHaveCount(0);
 
     await context.close();
   });

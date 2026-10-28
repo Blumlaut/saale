@@ -158,6 +158,29 @@ export function inlineSafeType(mimeType: string): string {
   return unsafe.has(base) ? "text/plain; charset=utf-8" : mimeType;
 }
 
+/** Bytes the viewer sniffs before it decides a file is not text. */
+const SNIFF_BYTES = 1024 * 1024;
+
+/**
+ * Whether a chunk of bytes is something other than text.
+ *
+ * The name says "text"; the bytes get a say. A NUL is the classic tell, and a
+ * strict UTF-8 decode catches the rest (a PDF or a font that avoids NULs is
+ * still not UTF-8). Decoding as a stream leaves an unfinished trailing
+ * character alone, so a sample cut mid-sequence is not called binary.
+ */
+export function looksBinary(bytes: Uint8Array): boolean {
+  const sample = bytes.subarray(0, SNIFF_BYTES);
+  if (sample.includes(0)) return true;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(sample, { stream: true });
+  } catch {
+    // The decoder throwing is the answer, not a failure.
+    return true;
+  }
+  return false;
+}
+
 /**
  * How the viewer should treat a file.
  *
