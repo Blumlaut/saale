@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { patchJson } from "@/lib/http";
-import { createChatSession } from "@/lib/chat-session";
+import { createChatSession, startChatSession } from "@/lib/chat-session";
+import { PROMPT_PARAM, readPromptParam } from "@/lib/chat/prompt-param";
 
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
   const chatSidebar = useResizableWidth({
@@ -61,6 +64,28 @@ export default function ChatLayout({ children: _children }: { children: React.Re
     [sessionId],
   );
 
+  // A browser opened this route with a prompt in the URL, the way Firefox's AI
+  // chatbot sidebar hands selected text to its provider. The chat starts on its
+  // own, and the prompt leaves the URL so a reload starts nothing new.
+  const prompt = searchParams.get(PROMPT_PARAM);
+  const promptStarted = useRef<string | null>(null);
+  const [startingFromPrompt, setStartingFromPrompt] = useState(false);
+
+  useEffect(() => {
+    const message = readPromptParam(prompt);
+    if (!message || sessionId || promptStarted.current === prompt) return;
+
+    promptStarted.current = prompt;
+    setStartingFromPrompt(true);
+    startChatSession({ message, temporary: temporaryMode })
+      .then((session) => router.replace(`/dashboard/chat/${session.id}`))
+      .catch((err: unknown) => {
+        console.error("Failed to start a chat from a prompt:", err);
+        setStartingFromPrompt(false);
+        toast.error("Could not start the chat");
+      });
+  }, [prompt, sessionId, router, temporaryMode]);
+
   const handleNewChat = useCallback(() => {
     createChatSession({ temporary: temporaryMode })
       .then((session) => router.push(`/dashboard/chat/${session.id}`))
@@ -97,6 +122,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
             <ChatEmptyState
               temporaryMode={temporaryMode}
               onTemporaryChange={handleToggleTemporary}
+              starting={startingFromPrompt}
             />
           )}
         </div>
