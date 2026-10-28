@@ -26,7 +26,7 @@ import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { Separator } from "@/components/ui/separator";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { ChatListRow } from "@/components/chat/chat-list";
-import { startCoderChat } from "@/lib/chat-session";
+import { startChatSession } from "@/lib/chat-session";
 import { deleteChat } from "@/lib/chat/delete-chat";
 import { saveChatPin } from "@/lib/chat/pin";
 import { deleteJson } from "@/lib/http";
@@ -72,7 +72,10 @@ export function ProjectList() {
       return;
     }
     try {
-      const chat = await startCoderChat(result.project.id, result.prompt);
+      const chat = await startChatSession({
+        projectId: result.project.id,
+        message: result.prompt,
+      });
       router.push(`/dashboard/coder/${result.project.id}/${chat.id}`);
     } catch (err) {
       console.error(`Failed to start the first chat of ${result.project.id}:`, err);
