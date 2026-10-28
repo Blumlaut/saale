@@ -19,6 +19,28 @@ The sidebar is a browser-owned frame, so Saale's `frame-ancestors` and
 `X-Frame-Options` do not apply to it. It signs in with the same cookie a tab
 does, and a signed-out visit comes back to the prompt after login.
 
+## The reverse proxy in front of it
+
+The prompt travels in the URL, and Saale answers `/` with a redirect that
+carries it to the chat. Two nginx defaults are too small for that: the request
+line buffer, and the buffer that holds a response's headers. A prompt of a few
+thousand characters gets a 502 (the `Location` header is bigger than the header
+buffer) and a longer one a 414.
+
+The snippets below set both to 32k, which covers every prompt the sidebar can
+send: Firefox truncates at `browser.ml.chat.maxLength`, 7000 characters, before
+it is percent-encoded.
+
+nginx-proxy-manager: Proxy Hosts → the host → Edit → **Advanced**.
+
+```nginx
+large_client_header_buffers 4 32k;
+proxy_buffer_size 32k;
+proxy_buffers 8 32k;
+```
+
+A plain nginx server block takes the same three lines inside its `location`.
+
 ## Prompts
 
 The context menu and the shortcuts offer `browser.ml.chat.prompts.N`, each a
