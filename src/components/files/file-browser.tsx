@@ -21,7 +21,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { PageAction } from "@/components/layout/page";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -181,7 +180,7 @@ export function FileBrowser({
 
   return (
     <GlassPanel
-      className="relative flex h-full flex-col overflow-hidden border-0"
+      className="@container relative flex h-full flex-col overflow-hidden border-0"
       onDragEnter={(event: DragEvent<HTMLDivElement>) => {
         if (!capabilities.upload) return;
         event.preventDefault();
@@ -204,7 +203,7 @@ export function FileBrowser({
       <div
         className={cn(
           "flex shrink-0 items-center gap-1 border-b px-2 py-2",
-          dense ? "md:px-2 md:py-1.5" : "md:px-4",
+          dense ? "@min-[480px]:px-2 @min-[480px]:py-1.5" : "@min-[480px]:px-4",
         )}
       >
         {leading}
@@ -247,7 +246,7 @@ export function FileBrowser({
             </button>
           )}
           {crumbs.slice(0, -1).map((crumb) => (
-            <span key={crumb.path} className="hidden shrink-0 items-center gap-1 md:flex">
+            <span key={crumb.path} className="hidden shrink-0 items-center gap-1 @min-[520px]:flex">
               <ChevronRight className="text-muted-foreground h-3 w-3" aria-hidden />
               <button
                 type="button"
@@ -315,12 +314,17 @@ export function FileBrowser({
             </DropdownMenuContent>
           </DropdownMenu>
           {capabilities.upload && (
-            <PageAction
-              icon={Upload}
-              label="Upload files"
+            <Button
+              type="button"
               variant="secondary"
+              size="sm"
+              className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+              aria-label="Upload files"
               onClick={() => fileInput.current?.click()}
-            />
+            >
+              <Upload className="h-4 w-4" />
+              <span className="hidden @min-[520px]:inline">Upload files</span>
+            </Button>
           )}
         </div>
       </div>
@@ -330,7 +334,7 @@ export function FileBrowser({
         <div
           className={cn(
             "flex shrink-0 flex-wrap items-center gap-2 border-b py-2",
-            dense ? "px-2" : "px-4 md:px-6",
+            dense ? "px-2" : "px-4 @min-[480px]:px-6",
           )}
         >
           <span className="console-label">{browser.selected.size} selected</span>
@@ -346,7 +350,7 @@ export function FileBrowser({
           <div className="ml-auto flex items-center gap-2">
             <Button type="button" size="sm" className="h-8 gap-1.5" onClick={downloadSelection}>
               <Download className="h-4 w-4" />
-              <span className="hidden md:inline">
+              <span className="hidden @min-[480px]:inline">
                 {single?.kind === "file" ? "Download" : "Download zip"}
               </span>
             </Button>
@@ -359,7 +363,7 @@ export function FileBrowser({
                 onClick={() => setDeleting(browser.selectedEntries)}
               >
                 <Trash2 className="h-4 w-4" />
-                <span className="hidden md:inline">Delete</span>
+                <span className="hidden @min-[480px]:inline">Delete</span>
               </Button>
             )}
           </div>
@@ -415,7 +419,7 @@ export function FileBrowser({
                   <ContextMenuTrigger
                     className={cn(
                       "group hover:bg-accent/60 flex items-center transition-colors",
-                      dense ? "gap-2 px-2 py-0.5" : "gap-3 px-4 py-2.5 md:px-6",
+                      dense ? "gap-2 px-2 py-0.5" : "gap-3 px-4 py-2.5 @min-[480px]:px-6",
                       selected && "bg-accent/70",
                     )}
                   >
@@ -455,9 +459,12 @@ export function FileBrowser({
                         >
                           {entry.name}
                         </span>
+                        {/* A dense row is one line: the panel is a column, and a
+                            second line per row turns it into a page. */}
                         <span
                           className={cn(
-                            "text-muted-foreground block truncate md:hidden",
+                            "text-muted-foreground truncate",
+                            dense ? "hidden" : "block @min-[480px]:hidden",
                             dense ? "text-[11px]" : "text-xs",
                           )}
                         >
@@ -468,7 +475,7 @@ export function FileBrowser({
 
                     <span
                       className={cn(
-                        "text-muted-foreground hidden shrink-0 md:block",
+                        "text-muted-foreground hidden shrink-0 @min-[480px]:block",
                         dense ? "text-[11px]" : "text-xs",
                       )}
                     >
@@ -476,7 +483,7 @@ export function FileBrowser({
                     </span>
                     <span
                       className={cn(
-                        "text-muted-foreground hidden shrink-0 lg:block",
+                        "text-muted-foreground hidden shrink-0 @min-[640px]:block",
                         dense ? "text-[11px]" : "text-xs",
                       )}
                     >
@@ -518,7 +525,7 @@ export function FileBrowser({
         <p
           className={cn(
             "text-muted-foreground shrink-0 border-t py-2 text-xs",
-            dense ? "px-2" : "px-4 md:px-6",
+            dense ? "px-2" : "px-4 @min-[480px]:px-6",
           )}
         >
           Showing the first {entries.length} entries of this folder.
