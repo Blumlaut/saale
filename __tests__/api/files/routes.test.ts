@@ -47,6 +47,7 @@ import { POST as uploadRoute } from "@/app/api/files/upload/route";
 import { POST as mkdirRoute } from "@/app/api/files/mkdir/route";
 import { POST as renameRoute } from "@/app/api/files/rename/route";
 import { POST as deleteRoute } from "@/app/api/files/delete/route";
+import { POST as writeRoute } from "@/app/api/files/write/route";
 
 const ROOT = "/workspace";
 
@@ -449,5 +450,83 @@ describe("write endpoints", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe("POST /api/files/write", () => {
+  const MTIME = 1_700_000_000_000;
+
+  it("replaces a file's text in place", async () => {
+    const provider = useTree();
+
+    const response = await post(writeRoute, "", { path: `${ROOT}/notes.md`, content: "# done" });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ path: `${ROOT}/notes.md`, size: 6 });
+    expect(Buffer.from((await provider.read(`${ROOT}/notes.md`)).buffer).toString()).toBe("# done");
+  });
+
+  it("refuses a path that climbs out of the workspace", async () => {
+    useTree();
+
+    const response = await post(writeRoute, "", { path: "/etc/passwd", content: "x" });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("saves only over an existing file", async () => {
+    useTree();
+
+    expect((await post(writeRoute, "", { path: `${ROOT}/gone.md`, content: "x" })).status).toBe(
+      404,
+    );
+    expect((await post(writeRoute, "", { path: `${ROOT}/src`, content: "x" })).status).toBe(404);
+  });
+
+  it("refuses text over the size ceiling", async () => {
+    useTree();
+
+    const response = await post(writeRoute, "", {
+      path: `${ROOT}/notes.md`,
+      content: "x".repeat(64),
+    });
+
+    expect(response.status).toBe(413);
+  });
+
+  it("answers a stale mtime with a conflict the caller can force", async () => {
+    const provider = useTree();
+
+    const stale = await post(writeRoute, "", {
+      path: `${ROOT}/notes.md`,
+      content: "# mine",
+      baseModified: MTIME - 1,
+    });
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toMatchObject({ code: "modified" });
+    expect(Buffer.from((await provider.read(`${ROOT}/notes.md`)).buffer).toString()).toBe(
+      "# notes",
+    );
+
+    const forced = await post(writeRoute, "", {
+      path: `${ROOT}/notes.md`,
+      content: "# mine",
+      baseModified: MTIME - 1,
+      force: true,
+    });
+    expect(forced.status).toBe(200);
+  });
+
+  it("accepts a save whose mtime still matches", async () => {
+    useTree();
+
+    const response = await post(writeRoute, "", {
+      path: `${ROOT}/notes.md`,
+      content: "# mine",
+      baseModified: MTIME,
+    });
+
+    expect(response.status).toBe(200);
   });
 });

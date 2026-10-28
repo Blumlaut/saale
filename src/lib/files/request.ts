@@ -21,6 +21,7 @@ import { openCouncilFileTarget } from "@/lib/council/files";
 import {
   FileConflictError,
   FileLimitError,
+  FileModifiedError,
   FileNotFoundError,
   FilePathEscapeError,
   WorkspaceUnavailableError,
@@ -84,6 +85,11 @@ export function fileErrorResponse(err: unknown, context: string): NextResponse {
   }
   if (err instanceof FileNotFoundError) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (err instanceof FileModifiedError) {
+    // `code` lets the client tell this apart from a name conflict, which it
+    // answers by offering an overwrite.
+    return NextResponse.json({ error: err.message, code: "modified" }, { status: 409 });
   }
   if (err instanceof FileConflictError) {
     return NextResponse.json({ error: err.message, conflicts: err.conflicts }, { status: 409 });

@@ -22,3 +22,12 @@ const name = z
 export const createDirectorySchema = z.object({ path, name });
 export const renameEntrySchema = z.object({ path, name });
 export const deleteEntrySchema = z.object({ path });
+
+export const writeFileSchema = z.object({
+  path,
+  content: z.string(),
+  /** The mtime the editor loaded; a mismatch means the file was written since. */
+  baseModified: z.number().optional(),
+  /** Save over a file that changed, after the caller has seen it changed. */
+  force: z.boolean().optional(),
+});
