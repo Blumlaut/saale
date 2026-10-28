@@ -33,7 +33,7 @@ import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
 import { dropBlankText } from "@/lib/chat/turn-text";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
-import { isStreamingMessage } from "@/lib/chat/message-factories";
+import { isStreamingMessage, messageKey } from "@/lib/chat/message-factories";
 import { formatFileSize, cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/brand/agent-avatar";
 import { UserAvatar } from "@/components/profile/user-avatar";
@@ -483,7 +483,7 @@ export const MessageList = memo(
                 /* Keyed by the turn's root message: a positional key would remount
                every group whenever the window slides. */
                 <AssistantGroup
-                  key={group.messages[0]!.id}
+                  key={messageKey(group.messages[0]!)}
                   messages={group.messages}
                   compactActivity={compactActivity}
                   isBusy={busyGroupKey !== null && group.messages[0]!.id === busyGroupKey}
@@ -888,13 +888,13 @@ function AssistantGroup({
 }) {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
 
-  const toggleThinking = (messageId: string) => {
+  const toggleThinking = (key: string) => {
     setExpandedThinking((prev) => {
       const next = new Set(prev);
-      if (next.has(messageId)) {
-        next.delete(messageId);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(messageId);
+        next.add(key);
       }
       return next;
     });
@@ -925,8 +925,11 @@ function AssistantGroup({
 
   // The turn the run is working on, if any. Only its rows report progress, and
   // the flag is turn-scoped rather than per token. otherwise it drops every
-  // time a step pauses to run a tool, and the row blinks.
-  const activeTurnId = isBusy ? (visibleMessages[visibleMessages.length - 1]?.id ?? null) : null;
+  // time a step pauses to run a tool, and the row blinks. Held as the turn's
+  // render key, like the steps it is matched against.
+  const lastTurn = visibleMessages[visibleMessages.length - 1];
+  const activeTurn = isBusy && lastTurn ? messageKey(lastTurn) : null;
+  const isActiveTurn = (message: Message) => messageKey(message) === activeTurn;
 
   return (
     <div className="group/message flex gap-3">
@@ -952,7 +955,7 @@ function AssistantGroup({
                   key={block.key}
                   reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
                   toolCalls={block.steps.flatMap((step) => step.work)}
-                  isActive={block.steps.some((step) => step.id === activeTurnId)}
+                  isActive={block.steps.some((step) => step.id === activeTurn)}
                   renderCall={ToolCallView}
                   markOf={toolMark}
                 />
@@ -962,40 +965,41 @@ function AssistantGroup({
                 <AssistantMessageBody
                   key={block.key}
                   message={block.message}
-                  isStreaming={block.message.id === activeTurnId}
+                  isStreaming={isActiveTurn(block.message)}
                   hug
                 />
               ),
             )
           : visibleMessages.map((message) => (
-              <div key={message.id}>
+              <div key={messageKey(message)}>
                 {/* Thinking block */}
                 {message.thinking && (
                   <div className="liquid-glass-inner rounded-xl">
                     <button
                       className="flex w-full items-center gap-2 px-3 py-2 text-left"
-                      onClick={() => toggleThinking(message.id)}
+                      onClick={() => toggleThinking(messageKey(message))}
                     >
-                      {expandedThinking.has(message.id) ? (
+                      {expandedThinking.has(messageKey(message)) ? (
                         <ChevronDown className="text-muted-foreground h-3 w-3" />
                       ) : (
                         <ChevronRight className="text-muted-foreground h-3 w-3" />
                       )}
                       <Lightbulb className="text-muted-foreground h-3.5 w-3.5" />
                       <span className="text-muted-foreground text-xs font-medium">
-                        {message.id === activeTurnId ? "Thinking..." : "Thought process"}
+                        {isActiveTurn(message) ? "Thinking..." : "Thought process"}
                       </span>
-                      {message.id === activeTurnId && (
+                      {isActiveTurn(message) && (
                         <Loader2 className="text-muted-foreground h-3 w-3 animate-spin" />
                       )}
-                      {!expandedThinking.has(message.id) && message.thinking.length > 60 && (
-                        <span className="text-muted-foreground/60 text-xs">
-                          {message.thinking.slice(0, 60).trim()}...
-                        </span>
-                      )}
+                      {!expandedThinking.has(messageKey(message)) &&
+                        message.thinking.length > 60 && (
+                          <span className="text-muted-foreground/60 text-xs">
+                            {message.thinking.slice(0, 60).trim()}...
+                          </span>
+                        )}
                     </button>
 
-                    {expandedThinking.has(message.id) && (
+                    {expandedThinking.has(messageKey(message)) && (
                       <div className="border-border/30 border-t px-3 py-2">
                         <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
                           {message.thinking}
@@ -1005,7 +1009,7 @@ function AssistantGroup({
                   </div>
                 )}
 
-                <AssistantMessageBody message={message} isStreaming={message.id === activeTurnId} />
+                <AssistantMessageBody message={message} isStreaming={isActiveTurn(message)} />
 
                 {/* Tool calls. the turn's work collapses, its shared files do not */}
                 {message.toolCalls && message.toolCalls.length > 0 && (

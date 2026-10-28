@@ -18,6 +18,14 @@ import type { Message } from "@/components/chat/types";
  * merge/stream logic.
  */
 
+/**
+ * A message's render identity: stable across `message_saved`'s rename, so React
+ * keeps a turn's cards (and whether the user opened them) in place mid-run.
+ */
+export function messageKey(m: Pick<Message, "id" | "turnId">): string {
+  return m.turnId ?? m.id;
+}
+
 export function isStreamingMessage(m: Pick<Message, "id">): boolean {
   return m.id.startsWith("streaming-");
 }
