@@ -5,7 +5,7 @@
  * the viewer share.
  */
 
-import { BINARY_EXTENSIONS, IMAGE_EXTENSIONS } from "@/lib/files/mime";
+import { BINARY_EXTENSIONS, extensionOf, IMAGE_EXTENSIONS } from "@/lib/files/mime";
 
 /** File extension → Monaco language id. Unknown → "" (plaintext). */
 const EXT_LANG: Record<string, string> = {
@@ -58,12 +58,9 @@ const EXT_LANG: Record<string, string> = {
   lua: "lua",
 };
 
-const EXT_RE = /\.([a-z0-9]+)$/i;
-
 /** The extension of a file name, lowercased and without the dot. */
 function extOf(name: string): string {
-  const match = EXT_RE.exec(name);
-  return match?.[1]?.toLowerCase() ?? "";
+  return extensionOf(basenameOf(name)).slice(1);
 }
 
 /**
