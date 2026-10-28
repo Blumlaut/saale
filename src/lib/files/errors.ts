@@ -33,6 +33,14 @@ export class FileConflictError extends Error {
   }
 }
 
+/** A file changed on disk since the caller read it. */
+export class FileModifiedError extends Error {
+  constructor(name: string) {
+    super(`${name} changed on disk since you opened it`);
+    this.name = "FileModifiedError";
+  }
+}
+
 /** A zip download would exceed a configured ceiling. */
 export class FileLimitError extends Error {
   constructor(message: string) {
