@@ -48,6 +48,7 @@ import { POST as mkdirRoute } from "@/app/api/files/mkdir/route";
 import { POST as renameRoute } from "@/app/api/files/rename/route";
 import { POST as deleteRoute } from "@/app/api/files/delete/route";
 import { POST as writeRoute } from "@/app/api/files/write/route";
+import { POST as createRoute } from "@/app/api/files/create/route";
 
 const ROOT = "/workspace";
 
@@ -403,6 +404,24 @@ describe("write endpoints", () => {
 
     expect((await post(mkdirRoute, "", { path: ROOT, name: "src" })).status).toBe(409);
     expect((await post(mkdirRoute, "", { path: ROOT, name: "a/b" })).status).toBe(400);
+  });
+
+  it("creates an empty file", async () => {
+    const provider = useTree();
+
+    const response = await post(createRoute, "", { path: ROOT, name: "todo.md" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ path: `${ROOT}/todo.md` });
+    expect(Buffer.from((await provider.read(`${ROOT}/todo.md`)).buffer).toString()).toBe("");
+  });
+
+  it("refuses to create over a name that is taken, or a name that is a path", async () => {
+    useTree();
+
+    expect((await post(createRoute, "", { path: ROOT, name: "notes.md" })).status).toBe(409);
+    expect((await post(createRoute, "", { path: ROOT, name: "a/b" })).status).toBe(400);
+    expect((await post(createRoute, "", { path: ROOT, name: ".." })).status).toBe(400);
   });
 
   it("renames an entry in place", async () => {

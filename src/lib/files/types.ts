@@ -29,6 +29,7 @@ export interface FileEntry {
  */
 export interface FileCapabilities {
   upload: boolean;
+  createFile: boolean;
   createDirectory: boolean;
   rename: boolean;
   remove: boolean;
@@ -72,6 +73,7 @@ export interface FileStat {
 /** Every capability enabled. the shape of a normal, writable workspace. */
 export const FULL_CAPABILITIES: FileCapabilities = {
   upload: true,
+  createFile: true,
   createDirectory: true,
   rename: true,
   remove: true,

@@ -20,6 +20,7 @@ const name = z
   .refine(isSafeEntryName, "Name cannot contain a path separator or be '.' or '..'");
 
 export const createDirectorySchema = z.object({ path, name });
+export const createFileSchema = z.object({ path, name });
 export const renameEntrySchema = z.object({ path, name });
 export const deleteEntrySchema = z.object({ path });
 
