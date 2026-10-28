@@ -24,7 +24,7 @@ const BROWSER_PANEL = {
 } as const;
 
 /**
- * Your files, as a workspace: the browser on one side and the editor on the
+ * Files, as a workspace: the browser on one side and the editor on the
  * other.
  *
  * The same two components the coder panel uses, laid out for a whole page, so a
@@ -116,7 +116,7 @@ export default function FilesPage() {
               <FileCode className="text-muted-foreground h-7 w-7" />
               <p className="text-sm font-medium">No file open</p>
               <p className="text-muted-foreground max-w-sm text-sm">
-                Pick a file in the browser and it opens here, with room to read and edit it.
+                Pick a file in the browser and it opens here.
               </p>
             </GlassPanel>
           )}
