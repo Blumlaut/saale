@@ -23,6 +23,8 @@ export interface MonacoViewProps {
   fontSize?: number;
   readOnly?: boolean;
   onContentChange?: (content: string) => void;
+  /** Bound to Cmd/Ctrl+S inside the editor. */
+  onSave?: () => void;
 }
 
 export function MonacoView({
@@ -32,6 +34,7 @@ export function MonacoView({
   fontSize = 12,
   readOnly = true,
   onContentChange,
+  onSave,
 }: MonacoViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -43,12 +46,14 @@ export function MonacoView({
   const contentRef = useRef(content);
   const languageRef = useRef(language);
   const onContentChangeRef = useRef(onContentChange);
+  const onSaveRef = useRef(onSave);
 
   useEffect(() => {
     contentRef.current = content;
     languageRef.current = language;
     onContentChangeRef.current = onContentChange;
-  }, [content, language, onContentChange]);
+    onSaveRef.current = onSave;
+  }, [content, language, onContentChange, onSave]);
 
   useEffect(() => {
     let disposed = false;
@@ -81,10 +86,12 @@ export function MonacoView({
           padding: { top: 8 },
           scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
         });
-        if (!readOnly && onContentChangeRef.current) {
+        if (!readOnly) {
           editor.onDidChangeModelContent(() => {
             if (model && !model.isDisposed()) onContentChangeRef.current?.(model.getValue());
           });
+          // The browser's own Ctrl+S would otherwise offer to save the page.
+          editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyS, () => onSaveRef.current?.());
         }
         editorRef.current = editor;
         setReady(true);
@@ -103,6 +110,10 @@ export function MonacoView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly });
+  }, [readOnly]);
 
   // A file the caller re-read: sync the model in place so the view refreshes
   // without losing cursor and scroll. No-op on mount.

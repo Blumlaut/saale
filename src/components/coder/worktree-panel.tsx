@@ -129,6 +129,8 @@ export function WorktreePanel({
   // The file the File tab shows. One at a time: the panel is a side column, and
   // a strip of open files would eat the width the editor needs.
   const [fileTarget, setFileTarget] = useState<FileEntry | null>(null);
+  // Whether the open file holds text that is not on disk; its tab says so.
+  const [fileDirty, setFileDirty] = useState(false);
 
   const openTab = (next: string) => {
     setTab(next);
@@ -144,6 +146,7 @@ export function WorktreePanel({
   const closeFileTab = () => {
     if (tab === "file") openTab("files");
     setFileTarget(null);
+    setFileDirty(false);
   };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
   // Lifted out of the tab, because the badge has to light while another tab is
@@ -186,6 +189,12 @@ export function WorktreePanel({
                 <span className="hidden max-w-24 truncate @min-[520px]:inline">
                   {fileTarget.name}
                 </span>
+                {fileDirty ? (
+                  <span
+                    title="Unsaved changes"
+                    className="bg-primary inline-block size-1.5 shrink-0 rounded-full"
+                  />
+                ) : null}
                 <CloseTab label="Close the file tab" onClose={closeFileTab} />
               </TabsTrigger>
             )}
@@ -284,7 +293,7 @@ export function WorktreePanel({
                 </Button>
               </div>
               <div className="flex min-h-0 flex-1 flex-col p-2">
-                <FileView target="user" entry={fileTarget} />
+                <FileView target="user" entry={fileTarget} onDirtyChange={setFileDirty} />
               </div>
             </div>
           </TabsContent>

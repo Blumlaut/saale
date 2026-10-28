@@ -399,6 +399,38 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("edits a file and saves it", async ({ browser }) => {
+    const writes: { path: string; content: string }[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(/\/api\/files\/write/, async (route) => {
+      const body = route.request().postDataJSON() as { path: string; content: string };
+      writes.push(body);
+      await route.fulfill({
+        json: { path: body.path, size: body.content.length, modified: Date.now() },
+      });
+    });
+
+    await shown(page, '[role="tab"]:text-is("Files")').click();
+    await page.locator('button:has-text("README.md")').first().click();
+
+    // Monaco boots its worker after the file arrives, so the editor is late.
+    const editor = shown(page, ".monaco-editor");
+    await expect(editor).toBeVisible({ timeout: 30_000 });
+    await editor.locator(".view-lines").click();
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("edited in the panel");
+
+    await expect(shown(page, '[title="Unsaved changes"]')).toBeVisible();
+    await shown(page, 'button:has-text("Save")').click();
+
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]?.path).toBe(`/workspaces/user-e2e/${WORKTREE}/README.md`);
+    expect(writes[0]?.content).toContain("edited in the panel");
+    await expect(shown(page, 'button:has-text("Save")')).toBeDisabled();
+
+    await context.close();
+  });
+
   test("keeps the panel tabs on one row when a file is open", async ({ browser }) => {
     const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Files")').click();

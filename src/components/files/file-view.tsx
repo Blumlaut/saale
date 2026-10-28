@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { MAX_PREVIEW_BYTES } from "@/lib/files/config";
 import { mimeTypeForName, previewKindFor } from "@/lib/files/mime";
 import { rawFileUrl } from "@/lib/files/urls";
 import { languageFromPath, previewKindFromPath, type PreviewKind } from "@/lib/editor/editor-utils";
+import { useFileSave } from "./use-file-save";
 import { FilePreview } from "./file-preview";
 import type { FileEntry } from "@/lib/files/types";
 
@@ -20,6 +22,9 @@ const MonacoView = dynamic(
 
 type View = "code" | "preview";
 
+/** A file as it stands on disk: the text, and the mtime it was read at. */
+type LoadedFile = { text: string; modified: number };
+
 /**
  * One file's bytes, rendered.
  *
@@ -28,14 +33,27 @@ type View = "code" | "preview";
  * arrive through the raw endpoint, which serves executable types as plain text,
  * so an agent-written HTML file is safe to show here.
  *
+ * A writable text file is editable: Monaco holds the buffer and Save puts it
+ * back, with the mtime it was read at so a file an agent rewrote underneath is a
+ * conflict rather than a silent overwrite.
+ *
  * The chrome belongs to the host: a sheet in the files page, a tab in the coder
  * panel.
  */
-export function FileView({ target, entry }: { target: string; entry: FileEntry }) {
+export function FileView({
+  target,
+  entry,
+  onDirtyChange,
+}: {
+  target: string;
+  entry: FileEntry;
+  /** Told when the editor starts or stops holding unsaved text. */
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const { resolvedTheme } = useTheme();
   const theme = resolvedTheme === "dark" ? "dark" : "light";
   const [view, setView] = useState<View>("code");
-  const [text, setText] = useState<string | null>(null);
+  const [file, setFile] = useState<LoadedFile | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [binaryDetected, setBinaryDetected] = useState(false);
@@ -45,21 +63,37 @@ export function FileView({ target, entry }: { target: string; entry: FileEntry }
   const hasCode = mimeKind === "text";
   const hasPreview = previewKind !== null;
   const tooLarge = entry.size > MAX_PREVIEW_BYTES;
+  // Text only, and only once it has arrived: saving a half-loaded file would
+  // overwrite the parts that have not come in yet.
+  const editable = hasCode && entry.writable && !tooLarge && file !== null && !binaryDetected;
   const filePath = entry.path;
+
+  const save = useFileSave({
+    target,
+    path: filePath,
+    baseModified: file?.modified ?? null,
+    enabled: editable,
+    saved: file?.text ?? null,
+    onSaved: (text, modified) => setFile({ text, modified }),
+  });
 
   // A new file: reset state and pick the opening view. Media has no code
   // view; text opens in code even when it can also render. Deps are the file
   // identity, not the entry object, or a list refresh would reset the view.
   useEffect(() => {
     setView(hasCode ? "code" : hasPreview ? "preview" : "code");
-    setText(null);
+    setFile(null);
     setError("");
     setBinaryDetected(false);
   }, [target, filePath, hasCode, hasPreview]);
 
   useEffect(() => {
+    onDirtyChange?.(save.dirty);
+  }, [save.dirty, onDirtyChange]);
+
+  useEffect(() => {
     if (!hasCode || tooLarge || view !== "code") return;
-    if (text !== null) return;
+    if (file !== null) return;
 
     const controller = new AbortController();
     setLoading(true);
@@ -79,7 +113,7 @@ export function FileView({ target, entry }: { target: string; entry: FileEntry }
           setBinaryDetected(true);
           return;
         }
-        setText(body);
+        setFile({ text: body, modified: entry.modified });
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error("[file-view] failed to read file:", err);
@@ -90,29 +124,57 @@ export function FileView({ target, entry }: { target: string; entry: FileEntry }
     })();
 
     return () => controller.abort();
-  }, [target, filePath, hasCode, tooLarge, view, text]);
+  }, [target, filePath, entry.modified, hasCode, tooLarge, view, file]);
 
   const needsText = view === "code" || previewKind === "markdown" || previewKind === "html";
-  const showSpinner = needsText && !error && text === null && loading;
+  const showSpinner = needsText && !error && file === null && loading;
+  const toolbar = (hasCode && hasPreview) || (editable && view === "code");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {hasCode && hasPreview ? (
-        <Tabs
-          value={view}
-          onValueChange={(next) => setView(next as View)}
-          className="shrink-0 self-start"
-        >
-          <TabsList className="h-7">
-            <TabsTrigger value="code" className="text-xs">
-              Code
-            </TabsTrigger>
-            <TabsTrigger value="preview" className="text-xs">
-              Preview
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {toolbar ? (
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          {hasCode && hasPreview ? (
+            <Tabs value={view} onValueChange={(next) => setView(next as View)}>
+              <TabsList className="h-7">
+                <TabsTrigger value="code" className="text-xs">
+                  Code
+                </TabsTrigger>
+                <TabsTrigger value="preview" className="text-xs">
+                  Preview
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : (
+            <span />
+          )}
+          {editable && view === "code" ? (
+            <div className="flex items-center gap-2">
+              {save.dirty ? (
+                <span className="text-muted-foreground hidden text-xs sm:inline" aria-live="polite">
+                  Unsaved
+                </span>
+              ) : null}
+              <Button
+                size="sm"
+                variant={save.dirty ? "default" : "secondary"}
+                className="h-7 gap-1.5 px-2 text-xs"
+                disabled={!save.dirty || save.saving}
+                onClick={save.save}
+              >
+                {save.saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                Save
+              </Button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
+
+      {save.error ? <p className="text-destructive text-xs break-words">{save.error}</p> : null}
 
       {error ? (
         <p className="text-destructive text-sm break-words">{error}</p>
@@ -132,7 +194,7 @@ export function FileView({ target, entry }: { target: string; entry: FileEntry }
             target={target}
             entry={entry}
             kind={previewKind as PreviewKind}
-            content={text ?? undefined}
+            content={file?.text ?? undefined}
           />
         )
       ) : view === "code" && hasCode ? (
@@ -143,9 +205,12 @@ export function FileView({ target, entry }: { target: string; entry: FileEntry }
           ) : (
             <MonacoView
               key={filePath}
-              content={text ?? ""}
+              content={file?.text ?? ""}
               language={languageFromPath(filePath)}
               theme={theme}
+              readOnly={!editable}
+              onContentChange={save.onChange}
+              onSave={save.save}
             />
           )}
         </div>

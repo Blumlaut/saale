@@ -169,6 +169,9 @@ is working in.
   markdown and HTML preview, the too-large and binary states. Use it in the tab
   and in the sheet, so both render a file the same way.
 - The guard is `e2e/coder-panel.spec.ts` ("opens a file as a tab in the panel").
+- A writable text file is editable there: Save (or Cmd/Ctrl+S) writes it back, and the
+  tab carries a dot while the editor holds text that is not on disk. The guard is the
+  same spec's "edits a file and saves it".
 
 ### Remembered View State
 
