@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { AlertCircle, ChevronRight, KeyRound, MessageCircle, ShieldCheck } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { safeNextPath } from "@/lib/auth/redirect";
 import { isTotpCode } from "@/lib/auth/totp";
 import { TELEGRAM_OIDC_PROVIDER_ID, telegramLoginError } from "@/lib/telegram/login";
 
@@ -166,9 +167,12 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const { register, handleSubmit } = useForm<{ username: string; password: string }>();
+  // A page that redirected a signed-out visitor here, e.g. a chat a browser
+  // opened with a prompt in the URL.
+  const returnPath = safeNextPath(searchParams?.get("next")) ?? DASHBOARD_URL;
 
   const finishSignIn = () => {
-    router.push(DASHBOARD_URL);
+    router.push(returnPath);
     router.refresh();
   };
 
@@ -182,7 +186,7 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
     // a failure to answer here.
     const { error: signInError } = await authClient.signIn.social({
       provider: TELEGRAM_OIDC_PROVIDER_ID,
-      callbackURL: DASHBOARD_URL,
+      callbackURL: returnPath,
       errorCallbackURL: "/auth/login",
     });
 
@@ -200,7 +204,7 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
     // here is an email. the fallback for accounts that have no username (or
     // for people who know the address better).
     const identifier = data.username.trim();
-    const credentials = { password: data.password, callbackURL: DASHBOARD_URL };
+    const credentials = { password: data.password, callbackURL: returnPath };
     const { data: result, error } = identifier.includes("@")
       ? await authClient.signIn.email({ email: identifier, ...credentials })
       : await authClient.signIn.username({ username: identifier, ...credentials });

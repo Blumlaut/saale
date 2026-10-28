@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { PATH_HEADER } from "@/lib/auth/redirect";
 import {
   resolveSettingsEntry,
   SETTINGS_ROOT,
@@ -73,7 +74,9 @@ export async function middleware(request: NextRequest) {
   }
 
   // Add security headers to all responses
-  const response = NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(PATH_HEADER, `${pathname}${request.nextUrl.search}`);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
 
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
