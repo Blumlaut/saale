@@ -24,6 +24,7 @@ export function isSidebarNavPinned(id: SidebarNavItemId): boolean {
 export const SIDEBAR_NAV_ITEM_IDS = [
   "chat",
   "coder",
+  "files",
   "mail",
   "contacts",
   "calendar",
@@ -73,6 +74,9 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
   // Off until the user turns it on: coding is a project workflow, and someone
   // without a project should not be offered an empty one.
   coder: { href: "/dashboard/coder", label: "Coder", defaultHidden: true },
+  // Off until the user turns it on: the workspace is where an agent's files
+  // land, and browsing it is a workflow of its own rather than a daily stop.
+  files: { href: "/dashboard/files", label: "Files", defaultHidden: true },
   mail: { href: "/dashboard/mail", label: "Mail" },
   contacts: { href: "/dashboard/contacts", label: "Contacts" },
   calendar: { href: "/dashboard/calendar", label: "Calendar" },

@@ -2,6 +2,7 @@ import {
   Calendar,
   Code2,
   CheckSquare,
+  FolderTree,
   Landmark,
   ListTodo,
   Mail,
@@ -17,6 +18,7 @@ import type { SidebarNavItemId } from "@/lib/navigation/sidebar-nav";
 export const SIDEBAR_NAV_ICONS: Record<SidebarNavItemId, LucideIcon> = {
   chat: MessageSquare,
   coder: Code2,
+  files: FolderTree,
   mail: Mail,
   contacts: Users,
   calendar: Calendar,

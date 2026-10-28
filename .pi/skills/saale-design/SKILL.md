@@ -172,6 +172,10 @@ is working in.
 - A writable text file is editable there: Save (or Cmd/Ctrl+S) writes it back, and the
   tab carries a dot while the editor holds text that is not on disk. The guard is the
   same spec's "edits a file and saves it".
+- The other home for the editor is the Files page (`/dashboard/files`, opt-in in the
+  sidebar): the browser on one side and `FileView` on the other, with a drag handle
+  between them. A phone gets one at a time, and opening a file swaps the browser for
+  the editor. The guard is `e2e/files-page.spec.ts`.
 
 ### Remembered View State
 
