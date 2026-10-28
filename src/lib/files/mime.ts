@@ -70,20 +70,6 @@ export const IMAGE_EXTENSIONS = new Set([
   ".svg",
 ]);
 
-/** Extensions with no MIME entry that are still plainly text. */
-const TEXT_EXTENSIONS = new Set([
-  ".tsx",
-  ".jsx",
-  ".yml",
-  ".yaml",
-  ".gitignore",
-  ".dockerignore",
-  ".editorconfig",
-  ".lock",
-  ".patch",
-  ".diff",
-]);
-
 /** Nothing behind these is worth showing as text. */
 export const BINARY_EXTENSIONS = new Set([
   ".zip",
@@ -122,11 +108,20 @@ export function withCharset(mimeType: string): string {
   return mimeType;
 }
 
+/**
+ * The extension of a file name, lowercased and with its dot, or "".
+ *
+ * A leading dot names the file rather than typing it: `.gitconfig` is a text
+ * file with no extension, not a `gitconfig` file.
+ */
+export function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot <= 0 ? "" : name.slice(dot).toLowerCase();
+}
+
 /** Media type for a file name, or `application/octet-stream` when unknown. */
 export function mimeTypeForName(name: string): string {
-  const dot = name.lastIndexOf(".");
-  const extension = dot === -1 ? "" : name.slice(dot).toLowerCase();
-  return MIME_TYPES[extension] ?? "application/octet-stream";
+  return MIME_TYPES[extensionOf(name)] ?? "application/octet-stream";
 }
 
 /**
@@ -163,22 +158,22 @@ export function inlineSafeType(mimeType: string): string {
   return unsafe.has(base) ? "text/plain; charset=utf-8" : mimeType;
 }
 
-/** How the viewer should treat a file. */
+/**
+ * How the viewer should treat a file.
+ *
+ * Only the extensions that are certainly media or binary are refused: a
+ * workspace is prose, code and config, and its unknown names (`.gitconfig`,
+ * `Makefile`, `.env.local`) are text. The reader then drops a file whose first
+ * megabyte holds a NUL byte, which is what a real binary looks like.
+ */
 export function previewKindFor(name: string, mimeType: string): "text" | "image" | "binary" {
-  const dot = name.lastIndexOf(".");
-  const extension = dot === -1 ? "" : name.slice(dot).toLowerCase();
+  const extension = extensionOf(name);
 
   // SVG is shown as source: an inline SVG document can carry script.
   if (extension === ".svg") return "text";
   if (IMAGE_EXTENSIONS.has(extension)) return "image";
   if (BINARY_EXTENSIONS.has(extension)) return "binary";
   if (mimeType.startsWith("image/")) return "image";
-  if (mimeType.startsWith("text/") || mimeType.startsWith("application/json")) return "text";
-  if (mimeType.startsWith("application/xml")) return "text";
-  if (TEXT_EXTENSIONS.has(extension)) return "text";
-
-  // A name with no extension is usually a script, config or README in a
-  // workspace; the size and content checks still apply before rendering.
-  if (extension === "") return "text";
-  return "binary";
+  if (mimeType.startsWith("audio/") || mimeType.startsWith("video/")) return "binary";
+  return "text";
 }
