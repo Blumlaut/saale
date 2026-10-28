@@ -38,7 +38,7 @@ export const BRAND_COLOR_TOKENS: readonly BrandColorToken[] = [
     key: "secondary",
     label: "Secondary",
     description:
-      "Text and icons drawn on the accent. Left unset, the readable ink is picked for you.",
+      "Text and icons drawn on the accent. Left unset, the readable ink is picked for you. A colour that reads poorly on the accent is shifted until it is legible.",
     variables: ["--primary-foreground", "--sidebar-primary-foreground"],
   },
 ];
@@ -76,12 +76,39 @@ function linearChannel(value: number): number {
   return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 }
 
-function relativeLuminance(hex: string): number {
+function channels(hex: string): [number, number, number] {
   const normalized = normalizeHex(hex) ?? "#000000";
-  const [r, g, b] = [1, 3, 5].map((offset) =>
-    linearChannel(parseInt(normalized.slice(offset, offset + 2), 16)),
-  ) as [number, number, number];
+  return [1, 3, 5].map((offset) => parseInt(normalized.slice(offset, offset + 2), 16)) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = channels(hex).map(linearChannel) as [number, number, number];
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio between two colours, from 1 to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const [brighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort(
+    (left, right) => right - left,
+  ) as [number, number];
+  return (brighter + 0.05) / (darker + 0.05);
+}
+
+/** WCAG AA for body-sized text, which is what button labels and links are. */
+const MIN_CONTRAST = 4.5;
+
+function mixHex(from: string, to: string, amount: number): string {
+  const start = channels(from);
+  const end = channels(to);
+  const blend = (index: 0 | 1 | 2) =>
+    Math.round(start[index] + (end[index] - start[index]) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${blend(0)}${blend(1)}${blend(2)}`;
 }
 
 /**
@@ -89,10 +116,36 @@ function relativeLuminance(hex: string): number {
  * dark brand colour does not render black-on-black buttons.
  */
 export function readableForeground(hex: string): string {
-  const luminance = relativeLuminance(hex);
-  const againstWhite = 1.05 / (luminance + 0.05);
-  const againstBlack = (luminance + 0.05) / 0.05;
-  return againstWhite >= againstBlack ? "#ffffff" : "#0b0b0c";
+  return contrastRatio(hex, "#ffffff") >= contrastRatio(hex, "#0b0b0c") ? "#ffffff" : "#0b0b0c";
+}
+
+/** The ends of the scale, one of which always clears AA. */
+const INK_EXTREMES = ["#000000", "#ffffff"] as const;
+
+/**
+ * `ink` as it is drawn on `accent`: untouched while it clears AA, else moved
+ * toward black or white until it does. The picked hue survives, so a brown ink
+ * on an orange accent darkens instead of flipping to white.
+ */
+export function legibleInk(accent: string, ink: string): string {
+  if (contrastRatio(accent, ink) >= MIN_CONTRAST) return ink;
+
+  // Contrast climbs as the mix nears the end of the scale, so the first shade
+  // that clears AA is a bisection away.
+  const [darkest, lightest] = INK_EXTREMES;
+  const extreme =
+    contrastRatio(accent, darkest) >= contrastRatio(accent, lightest) ? darkest : lightest;
+  let failing = 0;
+  let passing = 1;
+  for (let step = 0; step < 12; step++) {
+    const middle = (failing + passing) / 2;
+    if (contrastRatio(accent, mixHex(ink, extreme, middle)) >= MIN_CONTRAST) passing = middle;
+    else failing = middle;
+  }
+
+  // Rounding can leave the last step short, and pure black or white always clears.
+  const adjusted = mixHex(ink, extreme, passing);
+  return contrastRatio(accent, adjusted) >= MIN_CONTRAST ? adjusted : extreme;
 }
 
 // ─── Column ──────────────────────────────────────────────────────────────────
@@ -131,11 +184,18 @@ export function resolveBrandColors(colors: BrandColors): Record<BrandMode, Recor
   return resolved;
 }
 
-/** The ink a mode's accent gets when `secondary` is left unset. */
-export function accentInk(colors: Partial<Record<BrandColorKey, string>>): string | undefined {
-  const primary = colors.primary;
-  if (!primary) return undefined;
-  return colors.secondary ?? readableForeground(primary);
+/**
+ * The ink one mode draws on its accent: the picked colour, or the readable one
+ * when none is picked, corrected when it would not be legible.
+ */
+export function accentInk(mode: BrandMode, colors: BrandColors): string {
+  const { primary, secondary } = colors[mode];
+  const accent = primary ?? DEFAULT_BRAND_COLORS[mode].primary;
+  // An untouched accent keeps the palette's own pairing, so the preview and the
+  // stylesheet agree on the ink while nothing is overridden.
+  const ink =
+    secondary ?? (primary ? readableForeground(accent) : DEFAULT_BRAND_COLORS[mode].secondary);
+  return legibleInk(accent, ink);
 }
 
 // ─── Stylesheet ──────────────────────────────────────────────────────────────
@@ -152,12 +212,12 @@ export function buildBrandingCss(colors: BrandColors): string {
 
   for (const mode of BRAND_MODES) {
     const declarations: string[] = [];
+    // An accent override carries its ink, even while the ink itself is unset.
+    const touchesAccent = Boolean(colors[mode].primary || colors[mode].secondary);
 
     for (const token of BRAND_COLOR_TOKENS) {
       let value = colors[mode][token.key as BrandColorKey];
-      // The ink is derived only while it is unset, and only once there is an
-      // accent to read it from.
-      if (token.key === "secondary" && !value) value = accentInk(colors[mode]);
+      if (token.key === "secondary" && touchesAccent) value = accentInk(mode, colors);
       if (!value) continue;
       for (const variable of token.variables) declarations.push(`${variable}: ${value}`);
     }
