@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { MobileSessionSheet } from "./mobile-session-sheet";
+import { MessageSkeleton } from "./message-skeleton";
 import { TemporaryToggle } from "./temporary-toggle";
 import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, Ghost } from "lucide-react";
@@ -36,9 +37,15 @@ export function ChatWelcome({
 interface ChatEmptyStateProps {
   temporaryMode: boolean;
   onTemporaryChange: (checked: boolean) => void;
+  /** A chat is being opened from a prompt the URL carried. */
+  starting?: boolean;
 }
 
-export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptyStateProps) {
+export function ChatEmptyState({
+  temporaryMode,
+  onTemporaryChange,
+  starting = false,
+}: ChatEmptyStateProps) {
   const router = useRouter();
 
   const handleNewChat = () => {
@@ -60,25 +67,31 @@ export function ChatEmptyState({ temporaryMode, onTemporaryChange }: ChatEmptySt
           <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
         </div>
       </div>
-      <GlassPanelContent className="flex flex-1 items-center justify-center">
-        <ChatWelcome
-          subtitle="Ask questions, brainstorm ideas, or get help with your work."
-          action={
-            <>
-              {temporaryMode && (
-                <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
-                  <Ghost className="h-3 w-3" />
-                  Temporary mode. chat will be deleted on close
-                </span>
-              )}
-              <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
-                <MessageSquarePlus className="mr-2 h-4 w-4" />
-                New Chat
-              </Button>
-            </>
-          }
-        />
-      </GlassPanelContent>
+      {starting ? (
+        <GlassPanelContent className="flex-1 overflow-y-auto">
+          <MessageSkeleton />
+        </GlassPanelContent>
+      ) : (
+        <GlassPanelContent className="flex flex-1 items-center justify-center">
+          <ChatWelcome
+            subtitle="Ask questions, brainstorm ideas, or get help with your work."
+            action={
+              <>
+                {temporaryMode && (
+                  <span className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+                    <Ghost className="h-3 w-3" />
+                    Temporary mode. chat will be deleted on close
+                  </span>
+                )}
+                <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
+                  <MessageSquarePlus className="mr-2 h-4 w-4" />
+                  New Chat
+                </Button>
+              </>
+            }
+          />
+        </GlassPanelContent>
+      )}
     </GlassPanel>
   );
 }
