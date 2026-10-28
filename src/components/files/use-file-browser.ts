@@ -32,6 +32,7 @@ export interface FileBrowserController {
   up: () => void;
   refresh: () => void;
   createFolder: (name: string) => Promise<boolean>;
+  createFile: (name: string) => Promise<boolean>;
   rename: (entry: FileEntry, name: string) => Promise<boolean>;
   remove: (entries: FileEntry[]) => Promise<boolean>;
   upload: (files: File[], options?: { overwrite?: boolean }) => Promise<boolean>;
@@ -252,6 +253,20 @@ export function useFileBrowser({
     [path, afterMutation, report],
   );
 
+  const createFile = useCallback(
+    async (name: string) => {
+      try {
+        await postJson("/api/files/create", { path, name });
+        await afterMutation();
+        return true;
+      } catch (err) {
+        report(err instanceof Error ? err.message : "Could not create that file.");
+        return false;
+      }
+    },
+    [path, afterMutation, report],
+  );
+
   const rename = useCallback(
     async (entry: FileEntry, name: string) => {
       try {
@@ -417,6 +432,7 @@ export function useFileBrowser({
     up,
     refresh,
     createFolder,
+    createFile,
     rename,
     remove,
     upload,

@@ -9,6 +9,7 @@ import {
   FileArchive,
   FileCode,
   FileImage,
+  FilePlus,
   FileText,
   Folder,
   FolderPlus,
@@ -66,7 +67,32 @@ export interface FileBrowserProps {
   onOpenFile?: (entry: FileEntry) => void;
 }
 
-type PromptState = { mode: "folder" } | { mode: "rename"; entry: FileEntry };
+type PromptState = { mode: "folder" } | { mode: "file" } | { mode: "rename"; entry: FileEntry };
+
+/** What the one-field sheet asks, for each thing it can create or rename. */
+const PROMPT_COPY: Record<
+  PromptState["mode"],
+  { title: string; description: string; label: string; submitLabel: string }
+> = {
+  folder: {
+    title: "New folder",
+    description: "Created in the folder you are looking at.",
+    label: "Folder name",
+    submitLabel: "Create folder",
+  },
+  file: {
+    title: "New file",
+    description: "Created empty in the folder you are looking at.",
+    label: "File name",
+    submitLabel: "Create file",
+  },
+  rename: {
+    title: "Rename",
+    description: "The entry stays in this folder.",
+    label: "New name",
+    submitLabel: "Rename",
+  },
+};
 
 /** Icon for a row, by kind and then by extension. */
 function iconFor(entry: FileEntry) {
@@ -290,6 +316,12 @@ export function FileBrowser({
               )}
             />
             <DropdownMenuContent align="end" className="w-52">
+              {capabilities.createFile && (
+                <DropdownMenuItem onClick={() => setPrompt({ mode: "file" })}>
+                  <FilePlus className="h-3.5 w-3.5" />
+                  New file
+                </DropdownMenuItem>
+              )}
               {capabilities.createDirectory && (
                 <DropdownMenuItem onClick={() => setPrompt({ mode: "folder" })}>
                   <FolderPlus className="h-3.5 w-3.5" />
@@ -302,7 +334,7 @@ export function FileBrowser({
                   Select all
                 </DropdownMenuItem>
               )}
-              {entries.length > 0 || capabilities.createDirectory ? (
+              {entries.length > 0 || capabilities.createDirectory || capabilities.createFile ? (
                 <DropdownMenuSeparator />
               ) : null}
               <DropdownMenuCheckboxItem
@@ -562,19 +594,14 @@ export function FileBrowser({
       <FilePromptSheet
         open={prompt !== null}
         onOpenChange={(open) => !open && setPrompt(null)}
-        title={prompt?.mode === "rename" ? "Rename" : "New folder"}
-        description={
-          prompt?.mode === "rename"
-            ? "The entry stays in this folder."
-            : "Created in the folder you are looking at."
-        }
-        label={prompt?.mode === "rename" ? "New name" : "Folder name"}
-        submitLabel={prompt?.mode === "rename" ? "Rename" : "Create folder"}
+        {...PROMPT_COPY[prompt?.mode ?? "folder"]}
         initialValue={prompt?.mode === "rename" ? prompt.entry.name : ""}
         onSubmit={(value) =>
           prompt?.mode === "rename"
             ? browser.rename(prompt.entry, value)
-            : browser.createFolder(value)
+            : prompt?.mode === "file"
+              ? browser.createFile(value)
+              : browser.createFolder(value)
         }
       />
 

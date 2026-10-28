@@ -17,7 +17,13 @@ const LISTING = {
     id: "user",
     label: "files",
     root: ROOT,
-    capabilities: { upload: true, createDirectory: true, rename: true, remove: true },
+    capabilities: {
+      upload: true,
+      createFile: true,
+      createDirectory: true,
+      rename: true,
+      remove: true,
+    },
   },
   path: ROOT,
   truncated: false,
@@ -35,6 +41,14 @@ const LISTING = {
       path: `${ROOT}/notes.md`,
       kind: "file",
       size: 128,
+      modified: 1_791_904_714_445,
+      writable: true,
+    },
+    {
+      name: ".gitconfig",
+      path: `${ROOT}/.gitconfig`,
+      kind: "file",
+      size: 64,
       modified: 1_791_904_714_445,
       writable: true,
     },
@@ -111,6 +125,39 @@ test.describe("files page", () => {
     await expect(
       page.locator('[role="menu"]:visible').first().getByRole("menuitem", { name: "Deselect" }),
     ).toBeVisible();
+
+    await context.close();
+  });
+
+  test("shows a config file with no extension as text", async ({ browser }) => {
+    const { context, page } = await openFiles(browser);
+
+    await page.locator('button:has-text(".gitconfig")').first().click();
+
+    await expect(shown(page, ".monaco-editor")).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.locator("text=This file cannot be shown here").filter({ visible: true }),
+    ).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test("creates an empty file from the toolbar", async ({ browser }) => {
+    const created: { path: string; name: string }[] = [];
+    const { context, page } = await openFiles(browser);
+    await page.route(/\/api\/files\/create/, async (route) => {
+      const body = route.request().postDataJSON() as { path: string; name: string };
+      created.push(body);
+      await route.fulfill({ json: { path: `${body.path}/${body.name}` } });
+    });
+
+    await shown(page, '[aria-label="More actions"]').click();
+    await page.getByRole("menuitem", { name: "New file" }).click();
+    await shown(page, "#file-prompt-name").fill("roadmap.md");
+    await shown(page, 'button:has-text("Create file")').click();
+
+    await expect.poll(() => created.length).toBe(1);
+    expect(created[0]).toEqual({ path: ROOT, name: "roadmap.md" });
 
     await context.close();
   });
