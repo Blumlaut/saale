@@ -36,6 +36,8 @@ recent commits.
 - **Coder** — a chat that works in a git worktree of one of your repos, with a panel for
   the changes, the files, a terminal, and a live preview of the running app.
 - **Installable** — a PWA with an offline page, no cached dashboards.
+- **Browser sidebar** — the provider for [Firefox's AI chatbot sidebar](docs/firefox-sidebar.md),
+  so a selection on a page can start a chat.
 
 ## Requirements
 
