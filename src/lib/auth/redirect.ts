@@ -11,6 +11,13 @@
  */
 export const PATH_HEADER = "x-saale-path";
 
+/** The query in a stamped path, so a redirect to another page can carry it. */
+export function queryOf(path: string | null | undefined): string {
+  if (!path) return "";
+  const at = path.indexOf("?");
+  return at === -1 ? "" : path.slice(at);
+}
+
 /** Login URL that returns to `path` once the visitor is signed in. */
 export function loginPath(path: string): string {
   return `/auth/login?next=${encodeURIComponent(path)}`;
