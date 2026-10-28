@@ -33,7 +33,7 @@ export function EmailList({ emails }) {
           <Fragment key={email.id}>
             <a
               href={`/dashboard/mail/${email.id}`}
-              className="flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-accent/60"
+              className="hover:bg-accent/60 flex items-center gap-3 px-4 py-3 transition-colors duration-150"
             >
               <Avatar>
                 <AvatarFallback>{email.sender[0]}</AvatarFallback>
@@ -102,7 +102,12 @@ import { cn, ROW_ACTION } from "@/lib/utils";
   <DropdownMenu>
     <DropdownMenuTrigger
       render={(triggerProps) => (
-        <Button variant="ghost" size="icon-sm" className={cn("shrink-0", ROW_ACTION)} {...triggerProps}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn("shrink-0", ROW_ACTION)}
+          {...triggerProps}
+        >
           <MoreVertical />
           <span className="sr-only">Actions for {item.title}</span>
         </Button>
@@ -115,7 +120,7 @@ import { cn, ROW_ACTION } from "@/lib/utils";
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
-</div>
+</div>;
 ```
 
 `ROW_ACTION` = hidden, revealed on `group-hover` / `group-focus-within`, and
@@ -124,12 +129,17 @@ import { cn, ROW_ACTION } from "@/lib/utils";
 - **Destructive row actions go behind the row menu**, not on a bare always-
   visible button next to every row — a permanent one-tap delete is too easy to
   hit while scrolling.
+- **A right click opens the same menu.** Wrap the row in
+  `ContextMenu`/`ContextMenuTrigger` (`@/components/ui/context-menu`) and render
+  the items from one component in both popups: they are Base UI's `Menu.Item`
+  either way, so the button and the right click cannot drift. `FileBrowser`'s
+  rows are the reference.
 - **Named groups** (`group/message`, `group/col`) keep their own hover variant
   and add `any-pointer-coarse:opacity-*` themselves.
 - **Inline actions on a message/card** (copy, edit, open-link hints) only need
   the pointer variant added: `group-hover/message:opacity-70 any-pointer-coarse:opacity-70`.
 - A dimmed action (`opacity-60 hover:opacity-100`) is fine as-is — it is only
-  *louder* on hover, never hidden.
+  _louder_ on hover, never hidden.
 
 ## Table
 
@@ -235,12 +245,12 @@ import { Button } from "@/components/ui/button";
 
 ## Common Mistakes
 
-| Mistake                   | Fix                                   |
-| ------------------------- | ------------------------------------- |
-| No hover state on rows    | Add `hover:bg-accent/60`              |
+| Mistake                   | Fix                                                            |
+| ------------------------- | -------------------------------------------------------------- |
+| No hover state on rows    | Add `hover:bg-accent/60`                                       |
 | Hover-only row action     | Use `ROW_ACTION` (`any-pointer-coarse:`) so touch can reach it |
-| Rows < 48px tall          | Increase padding                      |
-| No dividers between items | Add `<Separator>`                     |
-| 5+ column tables          | Reduce columns, add detail view       |
-| Page number pagination    | Use next/previous only                |
-| No empty state            | Show friendly empty state with action |
+| Rows < 48px tall          | Increase padding                                               |
+| No dividers between items | Add `<Separator>`                                              |
+| 5+ column tables          | Reduce columns, add detail view                                |
+| Page number pagination    | Use next/previous only                                         |
+| No empty state            | Show friendly empty state with action                          |
