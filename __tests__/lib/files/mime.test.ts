@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extensionOf, mimeTypeForName, previewKindFor } from "@/lib/files/mime";
+import { extensionOf, looksBinary, mimeTypeForName, previewKindFor } from "@/lib/files/mime";
 
 describe("extensionOf", () => {
   it("reads a trailing extension, lowercased", () => {
@@ -39,5 +39,21 @@ describe("previewKindFor", () => {
     expect(previewKindFor("archive.zip", mimeTypeForName("archive.zip"))).toBe("binary");
     // SVG is source, not an image: an inline SVG document can carry script.
     expect(previewKindFor("logo.svg", mimeTypeForName("logo.svg"))).toBe("text");
+  });
+});
+
+describe("looksBinary", () => {
+  it("accepts utf-8 text, and a sample cut mid-character", () => {
+    const encoder = new TextEncoder();
+    expect(looksBinary(encoder.encode("# notes\n"))).toBe(false);
+    expect(looksBinary(encoder.encode("héllo 🌍\n"))).toBe(false);
+    // The first two bytes of an emoji: incomplete, not invalid.
+    expect(looksBinary(new Uint8Array([0xf0, 0x9f, 0x8c]))).toBe(false);
+  });
+
+  it("refuses a NUL byte and bytes that are not utf-8 at all", () => {
+    expect(looksBinary(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01]))).toBe(true);
+    // A PDF's opening bytes hold no NUL and are still not text.
+    expect(looksBinary(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0xe2, 0xe3, 0xcf]))).toBe(true);
   });
 });
