@@ -167,13 +167,14 @@ describe("visibleSidebarNavItems", () => {
       { id: "chat", hidden: false },
     ]);
 
-    // The mentioned ids keep their order; the rest follow in registry order.
+    // The mentioned ids keep their order; the rest follow in registry order,
+    // minus the opt-in items and the one this layout hides.
     const expected = [
       "tasks",
       "chat",
-      ...defaultSidebarNav()
-        .map((entry) => entry.id)
-        .filter((id) => !["tasks", "chat", "mail", "coder", "council"].includes(id)),
+      ...SIDEBAR_NAV_ITEMS.filter((item) => !item.defaultHidden)
+        .map((item) => item.id)
+        .filter((id) => id !== "tasks" && id !== "chat" && id !== "mail"),
     ];
 
     expect(visibleSidebarNavItems(entries).map((item) => item.id)).toEqual(expected);
@@ -205,7 +206,7 @@ describe("moveSidebarNavEntry", () => {
     expect(ids(moveSidebarNavEntry(entries, indexOf("chat"), 2))[2]).toBe("chat");
     // The items that were passed keep their own order.
     const moved = ids(moveSidebarNavEntry(entries, indexOf("chat"), 2));
-    expect(moved.slice(0, 2)).toEqual(["coder", "mail"]);
+    expect(moved.slice(0, 2)).toEqual(ids(entries).slice(1, 3));
   });
 
   it("ignores no-op and out-of-range moves without mutating the input", () => {

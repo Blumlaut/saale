@@ -26,6 +26,7 @@ import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
 const DASHBOARD_PAGES = [
   "/dashboard/chat",
   "/dashboard/coder",
+  "/dashboard/files",
   "/dashboard/mail",
   "/dashboard/contacts",
   "/dashboard/calendar",
