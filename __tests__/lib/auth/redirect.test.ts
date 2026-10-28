@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loginPath, safeNextPath } from "@/lib/auth/redirect";
+import { loginPath, queryOf, safeNextPath } from "@/lib/auth/redirect";
 
 /**
  * `?next=` decides where a visitor lands after signing in, so a value that is
@@ -30,6 +30,12 @@ describe("safeNextPath", () => {
     for (const next of hostile) {
       expect(safeNextPath(next)).toBeNull();
     }
+  });
+
+  it("keeps the query when a page redirects a visitor on", () => {
+    expect(queryOf("/?q=explain%20this")).toBe("?q=explain%20this");
+    expect(queryOf("/dashboard/chat")).toBe("");
+    expect(queryOf(null)).toBe("");
   });
 
   it("builds a login URL that carries the path", () => {

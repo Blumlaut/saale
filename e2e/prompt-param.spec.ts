@@ -72,6 +72,18 @@ test.describe("a chat started from a URL prompt", () => {
     expect(sent).toEqual([PROMPT]);
   });
 
+  test("starts the chat when the bare root URL carries the prompt", async ({ page }) => {
+    const sent: string[] = [];
+    await mockFirstMessage(page, sessionId, sent);
+    await mockSessionCreate(page, sessionId);
+
+    // The URL a browser is pointed at, and the one a person types.
+    await gotoAndSettle(page, `/?q=${encodeURIComponent(PROMPT)}`);
+
+    await expect(page).toHaveURL(new RegExp(`/dashboard/chat/${sessionId}$`));
+    expect(sent).toEqual([PROMPT]);
+  });
+
   test("opens the chat list when the prompt is empty", async ({ page }) => {
     const sent: string[] = [];
     await mockFirstMessage(page, sessionId, sent);
