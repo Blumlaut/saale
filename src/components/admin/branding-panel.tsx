@@ -104,7 +104,7 @@ function ColorField({
  */
 function BrandPreview({ mode, colors }: { mode: BrandMode; colors: BrandColors }) {
   const primary = colors[mode].primary ?? DEFAULT_BRAND_COLORS[mode].primary;
-  const ink = accentInk(colors[mode]) ?? DEFAULT_BRAND_COLORS[mode].secondary;
+  const ink = accentInk(mode, colors);
 
   return (
     <div
@@ -308,6 +308,16 @@ export function BrandingPanel({
                 />
               ))}
             </div>
+            {token.key === "secondary" &&
+              BRAND_MODES.filter((mode) => colors[mode].secondary).map((mode) => {
+                const drawn = accentInk(mode, colors);
+                if (drawn === colors[mode].secondary) return null;
+                return (
+                  <p key={mode} className="text-muted-foreground text-xs">
+                    {`${MODE_LABELS[mode]} ink is drawn as ${drawn} to read on the accent.`}
+                  </p>
+                );
+              })}
           </div>
         ))}
         <p className="text-muted-foreground text-xs">

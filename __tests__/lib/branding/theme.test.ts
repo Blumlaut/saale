@@ -5,8 +5,10 @@ import {
   BRAND_COLOR_TOKENS,
   BRAND_MODES,
   buildBrandingCss,
+  contrastRatio,
   DEFAULT_BRAND_COLORS,
   isDefaultBrandColors,
+  legibleInk,
   normalizeHex,
   normalizeThemeColors,
   readableForeground,
@@ -96,6 +98,42 @@ describe("readableForeground", () => {
   });
 });
 
+describe("contrastRatio", () => {
+  it("scores black on white at 21 and a colour against itself at 1", () => {
+    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 1);
+    expect(contrastRatio("#f97316", "#F97316")).toBeCloseTo(1, 5);
+  });
+});
+
+describe("legibleInk", () => {
+  it("leaves an ink that already reads alone", () => {
+    expect(legibleInk("#2563eb", "#ffffff")).toBe("#ffffff");
+    expect(legibleInk("#f97316", "#111827")).toBe("#111827");
+  });
+
+  it("darkens a mid-tone ink on a light accent until it clears AA", () => {
+    const ink = legibleInk("#f97316", "#fdc99a");
+
+    expect(ink).not.toBe("#fdc99a");
+    expect(contrastRatio("#f97316", ink)).toBeGreaterThanOrEqual(4.5);
+    // The picked hue survives, so it darkens instead of flipping to white.
+    expect(ink).not.toBe("#ffffff");
+  });
+
+  it("lightens a dark ink on a dark accent", () => {
+    const ink = legibleInk("#111827", "#1f2937");
+
+    expect(ink).not.toBe("#1f2937");
+    expect(contrastRatio("#111827", ink)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps any accent legible, including the mid-greys that sit at the crossover", () => {
+    for (const accent of ["#767676", "#808080", "#7f7f7f", "#f97316", "#986a44"]) {
+      expect(contrastRatio(accent, legibleInk(accent, accent)), accent).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe("resolveBrandColors", () => {
   it("fills untouched tokens from the palette", () => {
     const resolved = resolveBrandColors({ light: { primary: "#2563eb" }, dark: {} });
@@ -140,26 +178,47 @@ describe("buildBrandingCss", () => {
     expect(css).not.toMatch(/^:root \{/m);
   });
 
-  it("keeps a secondary the admin picked over the derived ink", () => {
+  it("keeps a secondary the admin picked when it reads on the accent", () => {
     const css = buildBrandingCss({ light: { primary: "#2563eb", secondary: "#f8fafc" }, dark: {} });
 
     expect(css).toContain("--primary-foreground: #f8fafc");
     expect(css).not.toContain("--primary-foreground: #ffffff");
   });
 
-  it("writes a secondary without an accent", () => {
-    const css = buildBrandingCss({ light: {}, dark: { secondary: "#f8fafc" } });
+  it("shifts a secondary that would not read on the accent", () => {
+    const css = buildBrandingCss({ light: { primary: "#f97316", secondary: "#fbbf24" }, dark: {} });
+    const ink = /--primary-foreground: (#[0-9a-f]{6})/.exec(css)?.[1] ?? "";
+
+    expect(ink).not.toBe("#fbbf24");
+    expect(contrastRatio("#f97316", ink)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("writes a secondary without an accent, checked against the palette accent", () => {
+    const css = buildBrandingCss({ light: {}, dark: { secondary: "#111827" } });
 
     expect(css).toBe(
-      ".dark {\n  --primary-foreground: #f8fafc;\n  --sidebar-primary-foreground: #f8fafc;\n}",
+      ".dark {\n  --primary-foreground: #111827;\n  --sidebar-primary-foreground: #111827;\n}",
     );
+  });
+
+  it("still corrects a lone secondary that fails on the palette accent", () => {
+    const css = buildBrandingCss({ light: { secondary: "#fde68a" }, dark: {} });
+    const ink = /--primary-foreground: (#[0-9a-f]{6})/.exec(css)?.[1] ?? "";
+
+    expect(contrastRatio(DEFAULT_BRAND_COLORS.light.primary, ink)).toBeGreaterThanOrEqual(4.5);
   });
 });
 
 describe("accentInk", () => {
   it("follows the accent until the ink is set", () => {
-    expect(accentInk({})).toBeUndefined();
-    expect(accentInk({ primary: "#2563eb" })).toBe("#ffffff");
-    expect(accentInk({ primary: "#2563eb", secondary: "#eeeeee" })).toBe("#eeeeee");
+    expect(accentInk("light", { light: { primary: "#2563eb" }, dark: {} })).toBe("#ffffff");
+    expect(
+      accentInk("light", { light: { primary: "#2563eb", secondary: "#f8fafc" }, dark: {} }),
+    ).toBe("#f8fafc");
+  });
+
+  it("checks the ink against the palette accent when no accent is set", () => {
+    expect(accentInk("dark", { light: {}, dark: {} })).toBe(DEFAULT_BRAND_COLORS.dark.secondary);
+    expect(accentInk("light", { light: { secondary: "#f8fafc" }, dark: {} })).not.toBe("#f8fafc");
   });
 });

@@ -746,7 +746,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     group: GROUP.branding,
     label: "Branding colours",
     description:
-      'Accent colours per mode, keyed by mode then token: { "light": { "primary": "#2563eb", "secondary": "#ffffff" }, "dark": { "primary": "#3b82f6" } }. primary is the accent, secondary is the text drawn on it. A token that is absent keeps the built-in palette.',
+      'Accent colours per mode, keyed by mode then token: { "light": { "primary": "#2563eb", "secondary": "#ffffff" }, "dark": { "primary": "#3b82f6" } }. primary is the accent, secondary is the text drawn on it. A secondary that does not read on the accent is shifted until it does. A token that is absent keeps the built-in palette.',
     columns: ["themeColors"],
     apply: "none",
     scope: "admin",
