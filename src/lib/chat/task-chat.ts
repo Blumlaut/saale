@@ -1,6 +1,5 @@
 import { format, parseISO } from "date-fns";
-import { createChatSession } from "@/lib/chat-session";
-import { sendChatMessage } from "@/lib/chat/send-message";
+import { startChatSession } from "@/lib/chat-session";
 import type { Task } from "@/types/shared";
 
 /**
@@ -32,14 +31,10 @@ export function buildTaskChatPrompt(task: Task, context?: string): string {
  * hands the task (plus optional user context) to the agent.
  */
 export async function startTaskChat(task: Task, context?: string): Promise<{ sessionId: string }> {
-  const { id } = await createChatSession({ title: `Task: ${task.title}` });
-
-  const result = await sendChatMessage(id, buildTaskChatPrompt(task, context));
-  if (result.kind !== "ok") {
-    const reason = result.kind === "error" ? result.message : result.kind;
-    console.error("Failed to send initial task chat message:", reason);
-    throw new Error(`Could not start the task chat (${reason})`);
-  }
+  const { id } = await startChatSession({
+    title: `Task: ${task.title}`,
+    message: buildTaskChatPrompt(task, context),
+  });
 
   return { sessionId: id };
 }
