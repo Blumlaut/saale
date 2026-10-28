@@ -66,7 +66,7 @@ function useTree(tree: FakeTree = TREE) {
     provider,
     info: {
       id: "user",
-      label: "Your files",
+      label: "files",
       root: ROOT,
       capabilities: FULL_CAPABILITIES,
     },

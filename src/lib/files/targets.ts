@@ -49,6 +49,6 @@ export async function openUserFileTarget(userId: string): Promise<OpenedFileTarg
   const root = userWorkspacePath(userId);
   return {
     provider: createLocalFileProvider({ root, owner: workspaceOwner() }),
-    info: { id: USER_FILE_TARGET, label: "Your files", root, capabilities: FULL_CAPABILITIES },
+    info: { id: USER_FILE_TARGET, label: "files", root, capabilities: FULL_CAPABILITIES },
   };
 }

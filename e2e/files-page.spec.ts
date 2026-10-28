@@ -15,7 +15,7 @@ const ROOT = "/workspaces/user-e2e";
 const LISTING = {
   target: {
     id: "user",
-    label: "Your files",
+    label: "files",
     root: ROOT,
     capabilities: { upload: true, createDirectory: true, rename: true, remove: true },
   },
