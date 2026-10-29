@@ -176,6 +176,40 @@ describe("MessageList auto-scroll", () => {
     expect(scrollerOf(container).scrollTop).toBe(tailOf(container));
   });
 
+  it("watches the transcript that arrives after the first render", () => {
+    // A chat fetches its messages, so the transcript is not there when the
+    // effect that sets up the observers first runs. Growth that no message
+    // change reports (an unfolded block, a panel dragged wider) still has to
+    // reach the follow once the messages land.
+    const { container, rerender } = render(<MessageList messages={[]} isLoading />);
+    rerender(<MessageList messages={transcript(3)} isLoading />);
+    layout(container);
+
+    contentHeight = 7000;
+    layout(container);
+    act(() => contentResized());
+
+    expect(scrollerOf(container).scrollTop).toBe(tailOf(container));
+  });
+
+  it("keeps following when a block is unfolded by a click", () => {
+    // Unfolding a thinking block presses on the transcript and grows it in the
+    // same breath. The press is a click, not the reader scrolling away, so the
+    // view stays on the tail it was watching.
+    const { container } = render(<MessageList messages={transcript(2)} isLoading />);
+    const scroller = settleAtTail(container);
+
+    fireEvent.pointerDown(scroller, { offsetX: 10 });
+    act(() => {
+      window.dispatchEvent(new Event("pointerup"));
+    });
+    contentHeight = 6200;
+    layout(container);
+    act(() => contentResized());
+
+    expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
   it("keeps the reader's place on a wheel tick smaller than the old 80px band", () => {
     const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
     const scroller = settleAtTail(container);
