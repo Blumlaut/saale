@@ -7,7 +7,6 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { Ban, CornerDownLeft, Trash2, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { terminalTheme } from "./terminal-theme";
 import { useTerminal, type TerminalSink, type TerminalSize } from "./use-terminal";
 
@@ -281,7 +280,11 @@ function TerminalPanel({
   );
 
   useEffect(() => {
-    if (running) return;
+    if (running) {
+      // A command started from elsewhere leaves nothing to type in the prompt.
+      setDraft("");
+      return;
+    }
     // A command finishing must not take focus away from a selection.
     if (terminalRef.current?.hasSelection()) return;
     inputRef.current?.focus();
@@ -356,7 +359,7 @@ function TerminalPanel({
           aria-label={running ? "Send input" : "Run command"}
           onClick={submit}
           disabled={!running && draft.trim().length === 0}
-          className={cn("h-7 w-7 shrink-0")}
+          className="h-7 w-7 shrink-0"
         >
           {running ? (
             <CornerDownLeft className="h-3.5 w-3.5" />
