@@ -1,3 +1,4 @@
+import { messageKey } from "@/lib/chat/message-factories";
 import type { Message, ToolCallData } from "./types";
 
 /** One step's contribution to a run: what it reasoned and the work it did. */
@@ -37,6 +38,10 @@ export interface CompactSplit {
  * a block's key is the step's id *and* its kind: React drops or duplicates
  * siblings that share a key, which is exactly the block vanishing mid-stream
  * and reappearing on a reload.
+ *
+ * The id is the step's render identity, not its row id: a live step is renamed
+ * when it is saved, and a key that follows the rename would remount the block,
+ * folding shut every card the user opened while the turn was still working.
  */
 export function compactBlocks(
   messages: readonly Message[],
@@ -49,26 +54,27 @@ export function compactBlocks(
   for (const message of messages) {
     const { attachments, work } = split(message.toolCalls ?? []);
     const thinking = message.thinking?.trim() ?? "";
+    const key = messageKey(message);
 
     if (thinking || work.length > 0) {
-      const step: CompactStep = { id: message.id, thinking, work };
+      const step: CompactStep = { id: key, thinking, work };
       if (open) open.steps.push(step);
       else {
-        const block = { kind: "activity" as const, key: `${message.id}:activity`, steps: [step] };
+        const block = { kind: "activity" as const, key: `${key}:activity`, steps: [step] };
         blocks.push(block);
         open = block;
       }
     }
 
     if (message.content || message.errorMessage) {
-      blocks.push({ kind: "message", key: `${message.id}:prose`, message });
+      blocks.push({ kind: "message", key: `${key}:prose`, message });
       open = null;
     }
 
     if (attachments.length > 0) {
       blocks.push({
         kind: "attachments",
-        key: `${attachments[0]!.id}:files`,
+        key: `${key}:files`,
         toolCalls: attachments,
       });
       open = null;
