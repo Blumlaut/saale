@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stopProcessesCommand } from "@/lib/coder/processes";
+import { listChatIdsCommand, stopProcessesCommand } from "@/lib/coder/processes";
 
 const run = promisify(execFile);
 
@@ -180,5 +180,17 @@ describe("the chat sweep", () => {
 
     expect(exitSignal(longerId)).toBeNull();
     expect(exitSignal(shorterId)).toBe("SIGKILL");
+  });
+
+  it("lists every process that carries an id, and no other", async () => {
+    await environ(4100, { SAALE_CHAT_ID: "chat-a", HOME: "/w" });
+    await environ(4101, { SAALE_CHAT_ID: "chat-b" });
+    await observe(4102, elsewhere);
+
+    const { stdout } = await run("bash", ["-c", listChatIdsCommand(procRoot)], {
+      timeout: 10_000,
+    });
+
+    expect(stdout.split("\n").filter(Boolean).sort()).toEqual(["chat-a", "chat-b"]);
   });
 });
