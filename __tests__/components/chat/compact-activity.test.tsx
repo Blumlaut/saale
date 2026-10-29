@@ -616,3 +616,76 @@ describe("compact activity", () => {
     expect(reasoningRow()).toHaveTextContent("Thinking");
   });
 });
+
+describe("a card opened while the turn streams", () => {
+  /** Drive the real reducer through one turn's events, rerendering each time. */
+  function streamThrough(events: StreamAction[]) {
+    let state = streamReducer({ messages: [], rootMessageId: null }, events[0]!);
+    const { rerender } = renderTranscript(state.messages, true, true);
+    for (const event of events.slice(1)) {
+      state = streamReducer(state, event);
+      rerender(<MessageList messages={state.messages} compactActivity isLoading />);
+    }
+    return { state, rerender };
+  }
+
+  it("stays open when its message is saved mid-run", () => {
+    const { state, rerender } = streamThrough([
+      { type: "turn_start", turnId: "t1" },
+      {
+        type: "tool_start",
+        turnId: "t1",
+        toolCallId: "tc-1",
+        toolName: "bash",
+        args: { command: "uptime" },
+      },
+    ]);
+
+    fireEvent.click(toolsRow());
+    fireEvent.click(screen.getByRole("button", { name: /Bash/ }));
+    expect(screen.getByText(/command: uptime/)).toBeInTheDocument();
+
+    // The step's row is written to the DB, so its id stops being `streaming-t1`,
+    // while the call it announced is still running.
+    const saved = streamReducer(state, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    rerender(<MessageList messages={saved.messages} compactActivity isLoading />);
+
+    expect(toolsRow()).toHaveAttribute("aria-expanded", "true");
+    const done = streamReducer(saved, {
+      type: "tool_end",
+      turnId: "t1",
+      toolCallId: "tc-1",
+      result: "up 3 days",
+    });
+    rerender(<MessageList messages={done.messages} compactActivity isLoading />);
+    expect(screen.getByText(/up 3 days/)).toBeInTheDocument();
+  });
+
+  it("stays open in the step-by-step transcript too", () => {
+    let state = streamReducer(
+      { messages: [], rootMessageId: null },
+      {
+        type: "turn_start",
+        turnId: "t1",
+      },
+    );
+    state = streamReducer(state, {
+      type: "tool_start",
+      turnId: "t1",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: { command: "uptime" },
+    });
+    const { rerender } = renderTranscript(state.messages, false, true);
+
+    const card = () => screen.getByRole("button", { name: /Bash/ });
+    fireEvent.click(card());
+    expect(screen.getByText(/command: uptime/)).toBeInTheDocument();
+
+    state = streamReducer(state, { type: "message_saved", turnId: "t1", messageId: "a1" });
+    rerender(<MessageList messages={state.messages} isLoading />);
+
+    expect(card()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/command: uptime/)).toBeInTheDocument();
+  });
+});
