@@ -3,18 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * The terminal panel's state: what a command printed, and what is running.
+ * The terminal panel's state: the scrollback, and what is running.
  *
- * One command at a time, like a shell. Output is kept as segments so a build's
- * stdout and stderr can be tinted apart, and it is capped: a dev server prints
- * for as long as it runs, and the panel is not a log file.
+ * One command at a time, like a shell, and the panel keeps what earlier ones
+ * printed: the scrollback is the panel's, the server only replays the run that
+ * is current. Output is kept as segments so a build's stdout and stderr can be
+ * tinted apart, and it is capped: a dev server prints for as long as it runs,
+ * and the panel is not a log file.
  *
  * The command is not this panel's: it runs on the server until it exits or the
  * user stops it, so leaving the page detaches the stream and nothing else. Coming
  * back replays what the run printed while it was gone.
  */
 
-/** How much output a panel keeps before it drops the oldest. */
+/** How much output the panel keeps before it drops the oldest. */
 const MAX_OUTPUT_CHARS = 400_000;
 /** Lines the up arrow remembers. */
 const MAX_HISTORY = 100;
@@ -25,13 +27,22 @@ export interface TerminalSegment {
   text: string;
 }
 
+/** One command and everything it printed. */
+export interface TerminalBlock {
+  id: number;
+  /** The run's start on the server, which is what a replay is keyed by. */
+  runId: number | null;
+  command: string;
+  segments: TerminalSegment[];
+}
+
 export interface TerminalRun {
   execId: string | null;
   command: string;
 }
 
 export interface TerminalState {
-  segments: TerminalSegment[];
+  blocks: TerminalBlock[];
   running: TerminalRun | null;
   /** Set when the last command answered with an error. */
   error: string | null;
@@ -73,8 +84,42 @@ function exitNote(code: number, millis: number): string {
   return `exit ${code} · ${(millis / 1000).toFixed(1)}s\n`;
 }
 
+function countChars(blocks: TerminalBlock[]): number {
+  return blocks.reduce(
+    (sum, block) => sum + block.segments.reduce((chars, segment) => chars + segment.text.length, 0),
+    0,
+  );
+}
+
+/** Drop the oldest output until the scrollback is back under its cap. */
+function trimBlocks(blocks: TerminalBlock[]): TerminalBlock[] {
+  let total = countChars(blocks);
+  if (total <= MAX_OUTPUT_CHARS) return blocks;
+
+  const next = blocks.slice();
+  while (total > MAX_OUTPUT_CHARS && next.length > 0) {
+    const block = next[0] as TerminalBlock;
+    const segments = block.segments.slice();
+    while (total > MAX_OUTPUT_CHARS && segments.length > 0) {
+      const segment = segments[0] as TerminalSegment;
+      const excess = total - MAX_OUTPUT_CHARS;
+      if (segment.text.length <= excess) {
+        segments.shift();
+        total -= segment.text.length;
+      } else {
+        segments[0] = { ...segment, text: segment.text.slice(excess) };
+        total -= excess;
+      }
+    }
+    if (segments.length === 0) next.shift();
+    else next[0] = { ...block, segments };
+  }
+
+  return next;
+}
+
 export function useTerminal(sessionId: string): TerminalState {
-  const [segments, setSegments] = useState<TerminalSegment[]>([]);
+  const [blocks, setBlocks] = useState<TerminalBlock[]>([]);
   const [running, setRunning] = useState<TerminalRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
@@ -84,31 +129,49 @@ export function useTerminal(sessionId: string): TerminalState {
   // Mirrors `running` for the keystroke path, which needs it without waiting
   // for a render.
   const runningRef = useRef<TerminalRun | null>(null);
+  // The block output belongs to until the run ends.
+  const runIdRef = useRef<number | null>(null);
 
   const setRun = useCallback((next: TerminalRun | null) => {
     runningRef.current = next;
     setRunning(next);
   }, []);
 
-  const append = useCallback((stream: TerminalSegment["stream"], text: string) => {
-    if (!text) return;
-    setSegments((current) => {
-      const last = current[current.length - 1];
-      let next: TerminalSegment[];
-      if (last && last.stream === stream) {
-        next = [...current.slice(0, -1), { ...last, text: last.text + text }];
-      } else {
-        next = [...current, { id: nextId.current++, stream, text }];
+  /**
+   * Show a run, opening a block for one the panel has not seen.
+   *
+   * A replay of a run that is already on screen replaces that block's output
+   * rather than adding a second copy, and leaves earlier commands alone.
+   */
+  const openRun = useCallback((runId: number, command: string) => {
+    runIdRef.current = runId;
+    setBlocks((current) => {
+      const index = current.findIndex((block) => block.runId === runId);
+      if (index === -1) {
+        return [...current, { id: nextId.current++, runId, command, segments: [] }];
       }
-
-      // Drop from the front until the panel is back under its cap.
-      let total = next.reduce((sum, segment) => sum + segment.text.length, 0);
-      while (next.length > 1 && total > MAX_OUTPUT_CHARS) {
-        const [first, ...remaining] = next as [TerminalSegment, ...TerminalSegment[]];
-        total -= first.text.length;
-        next = remaining;
-      }
+      const next = current.slice();
+      next[index] = { ...(current[index] as TerminalBlock), command, segments: [] };
       return next;
+    });
+  }, []);
+
+  const append = useCallback((runId: number, stream: TerminalSegment["stream"], text: string) => {
+    if (!text) return;
+    setBlocks((current) => {
+      const index = current.findIndex((block) => block.runId === runId);
+      if (index === -1) return current;
+
+      const block = current[index] as TerminalBlock;
+      const last = block.segments[block.segments.length - 1];
+      const segments =
+        last && last.stream === stream
+          ? [...block.segments.slice(0, -1), { ...last, text: last.text + text }]
+          : [...block.segments, { id: nextId.current++, stream, text }];
+
+      const next = current.slice();
+      next[index] = { ...block, segments };
+      return trimBlocks(next);
     });
   }, []);
 
@@ -123,8 +186,8 @@ export function useTerminal(sessionId: string): TerminalState {
     const controller = new AbortController();
     streamRef.current = controller;
 
-    setSegments([]);
     setError(null);
+    let runId: number | null = null;
 
     try {
       const response = await fetch(`/api/coder/sessions/${sessionId}/terminal/stream`, {
@@ -159,20 +222,22 @@ export function useTerminal(sessionId: string): TerminalState {
           }
 
           if (frame.event === "command" && typeof payload.command === "string") {
-            append("input", `$ ${payload.command}\n`);
+            runId = typeof payload.startedAt === "number" ? payload.startedAt : Date.now();
+            openRun(runId, payload.command);
             setRun({ execId: runningRef.current?.execId ?? null, command: payload.command });
           } else if (frame.event === "started" && typeof payload.execId === "string") {
             setRun({ execId: payload.execId, command: runningRef.current?.command ?? "" });
           } else if (frame.event === "data" && typeof payload.text === "string") {
-            append(payload.stream === "stderr" ? "stderr" : "stdout", payload.text);
+            if (runId === null) continue;
+            append(runId, payload.stream === "stderr" ? "stderr" : "stdout", payload.text);
           } else if (frame.event === "exit") {
             const code = typeof payload.exitCode === "number" ? payload.exitCode : 1;
             const millis = typeof payload.durationMs === "number" ? payload.durationMs : 0;
-            append("note", exitNote(code, millis));
+            if (runId !== null) append(runId, "note", exitNote(code, millis));
             setRun(null);
           } else if (frame.event === "error" && typeof payload.message === "string") {
             setError(payload.message);
-            append("note", `${payload.message}\n`);
+            if (runId !== null) append(runId, "note", `${payload.message}\n`);
             setRun(null);
           }
         }
@@ -186,7 +251,7 @@ export function useTerminal(sessionId: string): TerminalState {
     } finally {
       if (streamRef.current === controller) streamRef.current = null;
     }
-  }, [append, sessionId, setRun]);
+  }, [append, openRun, sessionId, setRun]);
 
   const run = useCallback(
     async (command: string) => {
@@ -212,7 +277,15 @@ export function useTerminal(sessionId: string): TerminalState {
               return `Command failed (${response.status})`;
             });
           setError(message);
-          append("note", `${message}\n`);
+          setBlocks((current) => [
+            ...current,
+            {
+              id: nextId.current++,
+              runId: null,
+              command: trimmed,
+              segments: [{ id: nextId.current++, stream: "note", text: `${message}\n` }],
+            },
+          ]);
           return;
         }
       } catch (err) {
@@ -225,22 +298,23 @@ export function useTerminal(sessionId: string): TerminalState {
       setRun({ execId: null, command: trimmed });
       await attach();
     },
-    [append, attach, sessionId, setRun],
+    [attach, sessionId, setRun],
   );
 
   const stop = useCallback(() => {
     void fetch(`/api/coder/sessions/${sessionId}/terminal/stop`, { method: "POST" })
       .then((response) => {
-        if (!response.ok) append("note", `Could not stop the command (${response.status})\n`);
+        if (!response.ok && runIdRef.current !== null) {
+          append(runIdRef.current, "note", `Could not stop the command (${response.status})\n`);
+        }
       })
       .catch((err) => {
         console.error("Failed to stop the terminal command:", err);
-        append("note", "Could not stop the command\n");
       });
   }, [append, sessionId]);
 
   const clear = useCallback(() => {
-    setSegments([]);
+    setBlocks([]);
     setError(null);
     void fetch(`/api/coder/sessions/${sessionId}/terminal`, { method: "DELETE" }).catch((err) => {
       console.error("Failed to clear the terminal:", err);
@@ -253,7 +327,7 @@ export function useTerminal(sessionId: string): TerminalState {
       // Nothing is listening before the command announces itself.
       if (!execId || !text) return;
 
-      append("input", text);
+      if (runIdRef.current !== null) append(runIdRef.current, "input", text);
       try {
         const response = await fetch(`/api/coder/sessions/${sessionId}/terminal/input`, {
           method: "POST",
@@ -262,11 +336,13 @@ export function useTerminal(sessionId: string): TerminalState {
         });
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as { error?: string };
-          append("note", `${body.error ?? "Input was refused"}\n`);
+          if (runIdRef.current !== null) {
+            append(runIdRef.current, "note", `${body.error ?? "Input was refused"}\n`);
+          }
         }
       } catch (err) {
         console.error("Failed to send terminal input:", err);
-        append("note", "Input was refused\n");
+        if (runIdRef.current !== null) append(runIdRef.current, "note", "Input was refused\n");
       }
     },
     [append, sessionId],
@@ -281,5 +357,5 @@ export function useTerminal(sessionId: string): TerminalState {
     };
   }, [attach]);
 
-  return { segments, running, error, history, run, stop, sendInput, clear };
+  return { blocks, running, error, history, run, stop, sendInput, clear };
 }

@@ -241,6 +241,101 @@ describe("TerminalView", () => {
     await waitFor(() => expect(screen.getAllByText(/no worktree yet/)).toHaveLength(2));
   });
 
+  it("keeps what earlier commands printed", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith("/terminal/stream")) {
+        return callsTo("/terminal").length === 0
+          ? emptyStream()
+          : sseResponse(
+              callsTo("/terminal").length === 1
+                ? [
+                    frame("command", { command: "ls", startedAt: 1 }),
+                    frame("data", { stream: "stdout", text: "a.txt\n" }),
+                    frame("exit", { exitCode: 0, timedOut: false, durationMs: 1 }),
+                  ]
+                : [
+                    frame("command", { command: "pwd", startedAt: 2 }),
+                    frame("data", { stream: "stdout", text: "/worktrees/c-1a2b3c4d\n" }),
+                    frame("exit", { exitCode: 0, timedOut: false, durationMs: 1 }),
+                  ],
+            );
+      }
+      return startedRun("ls");
+    });
+    render(<TerminalView sessionId="chat-1" worktree={WORKTREE} />);
+
+    act(() => type("ls"));
+    await waitFor(() => expect(screen.getByText(/a\.txt/)).toBeInTheDocument());
+
+    act(() => type("pwd"));
+    await waitFor(() => expect(screen.getByText(/worktrees\/c-1a2b3c4d/)).toBeInTheDocument());
+
+    expect(screen.getByText(/\$ ls/)).toBeInTheDocument();
+    expect(screen.getByText(/a\.txt/)).toBeInTheDocument();
+  });
+
+  it("answers a prompt with an empty line", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith("/terminal/input")) return json({ written: 1 });
+      if (String(url).endsWith("/terminal/stream")) {
+        return callsTo("/terminal").length === 0
+          ? emptyStream()
+          : sseResponse(
+              [
+                frame("command", { command: "npm init", startedAt: 1 }),
+                frame("started", { execId: "exec-1" }),
+              ],
+              { hold: true },
+            );
+      }
+      return startedRun("npm init");
+    });
+    render(<TerminalView sessionId="chat-1" worktree={WORKTREE} />);
+
+    act(() => type("npm init"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument());
+
+    act(() => fireEvent.keyDown(screen.getByLabelText("Terminal command"), { key: "Enter" }));
+
+    await waitFor(() => expect(callsTo("/terminal/input")).toHaveLength(1));
+    expect(bodyOf(callsTo("/terminal/input")[0]!)).toEqual({ execId: "exec-1", data: "\n" });
+  });
+
+  it("leaves a selection in the output alone", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith("/terminal/stream")) {
+        return sseResponse([
+          frame("command", { command: "git log", startedAt: 1 }),
+          frame("data", { stream: "stdout", text: "commit 1a2b3c4d\n" }),
+          frame("exit", { exitCode: 0, timedOut: false, durationMs: 1 }),
+        ]);
+      }
+      return startedRun("git log");
+    });
+    render(<TerminalView sessionId="chat-1" worktree={WORKTREE} />);
+
+    act(() => type("git log"));
+    const output = await screen.findByText(/commit 1a2b3c4d/);
+
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const input = screen.getByLabelText("Terminal command") as HTMLInputElement;
+    act(() => input.blur());
+    act(() => fireEvent.click(output));
+
+    expect(document.activeElement).not.toBe(input);
+    expect(selection.toString()).toContain("commit 1a2b3c4d");
+
+    // A plain click still puts the caret back in the prompt.
+    act(() => selection.removeAllRanges());
+    act(() => fireEvent.click(output));
+    expect(document.activeElement).toBe(input);
+  });
+
   it("walks back through what was run", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (String(url).endsWith("/terminal/stream")) {
