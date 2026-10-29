@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Ban, CornerDownLeft, Trash2, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,19 @@ import { useTerminal } from "./use-terminal";
  * here is a login shell: the worktree is the working directory and there is no
  * way to leave it, because the panel never sends a path.
  */
+
+/** How close to the bottom still counts as following the output. */
+const FOLLOW_SLACK_PX = 32;
+
+/** Whether the user has text selected inside `element`. */
+function hasSelectionIn(element: HTMLElement | null): boolean {
+  if (!element) return false;
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  const range = selection.getRangeAt(0);
+  return element.contains(range.commonAncestorContainer);
+}
+
 export function TerminalView({
   sessionId,
   worktree,
@@ -25,7 +38,7 @@ export function TerminalView({
   /** Hands the terminal's run function to a parent so other tabs can launch commands. */
   registerRun?: (run: (command: string) => void) => void;
 }) {
-  const { segments, running, error, history, run, stop, sendInput, clear } = useTerminal(sessionId);
+  const { blocks, running, error, history, run, stop, sendInput, clear } = useTerminal(sessionId);
 
   // Let the parent launch commands into this terminal (e.g. a script button).
   useEffect(() => {
@@ -43,25 +56,62 @@ export function TerminalView({
     const element = scrollRef.current;
     if (!element || !pinnedRef.current) return;
     element.scrollTop = element.scrollHeight;
-  }, [segments]);
+  }, [blocks]);
+
+  // Output streaming in must not scroll a selection the user is reading.
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const element = scrollRef.current;
+      if (!element) return;
+      if (hasSelectionIn(element)) {
+        pinnedRef.current = false;
+        return;
+      }
+      pinnedRef.current =
+        element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_SLACK_PX;
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
 
   const onScroll = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
-    pinnedRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32;
+    pinnedRef.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_SLACK_PX;
+  }, []);
+
+  // The terminal stays mounted while its tab is hidden, where it has no height
+  // to follow; catching up when it is shown again needs the resize.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (!pinnedRef.current) return;
+      element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  /** Clicking the output types into the prompt, unless the click was a selection. */
+  const focusInput = useCallback(() => {
+    if (hasSelectionIn(scrollRef.current)) return;
+    inputRef.current?.focus();
   }, []);
 
   const submit = useCallback(() => {
     const line = draft;
     setDraft("");
     setHistoryIndex(null);
-    if (!line.trim()) return;
 
     if (running) {
-      // Answering a prompt: the command is still open on stdin.
+      // Answering a prompt: the command is still open on stdin, and an empty
+      // line is a valid answer.
       void sendInput(`${line}\n`);
       return;
     }
+    if (!line.trim()) return;
     void run(line);
   }, [draft, running, run, sendInput]);
 
@@ -105,7 +155,10 @@ export function TerminalView({
   );
 
   useEffect(() => {
-    if (!running) inputRef.current?.focus();
+    if (running) return;
+    // A command finishing must not take focus away from a selection.
+    if (hasSelectionIn(scrollRef.current)) return;
+    inputRef.current?.focus();
   }, [running]);
 
   if (!worktree) {
@@ -149,7 +202,7 @@ export function TerminalView({
             size="icon"
             aria-label="Clear the terminal"
             onClick={clear}
-            disabled={segments.length === 0}
+            disabled={blocks.length === 0}
             className="h-7 w-7"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -160,23 +213,28 @@ export function TerminalView({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        onClick={() => inputRef.current?.focus()}
+        onClick={focusInput}
         className="min-h-0 flex-1 cursor-text overflow-y-auto px-2 py-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap"
       >
-        {segments.length === 0 ? (
+        {blocks.length === 0 ? (
           <p className="text-muted-foreground">Run something in this worktree.</p>
         ) : null}
-        {segments.map((segment) => (
-          <span
-            key={segment.id}
-            className={cn(
-              segment.stream === "stderr" && "text-amber-600 dark:text-amber-400",
-              segment.stream === "note" && "text-muted-foreground",
-              segment.stream === "input" && "text-primary",
-            )}
-          >
-            {segment.text}
-          </span>
+        {blocks.map((block) => (
+          <Fragment key={block.id}>
+            <span className="text-primary">{`$ ${block.command}\n`}</span>
+            {block.segments.map((segment) => (
+              <span
+                key={segment.id}
+                className={cn(
+                  segment.stream === "stderr" && "text-amber-600 dark:text-amber-400",
+                  segment.stream === "note" && "text-muted-foreground",
+                  segment.stream === "input" && "text-primary",
+                )}
+              >
+                {segment.text}
+              </span>
+            ))}
+          </Fragment>
         ))}
       </div>
 
@@ -203,7 +261,7 @@ export function TerminalView({
           size="icon"
           aria-label={running ? "Send input" : "Run command"}
           onClick={submit}
-          disabled={draft.trim().length === 0}
+          disabled={!running && draft.trim().length === 0}
           className="h-7 w-7 shrink-0"
         >
           {running ? (
