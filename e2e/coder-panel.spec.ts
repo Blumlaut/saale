@@ -449,13 +449,20 @@ test.describe("coder panel", () => {
     const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     await shown(page, '[role="tab"]:text-is("Terminal")').click();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
+    await expect(shown(page, '[aria-label="Terminal output"] .xterm')).toBeVisible();
 
+    const sent = page.waitForRequest(
+      (request) => request.url().endsWith("/terminal") && request.method() === "POST",
+    );
     const input = shown(page, '[aria-label="Terminal command"]');
     await input.fill("npm test");
     await input.press("Enter");
 
-    await expect(page.getByText(/2 passed/, { exact: false })).toBeVisible();
-    await expect(page.getByText(/exit 0/, { exact: false })).toBeVisible();
+    expect((await sent).postDataJSON()).toMatchObject({ command: "npm test" });
+
+    // The terminal draws the run into the DOM, so the output is readable here.
+    await expect(page.getByText(/2 passed/)).toBeVisible();
+    await expect(page.getByText(/exit 0/)).toBeVisible();
 
     await context.close();
   });

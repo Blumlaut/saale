@@ -327,8 +327,9 @@ function TerminalPanel({
       <div
         ref={surfaceRef}
         onClick={onSurfaceClick}
+        role="group"
         aria-label="Terminal output"
-        className="terminal-surface min-h-0 flex-1 overflow-hidden"
+        className="terminal-surface min-h-0 flex-1 overflow-hidden font-mono"
       />
 
       {error ? <p className="text-destructive shrink-0 px-2 pb-1 text-[11px]">{error}</p> : null}
