@@ -648,3 +648,8 @@ kept from the old glass system so components don't need changes. */
 .terminal-surface .xterm {
   padding: 0.5rem;
 }
+
+/* xterm's viewport is black by default, which shows as a ring around the screen. */
+.terminal-surface .xterm .xterm-viewport {
+  background-color: transparent;
+}

@@ -217,6 +217,7 @@ POST   /api/coder/sessions/:sessionId/terminal       start a command in the work
 GET    /api/coder/sessions/:sessionId/terminal/stream  SSE: the chat's run, replayed then live
 POST   /api/coder/sessions/:sessionId/terminal/stop    stop that run
 POST   /api/coder/sessions/:sessionId/terminal/input   type into it
+POST   /api/coder/sessions/:sessionId/terminal/resize  tell the run how big the panel is
 ```
 
 Every route authenticates, then scopes by `project.userId` / `session.userId` in the
@@ -286,6 +287,10 @@ git worktree remove <dir>                  no --force
   the panel closes, and reopening the chat replays what it printed. Its exec id is recorded, so
   worktree removal kills it (then `pkill -f` on the worktree path for anything a background
   command left: dev servers, watchers). A stopped-by-cleanup exec reads as "exited".
+- A terminal command runs on a pty (`Tty` on the docker exec, `script` on the dev host) with
+  `TERM` set, so full-screen programs work, and the panel draws the output through xterm.js.
+  The size travels with the start and can change while the command runs; the dev host's pty
+  keeps the size it started with.
 - Archived chats do not exist in Saale today. When one is added, the worktree
   removal belongs at the same hook as chat deletion.
 
@@ -318,9 +323,8 @@ Each step is a commit that leaves `npm run check` green.
 10. **Cleanup.** Chat-delete worktree removal with confirmation, project delete, the
     worker sweep, process kill; tests for the dirty-tree refusal and the sweep.
 11. **Terminal** (follow-up): a `POST /api/coder/sessions/:id/terminal` stream over
-    `sandboxExec`. Running a command needs no sandbox change. Typing into a command that is
-    already running does: `sandbox-exec` starts every exec with a hijacked stdin that
-    nothing writes to, so that panel also needs a new `/exec/:id/input` route.
+    `sandboxExec`. Typing into a command that is already running needs `/exec/:id/input`, and
+    a program that draws a screen needs `/exec/:id/resize` and `tty` on the exec.
 12. **E2E.** `e2e/coder-panel.spec.ts`: create a project from `git init`, send a message,
     assert a worktree appears, edit a file through the file browser, see the change list
     update, delete the chat and see the worktree go. Plus the 375px and 320px overflow
