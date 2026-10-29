@@ -210,6 +210,36 @@ describe("MessageList auto-scroll", () => {
     expect(scroller.scrollTop).toBe(tailOf(container));
   });
 
+  it("leaves a reader who scrolled away alone while the transcript grows", () => {
+    // Reading back is the reader's place to keep: a tool card unfolding above
+    // them shifts nothing they are looking at.
+    const { container } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+    const readingAt = tailOf(container) - 900;
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scrollTo(container, readingAt);
+
+    contentHeight = 7200;
+    layout(container);
+    act(() => contentResized());
+
+    expect(scroller.scrollTop).toBe(readingAt);
+  });
+
+  it("keeps following a block unfolding after the reader returns to the tail", () => {
+    const { container } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scrollTo(container, tailOf(container) - 900);
+
+    fireEvent.click(jumpButton()!);
+    contentHeight = 6600;
+    layout(container);
+    act(() => contentResized());
+
+    expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
   it("keeps the reader's place on a wheel tick smaller than the old 80px band", () => {
     const { container, rerender } = render(<MessageList messages={transcript(2)} isLoading />);
     const scroller = settleAtTail(container);
