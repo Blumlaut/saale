@@ -60,6 +60,16 @@ vi.mock("@/lib/coder/worktree-removal", async (importOriginal) => {
   return { ...actual, removeChatWorktree: (...args: unknown[]) => mockRemoveChatWorktree(...args) };
 });
 
+const mockLoadChatCheckout = vi.fn();
+vi.mock("@/lib/coder/checkout", () => ({
+  loadChatCheckout: (...args: unknown[]) => mockLoadChatCheckout(...args),
+}));
+
+const mockStopChatProcesses = vi.fn();
+vi.mock("@/lib/coder/processes", () => ({
+  stopChatProcesses: (...args: unknown[]) => mockStopChatProcesses(...args),
+}));
+
 import {
   autoDeleteChatSession,
   deleteChatSession,
@@ -82,6 +92,8 @@ describe("deleteChatSession", () => {
     mockRemove.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
     mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
+    mockLoadChatCheckout.mockResolvedValue(null);
+    mockStopChatProcesses.mockResolvedValue(undefined);
   });
 
   it("deletes a chat the user owns and returns its title", async () => {
@@ -173,6 +185,32 @@ describe("deleteChatSession", () => {
 
     expect(mockRemoveChatWorktree).toHaveBeenCalledWith(USER_ID, SESSION_ID, true);
     expect(mockDeleteMany).toHaveBeenCalled();
+  });
+
+  it("stops what a chat left running in the project's shared checkout", async () => {
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+    mockLoadChatCheckout.mockResolvedValue({ path: "projects/saale", mode: "repo" });
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockStopChatProcesses).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+  });
+
+  it("leaves the processes alone when removing the worktree already stopped them", async () => {
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+    mockRemoveChatWorktree.mockResolvedValue({ path: "worktrees/saale/c-1a2b3c4d", removed: true });
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockLoadChatCheckout).not.toHaveBeenCalled();
+    expect(mockStopChatProcesses).not.toHaveBeenCalled();
+  });
+
+  it("does not sweep anything for a chat that is not a coder chat", async () => {
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockRemoveChatWorktree).not.toHaveBeenCalled();
+    expect(mockStopChatProcesses).not.toHaveBeenCalled();
   });
 });
 

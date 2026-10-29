@@ -140,7 +140,7 @@ async function executeCouncilSweepViaApp(): Promise<unknown> {
   return postToApp("/api/council/execute", {});
 }
 
-/** Reconcile coder worktree rows with their checkouts. */
+/** Reconcile coder worktrees with their checkouts, and stop what deleted chats left running. */
 async function executeCoderSweepViaApp(): Promise<unknown> {
   return postToApp("/api/coder/sweep", {});
 }

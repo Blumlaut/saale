@@ -422,7 +422,8 @@ export const CODER_SWEEP_SCHEDULER_ID = "coder-worktree-sweep";
 export const CODER_SWEEP_JOB_NAME = "coder_worktree_sweep";
 
 /**
- * Register the sweep that reconciles coder worktree rows with their checkouts.
+ * Register the sweep that reconciles coder worktree rows with their checkouts,
+ * and stops what a deleted chat left running.
  *
  * Runs once a day: it only fixes bookkeeping after a crash or a manual delete,
  * and the directories it reports are never removed for us.
