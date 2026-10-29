@@ -23,12 +23,9 @@ import {
   isBranchPushed,
   readStatus,
   removeWorktree,
-  runInWorkspace,
 } from "./git";
 import { resolveCoderPath, workspaceDirectoryExists } from "./paths";
-import { stopProcessesCommand, SWEEP_TIMEOUT_SECONDS } from "./processes";
-import { stopTerminalExecs } from "./terminal";
-import { forgetTerminalRun } from "./terminal-runs";
+import { stopChatProcesses } from "./processes";
 
 /** A removal git refused, with the reason it gave. */
 export class CoderCleanupError extends Error {
@@ -52,37 +49,6 @@ export interface RemovedWorktree {
   /** The workspace-relative path, or null when the chat had no worktree. */
   path: string | null;
   removed: boolean;
-}
-
-/**
- * Stop whatever is still running inside a worktree.
- *
- * A dev server or a watcher the agent left behind holds its files open and
- * keeps working after the chat is gone, so it is killed before the checkout is
- * removed. Commands the terminal panel started are stopped by id first, because
- * their command lines never name the directory. The sweep then catches the rest:
- * anything whose command line names the worktree, and anything whose working
- * directory is inside it.
- */
-async function stopProcesses(
-  userId: string,
-  sessionId: string,
-  absolutePath: string,
-): Promise<void> {
-  const stopped = await stopTerminalExecs(userId, sessionId);
-  if (stopped > 0)
-    console.warn(`[coder] stopped ${stopped} terminal command(s) in ${absolutePath}`);
-  // The checkout is going, so the run it belonged to goes with it.
-  forgetTerminalRun(userId, sessionId);
-
-  const result = await runInWorkspace(userId, {
-    cwd: ".",
-    command: stopProcessesCommand(absolutePath),
-    timeoutSeconds: SWEEP_TIMEOUT_SECONDS,
-  });
-  if (result.exitCode !== 0) {
-    console.warn(`[coder] stopping processes in ${absolutePath} exited ${result.exitCode}`);
-  }
 }
 
 /**
@@ -159,7 +125,11 @@ export async function removeChatWorktree(
   }
 
   if (checkoutExists) {
-    await stopProcesses(userId, sessionId, resolveCoderPath(userId, worktree.path));
+    // The checkout is about to go, so everything the chat left running goes
+    // first.
+    await stopChatProcesses(userId, sessionId, {
+      ownCheckout: resolveCoderPath(userId, worktree.path),
+    });
 
     // Nothing left to compare the checkout against, so what is in it is all
     // that is left of the work done there.

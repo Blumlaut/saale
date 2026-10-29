@@ -20,6 +20,9 @@ const run = promisify(execFile);
 
 const children: ChildProcess[] = [];
 
+/** The chat every sweep in this file is for. */
+const CHAT_ID = "chat-1";
+
 let root: string;
 let procRoot: string;
 let worktree: string;
@@ -36,6 +39,14 @@ async function observe(pid: number, cwd: string): Promise<void> {
   const dir = path.join(procRoot, String(pid));
   await fs.mkdir(dir, { recursive: true });
   await fs.symlink(cwd, path.join(dir, "cwd"));
+}
+
+/** The environment a process was started with, as the kernel keeps it. */
+async function environ(pid: number, vars: Record<string, string>): Promise<void> {
+  const dir = path.join(procRoot, String(pid));
+  await fs.mkdir(dir, { recursive: true });
+  const entries = Object.entries(vars).map(([name, value]) => `${name}=${value}`);
+  await fs.writeFile(path.join(dir, "environ"), `${entries.join("\0")}\0`);
 }
 
 /**
@@ -56,16 +67,19 @@ function exitSignal(pid: number): string | null {
   return null;
 }
 
-async function runSweep(): Promise<{ code: number }> {
+async function runSweep(
+  target: { ownCheckout?: string | null } = { ownCheckout: worktree },
+): Promise<{ code: number }> {
   const bin = path.join(root, "bin");
   await fs.mkdir(bin, { recursive: true });
   // Only `pkill` is external; stubbing it records the command-line pass.
   const stub = path.join(bin, "pkill");
   await fs.writeFile(stub, `#!/bin/sh\necho "pkill $*" >> ${log}\nexit 0\n`, { mode: 0o755 });
 
+  const command = stopProcessesCommand({ chatId: CHAT_ID, ...target }, procRoot);
   try {
-    await run("bash", ["-c", stopProcessesCommand(worktree, procRoot)], {
-      cwd: worktree,
+    await run("bash", ["-c", command], {
+      cwd: root,
       env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` },
       timeout: 10_000,
     });
@@ -132,5 +146,39 @@ describe("the worktree sweep", () => {
 
     expect(result.code).toBe(0);
     expect(await fs.readFile(log, "utf8")).toContain(`pkill -f ${worktree}`);
+  });
+});
+
+describe("the chat sweep", () => {
+  it("kills what the chat started outside its checkout", async () => {
+    const moved = spawnSleep();
+    const otherChat = spawnSleep();
+    const noEnvironment = spawnSleep();
+
+    await environ(moved, { SAALE_CHAT_ID: CHAT_ID, HOME: "/w" });
+    await environ(otherChat, { SAALE_CHAT_ID: "chat-2" });
+    await observe(noEnvironment, elsewhere);
+
+    // A checkout shared by several chats is swept by chat id alone.
+    await runSweep({ ownCheckout: null });
+    await settle();
+
+    expect(exitSignal(moved)).toBe("SIGKILL");
+    expect(exitSignal(otherChat)).toBeNull();
+    expect(exitSignal(noEnvironment)).toBeNull();
+  });
+
+  it("reads the id as a whole entry, not as a prefix of another", async () => {
+    const longerId = spawnSleep();
+    const shorterId = spawnSleep();
+
+    await environ(longerId, { SAALE_CHAT_ID: `${CHAT_ID}9` });
+    await environ(shorterId, { SAALE_CHAT_ID: CHAT_ID });
+
+    await runSweep({ ownCheckout: null });
+    await settle();
+
+    expect(exitSignal(longerId)).toBeNull();
+    expect(exitSignal(shorterId)).toBe("SIGKILL");
   });
 });

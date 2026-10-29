@@ -6,9 +6,9 @@
  * Order of operations:
  * 1. Verify ownership (`userId` in the query. an id-only delete would let a
  *    guessed id remove another user's chat)
- * 2. For a coder chat, remove its worktree and its branch. A checkout holding
- *    work that exists nowhere else refuses, and that refusal aborts the delete,
- *    so the chat never outlives its work
+ * 2. For a coder chat, remove its worktree and its branch, and stop what it
+ *    left running. A checkout holding work that exists nowhere else refuses,
+ *    and that refusal aborts the delete, so the chat never outlives its work
  * 3. Delete attachment files from disk (fails fast, leaving the DB intact)
  * 4. Delete the session row (cascade removes messages + attachment records +
  *    watcher rows)
@@ -23,6 +23,8 @@ import { isSessionActive } from "@/lib/redis";
 import { unscheduleWatcher } from "@/lib/queue";
 import { keepAutoDeletedSession, type AutoDeleteKeepReason } from "./auto-delete";
 import { getProvisioning } from "@/lib/coder/provisioning";
+import { loadChatCheckout } from "@/lib/coder/checkout";
+import { stopChatProcesses } from "@/lib/coder/processes";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
 import { removeChatWorktree, CoderCleanupError } from "@/lib/coder/worktree-removal";
 import type { CleanupCode } from "@/lib/coder/force-delete";
@@ -59,7 +61,15 @@ export async function deleteChatSession(
 
   // A coder chat owns a checkout. When git will not let it go, the chat stays:
   // nothing half-deleted, and the work is still where it was.
-  if (session.projectId) await removeChatWorktree(userId, sessionId, force);
+  if (session.projectId) {
+    const worktree = await removeChatWorktree(userId, sessionId, force);
+    if (!worktree.removed) {
+      // A chat in the project's own checkout has no worktree whose removal
+      // would have stopped it.
+      const checkout = await loadChatCheckout(userId, sessionId);
+      if (checkout) await stopChatProcesses(userId, sessionId);
+    }
+  }
 
   const messages = await prisma.chatMessage.findMany({
     where: { sessionId, session: { userId } },
