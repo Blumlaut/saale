@@ -55,6 +55,13 @@ class FakeExec implements ExecHandle {
   /** Whether the manager asked the daemon to attach stdin. */
   stdin = false;
 
+  /** Terminal sizes the manager asked for, in order. */
+  readonly resized: Array<{ h: number; w: number }> = [];
+
+  async resize(options: { h: number; w: number }): Promise<void> {
+    this.resized.push(options);
+  }
+
   async inspect(): Promise<Dockerode.ExecInspectInfo> {
     return { Running: !this.finished, ExitCode: this.exitCode } as Dockerode.ExecInspectInfo;
   }
@@ -62,6 +69,11 @@ class FakeExec implements ExecHandle {
   /** Feed one docker-framed chunk. */
   emit(type: 1 | 2, text: string): void {
     this.stream.write(frame(type, text));
+  }
+
+  /** Feed raw bytes, the way a pty sends them. */
+  emitRaw(text: string): void {
+    this.stream.emit("data", Buffer.from(text));
   }
 
   finish(exitCode: number): void {
@@ -150,10 +162,10 @@ class FakeContainer implements ContainerHandle {
     return exec;
   }
 
-  /** The exec a test should talk to: the `setsid` wrapper around the command. */
+  /** The exec a test should talk to: the wrapper around the command itself. */
   commandExec(): FakeExec {
-    const commands = this.execs.filter(
-      (exec) => (exec.options as { Cmd?: string[] }).Cmd?.[0] === "setsid",
+    const commands = this.execs.filter((exec) =>
+      ((exec.options as { Cmd?: string[] }).Cmd ?? []).join(" ").includes('exec bash -c "$1"'),
     );
     const last = commands[commands.length - 1];
     if (!last) throw new Error("no command exec");
@@ -489,6 +501,39 @@ describe("run", () => {
     expect(cmd[6]).toBe("sleep 100 | cat");
   });
 
+  it("gives a command that asked for one a terminal of the size it was given", async () => {
+    const chunks: SandboxChunk[] = [];
+    await manager().run("user-abc", { command: "top", tty: true, cols: 120, rows: 40 }, (chunk) =>
+      chunks.push(chunk),
+    );
+
+    const exec = docker.byIdentity("user-abc").commandExec();
+    const options = exec.options as {
+      Cmd: string[];
+      Tty?: boolean;
+      AttachStdin?: boolean;
+      AttachStderr?: boolean;
+    };
+    expect(options.Tty).toBe(true);
+    expect(options.AttachStdin).toBe(true);
+    expect(options.AttachStderr).toBe(false);
+    // A pty is the exec's own session already, so setsid would only detach it.
+    expect(options.Cmd[0]).toBe("sh");
+    expect(exec.resized).toEqual([{ h: 40, w: 120 }]);
+
+    // One stream off the pty: no docker framing to take apart.
+    exec.emitRaw("\u001b[Htop\r\n");
+    await vi.waitFor(() =>
+      expect(chunks).toEqual([{ stream: "stdout", data: Buffer.from("\u001b[Htop\r\n") }]),
+    );
+  });
+
+  it("refuses a terminal size that is not a size", async () => {
+    await expect(
+      manager().run("user-abc", { command: "top", tty: true, cols: 0 }, () => {}),
+    ).rejects.toThrow(/terminal dimension/);
+  });
+
   it("runs as the configured user and in the identity's directory", async () => {
     const home = path.join(workspaces, "user-abc");
     await manager().run("user-abc", { command: "pwd", cwd: `${home}/sub` }, () => {});
@@ -581,7 +626,9 @@ describe("write", () => {
 
     const execs = docker
       .byIdentity("user-abc")
-      .execs.filter((exec) => (exec.options as { Cmd?: string[] }).Cmd?.[0] === "setsid");
+      .execs.filter((exec) =>
+        ((exec.options as { Cmd?: string[] }).Cmd ?? []).join(" ").includes('exec bash -c "$1"'),
+      );
     expect((execs[0]!.options as { AttachStdin?: boolean }).AttachStdin).toBeFalsy();
     expect((execs[1]!.options as { AttachStdin?: boolean }).AttachStdin).toBe(true);
     // The socket is only busy for a command that can read it.
@@ -644,6 +691,29 @@ describe("write", () => {
 
     exec.finish(130);
     await session.result;
+  });
+});
+
+describe("resize", () => {
+  it("sizes the terminal of a running command", async () => {
+    const managerInstance = manager();
+    const session = await managerInstance.run("user-abc", { command: "top", tty: true }, () => {});
+
+    await managerInstance.resize(session.id, 132, 50);
+
+    const exec = docker.byIdentity("user-abc").commandExec();
+    expect(exec.resized).toEqual([
+      // The default the exec starts at, then the caller's size.
+      { h: 24, w: 80 },
+      { h: 50, w: 132 },
+    ]);
+
+    exec.finish(0);
+    await session.result;
+  });
+
+  it("refuses a command that is not there any more", async () => {
+    await expect(manager().resize("exec-missing", 80, 24)).rejects.toThrow(/No running command/);
   });
 });
 

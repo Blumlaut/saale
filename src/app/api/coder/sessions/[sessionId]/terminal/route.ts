@@ -7,7 +7,12 @@ import {
   resolveTerminalTarget,
   TerminalNotReadyError,
 } from "@/lib/coder/terminal";
-import { beginTerminalRun, clearTerminalRun, TerminalBusyError } from "@/lib/coder/terminal-runs";
+import {
+  beginTerminalRun,
+  clearTerminalRun,
+  MAX_TERMINAL_DIMENSION,
+  TerminalBusyError,
+} from "@/lib/coder/terminal-runs";
 
 /**
  * POST /api/coder/sessions/:id/terminal. start a command in the chat's worktree.
@@ -20,6 +25,9 @@ import { beginTerminalRun, clearTerminalRun, TerminalBusyError } from "@/lib/cod
 const commandSchema = z.object({
   // Only the command: the directory is the chat's worktree, resolved here.
   command: z.string().min(1).max(MAX_TERMINAL_COMMAND_LENGTH),
+  // The panel's own size, so a full-screen program draws to it.
+  cols: z.number().int().min(1).max(MAX_TERMINAL_DIMENSION).optional(),
+  rows: z.number().int().min(1).max(MAX_TERMINAL_DIMENSION).optional(),
 });
 
 export async function POST(
@@ -62,6 +70,8 @@ export async function POST(
       sessionId,
       cwd: target.cwd,
       command: parsed.data.command,
+      ...(parsed.data.cols ? { cols: parsed.data.cols } : {}),
+      ...(parsed.data.rows ? { rows: parsed.data.rows } : {}),
     });
     return NextResponse.json({ run });
   } catch (err) {

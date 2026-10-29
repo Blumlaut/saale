@@ -67,16 +67,34 @@ function stopGroup(child: ChildProcess, signal: NodeJS.Signals = "SIGKILL"): voi
   }
 }
 
-/** Run one command here. Same events, same exit shape as the service. */
+/**
+ * Run one command here. Same events, same exit shape as the service.
+ *
+ * A terminal is `script`'s: it hands the command a pty of its own. The pty
+ * starts at 0x0, which programs read as "no terminal", so the size is set
+ * before the command runs.
+ */
 export async function* execLocally(options: SandboxExecOptions): AsyncGenerator<SandboxEvent> {
-  const { identity, command, cwd, env, timeoutSeconds, interactive, signal } = options;
+  const { identity, command, cwd, env, timeoutSeconds, interactive, tty, cols, rows, signal } =
+    options;
   if (!localExecAllowed()) throw new Error("SANDBOX_URL is not set");
 
   const execId = `${LOCAL_ID_PREFIX}${nextId++}`;
   const startedAt = Date.now();
   let timedOut = false;
 
-  const child = spawn("/bin/sh", ["-c", command], {
+  const [file, args] = tty
+    ? [
+        "script",
+        [
+          "-qfec",
+          `stty rows ${rows ?? 24} cols ${cols ?? 80} 2>/dev/null; ${command}`,
+          "/dev/null",
+        ],
+      ]
+    : ["/bin/sh", ["-c", command]];
+
+  const child = spawn(file, args, {
     cwd: cwd ?? identityPath(identity),
     env: commandEnv(identity, env),
     // Its own group: a stopped dev server must not leave the compiler it
@@ -86,7 +104,7 @@ export async function* execLocally(options: SandboxExecOptions): AsyncGenerator<
   });
   running.set(execId, child);
   // Nothing to type into: the service attaches stdin only when asked.
-  if (!interactive) child.stdin?.end();
+  if (!interactive && !tty) child.stdin?.end();
 
   const queue: SandboxEvent[] = [];
   let wake: (() => void) | null = null;
@@ -142,7 +160,11 @@ export async function* execLocally(options: SandboxExecOptions): AsyncGenerator<
   }
 }
 
-/** Type into a command started with `interactive`. */
+/**
+ * Write to a command's stdin, and so into the pty `script` is holding open.
+ *
+ * A pty has one stream: stderr arrives on stdout, as it does in a terminal.
+ */
 export function writeInputLocally(execId: string, data: Buffer | string): void {
   const child = running.get(execId);
   if (!child?.stdin || child.stdin.destroyed) return;

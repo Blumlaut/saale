@@ -40,6 +40,12 @@ export interface SandboxExecOptions {
   timeoutSeconds?: number;
   /** Attach stdin, so `writeInput` can type into the command while it runs. */
   interactive?: boolean;
+  /** Run the command on a terminal, which is what a full-screen program needs. */
+  tty?: boolean;
+  /** Terminal width for `tty`. */
+  cols?: number;
+  /** Terminal height for `tty`. */
+  rows?: number;
   signal?: AbortSignal;
 }
 
@@ -122,7 +128,8 @@ export async function* exec(options: SandboxExecOptions): AsyncGenerator<Sandbox
     return;
   }
 
-  const { identity, command, cwd, env, timeoutSeconds, interactive, signal } = options;
+  const { identity, command, cwd, env, timeoutSeconds, interactive, tty, cols, rows, signal } =
+    options;
 
   const response = await fetch(`${serviceUrl()}/exec`, {
     method: "POST",
@@ -133,6 +140,9 @@ export async function* exec(options: SandboxExecOptions): AsyncGenerator<Sandbox
       ...(env && Object.keys(env).length > 0 ? { env } : {}),
       ...(timeoutSeconds ? { timeoutSeconds } : {}),
       ...(interactive ? { interactive: true } : {}),
+      ...(tty ? { tty: true } : {}),
+      ...(tty && cols ? { cols } : {}),
+      ...(tty && rows ? { rows } : {}),
     }),
     ...(signal ? { signal } : {}),
   });
@@ -241,6 +251,27 @@ export async function writeInput(execId: string, identity: string, data: Buffer 
     body: JSON.stringify({ data: bytes.toString("base64") }),
   });
   if (!response.ok) throw await failure(response);
+}
+
+/**
+ * Set the size of a command's terminal.
+ *
+ * A command run on this host keeps the size it was started with: the pty there
+ * belongs to `script`, which has no way to hear about a resize.
+ */
+export async function resize(
+  execId: string,
+  cols: number,
+  rows: number,
+  identity: string,
+): Promise<void> {
+  if (isLocalExecId(execId)) return;
+  const response = await fetch(`${serviceUrl()}/exec/${encodeURIComponent(execId)}/resize`, {
+    method: "POST",
+    headers: authHeaders(identity),
+    body: JSON.stringify({ cols, rows }),
+  });
+  if (!response.ok && response.status !== 404) throw await failure(response);
 }
 
 /** One listening port in a workspace, as the service reports it. */
