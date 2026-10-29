@@ -460,6 +460,7 @@ export const MessageList = memo(
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={containerRef}
+          data-transcript
           className="flex-1 overflow-y-auto"
           onScroll={handleScroll}
           onWheel={handleWheel}
