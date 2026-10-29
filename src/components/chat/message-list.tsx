@@ -262,12 +262,16 @@ export const MessageList = memo(
       (e: React.PointerEvent) => {
         const el = containerRef.current;
         if (!el) return;
-        noteInput();
         pointerDownRef.current = true;
         // A press in the scrollbar gutter (inside the container's box, outside
         // its content area) starts a thumb drag. a scroll input like any other.
+        // A press on the content is a click, and the block it unfolds has to
+        // keep the view on the tail it was looking at.
         const gutter = el.offsetWidth - el.clientWidth;
-        if (gutter > 0 && e.nativeEvent.offsetX >= el.clientWidth) armAutoScroll(false);
+        if (gutter > 0 && e.nativeEvent.offsetX >= el.clientWidth) {
+          noteInput();
+          armAutoScroll(false);
+        }
       },
       [armAutoScroll, noteInput],
     );
@@ -376,27 +380,36 @@ export const MessageList = memo(
 
     // Follow the tail whenever the transcript's *height* changes, not only
     // when a message arrives: a thinking block unfolding, a tool card
-    // reporting live output, a code block laying out. Those are exactly the
-    // growths a reader watching a run is pinned to, and they explain most of
-    // the "it snapped back" reports. the message effect above catches the rest.
+    // reporting live output, a code block reflowing when a panel is resized.
+    // Those are exactly the growths a reader watching a run is pinned to, and
+    // they explain most of the "it snapped back" reports. the message effect
+    // above catches the rest.
+    //
+    // `hasTranscript` is a dependency because a chat fetches its messages after the
+    // first render, and the transcript only exists once they arrive. An effect
+    // that ran with null refs would leave the follow blind to every growth that
+    // no message change reports.
+    const hasTranscript = messages.length > 0;
     useEffect(() => {
+      if (!hasTranscript) return;
       const content = contentRef.current;
       if (!content || typeof ResizeObserver === "undefined") return;
       const observer = new ResizeObserver(() => followTail());
       observer.observe(content);
       return () => observer.disconnect();
-    }, [followTail]);
+    }, [hasTranscript, followTail]);
 
     // The box resizes on its own too: the on-screen keyboard opens or closes,
-    // the composer wraps another line. The tail moves with it, so a followed
-    // view needs putting back.
+    // the composer wraps another line, the panel next door is dragged wider.
+    // The tail moves with it, so a followed view needs putting back.
     useEffect(() => {
+      if (!hasTranscript) return;
       const container = containerRef.current;
       if (!container || typeof ResizeObserver === "undefined") return;
       const observer = new ResizeObserver(() => followTail());
       observer.observe(container);
       return () => observer.disconnect();
-    }, [followTail]);
+    }, [hasTranscript, followTail]);
 
     if (messages.length === 0) {
       // While a generation is loading, never show the "Start a conversation"
