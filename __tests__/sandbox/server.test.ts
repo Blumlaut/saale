@@ -16,17 +16,24 @@ function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): C
   killed: string[];
   removed: string[];
   input: { id: string; identity: string; data: string }[];
+  sizes: { id: string; cols: number; rows: number }[];
 } {
   const calls: SandboxExecRequest[] = [];
   const killed: string[] = [];
   const removed: string[] = [];
   const input: { id: string; identity: string; data: string }[] = [];
+  const sizes: { id: string; cols: number; rows: number }[] = [];
 
   return {
     calls,
     killed,
     removed,
     input,
+    sizes,
+    async resize(id, cols, rows) {
+      if (id === "unknown") throw new UnknownExecError(id);
+      sizes.push({ id, cols, rows });
+    },
     async ensure() {
       throw new Error("not used");
     },
@@ -202,6 +209,18 @@ describe("POST /exec", () => {
     expect(manager.calls).toHaveLength(0);
   });
 
+  it("hands a terminal request its size, and refuses a size that is not one", async () => {
+    const manager = fakeManager(() => []);
+    await start(manager);
+
+    await execCommand({ command: "top", tty: true, cols: 120, rows: 40 });
+    expect(manager.calls[0]).toMatchObject({ command: "top", tty: true, cols: 120, rows: 40 });
+
+    expect((await execCommand({ command: "top", tty: true, cols: 0 })).status).toBe(400);
+    expect((await execCommand({ command: "top", tty: true, rows: 1001 })).status).toBe(400);
+    expect((await execCommand({ command: "top", tty: "yes" })).status).toBe(400);
+  });
+
   it("refuses a body without a command", async () => {
     await start(fakeManager(() => []));
 
@@ -326,6 +345,47 @@ describe("POST /exec/:id/input", () => {
     await write("exec-1", { data: Buffer.from("\x03").toString("base64") });
 
     expect(manager.input[0]?.data).toBe("\x03");
+  });
+
+  it("sizes the terminal of a running command", async () => {
+    const manager = fakeManager(() => []);
+    await start(manager);
+
+    const response = await fetch(`${baseUrl}/exec/exec-1/resize`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-key",
+        "X-Identity": "user-abc",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ cols: 132, rows: 43 }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ cols: 132, rows: 43 });
+    expect(manager.sizes).toEqual([{ id: "exec-1", cols: 132, rows: 43 }]);
+
+    const refused = await fetch(`${baseUrl}/exec/exec-1/resize`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-key",
+        "X-Identity": "user-abc",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ cols: 0, rows: 43 }),
+    });
+    expect(refused.status).toBe(400);
+
+    const unknown = await fetch(`${baseUrl}/exec/unknown/resize`, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-key",
+        "X-Identity": "user-abc",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ cols: 80, rows: 24 }),
+    });
+    expect(unknown.status).toBe(404);
   });
 
   it("refuses a write to a command of another identity", async () => {

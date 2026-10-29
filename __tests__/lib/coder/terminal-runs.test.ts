@@ -11,11 +11,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   exec: vi.fn(),
   kill: vi.fn(),
+  resize: vi.fn(),
   registerTerminalExec: vi.fn(),
   unregisterTerminalExec: vi.fn(),
 }));
 
-vi.mock("@/lib/sandbox/client", () => ({ exec: mocks.exec, kill: mocks.kill }));
+vi.mock("@/lib/sandbox/client", () => ({
+  exec: mocks.exec,
+  kill: mocks.kill,
+  resize: mocks.resize,
+}));
 vi.mock("@/lib/redis", () => ({
   registerTerminalExec: mocks.registerTerminalExec,
   unregisterTerminalExec: mocks.unregisterTerminalExec,
@@ -26,6 +31,7 @@ import {
   beginTerminalRun,
   clearTerminalRun,
   forgetTerminalRun,
+  resizeTerminalRun,
   stopTerminalRun,
   TerminalBusyError,
   type TerminalRunEvent,
@@ -123,6 +129,7 @@ beforeEach(() => {
     return stream.iterator;
   });
   mocks.kill.mockResolvedValue(undefined);
+  mocks.resize.mockResolvedValue(undefined);
   mocks.registerTerminalExec.mockResolvedValue(undefined);
   mocks.unregisterTerminalExec.mockResolvedValue(undefined);
 });
@@ -133,7 +140,7 @@ afterEach(() => {
 });
 
 describe("beginTerminalRun", () => {
-  it("runs in the chat's worktree with stdin attached, and counts the command as running", () => {
+  it("runs in the chat's worktree on a terminal, and counts the command as running", () => {
     const state = beginTerminalRun({ userId: USER, sessionId: SESSION, cwd: CWD, command: "ls" });
 
     expect(mocks.exec).toHaveBeenCalledWith({
@@ -141,8 +148,26 @@ describe("beginTerminalRun", () => {
       command: "ls",
       cwd: CWD,
       interactive: true,
+      tty: true,
+      cols: 80,
+      rows: 24,
+      env: { TERM: "xterm-256color" },
     });
     expect(state).toMatchObject({ command: "ls", status: "starting", execId: null });
+  });
+
+  it("starts at the size the panel asked for", () => {
+    const state = beginTerminalRun({
+      userId: USER,
+      sessionId: SESSION,
+      cwd: CWD,
+      command: "top",
+      cols: 120,
+      rows: 40,
+    });
+
+    expect(mocks.exec.mock.calls[0]![0]).toMatchObject({ cols: 120, rows: 40 });
+    expect(state).toMatchObject({ cols: 120, rows: 40 });
   });
 
   it("writes the exec id down while the command runs, and forgets it at the end", async () => {
@@ -274,6 +299,44 @@ describe("stopTerminalRun", () => {
 
     await expect(stopTerminalRun(USER, SESSION)).resolves.toBe(false);
     expect(mocks.kill).not.toHaveBeenCalled();
+  });
+});
+
+describe("resizeTerminalRun", () => {
+  it("sizes the terminal the sandbox named", async () => {
+    beginTerminalRun({ userId: USER, sessionId: SESSION, cwd: CWD, command: "top" });
+    current().push({ type: "started", execId: "exec-1" });
+    await vi.waitFor(() => expect(mocks.registerTerminalExec).toHaveBeenCalled());
+
+    await expect(resizeTerminalRun(USER, SESSION, 132, 43)).resolves.toBe(true);
+
+    expect(mocks.resize).toHaveBeenCalledWith("exec-1", 132, 43, IDENTITY);
+  });
+
+  it("keeps the size for a command the sandbox has not named yet", async () => {
+    beginTerminalRun({ userId: USER, sessionId: SESSION, cwd: CWD, command: "top" });
+
+    await expect(resizeTerminalRun(USER, SESSION, 132, 43)).resolves.toBe(true);
+    expect(mocks.resize).not.toHaveBeenCalled();
+
+    const { state } = await watch();
+    expect(state?.state).toMatchObject({ cols: 132, rows: 43 });
+  });
+
+  it("says nothing when the size has not changed", async () => {
+    beginTerminalRun({ userId: USER, sessionId: SESSION, cwd: CWD, command: "top" });
+    current().push({ type: "started", execId: "exec-1" });
+    await vi.waitFor(() => expect(mocks.registerTerminalExec).toHaveBeenCalled());
+
+    await resizeTerminalRun(USER, SESSION, 132, 43);
+    await resizeTerminalRun(USER, SESSION, 132, 43);
+
+    expect(mocks.resize).toHaveBeenCalledTimes(1);
+  });
+
+  it("has nothing to resize for a chat that never ran anything", async () => {
+    await expect(resizeTerminalRun(USER, SESSION, 100, 30)).resolves.toBe(false);
+    expect(mocks.resize).not.toHaveBeenCalled();
   });
 });
 

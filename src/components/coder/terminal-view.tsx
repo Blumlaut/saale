@@ -1,30 +1,68 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
 import { Ban, CornerDownLeft, Trash2, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useTerminal } from "./use-terminal";
+import { terminalTheme } from "./terminal-theme";
+import { useTerminal, type TerminalSink, type TerminalSize } from "./use-terminal";
 
 /**
- * A command runner in the chat's worktree.
+ * A terminal in the chat's worktree.
  *
- * One shell's worth of commands, each in a fresh `bash -c` with stdin attached,
- * so a prompt the command prints can be answered in the input below. Nothing
- * here is a login shell: the worktree is the working directory and there is no
- * way to leave it, because the panel never sends a path.
+ * One shell's worth of commands, each in a fresh `bash -c` on a pty, so a
+ * program that draws a screen (a monitor, a pager, a prompt) has a terminal to
+ * draw on. Nothing here is a login shell: the worktree is the working directory
+ * and there is no way to leave it, because the panel never sends a path.
  */
 
-/** How close to the bottom still counts as following the output. */
-const FOLLOW_SLACK_PX = 32;
+/** How much a command may print before the oldest lines go. */
+const SCROLLBACK_LINES = 5000;
+const FONT_SIZE_PX = 11;
+const LINE_HEIGHT = 1.35;
+/** A panel drag resizes in steps; the run is told once the drag settles. */
+const FIT_DEBOUNCE_MS = 150;
 
-/** Whether the user has text selected inside `element`. */
-function hasSelectionIn(element: HTMLElement | null): boolean {
-  if (!element) return false;
-  const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
-  const range = selection.getRangeAt(0);
-  return element.contains(range.commonAncestorContainer);
+/** Keys that mean something to a full-screen program, as it expects to read them. */
+const KEYS: Record<string, string> = {
+  Enter: "\r",
+  Backspace: "\x7f",
+  Tab: "\t",
+  Escape: "\x1b",
+  ArrowUp: "\x1b[A",
+  ArrowDown: "\x1b[B",
+  ArrowRight: "\x1b[C",
+  ArrowLeft: "\x1b[D",
+  Home: "\x1b[H",
+  End: "\x1b[F",
+  PageUp: "\x1b[5~",
+  PageDown: "\x1b[6~",
+  Delete: "\x1b[3~",
+};
+
+/** The bytes a keystroke sends, when it is not a plain character. */
+function specialKey(event: React.KeyboardEvent<HTMLInputElement>): string | null {
+  if (event.ctrlKey) {
+    if (event.key.length !== 1) return KEYS[event.key] ?? null;
+    // Ctrl-A is \x01 and so on up to Ctrl-_ at \x1f.
+    const code = event.key.toUpperCase().charCodeAt(0);
+    if (code >= 64 && code <= 95) return String.fromCharCode(code - 64);
+    return null;
+  }
+  if (event.metaKey) return null;
+  const key = KEYS[event.key];
+  if (key) return key;
+  if (event.altKey && event.key.length === 1) return `\x1b${event.key}`;
+  return null;
+}
+
+/** Whether the app is in its dark theme, which the terminal's colours follow. */
+function isDark(): boolean {
+  return document.documentElement.classList.contains("dark");
 }
 
 export function TerminalView({
@@ -38,65 +76,137 @@ export function TerminalView({
   /** Hands the terminal's run function to a parent so other tabs can launch commands. */
   registerRun?: (run: (command: string) => void) => void;
 }) {
-  const { blocks, running, error, history, run, stop, sendInput, clear } = useTerminal(sessionId);
+  if (!worktree) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+        <TerminalSquare className="text-muted-foreground h-5 w-5" />
+        <p className="text-muted-foreground text-xs">
+          The worktree appears after this chat&apos;s first message, and the terminal opens in it.
+        </p>
+      </div>
+    );
+  }
 
-  // Let the parent launch commands into this terminal (e.g. a script button).
-  useEffect(() => {
-    registerRun?.(run);
-  }, [registerRun, run]);
+  return <TerminalPanel sessionId={sessionId} worktree={worktree} registerRun={registerRun} />;
+}
+
+function TerminalPanel({
+  sessionId,
+  worktree,
+  registerRun,
+}: {
+  sessionId: string;
+  worktree: { path: string; branch: string };
+  registerRun?: ((run: (command: string) => void) => void) | undefined;
+}) {
+  const { resolvedTheme } = useTheme();
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Output can arrive before the terminal exists, so it waits here.
+  const pendingRef = useRef<string[]>([]);
+  const sizeRef = useRef<TerminalSize>({ cols: 80, rows: 24 });
+
   const [draft, setDraft] = useState("");
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Only follow the output while the user is at the bottom: scrolling up to
-  // read a stack trace should not be undone by the next line.
-  const pinnedRef = useRef(true);
 
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element || !pinnedRef.current) return;
-    element.scrollTop = element.scrollHeight;
-  }, [blocks]);
+  const sink = useMemo<TerminalSink>(
+    () => ({
+      write(text) {
+        const terminal = terminalRef.current;
+        if (!terminal) {
+          pendingRef.current.push(text);
+          return;
+        }
+        terminal.write(text);
+      },
+      reset() {
+        pendingRef.current = [];
+        terminalRef.current?.reset();
+      },
+    }),
+    [],
+  );
 
-  // Output streaming in must not scroll a selection the user is reading.
+  const { running, error, history, run, stop, sendInput, resize, clear } = useTerminal(
+    sessionId,
+    sink,
+  );
+
   useEffect(() => {
-    const onSelectionChange = () => {
-      const element = scrollRef.current;
-      if (!element) return;
-      if (hasSelectionIn(element)) {
-        pinnedRef.current = false;
-        return;
-      }
-      pinnedRef.current =
-        element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_SLACK_PX;
-    };
-    document.addEventListener("selectionchange", onSelectionChange);
-    return () => document.removeEventListener("selectionchange", onSelectionChange);
-  }, []);
+    const surface = surfaceRef.current;
+    if (!surface) return;
 
-  const onScroll = useCallback(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    pinnedRef.current =
-      element.scrollHeight - element.scrollTop - element.clientHeight < FOLLOW_SLACK_PX;
-  }, []);
-
-  // The terminal stays mounted while its tab is hidden, where it has no height
-  // to follow; catching up when it is shown again needs the resize.
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      if (!pinnedRef.current) return;
-      element.scrollTop = element.scrollHeight;
+    const styles = getComputedStyle(surface);
+    const terminal = new Terminal({
+      cols: sizeRef.current.cols,
+      rows: sizeRef.current.rows,
+      scrollback: SCROLLBACK_LINES,
+      fontFamily: styles.fontFamily,
+      fontSize: FONT_SIZE_PX,
+      lineHeight: LINE_HEIGHT,
+      cursorBlink: true,
+      // The prompt row under the terminal is where the keystrokes are typed.
+      disableStdin: true,
+      theme: terminalTheme(styles, isDark()),
     });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+    const fit = new FitAddon();
+    terminal.loadAddon(fit);
+    terminal.open(surface);
+    terminalRef.current = terminal;
 
-  /** Clicking the output types into the prompt, unless the click was a selection. */
-  const focusInput = useCallback(() => {
-    if (hasSelectionIn(scrollRef.current)) return;
+    for (const text of pendingRef.current) terminal.write(text);
+    pendingRef.current = [];
+
+    const measure = () => {
+      fit.fit();
+      const next = { cols: terminal.cols, rows: terminal.rows };
+      if (next.cols === sizeRef.current.cols && next.rows === sizeRef.current.rows) return;
+      sizeRef.current = next;
+      resize(next);
+    };
+    measure();
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(measure, FIT_DEBOUNCE_MS);
+          });
+    observer?.observe(surface);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer?.disconnect();
+      terminal.dispose();
+      terminalRef.current = null;
+    };
+  }, [resize]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    const terminal = terminalRef.current;
+    if (!surface || !terminal) return;
+    terminal.options.theme = terminalTheme(getComputedStyle(surface), resolvedTheme === "dark");
+  }, [resolvedTheme]);
+
+  // Let the parent launch commands into this terminal (e.g. a script button).
+  const runCommand = useCallback(
+    (command: string) => {
+      void run(command, sizeRef.current);
+    },
+    [run],
+  );
+
+  useEffect(() => {
+    registerRun?.(runCommand);
+  }, [registerRun, runCommand]);
+
+  // A click on the output types into the prompt, unless it was a selection.
+  const onSurfaceClick = useCallback(() => {
+    if (terminalRef.current?.hasSelection()) return;
     inputRef.current?.focus();
   }, []);
 
@@ -108,28 +218,30 @@ export function TerminalView({
     if (running) {
       // Answering a prompt: the command is still open on stdin, and an empty
       // line is a valid answer.
-      void sendInput(`${line}\n`);
+      void sendInput(`${line}\r`);
       return;
     }
     if (!line.trim()) return;
-    void run(line);
+    void run(line, sizeRef.current);
   }, [draft, running, run, sendInput]);
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (running) {
+        // Plain characters reach the command through `onChange`, which also
+        // carries a paste and an IME's finished word.
+        const data = specialKey(event);
+        if (data === null) return;
+        event.preventDefault();
+        void sendInput(data);
+        return;
+      }
+
       if (event.key === "Enter") {
         event.preventDefault();
         submit();
         return;
       }
-      if (event.key === "c" && event.ctrlKey) {
-        event.preventDefault();
-        if (running) void sendInput("\u0003");
-        return;
-      }
-      // The input is emptied for a running command, so history is only for the
-      // prompt.
-      if (running) return;
       if (event.key === "ArrowUp") {
         if (history.length === 0) return;
         event.preventDefault();
@@ -154,23 +266,26 @@ export function TerminalView({
     [history, historyIndex, running, sendInput, submit],
   );
 
+  const onChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value;
+      if (!running) {
+        setDraft(value);
+        return;
+      }
+      // Every character is a keystroke for the command that is running.
+      if (value) void sendInput(value);
+      setDraft("");
+    },
+    [running, sendInput],
+  );
+
   useEffect(() => {
     if (running) return;
     // A command finishing must not take focus away from a selection.
-    if (hasSelectionIn(scrollRef.current)) return;
+    if (terminalRef.current?.hasSelection()) return;
     inputRef.current?.focus();
   }, [running]);
-
-  if (!worktree) {
-    return (
-      <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-        <TerminalSquare className="text-muted-foreground h-5 w-5" />
-        <p className="text-muted-foreground text-xs">
-          The worktree appears after this chat&apos;s first message, and the terminal opens in it.
-        </p>
-      </div>
-    );
-  }
 
   const prompt = running ? "▸" : "$";
 
@@ -202,7 +317,6 @@ export function TerminalView({
             size="icon"
             aria-label="Clear the terminal"
             onClick={clear}
-            disabled={blocks.length === 0}
             className="h-7 w-7"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -211,32 +325,11 @@ export function TerminalView({
       </div>
 
       <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        onClick={focusInput}
-        className="min-h-0 flex-1 cursor-text overflow-y-auto px-2 py-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap"
-      >
-        {blocks.length === 0 ? (
-          <p className="text-muted-foreground">Run something in this worktree.</p>
-        ) : null}
-        {blocks.map((block) => (
-          <Fragment key={block.id}>
-            <span className="text-primary">{`$ ${block.command}\n`}</span>
-            {block.segments.map((segment) => (
-              <span
-                key={segment.id}
-                className={cn(
-                  segment.stream === "stderr" && "text-amber-600 dark:text-amber-400",
-                  segment.stream === "note" && "text-muted-foreground",
-                  segment.stream === "input" && "text-primary",
-                )}
-              >
-                {segment.text}
-              </span>
-            ))}
-          </Fragment>
-        ))}
-      </div>
+        ref={surfaceRef}
+        onClick={onSurfaceClick}
+        aria-label="Terminal output"
+        className="terminal-surface min-h-0 flex-1 overflow-hidden"
+      />
 
       {error ? <p className="text-destructive shrink-0 px-2 pb-1 text-[11px]">{error}</p> : null}
 
@@ -245,9 +338,9 @@ export function TerminalView({
         <input
           ref={inputRef}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={onChange}
           onKeyDown={onKeyDown}
-          placeholder={running ? "Answer the prompt…" : "npm test"}
+          placeholder={running ? "Type into the running command…" : "npm test"}
           aria-label="Terminal command"
           autoComplete="off"
           autoCorrect="off"
@@ -262,7 +355,7 @@ export function TerminalView({
           aria-label={running ? "Send input" : "Run command"}
           onClick={submit}
           disabled={!running && draft.trim().length === 0}
-          className="h-7 w-7 shrink-0"
+          className={cn("h-7 w-7 shrink-0")}
         >
           {running ? (
             <CornerDownLeft className="h-3.5 w-3.5" />

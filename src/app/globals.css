@@ -643,3 +643,8 @@ kept from the old glass system so components don't need changes. */
 .dark .email-content img {
   /* no overrides. images render as-is */
 }
+
+/* The terminal pads itself: its fit addon reads that padding off the element. */
+.terminal-surface .xterm {
+  padding: 0.5rem;
+}

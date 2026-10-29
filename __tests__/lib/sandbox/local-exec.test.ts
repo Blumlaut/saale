@@ -36,6 +36,9 @@ async function run(
     timeoutSeconds?: number;
     signal?: AbortSignal;
     env?: Record<string, string>;
+    tty?: boolean;
+    cols?: number;
+    rows?: number;
   } = {},
 ) {
   const stdout: string[] = [];
@@ -196,6 +199,19 @@ describe("execLocally", () => {
     writeInputLocally(execId, "hello\n");
     const chunk = await events.next();
     expect((chunk.value as { data: Buffer }).data.toString("utf8")).toBe("hello\n");
+  });
+
+  it("runs a terminal command on a pty of the size it was given", async () => {
+    const result = await run("stty size; tty", {
+      tty: true,
+      cols: 100,
+      rows: 30,
+      env: { TERM: "xterm-256color" },
+    });
+
+    expect(result.stdout).toContain("30 100");
+    expect(result.stdout).toContain("/dev/pts/");
+    expect(result.exitCode).toBe(0);
   });
 
   it("reports a directory that is not there as the command's failure", async () => {

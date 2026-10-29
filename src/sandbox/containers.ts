@@ -54,6 +54,8 @@ export interface ExecHandle {
   id: string;
   start(options?: Dockerode.ExecStartOptions): Promise<NodeJS.ReadableStream>;
   inspect(options?: Dockerode.ExecInspectOptions): Promise<Dockerode.ExecInspectInfo>;
+  /** Set the pty's size. Only meaningful for an exec started with `Tty`. */
+  resize(options: { h: number; w: number }): Promise<unknown>;
 }
 
 /** What one list call reports, as far as this module cares. */
@@ -86,6 +88,12 @@ export interface SandboxExecRequest {
   timeoutSeconds?: number | undefined;
   /** Attach stdin, so a caller can type into the command while it runs. */
   interactive?: boolean | undefined;
+  /** Give the command a terminal of its own, which is what a TUI needs. */
+  tty?: boolean | undefined;
+  /** Terminal width, for `tty`. */
+  cols?: number | undefined;
+  /** Terminal height, for `tty`. */
+  rows?: number | undefined;
 }
 
 export interface SandboxChunk {
@@ -120,6 +128,20 @@ const MAX_ENV_VARS = 32;
 const MAX_ENV_BYTES = 32 * 1024;
 /** How long a stopped command gets to exit before it is killed outright. */
 const KILL_GRACE_MS = 2000;
+/** Terminal a pty exec gets when the caller names no size. */
+const DEFAULT_TTY_COLS = 80;
+const DEFAULT_TTY_ROWS = 24;
+/** Widest and tallest a terminal may claim to be. */
+export const MAX_TTY_DIMENSION = 1000;
+
+/** A terminal dimension from a request, or the default. */
+export function ttyDimension(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || value < 1 || value > MAX_TTY_DIMENSION) {
+    throw new SandboxRequestError(`A terminal dimension is 1..${MAX_TTY_DIMENSION}`);
+  }
+  return value;
+}
 /** How long to wait for Docker to report an exit code after the stream ends. */
 const EXIT_POLL_MS = 100;
 const EXIT_POLL_TRIES = 50;
@@ -137,6 +159,8 @@ export interface ContainerManager {
   kill(id: string): Promise<void>;
   /** Type into a command that was started with `interactive`. */
   write(id: string, identity: string, data: Buffer): Promise<void>;
+  /** Resize the terminal of a command that was started with `tty`. */
+  resize(id: string, cols: number, rows: number): Promise<void>;
   /** Remove an identity's container. Its directory stays. */
   remove(identity: string): Promise<boolean>;
   stop(identity: string): Promise<boolean>;
@@ -246,7 +270,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return Buffer.concat(chunks).toString("utf8");
   }
 
-  /** Signal a command's process group. `setsid` made it a group of its own. */
+  /** Signal a command's process group. */
   async function signalGroup(entry: RunningExec, signal: "TERM" | "KILL"): Promise<void> {
     const script =
       `p=$(cat ${entry.pgidFile} 2>/dev/null); ` +
@@ -399,38 +423,51 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
   ): Promise<SandboxExecSession> {
     const id = parseIdentity(identity);
     if (!request.command.trim()) throw new SandboxRequestError("A command is required");
-    const interactive = request.interactive === true;
+    const tty = request.tty === true;
+    const interactive = tty || request.interactive === true;
 
     const container = await ensure(id);
     const execId = randomUUID();
     const pgidFile = `/tmp/.saale-${execId}.pgid`;
     const cwd = confineCwd(id, request.cwd, config);
+    // $$ is the exec's own process group, which is what the stop path signals.
+    const commandLine = `echo $$ > ${pgidFile}; exec bash -c "$1"`;
 
     const exec = await container.exec({
-      Cmd: [
-        // `--wait` because setsid forks when the exec's process is already a
-        // group leader: without it the exec reports setsid's own 0 and the
-        // command's status is lost.
-        "setsid",
-        "--wait",
-        "sh",
-        "-c",
-        // $$ is the session leader setsid just created, which is the group id
-        // the stop path signals; exec keeps that pid.
-        `echo $$ > ${pgidFile}; exec bash -c "$1"`,
-        "sh",
-        request.command,
-      ],
+      Cmd: tty
+        ? // A pty is already this exec's session: `setsid` would only detach
+          // it, and the terminal's line discipline is what makes ctrl-c reach
+          // the command.
+          ["sh", "-c", commandLine, "sh", request.command]
+        : [
+            // `--wait` because setsid forks when the exec's process is already a
+            // group leader: without it the exec reports setsid's own 0 and the
+            // command's status is lost.
+            "setsid",
+            "--wait",
+            "sh",
+            "-c",
+            commandLine,
+            "sh",
+            request.command,
+          ],
       User: config.user,
       WorkingDir: cwd,
       Env: envList(request.env),
       AttachStdin: interactive,
       AttachStdout: true,
-      AttachStderr: true,
-      Tty: false,
+      // A pty carries one stream: stderr arrives on it too.
+      AttachStderr: !tty,
+      Tty: tty,
     });
 
     const stream = await exec.start({ hijack: true, stdin: interactive });
+    if (tty) {
+      await exec.resize({
+        w: ttyDimension(request.cols, DEFAULT_TTY_COLS),
+        h: ttyDimension(request.rows, DEFAULT_TTY_ROWS),
+      });
+    }
     const entry: RunningExec = {
       identity: id,
       pgidFile,
@@ -445,11 +482,16 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     const startedAt = now();
     let timedOut = false;
 
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    stdout.on("data", (data: Buffer) => onChunk({ stream: "stdout", data }));
-    stderr.on("data", (data: Buffer) => onChunk({ stream: "stderr", data }));
-    docker.modem.demuxStream(stream, stdout, stderr);
+    if (tty) {
+      // Raw bytes off the pty: no docker framing to demux.
+      stream.on("data", (data: Buffer) => onChunk({ stream: "stdout", data }));
+    } else {
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      stdout.on("data", (data: Buffer) => onChunk({ stream: "stdout", data }));
+      stderr.on("data", (data: Buffer) => onChunk({ stream: "stderr", data }));
+      docker.modem.demuxStream(stream, stdout, stderr);
+    }
 
     const ended = new Promise<void>((resolve, reject) => {
       stream.on("end", resolve);
@@ -530,6 +572,17 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
         if (err) reject(err);
         else resolve();
       });
+    });
+  }
+
+  /** Resize the terminal of a command started with `tty`. */
+  async function resize(execId: string, cols: number, rows: number): Promise<void> {
+    const entry = registry.get(execId);
+    if (!entry || entry.settled) throw new UnknownExecError(execId);
+
+    await entry.exec.resize({
+      w: ttyDimension(cols, DEFAULT_TTY_COLS),
+      h: ttyDimension(rows, DEFAULT_TTY_ROWS),
     });
   }
 
@@ -689,7 +742,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return { stopped, removed };
   }
 
-  return { ensure, run, kill, write, remove, stop, sweep, reapIdle, identityForSlug };
+  return { ensure, run, kill, write, resize, remove, stop, sweep, reapIdle, identityForSlug };
 }
 
 export function isAlreadyStarted(err: unknown): boolean {

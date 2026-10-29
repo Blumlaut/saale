@@ -4,6 +4,7 @@
  * A small HTTP API the app calls to run a command in an identity's container.
  * `POST /exec` streams output as server-sent events, `DELETE /exec/:id` stops a
  * command, `POST /exec/:id/input` types into one started with `interactive`,
+ * `POST /exec/:id/resize` sets the terminal of one started with `tty`,
  * `GET /ports` lists what a workspace is listening on and `POST /ports/:port/kill`
  * stops one of them. All of them are keyed on an identity, never on a path.
  *
@@ -26,6 +27,7 @@ import { createPreviewProxy } from "./preview-proxy";
 import {
   asDockerHandle,
   createContainerManager,
+  MAX_TTY_DIMENSION,
   SandboxRequestError,
   type ContainerManager,
   type SandboxChunk,
@@ -114,6 +116,9 @@ function asExecRequest(body: Record<string, unknown>): {
   env?: Record<string, string>;
   timeoutSeconds?: number;
   interactive?: boolean;
+  tty?: boolean;
+  cols?: number;
+  rows?: number;
 } {
   const command = body.command;
   if (typeof command !== "string" || !command.trim()) {
@@ -145,6 +150,12 @@ function asExecRequest(body: Record<string, unknown>): {
   if (body.interactive !== undefined && typeof body.interactive !== "boolean") {
     throw new HttpError(400, "interactive must be a boolean");
   }
+  if (body.tty !== undefined && typeof body.tty !== "boolean") {
+    throw new HttpError(400, "tty must be a boolean");
+  }
+
+  const cols = terminalDimension(body.cols, "cols");
+  const rows = terminalDimension(body.rows, "rows");
 
   return {
     command,
@@ -152,7 +163,22 @@ function asExecRequest(body: Record<string, unknown>): {
     ...(env ? { env } : {}),
     ...(timeoutSeconds ? { timeoutSeconds } : {}),
     ...(body.interactive === true ? { interactive: true } : {}),
+    ...(body.tty === true ? { tty: true } : {}),
+    ...(cols !== undefined ? { cols } : {}),
+    ...(rows !== undefined ? { rows } : {}),
   };
+}
+
+/** A terminal dimension from a request body. */
+function terminalDimension(value: unknown, name: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new HttpError(400, `${name} must be a positive whole number`);
+  }
+  if (value > MAX_TTY_DIMENSION) {
+    throw new HttpError(400, `${name} must be at most ${MAX_TTY_DIMENSION}`);
+  }
+  return value;
 }
 
 /** POST /exec/:id/input: write to a running command's stdin. */
@@ -179,6 +205,29 @@ async function handleInput(
     throw err;
   }
   json(res, 200, { written: bytes.length });
+}
+
+/** POST /exec/:id/resize: set the size of a command's terminal. */
+async function handleResize(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  manager: ContainerManager,
+  execId: string,
+): Promise<void> {
+  const body = await readJson(req);
+  const cols = terminalDimension(body.cols, "cols");
+  const rows = terminalDimension(body.rows, "rows");
+  if (cols === undefined || rows === undefined) {
+    throw new HttpError(400, "cols and rows are required");
+  }
+
+  try {
+    await manager.resize(execId, cols, rows);
+  } catch (err) {
+    if (err instanceof UnknownExecError) throw new HttpError(404, err.message);
+    throw err;
+  }
+  json(res, 200, { cols, rows });
 }
 
 /** POST /exec: run a command, stream `started`, `chunk`s and `exit`. */
@@ -270,6 +319,12 @@ export function createSandboxServer(options: SandboxServerOptions): http.Server 
             decodeURIComponent(inputMatch[1]),
             identityFrom(req),
           );
+          return;
+        }
+
+        const resizeMatch = /^\/exec\/([^/]+)\/resize$/.exec(url.pathname);
+        if (req.method === "POST" && resizeMatch?.[1]) {
+          await handleResize(req, res, manager, decodeURIComponent(resizeMatch[1]));
           return;
         }
 

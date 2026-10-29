@@ -4,6 +4,7 @@ import {
   isConfigured,
   kill,
   removeContainer,
+  resize,
   SandboxApiError,
   writeInput,
 } from "@/lib/sandbox/client";
@@ -183,6 +184,21 @@ describe("exec", () => {
     });
   });
 
+  it("asks for a terminal, with its size, only when the command wants one", async () => {
+    fetchMock.mockResolvedValue(sseResponse([frame("exit", { exitCode: 0, durationMs: 1 })]));
+
+    await collect({ identity: "user-abc", command: "top", tty: true, cols: 120, rows: 40 });
+    await collect({ identity: "user-abc", command: "top", tty: true });
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      command: "top",
+      tty: true,
+      cols: 120,
+      rows: 40,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ command: "top", tty: true });
+  });
+
   it("reports a service error with its status and body", async () => {
     fetchMock.mockImplementation(async () => new Response("no such identity", { status: 400 }));
 
@@ -229,6 +245,25 @@ describe("writeInput", () => {
     fetchMock.mockResolvedValue(new Response("No running command exec-1", { status: 404 }));
 
     await expect(writeInput("exec-1", "user-abc", "x")).rejects.toBeInstanceOf(SandboxApiError);
+  });
+});
+
+describe("resize", () => {
+  it("posts the new size to the command's terminal", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ cols: 100, rows: 30 })));
+
+    await resize("exec-1", 100, 30, "user-abc");
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("http://sandbox-exec:8100/exec/exec-1/resize");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ cols: 100, rows: 30 });
+  });
+
+  it("ignores a command that already finished", async () => {
+    fetchMock.mockResolvedValue(new Response("gone", { status: 404 }));
+
+    await expect(resize("exec-1", 100, 30, "user-abc")).resolves.toBeUndefined();
   });
 });
 

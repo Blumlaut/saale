@@ -10,12 +10,21 @@
  * clear a run are all served from this process.
  */
 
-import { exec as sandboxExec, kill as killExec } from "@/lib/sandbox/client";
+import { exec as sandboxExec, kill as killExec, resize as resizeExec } from "@/lib/sandbox/client";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { registerTerminalExec, unregisterTerminalExec } from "@/lib/redis";
 
 /** Output kept for a reader that comes back. A dev server prints forever. */
 const MAX_RUN_OUTPUT_CHARS = 200_000;
+
+/** What a terminal reports itself as. Programs that draw a screen ask for it. */
+const TERMINAL_TERM = "xterm-256color";
+
+/** A terminal before the panel has said how big it is. */
+export const DEFAULT_TERMINAL_COLS = 80;
+export const DEFAULT_TERMINAL_ROWS = 24;
+/** Widest and tallest a panel may claim its terminal is. */
+export const MAX_TERMINAL_DIMENSION = 1000;
 
 export type TerminalStreamName = "stdout" | "stderr";
 
@@ -48,6 +57,8 @@ export interface TerminalRunState {
   execId: string | null;
   exitCode: number | null;
   error: string | null;
+  cols: number;
+  rows: number;
 }
 
 /** One reader's view of a run. */
@@ -77,6 +88,8 @@ interface TerminalRun {
   timedOut: boolean;
   durationMs: number | null;
   error: string | null;
+  cols: number;
+  rows: number;
   segments: TerminalRunSegment[];
   listeners: Set<(event: TerminalRunEvent) => void>;
   /** A stop that arrived before the sandbox named the command. */
@@ -99,6 +112,8 @@ function toState(run: TerminalRun): TerminalRunState {
     execId: run.execId,
     exitCode: run.exitCode,
     error: run.error,
+    cols: run.cols,
+    rows: run.rows,
   };
 }
 
@@ -153,6 +168,10 @@ async function driveTerminalRun(run: TerminalRun, cwd: string): Promise<void> {
       command: run.command,
       cwd,
       interactive: true,
+      tty: true,
+      cols: run.cols,
+      rows: run.rows,
+      env: { TERM: TERMINAL_TERM },
     })) {
       if (event.type === "started") {
         run.execId = event.execId;
@@ -215,6 +234,8 @@ export function beginTerminalRun(options: {
   sessionId: string;
   cwd: string;
   command: string;
+  cols?: number;
+  rows?: number;
 }): TerminalRunState {
   const { userId, sessionId, cwd, command } = options;
   const existing = runs.get(runKey(userId, sessionId));
@@ -231,6 +252,8 @@ export function beginTerminalRun(options: {
     timedOut: false,
     durationMs: null,
     error: null,
+    cols: options.cols ?? DEFAULT_TERMINAL_COLS,
+    rows: options.rows ?? DEFAULT_TERMINAL_ROWS,
     segments: [],
     listeners: new Set(),
     stopRequested: false,
@@ -301,6 +324,38 @@ export async function stopTerminalRun(userId: string, sessionId: string): Promis
     await killTerminalRun(run);
     return true;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Set the size of the chat's terminal.
+ *
+ * The size is kept on the run so a reader that comes back knows what the
+ * command is drawing for.
+ */
+export async function resizeTerminalRun(
+  userId: string,
+  sessionId: string,
+  cols: number,
+  rows: number,
+): Promise<boolean> {
+  const run = runs.get(runKey(userId, sessionId));
+  if (!run) return false;
+
+  if (run.cols === cols && run.rows === rows) return true;
+  run.cols = cols;
+  run.rows = rows;
+
+  // Before the sandbox names the command there is nothing to resize; it is
+  // started at the size the run carries.
+  if (!run.execId || !isLive(run)) return true;
+
+  try {
+    await resizeExec(run.execId, cols, rows, userIdentity(userId));
+    return true;
+  } catch (err) {
+    console.error(`Failed to resize chat ${sessionId}'s terminal:`, err);
     return false;
   }
 }
