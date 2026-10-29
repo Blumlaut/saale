@@ -47,6 +47,15 @@ export const MAX_ZIP_BYTES = 250 * 1024 * 1024;
 export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Response header carrying the mtime of the bytes a raw read just served.
+ *
+ * The editor opens a file from a listing row and saves against this, so a save
+ * is checked against the write it actually read. A listing goes stale as soon
+ * as anything writes the folder.
+ */
+export const FILE_MODIFIED_HEADER = "x-file-modified";
+
+/**
  * Largest file the API will serve or archive at all.
  *
  * A workspace read returns the whole file as one buffer, so this is a memory
