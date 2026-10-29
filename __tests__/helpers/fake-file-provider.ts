@@ -12,7 +12,7 @@ import type { FileBytes, FileStat } from "@/lib/files/types";
 export type FakeTree = Record<string, string | null>;
 
 /** Every entry looks written at the same moment, so mtimes never flake a test. */
-const FIXED_MTIME = 1_700_000_000_000;
+export const FIXED_MTIME = 1_700_000_000_000;
 
 export function createFakeProvider(tree: FakeTree, root = "/workspace"): FileProvider {
   const files = new Map<string, string | null>(Object.entries(tree));

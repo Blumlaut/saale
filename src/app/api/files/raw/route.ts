@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { MAX_DOWNLOAD_BYTES, MAX_PREVIEW_BYTES } from "@/lib/files/config";
+import { FILE_MODIFIED_HEADER, MAX_DOWNLOAD_BYTES, MAX_PREVIEW_BYTES } from "@/lib/files/config";
 import { FileLimitError, FileNotFoundError } from "@/lib/files/errors";
 import { formatFileSize } from "@/lib/utils";
 import { contentDisposition, contentEtag, matchesEtag } from "@/lib/files/http";
@@ -44,11 +44,17 @@ export async function GET(request: NextRequest) {
 
     const file = await target.opened.provider.read(filePath);
     const etag = contentEtag(file.buffer);
+    // The editor saves against the mtime its text came from, which is this one.
+    const modified = String(stat.modified);
 
     if (matchesEtag(request.headers.get("if-none-match"), etag)) {
       return new NextResponse(null, {
         status: 304,
-        headers: { ETag: etag, "Cache-Control": "private, no-cache" },
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache",
+          [FILE_MODIFIED_HEADER]: modified,
+        },
       });
     }
 
@@ -59,6 +65,7 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "private, no-cache",
         "X-Content-Type-Options": "nosniff",
         ETag: etag,
+        [FILE_MODIFIED_HEADER]: modified,
         ...(download ? { "Content-Disposition": contentDisposition(name) } : {}),
       },
     });

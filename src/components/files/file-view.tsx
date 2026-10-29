@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { MAX_PREVIEW_BYTES } from "@/lib/files/config";
+import { FILE_MODIFIED_HEADER, MAX_PREVIEW_BYTES } from "@/lib/files/config";
 import { looksBinary, mimeTypeForName, previewKindFor } from "@/lib/files/mime";
 import { rawFileUrl } from "@/lib/files/urls";
 import { languageFromPath, previewKindFromPath, type PreviewKind } from "@/lib/editor/editor-utils";
@@ -101,7 +101,13 @@ export function FileView({
 
     void (async () => {
       try {
-        const response = await fetch(rawFileUrl(target, filePath), { signal: controller.signal });
+        // `no-store`: a revalidated response would hand back the mtime of the
+        // bytes the browser already had, and the save would conflict with a
+        // write the editor had read past.
+        const response = await fetch(rawFileUrl(target, filePath), {
+          signal: controller.signal,
+          cache: "no-store",
+        });
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? `Could not open this file (${response.status}).`);
@@ -113,7 +119,10 @@ export function FileView({
           setBinaryDetected(true);
           return;
         }
-        setFile({ text: new TextDecoder().decode(bytes), modified: entry.modified });
+        setFile({
+          text: new TextDecoder().decode(bytes),
+          modified: modifiedOf(response, entry.modified),
+        });
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error("[file-view] failed to read file:", err);
@@ -221,6 +230,16 @@ export function FileView({
       )}
     </div>
   );
+}
+
+/**
+ * The mtime the bytes just read were written at, which is what the save is
+ * checked against. The listing row is as old as the last listing, so it stands
+ * in only when the server sends nothing.
+ */
+function modifiedOf(response: Response, listed: number): number {
+  const reported = Number(response.headers.get(FILE_MODIFIED_HEADER));
+  return Number.isFinite(reported) && reported > 0 ? reported : listed;
 }
 
 function CenterSpinner() {

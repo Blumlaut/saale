@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createFakeProvider,
+  FIXED_MTIME,
   readZipEntries,
   type FakeTree,
 } from "../../helpers/fake-file-provider";
@@ -249,6 +250,23 @@ describe("GET /api/files/raw", () => {
     expect(revalidated.status).toBe(304);
   });
 
+  it("reports the mtime its bytes were served at, so a save is checked against the read", async () => {
+    useTree();
+
+    const response = await get(rawRoute, `?path=${at("notes.md")}`);
+
+    expect(response.status).toBe(200);
+    const modified = Number(response.headers.get("x-file-modified"));
+    expect(modified).toBe(FIXED_MTIME);
+
+    const saved = await post(writeRoute, "", {
+      path: `${ROOT}/notes.md`,
+      content: "# done",
+      baseModified: modified,
+    });
+    expect(saved.status).toBe(200);
+  });
+
   it("never serves HTML as HTML inline, but does as a download", async () => {
     useTree();
 
@@ -473,7 +491,7 @@ describe("write endpoints", () => {
 });
 
 describe("POST /api/files/write", () => {
-  const MTIME = 1_700_000_000_000;
+  const MTIME = FIXED_MTIME;
 
   it("replaces a file's text in place", async () => {
     const provider = useTree();
