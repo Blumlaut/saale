@@ -338,6 +338,10 @@ export const MessageList = memo(
       setIsAtBottom(true);
       setPinnedStart(null);
       armAutoScroll(true);
+      // The reader asked for the tail. A token arriving now should move with
+      // them, not wait out the window that keeps a scroll from being yanked.
+      lastInputAtRef.current = Number.NEGATIVE_INFINITY;
+      pointerDownRef.current = false;
     }, [armAutoScroll]);
 
     useImperativeHandle(ref, () => ({ enableAutoScroll: jumpToBottom }), [jumpToBottom]);
