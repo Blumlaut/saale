@@ -132,6 +132,11 @@ export function createSessionEventTracker(
   const toolLastUpdateAt = new Map<string, number>();
   const TOOL_UPDATE_THROTTLE_MS = 1000;
 
+  // Live tool output is the whole output so far, re-sent on every update, so a
+  // chatty command would cost its own size once a second. The live card shows
+  // the tail; `tool_end` carries the result whole.
+  const LIVE_OUTPUT_MAX_CHARS = 8_000;
+
   // Throttle map for tool_pending. Argument deltas re-send the whole argument
   // object, so a long file body costs its own length per delta. `tool_start`
   // carries the final arguments, so a coarser live view loses nothing.
@@ -309,6 +314,10 @@ export function createSessionEventTracker(
       console.error(`Failed to publish ${event}:`, err);
     });
   };
+
+  /** The end of a running tool's output, for the live card. */
+  const tailOfLiveOutput = (output: string): string =>
+    output.length > LIVE_OUTPUT_MAX_CHARS ? `…${output.slice(-LIVE_OUTPUT_MAX_CHARS)}` : output;
 
   /**
    * Announce the tool calls a streamed assistant message carries but has not
@@ -517,7 +526,7 @@ export function createSessionEventTracker(
           turnId: currentTurnId ?? startTurn(),
           toolCallId: event.toolCallId,
           toolName: event.toolName,
-          partialResult: normalizeToolResult(event.partialResult),
+          partialResult: tailOfLiveOutput(normalizeToolResult(event.partialResult)),
         }).catch((err) => {
           console.error("Failed to publish tool_update:", err);
         });
@@ -640,11 +649,12 @@ export function createSessionEventTracker(
             }),
         );
 
+        // No toolCalls: the client built them from tool_start/tool_end, and a
+        // turn's results can be large enough to matter over a phone connection.
         publishSessionEvent(sessionId, "turn_end", {
           turnId,
           text: currentTurnText,
           thinking: currentTurnThinking || null,
-          toolCalls: turnToolCalls,
         }).catch((err) => {
           console.error("Failed to publish turn_end:", err);
         });

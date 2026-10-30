@@ -383,6 +383,40 @@ describe("createSessionEventTracker", () => {
     expect(toolStart.data.turnId).toBe(pending[0]!.data.turnId);
   });
 
+  it("sends only the tail of a chatty tool's live output", async () => {
+    const { published } = setup();
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    session.emit({ type: "tool_execution_start", toolCallId: "tc-1", toolName: "bash", args: {} });
+    // Live output is the whole output so far: a command that keeps printing
+    // would re-send all of it on every update.
+    const output = `${"x".repeat(20_000)}the end`;
+    session.emit({
+      type: "tool_execution_update",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: {},
+      partialResult: { content: [{ type: "text", text: output }] },
+    });
+
+    const [update] = published.filter((p) => p.event === "tool_update");
+    const live = update!.data.partialResult as string;
+    expect(live.length).toBeLessThan(output.length);
+    expect(live.startsWith("…")).toBe(true);
+    expect(live.endsWith("the end")).toBe(true);
+
+    // The result itself still arrives whole when the call ends.
+    session.emit({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: output }] },
+      isError: false,
+    });
+    expect(published.find((p) => p.event === "tool_end")!.data.result).toBe(output);
+  });
+
   it("emits tool_start / tool_end with the turnId", async () => {
     const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
