@@ -42,6 +42,9 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/admin/plugins" },
   { path: "/admin/plugins/logs" },
   { path: "/admin/settings" },
+  // The one settings page with a Save button: it keeps a draft, so the button
+  // sits in the panel's first row instead of scrolling with the prompts.
+  { path: "/dashboard/settings/personality" },
 ];
 
 interface ActionRow {

@@ -62,6 +62,7 @@ export function PageAction({
   icon,
   label,
   busy,
+  labelOnMobile = false,
   className,
   ...props
 }: Omit<React.ComponentProps<typeof Button>, "children" | "size"> & {
@@ -70,6 +71,8 @@ export function PageAction({
   label: string;
   /** Swaps the icon for a spinner and disables the button. */
   busy?: boolean;
+  /** Keep the words on a phone too, for the one action that carries a page. */
+  labelOnMobile?: boolean;
 }) {
   const glyph = busy ? (
     <Loader2 className="h-4 w-4 animate-spin" />
@@ -83,12 +86,16 @@ export function PageAction({
     <Button
       size="icon"
       aria-label={label}
-      className={cn("h-8 w-8 md:w-auto md:gap-1.5 md:px-3", className)}
+      className={cn(
+        "h-8",
+        labelOnMobile ? "w-auto gap-1.5 px-3" : "w-8 md:w-auto md:gap-1.5 md:px-3",
+        className,
+      )}
       disabled={busy || props.disabled}
       {...props}
     >
       {glyph}
-      <span className="hidden md:inline">{label}</span>
+      <span className={labelOnMobile ? "inline" : "hidden md:inline"}>{label}</span>
     </Button>
   );
 }

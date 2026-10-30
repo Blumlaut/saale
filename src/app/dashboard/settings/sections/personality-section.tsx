@@ -2,11 +2,13 @@
 
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
+import { PageAction, PageActions } from "@/components/layout/page";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   Bot,
+  Check,
   RotateCcw,
   Lightbulb,
   ChevronDown,
@@ -15,9 +17,10 @@ import {
   Mail,
   Terminal,
 } from "lucide-react";
-import { SaveFooter } from "../components/save-footer";
+import { AutosaveStatus, type SaveState } from "../components/save-state";
 import { useUserSettings } from "../components/user-settings-provider";
 import { useState, useCallback } from "react";
+import type { UserSettings } from "../types";
 
 const CHAT_EXAMPLE_INSTRUCTIONS = [
   {
@@ -197,106 +200,133 @@ function PromptSection({
   );
 }
 
+/** The three prompts this page edits, lifted out of the settings row. */
+interface Draft {
+  agentCustomInstructions: string | null;
+  coderCustomInstructions: string | null;
+  emailWritingStyle: string | null;
+}
+
+function storedDraft(settings: UserSettings | null): Draft | null {
+  if (!settings) return null;
+  return {
+    agentCustomInstructions: settings.agentCustomInstructions,
+    coderCustomInstructions: settings.coderCustomInstructions,
+    emailWritingStyle: settings.emailWritingStyle,
+  };
+}
+
+/**
+ * Settings → Personality. The one settings page that keeps a draft: an
+ * instruction prompt is a paragraph someone writes, not a switch, so the page
+ * has a Save button of its own in a row that stays in view.
+ */
 export function PersonalitySection() {
-  const {
-    settings,
-    updateSettings: onSettingsChange,
-    saving,
-    saveStatus,
-    save: onSave,
-  } = useUserSettings();
-  const handleCustomInstructionsChange = useCallback(
-    (value: string | null) => {
-      if (settings) {
-        onSettingsChange({ ...settings, agentCustomInstructions: value });
-      }
-    },
-    [settings, onSettingsChange],
-  );
+  const { settings, saving, saveState, save: saveSettings } = useUserSettings();
+  // The shell holds the settings load, so the page opens on what is stored.
+  const [draft, setDraft] = useState<Draft | null>(() => storedDraft(settings));
 
-  const handleEmailStyleChange = useCallback(
-    (value: string | null) => {
-      if (settings) {
-        onSettingsChange({ ...settings, emailWritingStyle: value });
-      }
-    },
-    [settings, onSettingsChange],
-  );
+  const stored = storedDraft(settings);
+  const dirty =
+    !!draft &&
+    !!stored &&
+    (draft.agentCustomInstructions !== stored.agentCustomInstructions ||
+      draft.coderCustomInstructions !== stored.coderCustomInstructions ||
+      draft.emailWritingStyle !== stored.emailWritingStyle);
 
-  const handleCoderInstructionsChange = useCallback(
-    (value: string | null) => {
-      if (settings) {
-        onSettingsChange({ ...settings, coderCustomInstructions: value });
-      }
-    },
-    [settings, onSettingsChange],
-  );
+  const change = useCallback((value: Partial<Draft>) => {
+    setDraft((current) => (current ? { ...current, ...value } : current));
+  }, []);
+
+  const save = async () => {
+    if (!draft) return;
+    await saveSettings(draft);
+  };
+
+  // At rest the row says nothing: the prompts on screen are the saved ones.
+  const state: SaveState | null = saving
+    ? "saving"
+    : saveState === "error"
+      ? "error"
+      : dirty
+        ? "dirty"
+        : saveState === "saved"
+          ? "saved"
+          : null;
 
   return (
-    <GlassPanel>
-      <GlassPanelContent className="space-y-6">
-        {/* Header */}
-        <div>
-          <h3 className="flex items-center gap-2 text-lg font-medium">
-            <Bot className="h-5 w-5" />
-            AI Agent Persona
-          </h3>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Customize how your AI agent behaves in chat, in coding sessions, and how it writes email
-            replies on your behalf.
-          </p>
-        </div>
-
-        <Separator />
-
-        {/* Chat Custom Instructions Section */}
-        <PromptSection
-          title="Custom chat instructions"
-          description="These instructions are appended to Saale's default behavior. Use them to add specific rules, preferences, or formatting guidelines."
-          icon={MessageSquare}
-          label="Custom Instructions"
-          placeholder="e.g. Always respond in German. / Prefer bullet points. / Never use markdown headings..."
-          value={settings?.agentCustomInstructions ?? ""}
-          onChange={handleCustomInstructionsChange}
-          examples={CHAT_EXAMPLE_INSTRUCTIONS}
-          exampleLabel="Example Instructions"
-          fieldKey="instruction"
+    <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
+      <PageActions leading={state ? <AutosaveStatus state={state} /> : null}>
+        <PageAction
+          icon={Check}
+          label="Save"
+          busy={saving}
+          labelOnMobile
+          disabled={!dirty}
+          onClick={save}
         />
+      </PageActions>
 
-        <Separator />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <GlassPanelContent className="space-y-6">
+          {/* Header */}
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-medium">
+              <Bot className="h-5 w-5" />
+              AI Agent Persona
+            </h3>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Customize how your AI agent behaves in chat, in coding sessions, and how it writes
+              email replies on your behalf.
+            </p>
+          </div>
 
-        {/* Coder Custom Instructions Section */}
-        <PromptSection
-          title="Coder instructions"
-          description="Used by coder chats only, in place of the custom chat instructions above. Coder chats also read each project's AGENTS.md and skills from the repo."
-          icon={Terminal}
-          label="Coder Instructions"
-          placeholder="e.g. Never add a dependency without asking. / One commit per behaviour change. / Match the surrounding code style..."
-          value={settings?.coderCustomInstructions ?? ""}
-          onChange={handleCoderInstructionsChange}
-          examples={CODER_EXAMPLE_INSTRUCTIONS}
-          exampleLabel="Example Instructions"
-          fieldKey="instruction"
-        />
+          <Separator />
 
-        <Separator />
+          <PromptSection
+            title="Custom chat instructions"
+            description="These instructions are appended to Saale's default behavior. Use them to add specific rules, preferences, or formatting guidelines."
+            icon={MessageSquare}
+            label="Custom Instructions"
+            placeholder="e.g. Always respond in German. / Prefer bullet points. / Never use markdown headings..."
+            value={draft?.agentCustomInstructions ?? ""}
+            onChange={(value) => change({ agentCustomInstructions: value })}
+            examples={CHAT_EXAMPLE_INSTRUCTIONS}
+            exampleLabel="Example Instructions"
+            fieldKey="instruction"
+          />
 
-        {/* Email Writing Style Section */}
-        <PromptSection
-          title="Email Writing Style"
-          description="Defines how your AI drafts email replies so they sound like you. This is separate from the chat persona."
-          icon={Mail}
-          label="Email Writing Style"
-          placeholder="Write emails in a natural, conversational tone. Keep things brief and friendly..."
-          value={settings?.emailWritingStyle ?? ""}
-          onChange={handleEmailStyleChange}
-          examples={EMAIL_EXAMPLE_STYLES}
-          exampleLabel="Example Styles"
-          fieldKey="prompt"
-        />
-      </GlassPanelContent>
+          <Separator />
 
-      <SaveFooter saving={saving} saveStatus={saveStatus} onSave={onSave} />
+          <PromptSection
+            title="Coder instructions"
+            description="Used by coder chats only, in place of the custom chat instructions above. Coder chats also read each project's AGENTS.md and skills from the repo."
+            icon={Terminal}
+            label="Coder Instructions"
+            placeholder="e.g. Never add a dependency without asking. / One commit per behaviour change. / Match the surrounding code style..."
+            value={draft?.coderCustomInstructions ?? ""}
+            onChange={(value) => change({ coderCustomInstructions: value })}
+            examples={CODER_EXAMPLE_INSTRUCTIONS}
+            exampleLabel="Example Instructions"
+            fieldKey="instruction"
+          />
+
+          <Separator />
+
+          <PromptSection
+            title="Email Writing Style"
+            description="Defines how your AI drafts email replies so they sound like you. This is separate from the chat persona."
+            icon={Mail}
+            label="Email Writing Style"
+            placeholder="Write emails in a natural, conversational tone. Keep things brief and friendly..."
+            value={draft?.emailWritingStyle ?? ""}
+            onChange={(value) => change({ emailWritingStyle: value })}
+            examples={EMAIL_EXAMPLE_STYLES}
+            exampleLabel="Example Styles"
+            fieldKey="prompt"
+          />
+        </GlassPanelContent>
+      </div>
     </GlassPanel>
   );
 }
