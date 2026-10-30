@@ -87,6 +87,9 @@ export async function validateBotToken(botToken: string) {
  * The list comes from the shared registry, so the bot menu can never drift
  * from the commands the web chat offers. Private chats hold the list; every
  * group scopes down to nothing, because the bot has no commands to run there.
+ *
+ * TODO: list the user's prompts here too. They already expand when typed (see
+ * `@/lib/prompts/chat`), so the menu is the only thing missing.
  */
 export async function registerBotCommands(encryptedToken: string): Promise<boolean> {
   const bot = createBot(encryptedToken);
