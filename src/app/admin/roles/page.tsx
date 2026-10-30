@@ -231,10 +231,7 @@ export default function AdminRolesPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{role.label}</span>
-                        <Badge
-                          variant="outline"
-                          className="rounded-full px-1.5 font-mono text-[10px]"
-                        >
+                        <Badge variant="outline" className="rounded-full px-1.5 text-[10px]">
                           {role.name}
                         </Badge>
                         {role.builtin && (

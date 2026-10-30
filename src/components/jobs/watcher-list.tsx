@@ -377,7 +377,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                         {(tick.toolNames?.length ?? 0) > 0 && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             {tick.toolNames!.map((name) => (
-                              <Badge key={name} variant="secondary" className="font-mono text-xs">
+                              <Badge key={name} variant="secondary" className="text-xs">
                                 {name}
                               </Badge>
                             ))}

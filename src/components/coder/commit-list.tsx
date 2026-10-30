@@ -92,7 +92,7 @@ function CommitRow({
               </span>
             </span>
             <span className="mt-0.5 flex items-center gap-1.5">
-              <span className="text-muted-foreground font-mono text-[10px]">{commit.shortSha}</span>
+              <span className="text-muted-foreground text-[10px]">{commit.shortSha}</span>
               {commit.pushed === false && (
                 <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400">
                   <ArrowUp aria-label="Not pushed" className="h-2.5 w-2.5" />

@@ -76,7 +76,7 @@ function ColorField({
           value={draft}
           spellCheck={false}
           autoComplete="off"
-          className="font-mono text-xs"
+          className="text-xs"
           onChange={(event) => commit(event.target.value)}
           onBlur={() => setDraft(value)}
         />

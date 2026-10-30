@@ -93,7 +93,7 @@ function TwoFactorForm({ onVerified }: { onVerified: () => void }) {
               placeholder="000000"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="font-mono tracking-[0.5em]"
+              className="tracking-[0.5em]"
             />
           </div>
           <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
@@ -113,7 +113,6 @@ function TwoFactorForm({ onVerified }: { onVerified: () => void }) {
             placeholder="xxxxx-xxxxx"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className="font-mono"
           />
         </div>
       )}

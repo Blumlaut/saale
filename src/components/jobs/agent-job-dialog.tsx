@@ -316,7 +316,6 @@ export function AgentJobDialog({ open, onOpenChange, onSuccess, job }: AgentJobD
                       value={outputChannelId}
                       onChange={(e) => setOutputChannelId(e.target.value)}
                       placeholder="Your own chat"
-                      className="font-mono"
                     />
                     <p className="text-muted-foreground text-xs">
                       A group chat id from Settings → Integrations → Telegram posts there. Empty

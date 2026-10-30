@@ -138,7 +138,7 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
           {/* Share URL */}
           {isShared && shareUrl && (
             <div className="flex items-center gap-2">
-              <Input readOnly value={shareUrl} className="font-mono text-sm" />
+              <Input readOnly value={shareUrl} className="text-sm" />
               <Button
                 size="icon"
                 variant="secondary"

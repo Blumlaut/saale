@@ -66,7 +66,7 @@ function MentionChips({
     <span className="flex flex-wrap items-center gap-1">
       {names.map((name) => {
         const badge = (
-          <Badge variant="secondary" className="bg-primary/10 text-primary font-mono text-[10px]">
+          <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
             @{name}
           </Badge>
         );
@@ -122,7 +122,7 @@ function LiveActivity({ state }: { state: CouncilMemberLive }) {
               className="text-muted-foreground flex items-center gap-1.5 text-[11px]"
             >
               <Wrench className="h-3 w-3 shrink-0" />
-              <span className="min-w-0 truncate font-mono">{call.tool}</span>
+              <span className="min-w-0 truncate">{call.tool}</span>
               <span className={cn("shrink-0", call.done && call.isError && "text-destructive")}>
                 {call.done ? (call.isError ? "failed" : "done") : "…"}
               </span>

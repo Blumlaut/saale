@@ -131,7 +131,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
                     const message = bySeq.get(seq);
                     return (
                       <li key={seq} className="text-xs">
-                        <span className="font-mono">{labelForSeq(seq, bySeq)}</span>
+                        <span>{labelForSeq(seq, bySeq)}</span>
                         {message && (
                           <span className="text-muted-foreground">
                             {" "}
@@ -187,9 +187,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
             {turn.postedSeqs.length > 0 && (
               <p className="text-muted-foreground mt-3 text-[11px]">
                 Posted to the room:{" "}
-                <span className="font-mono">
-                  {turn.postedSeqs.map((seq) => `#${seq}`).join(", ")}
-                </span>
+                <span>{turn.postedSeqs.map((seq) => `#${seq}`).join(", ")}</span>
               </p>
             )}
           </article>

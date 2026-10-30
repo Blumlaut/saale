@@ -59,7 +59,7 @@ export function SlashCommandMenu({
             <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
             <span className="shrink-0 font-mono text-sm font-medium">/{item.name}</span>
             {item.hint ? (
-              <span className="text-muted-foreground shrink-0 font-mono text-xs">{item.hint}</span>
+              <span className="text-muted-foreground shrink-0 text-xs">{item.hint}</span>
             ) : null}
             <span className="text-muted-foreground min-w-0 truncate text-xs">
               {item.description}

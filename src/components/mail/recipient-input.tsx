@@ -240,7 +240,7 @@ export function RecipientInput({
           setOpen(false);
           setHighlight(-1);
         }}
-        className={cn("font-mono", className)}
+        className={className}
       />
       {open && filtered.length > 0 && (
         <div
@@ -269,9 +269,7 @@ export function RecipientInput({
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{s.name ?? s.email}</span>
                 {s.name && (
-                  <span className="text-muted-foreground block truncate font-mono text-xs">
-                    {s.email}
-                  </span>
+                  <span className="text-muted-foreground block truncate text-xs">{s.email}</span>
                 )}
               </span>
               <span className="console-label text-muted-foreground shrink-0">

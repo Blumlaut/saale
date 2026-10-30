@@ -123,7 +123,7 @@ export function ModelLimitsSheet({
         <div className="flex min-h-0 flex-1 flex-col">
           <SheetHeader className="shrink-0 border-b px-4 pt-4 pb-3">
             <SheetTitle className="text-base leading-tight font-semibold">Model limits</SheetTitle>
-            <SheetDescription className="text-muted-foreground font-mono text-xs break-all">
+            <SheetDescription className="text-muted-foreground text-xs break-all">
               {target.modelName} · {target.providerName}
             </SheetDescription>
           </SheetHeader>
@@ -142,7 +142,7 @@ export function ModelLimitsSheet({
                   placeholder={String(inherited(target, "contextWindow"))}
                   value={contextWindow}
                   onChange={(event) => setContextWindow(event.target.value)}
-                  className="h-8 font-mono text-xs"
+                  className="h-8 text-xs"
                 />
               </div>
               <div className="space-y-1.5">
@@ -157,7 +157,7 @@ export function ModelLimitsSheet({
                   placeholder={String(inherited(target, "maxOutputTokens"))}
                   value={maxOutputTokens}
                   onChange={(event) => setMaxOutputTokens(event.target.value)}
-                  className="h-8 font-mono text-xs"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>

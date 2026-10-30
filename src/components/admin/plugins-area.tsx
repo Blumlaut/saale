@@ -494,12 +494,12 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                                 {plugin.kind === "package" ? (
                                   <div className="min-w-0">
                                     <p className="console-label">Source</p>
-                                    <p className="font-mono break-all">npm · {plugin.id}</p>
+                                    <p className="break-all">npm · {plugin.id}</p>
                                   </div>
                                 ) : plugin.git ? (
                                   <div className="min-w-0">
                                     <p className="console-label">Git</p>
-                                    <p className="flex items-center gap-1 font-mono break-all">
+                                    <p className="flex items-center gap-1 break-all">
                                       <GitBranch className="h-3 w-3 shrink-0" />
                                       {plugin.git.branch ?? "detached"} · {plugin.git.commit}
                                       {plugin.git.dirty && " · modified"}
@@ -686,7 +686,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                       <div className="min-w-0">
                         <p className="truncate text-sm">{plugin.name}</p>
                         {(plugin.name !== plugin.id || plugin.kind === "package") && (
-                          <p className="text-muted-foreground truncate font-mono text-[11px]">
+                          <p className="text-muted-foreground truncate text-[11px]">
                             {plugin.kind === "package" ? `npm · ${plugin.id}` : plugin.id}
                           </p>
                         )}
@@ -793,7 +793,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                             {entry.level}
                           </Badge>
                           {entry.pluginId && (
-                            <span className="truncate font-mono text-[11px]">{entry.pluginId}</span>
+                            <span className="truncate text-[11px]">{entry.pluginId}</span>
                           )}
                         </div>
                         <span className="min-w-0 flex-1 text-xs break-words">{entry.message}</span>

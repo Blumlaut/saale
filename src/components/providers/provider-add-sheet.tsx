@@ -259,7 +259,7 @@ export function ProviderAddSheet({
                     placeholder="http://localhost:11434/v1"
                     value={draft.baseUrl}
                     onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
-                    className="h-8 font-mono text-xs"
+                    className="h-8 text-xs"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -269,7 +269,7 @@ export function ProviderAddSheet({
                     placeholder="optional for a local server"
                     value={draft.apiKey}
                     onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
-                    className="h-8 font-mono text-xs"
+                    className="h-8 text-xs"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -293,7 +293,7 @@ export function ProviderAddSheet({
                       onChange={(event) =>
                         setDraft({ ...draft, contextWindow: event.target.value })
                       }
-                      className="h-8 font-mono text-xs"
+                      className="h-8 text-xs"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -307,7 +307,7 @@ export function ProviderAddSheet({
                       onChange={(event) =>
                         setDraft({ ...draft, maxOutputTokens: event.target.value })
                       }
-                      className="h-8 font-mono text-xs"
+                      className="h-8 text-xs"
                     />
                   </div>
                 </div>

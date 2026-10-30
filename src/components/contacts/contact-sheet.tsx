@@ -133,7 +133,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   placeholder="jane@example.com"
                   autoComplete="off"
                   spellCheck={false}
-                  className={`${INPUT_CLASS} font-mono`}
+                  className={INPUT_CLASS}
                 />
               </div>
 

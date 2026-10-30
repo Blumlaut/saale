@@ -93,14 +93,14 @@ export function Composer({ councilId, members, running, waiting, onPosted }: Com
           Address members with @name, everyone with @all, or the owner with @user.
         </span>
         {enabledMembers.length > 0 && (
-          <span className="text-muted-foreground flex flex-wrap items-center gap-1 font-mono text-[11px]">
+          <span className="text-muted-foreground flex flex-wrap items-center gap-1 text-[11px]">
             {enabledMembers.map((member) => (
               <Button
                 key={member.id}
                 type="button"
                 variant="ghost"
                 size="xs"
-                className="h-auto px-1 py-0.5 font-mono text-[11px] font-normal"
+                className="h-auto px-1 py-0.5 text-[11px] font-normal"
                 onClick={() =>
                   setContent(
                     (prev) => `${prev}${prev && !prev.endsWith(" ") ? " " : ""}@${member.name} `,

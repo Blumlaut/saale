@@ -76,10 +76,7 @@ function BackupCodesList({ codes }: { codes: string[] }) {
       </div>
       <ul className="grid grid-cols-2 gap-1.5">
         {codes.map((code) => (
-          <li
-            key={code}
-            className="text-foreground rounded-md border px-2 py-1 font-mono text-xs break-all"
-          >
+          <li key={code} className="text-foreground rounded-md border px-2 py-1 text-xs break-all">
             {code}
           </li>
         ))}
@@ -194,7 +191,7 @@ function EnableFlow({ onFinished, onCancel }: { onFinished: () => void; onCancel
             placeholder="000000"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-            className="font-mono tracking-[0.5em]"
+            className="tracking-[0.5em]"
           />
         </div>
 

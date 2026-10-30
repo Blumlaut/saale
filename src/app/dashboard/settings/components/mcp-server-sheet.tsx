@@ -504,7 +504,7 @@ export function McpServerSheet({
                   </span>
                 </div>
                 {testResult.tools && testResult.tools.length > 0 && (
-                  <ul className="max-h-40 space-y-1 overflow-y-auto font-mono text-xs">
+                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
                     {testResult.tools.map((tool) => (
                       <li key={tool.name} className="break-all">
                         {tool.name}

@@ -205,7 +205,7 @@ export function PromptsSection() {
                           /{prompt.name}
                         </span>
                         {prompt.argumentHint ? (
-                          <span className="text-muted-foreground truncate font-mono text-xs">
+                          <span className="text-muted-foreground truncate text-xs">
                             {prompt.argumentHint}
                           </span>
                         ) : null}

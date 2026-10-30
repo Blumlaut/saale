@@ -109,7 +109,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{contact.name}</p>
-                  <p className="text-muted-foreground truncate font-mono text-xs">
+                  <p className="text-muted-foreground truncate text-xs">
                     {contact.email}
                     {contact.company ? (
                       <span className="text-muted-foreground/70"> · {contact.company}</span>

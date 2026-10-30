@@ -288,7 +288,7 @@ export function ProviderLoginSheet({
                       onKeyDown={(event) => {
                         if (event.key === "Enter" && answer) void submitAnswer(answer);
                       }}
-                      className="h-9 font-mono text-xs"
+                      className="h-9 text-xs"
                       autoComplete="off"
                     />
                     <Button

@@ -212,7 +212,7 @@ export function RunStatus({
         )}
         <span
           className={cn(
-            "ml-auto inline-flex items-center gap-1 text-[10px] tracking-wide uppercase",
+            "console-label ml-auto inline-flex items-center gap-1",
             connected ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400",
           )}
         >
@@ -226,7 +226,7 @@ export function RunStatus({
       {run && (
         <div className="mt-2 flex flex-wrap gap-3 md:gap-6">
           <Meter
-            icon={<span className="font-mono">⇅</span>}
+            icon={<span>⇅</span>}
             label="Tokens"
             used={inputTokens + outputTokens}
             ceiling={run.maxTokens ?? null}
