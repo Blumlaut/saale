@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Switch } from "@/components/ui/switch";
+import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -140,25 +140,17 @@ export function ToolsSection() {
                 const tools = getToolsByCategory(category.key);
                 const exposure =
                   toolExposure[category.key] ?? DEFAULT_TOOL_EXPOSURE[category.key] ?? "direct";
-                const Icon = category.icon;
 
                 return (
                   <div key={category.key}>
                     {index > 0 && <Separator className="mx-2" />}
 
-                    {/* Category header. toggle + expand */}
-                    <div className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-                        <div className="space-y-0.5">
-                          <Label className="text-sm font-medium">{category.label}</Label>
-                          <p className="text-muted-foreground text-xs">{category.description}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        {/* Expand/collapse chevron. only show if category has tools */}
-                        {tools.length > 0 && (
+                    <ToolCategoryRow
+                      category={category}
+                      checked={enabled}
+                      onCheckedChange={() => handleToggle(category.key)}
+                      trailing={
+                        tools.length > 0 ? (
                           <button
                             type="button"
                             onClick={() => toggleExpanded(category.key)}
@@ -171,14 +163,9 @@ export function ToolsSection() {
                               <ChevronRight className="h-4 w-4" />
                             )}
                           </button>
-                        )}
-
-                        <Switch
-                          checked={enabled}
-                          onCheckedChange={() => handleToggle(category.key)}
-                        />
-                      </div>
-                    </div>
+                        ) : null
+                      }
+                    />
 
                     {/* Per-tool policies. collapsed when category is off or not expanded */}
                     {!enabled && tools.length > 0 && (
@@ -285,28 +272,17 @@ export function ToolsSection() {
           <Separator />
 
           <div className="space-y-1 px-4 py-4 md:px-6">
-            {TOOL_CATEGORIES.map((category, index) => {
-              const Icon = category.icon;
-              return (
-                <div key={category.key}>
-                  {index > 0 && <Separator className="mx-2" />}
-                  <div className="flex items-center justify-between gap-3 py-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-                      <div className="min-w-0 space-y-0.5">
-                        <Label className="text-sm font-medium">{category.label}</Label>
-                        <p className="text-muted-foreground text-xs">{category.description}</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={coderToolConfig[category.key]}
-                      onCheckedChange={() => handleCoderToggle(category.key)}
-                      aria-label={`${category.label} in coder chats`}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+            {TOOL_CATEGORIES.map((category, index) => (
+              <div key={category.key}>
+                {index > 0 && <Separator className="mx-2" />}
+                <ToolCategoryRow
+                  category={category}
+                  checked={!!coderToolConfig[category.key]}
+                  onCheckedChange={() => handleCoderToggle(category.key)}
+                  switchLabel={`${category.label} in coder chats`}
+                />
+              </div>
+            ))}
           </div>
         </GlassPanelContent>
       </GlassPanel>

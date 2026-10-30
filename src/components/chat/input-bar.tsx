@@ -7,24 +7,34 @@ import { Button } from "@/components/ui/button";
 import { UploadProgressBar } from "@/components/ui/upload-progress";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Paperclip,
   Send,
   Loader2,
   ListPlus,
+  Wrench,
   X,
   FileText,
   File as FileIcon,
   FolderGit2,
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
+import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 import { searchCommands } from "@/lib/commands/catalog";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
 import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
-import { ChatSettingsMenu, type ChatSettings } from "./chat-settings-menu";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
 
+export type { ToolConfig };
 export type { TokenUsage };
 
 interface PendingFile {
@@ -55,13 +65,13 @@ interface InputBarProps {
   onValueChange: (value: string) => void;
   isLoading: boolean;
   onStop: () => void;
+  toolConfig?: ToolConfig;
+  onToggleTool?: (category: string) => void;
   tokenUsage?: TokenUsage | null;
   isCompacting?: boolean;
   onCompact?: () => void;
   /** Bytes of the batch being sent, while they are still going up. */
   uploadProgress?: UploadProgress | null;
-  /** Session settings for the composer menu. absent where the chat has none. */
-  settings?: ChatSettings;
 }
 
 /** The composer's value while it is still just a command name: `/`, `/mo`, … */
@@ -77,11 +87,12 @@ export function InputBar({
   onValueChange,
   isLoading,
   onStop,
+  toolConfig,
+  onToggleTool,
   tokenUsage,
   isCompacting,
   onCompact,
   uploadProgress,
-  settings,
 }: InputBarProps) {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -158,6 +169,8 @@ export function InputBar({
     },
     [value, onValueChange, autoResize],
   );
+
+  const hasToolToggle = onToggleTool !== undefined && toolConfig !== undefined;
 
   const canSend = value.trim().length > 0 || pendingFiles.length > 0;
   // A compaction holds the session too: what the composer sends now is queued,
@@ -348,7 +361,7 @@ export function InputBar({
   }, [value, autoResize]);
 
   return (
-    <div className="border-border/30 relative border-t pt-2">
+    <div className="border-border relative border-t pt-2">
       {commandMenuOpen && (
         <SlashCommandMenu
           items={menuItems}
@@ -421,8 +434,35 @@ export function InputBar({
         </div>
       )}
 
-      <div className="border-border bg-card relative flex items-center gap-2 rounded-none border px-3 py-2 md:rounded-2xl">
-        {settings && <ChatSettingsMenu settings={settings} />}
+      <div className="border-input relative flex items-center gap-2 rounded-none border bg-transparent px-3 py-2 md:rounded-2xl">
+        {/* Tools toggle button */}
+        {hasToolToggle && (
+          <DropdownMenu>
+            {/* Use div instead of Button to avoid nested <button> inside DropdownMenuTrigger */}
+            <DropdownMenuTrigger>
+              <div
+                className="hover:text-foreground aria-expanded:text-foreground hover:bg-muted aria-expanded:bg-muted inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                aria-label="Toggle tools"
+              >
+                <Wrench className="h-4 w-4" />
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Available Tools</DropdownMenuLabel>
+                {TOOL_CATEGORIES.map((category) => (
+                  <DropdownMenuCheckboxItem
+                    key={category.key}
+                    checked={!!toolConfig[category.key]}
+                    onCheckedChange={() => onToggleTool(category.key)}
+                  >
+                    {category.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         {/* File upload button. any file type */}
         <Button
@@ -452,7 +492,7 @@ export function InputBar({
           onKeyDown={handleKeyDown}
           placeholder="Message Saale..."
           className={cn(
-            "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0 dark:bg-transparent",
+            "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
             "placeholder:text-muted-foreground",
           )}
           rows={1}
