@@ -302,13 +302,12 @@ export function PromptsSection() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="prompt-hint">Arguments</Label>
+                <Label htmlFor="prompt-hint">What to type after it</Label>
                 <Input
                   id="prompt-hint"
                   value={draft?.argumentHint ?? ""}
                   maxLength={PROMPT_ARGUMENT_HINT_MAX}
-                  placeholder="<path> [focus]"
-                  className="font-mono"
+                  placeholder="path to review, or a focus area"
                   onChange={(e) =>
                     setDraft((current) =>
                       current ? { ...current, argumentHint: e.target.value } : current,
