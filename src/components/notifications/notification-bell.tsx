@@ -115,7 +115,7 @@ export function NotificationBell() {
                 key={notification.id}
                 className={cn(
                   "border-border hover:bg-accent/60 dark:border-border dark:hover:bg-muted/50 flex items-start gap-3 border-b px-4 py-3 transition-colors",
-                  !notification.read && "bg-muted/50 dark:bg-white/5",
+                  !notification.read && "bg-muted/50",
                 )}
               >
                 <div

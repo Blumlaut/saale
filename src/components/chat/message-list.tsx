@@ -1108,7 +1108,7 @@ function AssistantGroupImpl({
 
                     {expandedThinking.has(messageKey(message)) && (
                       <div className="border-border/30 border-t px-3 py-2">
-                        <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap dark:bg-white/5">
+                        <pre className="text-muted-foreground bg-muted rounded-lg p-3 text-xs leading-relaxed whitespace-pre-wrap">
                           {message.thinking}
                         </pre>
                       </div>

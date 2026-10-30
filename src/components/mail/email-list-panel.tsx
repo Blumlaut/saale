@@ -115,12 +115,12 @@ export function EmailListPanel({
             <DropdownMenu open={showAccountMenu} onOpenChange={setShowAccountMenu}>
               <DropdownMenuTrigger
                 render={
-                  <button className="flex items-center gap-1 text-left">
-                    <h2 className="truncate text-sm font-semibold">
+                  <Button variant="ghost" className="h-auto min-w-0 gap-1 px-1 text-left">
+                    <span className="truncate text-sm font-semibold">
                       {activeAccount ? activeAccount.email : "All Mail"}
-                    </h2>
+                    </span>
                     <ChevronDown className="text-muted-foreground h-3 w-3 shrink-0" />
-                  </button>
+                  </Button>
                 }
               />
               <DropdownMenuContent align="start" className="w-56">
@@ -266,7 +266,7 @@ export function EmailListPanel({
           {tagFilter && (
             <button
               onClick={() => onTagFilterChange(null)}
-              className="bg-accent shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors dark:bg-white/5"
+              className="bg-accent shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors"
             >
               <X className="mr-0.5 inline h-3 w-3" />
               {tagFilter}
@@ -331,7 +331,7 @@ export function EmailListPanel({
                   <button
                     className={cn(
                       "hover:bg-accent/60 flex w-full items-start gap-3 px-4 py-3 text-left transition-colors",
-                      selectedId === msg.id && "bg-accent dark:bg-white/5",
+                      selectedId === msg.id && "bg-accent",
                     )}
                     onClick={() => onSelectMessage(msg)}
                   >

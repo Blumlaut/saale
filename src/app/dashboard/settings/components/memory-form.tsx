@@ -96,9 +96,16 @@ export function MemoryForm({
           {tags.map((tag) => (
             <Badge key={tag} variant="secondary" className="rounded-full px-2 py-0.5">
               {tag}
-              <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="ml-1 size-4"
+                aria-label={`Remove ${tag}`}
+                onClick={() => handleRemoveTag(tag)}
+              >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             </Badge>
           ))}
         </div>

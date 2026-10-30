@@ -350,10 +350,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                   ) : (
                     <div className="flex flex-col gap-3">
                       {runs.map((run) => (
-                        <div
-                          key={run.id}
-                          className="bg-accent rounded-xl border p-3 dark:bg-white/5"
-                        >
+                        <div key={run.id} className="bg-accent rounded-xl border p-3">
                           <div className="flex items-center justify-between">
                             <RunStatusBadge status={run.status} />
                             <span className="text-muted-foreground text-xs">

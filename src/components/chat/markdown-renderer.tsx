@@ -266,7 +266,7 @@ const COMPONENTS = {
 
   /* ---- Tables ---- */
   table: ({ className, children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
-    <div className="border-border/40 bg-muted my-4 overflow-x-auto rounded-xl border dark:bg-white/[0.02]">
+    <div className="border-border/40 bg-muted my-4 overflow-x-auto rounded-xl border">
       <table className={cn("w-full border-collapse text-left text-sm", className)} {...props}>
         {children}
       </table>

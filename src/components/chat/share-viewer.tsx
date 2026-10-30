@@ -62,9 +62,7 @@ export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: 
       <div className="border-border/30 flex shrink-0 items-center justify-between border-b px-4 py-3 md:px-6 md:py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
-              Shared Chat
-            </span>
+            <span className="console-label">Shared Chat</span>
           </div>
           <h1 className="mt-0.5 truncate text-base font-semibold md:text-lg">{sessionTitle}</h1>
           <p className="text-muted-foreground mt-0.5 text-xs">

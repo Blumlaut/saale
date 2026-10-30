@@ -252,7 +252,7 @@ export function ModelPicker({
                 <div key={providerKey}>
                   {/* stays in view while the provider's own models scroll */}
                   <div className="bg-popover sticky top-0 z-10 px-2.5 py-1.5">
-                    <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                    <span className="console-label">
                       {providerModels[0]?.providerName ?? providerKey}
                     </span>
                   </div>

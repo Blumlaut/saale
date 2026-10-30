@@ -77,11 +77,7 @@ export function ChangesView({
         </span>
         {/* The same checkout as every other chat of the project, which is
             worth saying before someone commits on a shared branch. */}
-        {state.worktree?.mode === "repo" && (
-          <span className="text-muted-foreground shrink-0 text-[10px] tracking-wide uppercase">
-            shared
-          </span>
-        )}
+        {state.worktree?.mode === "repo" && <span className="console-label shrink-0">shared</span>}
         <Button
           variant="ghost"
           size="icon-sm"
