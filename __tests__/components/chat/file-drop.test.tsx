@@ -18,7 +18,17 @@ import { installMemoryStorage } from "../../helpers/memory-storage";
  * running generation.
  */
 
-const { routerMock } = vi.hoisted(() => ({ routerMock: { push: vi.fn() } }));
+const { routerMock, stageFileMock } = vi.hoisted(() => ({
+  routerMock: { push: vi.fn() },
+  stageFileMock: vi.fn(),
+}));
+
+// Files reach the server through the upload endpoints; the message only names
+// what was staged.
+vi.mock("@/lib/files/upload-client", () => ({
+  stageFile: stageFileMock,
+  discardStagedUpload: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
@@ -52,14 +62,14 @@ function json(body: unknown): Response {
 }
 
 /** POST bodies the composer sent, as the server would read them. */
-let sentBodies: FormData[] = [];
+let sentBodies: Array<{ content?: string; attachments?: Array<{ fileName: string }> }> = [];
 
 function fetchMock(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input.toString();
   const method = init?.method ?? "GET";
 
   if (url === `/api/chat/sessions/${SESSION_ID}/messages` && method === "POST") {
-    sentBodies.push(init?.body as FormData);
+    sentBodies.push(JSON.parse(String(init?.body)));
     return Promise.resolve(
       json({
         ok: true,
@@ -156,6 +166,15 @@ beforeEach(() => {
   });
   MockEventSource.instances = [];
   sentBodies = [];
+  stageFileMock.mockImplementation(async (file: File) => ({
+    ok: true,
+    staged: {
+      uploadId: `upload-${file.name}`,
+      fileName: file.name,
+      size: file.size,
+      mimeType: file.type || "application/octet-stream",
+    },
+  }));
 });
 
 afterEach(() => {
@@ -233,9 +252,8 @@ describe("dropping files on the chat", () => {
     });
 
     expect(sentBodies).toHaveLength(1);
-    expect(sentBodies[0]!.get("content")).toBe("look at this");
-    const attached = sentBodies[0]!.getAll("files") as File[];
-    expect(attached.map((file) => file.name)).toEqual(["report.pdf"]);
+    expect(sentBodies[0]!.content).toBe("look at this");
+    expect(sentBodies[0]!.attachments?.map((file) => file.fileName)).toEqual(["report.pdf"]);
     // Sent files leave the strip.
     expect(screen.queryByText("report.pdf")).toBeNull();
   });
