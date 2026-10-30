@@ -259,9 +259,8 @@ export function PromptsSection() {
           <DialogHeader>
             <DialogTitle>{draft?.id ? "Edit prompt" : "New prompt"}</DialogTitle>
             <DialogDescription>
-              Write the prompt as you would type it. Use <span className="font-mono">$1</span> for
-              its first argument, <span className="font-mono">$@</span> for all of them and{" "}
-              <span className="font-mono">{"${1:-fallback}"}</span> for a default.
+              A saved prompt shows up in a chat&apos;s <span className="font-mono">/</span> menu, so
+              you can send it without typing it out.
             </DialogDescription>
           </DialogHeader>
 
@@ -300,44 +299,45 @@ export function PromptsSection() {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="prompt-hint">What to type after it</Label>
-                <Input
-                  id="prompt-hint"
-                  value={draft?.argumentHint ?? ""}
-                  maxLength={PROMPT_ARGUMENT_HINT_MAX}
-                  placeholder="path to review, or a focus area"
-                  onChange={(e) =>
-                    setDraft((current) =>
-                      current ? { ...current, argumentHint: e.target.value } : current,
-                    )
-                  }
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="prompt-scope">Offered in</Label>
+              <Select
+                value={draft?.scope ?? "any"}
+                onValueChange={(value) =>
+                  setDraft((current) =>
+                    current ? { ...current, scope: value as PromptScope } : current,
+                  )
+                }
+              >
+                <SelectTrigger id="prompt-scope" className="w-full">
+                  <SelectValue>{PROMPT_SCOPE_LABELS[draft?.scope ?? "any"]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PROMPT_SCOPES.map((scope) => (
+                    <SelectItem key={scope} value={scope}>
+                      {PROMPT_SCOPE_LABELS[scope]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="prompt-scope">Offered in</Label>
-                <Select
-                  value={draft?.scope ?? "any"}
-                  onValueChange={(value) =>
-                    setDraft((current) =>
-                      current ? { ...current, scope: value as PromptScope } : current,
-                    )
-                  }
-                >
-                  <SelectTrigger id="prompt-scope" className="w-full">
-                    <SelectValue>{PROMPT_SCOPE_LABELS[draft?.scope ?? "any"]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROMPT_SCOPES.map((scope) => (
-                      <SelectItem key={scope} value={scope}>
-                        {PROMPT_SCOPE_LABELS[scope]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="prompt-hint">Example arguments</Label>
+              <Input
+                id="prompt-hint"
+                value={draft?.argumentHint ?? ""}
+                maxLength={PROMPT_ARGUMENT_HINT_MAX}
+                placeholder="path to review, or a focus area"
+                onChange={(e) =>
+                  setDraft((current) =>
+                    current ? { ...current, argumentHint: e.target.value } : current,
+                  )
+                }
+              />
+              <p className="text-muted-foreground text-xs">
+                Shown beside the name in the <span className="font-mono">/</span> menu.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -353,6 +353,11 @@ export function PromptsSection() {
                   )
                 }
               />
+              <p className="text-muted-foreground text-xs">
+                <span className="font-mono">$1</span> is the first word you type after the name,{" "}
+                <span className="font-mono">$@</span> is all of it.{" "}
+                <span className="font-mono">{"${1:-fallback}"}</span> covers when you type nothing.
+              </p>
             </div>
 
             {error && <p className="text-destructive text-sm">{error}</p>}
