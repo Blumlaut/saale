@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   AVATAR_MIME_TYPES,
   AVATAR_SIZE,
 } from "@/lib/profile/avatar-config";
+import { AutosaveStatus, SAVE_STATE_CLEAR_MS, type SaveState } from "../components/save-state";
 import { toast } from "sonner";
 import { ImageUp, Loader2, LogOut, Trash2 } from "lucide-react";
 
@@ -28,6 +29,9 @@ export interface ProfileUser {
   /** ISO date the account was created. */
   createdAt: string;
 }
+
+/** How long typing pauses before the details are sent. */
+const AUTOSAVE_DELAY_MS = 600;
 
 /** First letters of the display name, for the fallback when there is no photo. */
 function initials(name: string | null, email: string): string {
@@ -47,13 +51,47 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
   const [name, setName] = useState(user.name ?? "");
   const [username, setUsername] = useState(user.username ?? "");
   const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const cleanName = name.trim();
   const cleanUsername = normalizeUsername(username);
   const usernameProblem = isValidUsername(cleanUsername) ? null : USERNAME_RULES;
   const dirty = cleanName !== (user.name ?? "") || cleanUsername !== (user.username ?? "");
+
+  // The details save themselves once typing pauses, so the page has no Save
+  // button. A name that is empty or a username that breaks the rules waits.
+  useEffect(() => {
+    if (!dirty || !cleanName || usernameProblem) return;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        setSaveState("saving");
+        setError(null);
+        const { error: updateError } = await authClient.updateUser({
+          name: cleanName,
+          username: cleanUsername,
+        });
+
+        if (updateError) {
+          setSaveState("error");
+          setError(updateError.message ?? "Could not save your details");
+          return;
+        }
+
+        setSaveState("saved");
+        router.refresh();
+      })();
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [cleanName, cleanUsername, dirty, usernameProblem, router]);
+
+  useEffect(() => {
+    if (saveState !== "saved" && saveState !== "error") return;
+    const timer = setTimeout(() => setSaveState("idle"), SAVE_STATE_CLEAR_MS);
+    return () => clearTimeout(timer);
+  }, [saveState]);
 
   const memberSince = new Date(user.createdAt).toLocaleDateString(undefined, {
     year: "numeric",
@@ -97,27 +135,6 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
     } finally {
       setUploading(false);
     }
-  };
-
-  const saveDetails = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!cleanName || usernameProblem) return;
-
-    setSaving(true);
-    setError(null);
-    const { error: updateError } = await authClient.updateUser({
-      name: cleanName,
-      username: cleanUsername,
-    });
-    setSaving(false);
-
-    if (updateError) {
-      setError(updateError.message ?? "Could not save your details");
-      return;
-    }
-
-    router.refresh();
-    toast.success("Profile saved");
   };
 
   return (
@@ -172,7 +189,7 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
 
         <Separator />
 
-        <form onSubmit={saveDetails} className="space-y-5">
+        <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="profile-name">Display name</Label>
@@ -219,12 +236,9 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-muted-foreground text-xs">Member since {memberSince}</p>
-            <Button type="submit" disabled={saving || !dirty || !!usernameProblem || !cleanName}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save changes
-            </Button>
+            <AutosaveStatus state={saveState} />
           </div>
-        </form>
+        </div>
 
         <Separator />
 
