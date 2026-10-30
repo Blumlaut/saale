@@ -383,7 +383,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_add_machine",
       label: "Add Machine",
       description:
-        "Register a new remote machine for SSH access. Supports key-based auth (Saale generates an ED25519 key pair automatically) or password auth. For key auth, the returned 'authorizedKeysEntry' must be added to the remote user's ~/.ssh/authorized_keys file before the machine can be used. Use 'infra_test_connection' after adding to verify credentials work.",
+        "Register a new remote machine for SSH access. Supports key-based auth (Saale generates an ED25519 key pair automatically) or password auth. For key auth, the returned 'authorizedKeysEntry' must be added to the remote user's ~/.ssh/authorized_keys file before the machine can be used.",
       parameters: Type.Object({
         name: Type.String({
           description:
@@ -472,11 +472,10 @@ export function createInfraTools(userId: string): ToolDefinition[] {
                   setupInstructions: [
                     `Add this line to ${params.username}@${params.host}:${params.port ?? 22}'s ~/.ssh/authorized_keys:`,
                     `  ${authorizedKeysEntry}`,
-                    `Then run 'infra_test_connection' to verify the connection works.`,
                   ].join("\n"),
                 }
               : {
-                  note: "Use 'infra_test_connection' to verify credentials, then 'infra_exec' to run commands.",
+                  note: "Use 'infra_exec' to run commands on it.",
                 }),
           },
           meta: infraMeta,
