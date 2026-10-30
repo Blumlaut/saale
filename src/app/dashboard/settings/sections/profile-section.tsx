@@ -11,7 +11,6 @@ import { Separator } from "@/components/ui/separator";
 import { fetchJson, deleteJson } from "@/lib/http";
 import { setCurrentUserImage } from "@/hooks/use-current-user-image";
 import { authClient } from "@/lib/auth-client";
-import { isValidUsername, normalizeUsername, USERNAME_RULES } from "@/lib/auth/username";
 import {
   AVATAR_MAX_UPLOAD_BYTES,
   AVATAR_MIME_TYPES,
@@ -49,29 +48,23 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
 
   const [image, setImage] = useState(user.image);
   const [name, setName] = useState(user.name ?? "");
-  const [username, setUsername] = useState(user.username ?? "");
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const cleanName = name.trim();
-  const cleanUsername = normalizeUsername(username);
-  const usernameProblem = isValidUsername(cleanUsername) ? null : USERNAME_RULES;
-  const dirty = cleanName !== (user.name ?? "") || cleanUsername !== (user.username ?? "");
+  const dirty = cleanName !== (user.name ?? "");
 
-  // The details save themselves once typing pauses, so the page has no Save
-  // button. A name that is empty or a username that breaks the rules waits.
+  // The name saves itself once typing pauses, so the page has no Save button.
+  // An empty one waits.
   useEffect(() => {
-    if (!dirty || !cleanName || usernameProblem) return;
+    if (!dirty || !cleanName) return;
 
     const timer = setTimeout(() => {
       void (async () => {
         setSaveState("saving");
         setError(null);
-        const { error: updateError } = await authClient.updateUser({
-          name: cleanName,
-          username: cleanUsername,
-        });
+        const { error: updateError } = await authClient.updateUser({ name: cleanName });
 
         if (updateError) {
           setSaveState("error");
@@ -85,7 +78,7 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
     }, AUTOSAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [cleanName, cleanUsername, dirty, usernameProblem, router]);
+  }, [cleanName, dirty, router]);
 
   useEffect(() => {
     if (saveState !== "saved" && saveState !== "error") return;
@@ -206,22 +199,9 @@ export function ProfileSection({ user }: { user: ProfileUser }) {
 
             <div className="space-y-2">
               <Label htmlFor="profile-username">Username</Label>
-              <Input
-                id="profile-username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
-                spellCheck={false}
-                aria-invalid={usernameProblem ? true : undefined}
-                aria-describedby="profile-username-hint"
-              />
-              <p
-                id="profile-username-hint"
-                className={
-                  usernameProblem ? "text-destructive text-xs" : "text-muted-foreground text-xs"
-                }
-              >
-                {usernameProblem ?? "You sign in with this."}
+              <Input id="profile-username" value={user.username ?? ""} readOnly disabled />
+              <p className="text-muted-foreground text-xs">
+                You sign in with this. Ask an admin to change it.
               </p>
             </div>
           </div>
