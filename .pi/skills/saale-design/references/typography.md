@@ -24,7 +24,7 @@ The base font scales with the viewport: `font-size: clamp(14px, 1.15vw + 0.25rem
 The `.console-label` class is the signature of the console language:
 
 ```tsx
-<span className="console-label">SALE v0.1.0</span>
+<span className="console-label">Saale 2026.10.0</span>
 <span className="console-label">Models</span>
 ```
 
@@ -47,7 +47,7 @@ The `.console-label` class is the signature of the console language:
 | Headings | Sentence case | "Chat" |
 | Body text | Sentence case | "You have 3 unread messages" |
 | Labels / buttons | Sentence case | "Search emails", "New Task" |
-| Console micro-labels | UPPERCASE (via `.console-label`) | "MODELS", "SALE v0.1.0" |
+| Console micro-labels | UPPERCASE (via `.console-label`) | "MODELS", "Saale 2026.10.0" |
 | Abbreviations in body | UPPERCASE | "API", "URL", "ID" |
 | **Never** | ALL CAPS on headings/buttons/body |
 

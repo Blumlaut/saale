@@ -280,7 +280,7 @@ There is no surface class to remember. Every surface is the same three utilities
 
 ## Console Micro-Labels
 
-Section labels, panel footers, and metadata use the `.console-label` class — small caps, wide tracking, muted color (`10px / 600 / 0.18em uppercase`). The sidebar footer (`Saale v0.1.0`) and the orange tick under it are the canonical example. Use for: section headers inside panels, status lines, version info. **Do not** use for body text or button labels.
+Section labels, panel footers, and metadata use the `.console-label` class — small caps, wide tracking, muted color (`10px / 600 / 0.18em uppercase`). The sidebar footer (`Saale 2026.10.0`) and the orange tick under it are the canonical example. Use for: section headers inside panels, status lines, version info. **Do not** use for body text or button labels.
 
 ## Terminal Styling
 

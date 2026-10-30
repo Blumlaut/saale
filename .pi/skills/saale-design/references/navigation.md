@@ -15,7 +15,7 @@ nav.sidebar-nav (sticky top-6 h-fit w-56 shrink-0)
       ├─ Search button (ghost, w-full, ⌘K kbd) → portal dropdown (bg-popover, rounded-xl)
       └─ Nav items (space-y-0.5): the user's visible items, in the user's order (+ Admin for admins)
 └─ Console footer (mt-4 border-t px-3 pt-3)
-   ├─ Row: console-label "Saale v0.1.0" (version in normal-case, same font) + theme toggle icon button
+   ├─ Row: console-label "Saale 2026.10.0" (version in normal-case, same font) + theme toggle icon button
    └─ Orange tick: div.bg-primary.h-0.5.w-8.rounded-full
 ```
 
@@ -73,7 +73,7 @@ The version block is the canonical console micro-label:
   <div className="flex items-center justify-between">
     <p className="console-label">
       Saale{" "}
-      <span className="text-muted-foreground/70 tracking-normal normal-case">v0.1.0</span>
+      <span className="text-muted-foreground/70 tracking-normal normal-case">{APP_VERSION}</span>
     </p>
     <Button variant="ghost" size="icon" className="size-7 rounded-md" onClick={/* theme toggle */} aria-label="Toggle theme">
       <Sun className="h-3.5 w-3.5 dark:hidden" />

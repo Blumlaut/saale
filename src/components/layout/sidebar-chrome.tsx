@@ -11,6 +11,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ChevronDown, ChevronRight, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useColorMode } from "@/hooks/use-color-mode";
+import { APP_VERSION } from "@/lib/version";
 
 /**
  * The one sidebar. Both the dashboard and the admin panel render their items
@@ -269,7 +270,10 @@ export function SidebarFooter() {
     <div className="border-border/60 mt-4 border-t px-3 pt-3">
       <div className="flex items-center justify-between">
         <p className="console-label">
-          Saale <span className="text-muted-foreground/70 tracking-normal normal-case">v0.1.0</span>
+          Saale{" "}
+          <span className="text-muted-foreground/70 tracking-normal normal-case">
+            {APP_VERSION}
+          </span>
         </p>
         <Button
           variant="ghost"

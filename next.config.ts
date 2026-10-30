@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import packageJson from "./package.json";
+
 /** Hosts a dev server accepts requests from, from `ALLOWED_DEV_ORIGINS`. */
 function allowedDevOrigins(): string[] {
   return (process.env.ALLOWED_DEV_ORIGINS ?? "")
@@ -10,6 +12,11 @@ function allowedDevOrigins(): string[] {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: allowedDevOrigins(),
+  // The image build passes the release it carries; a checkout falls back to
+  // `package.json`, which the release workflow keeps in step.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: process.env.NEXT_PUBLIC_APP_VERSION || packageJson.version,
+  },
   output: "standalone",
   serverExternalPackages: [
     "@better-auth/kysely-adapter",

@@ -46,6 +46,10 @@ COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
 RUN npx prisma generate
 COPY . .
+# The release this image carries, inlined by `next build`. The release workflow
+# passes it; a local build falls back to package.json through next.config.ts.
+ARG NEXT_PUBLIC_APP_VERSION=
+ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 # `.next/cache` holds Turbopack's build cache and the incremental typecheck info
 # — mounted so rebuilds start warm instead of retyping and recompiling everything
 RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
