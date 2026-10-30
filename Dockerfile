@@ -65,6 +65,8 @@ ENV NODE_ENV=production
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# The console reads this to show what the running release changed.
+COPY --from=build /app/CHANGELOG.md ./CHANGELOG.md
 # The generated client is not traced by Next.js standalone, so copy it. Nothing
 # at runtime reads the schema or prisma.config.mjs in this container: the app
 # builds its client from DATABASE_URL (src/lib/db.ts) and migrations run in the

@@ -77,13 +77,19 @@ resets every month, so a version never grows past the month plus one digit.
 `.github/workflows/release.yml` runs once a day. When main has moved since the last tag
 it:
 
-1. builds the `saale`, `saale-worker` and `saale-sandbox` images and pushes them to GHCR
+1. writes the entry for the new version into `CHANGELOG.md`, from the commits since the
+   last tag;
+2. builds the `saale`, `saale-worker` and `saale-sandbox` images and pushes them to GHCR
    as `<version>` and `latest`;
-2. bumps `package.json`, commits `release <version>` and tags it;
-3. publishes the GitHub release with notes from the commits since the last one.
+3. bumps `package.json`, commits `release <version>` and tags it;
+4. publishes the GitHub release with the same entry as its notes.
 
 A day with nothing new stops after the checkout, so a quiet repository costs nothing.
 `workflow_dispatch` cuts a release on demand.
+
+The changelog is what the console shows when you click the version in the footer: each
+image carries the `CHANGELOG.md` of the commit it was built from. `node
+scripts/changelog.mjs --version 2026.10.0` prints the entry a release would get.
 
 GHCR creates the three packages private the first time a release pushes them. They have to
 be set to public once, in each package's settings, or nobody can pull an image.

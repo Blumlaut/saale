@@ -2,7 +2,8 @@ name: release
 
 # One release a day, if main moved since the last one. The version names the
 # month and counts up inside it: 2026.10.0, 2026.10.1, then 2026.11.0. Images go
-# to GHCR under the same version, and `latest` follows the newest one.
+# to GHCR under the same version, and `latest` follows the newest one. The release
+# body and `CHANGELOG.md` are the commits since the last tag.
 #
 # A run with nothing new stops before it builds anything, so the daily schedule
 # costs a checkout on a quiet day.
@@ -117,8 +118,20 @@ jobs:
             target: ""
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The changelog is a range from the last tag, and that tag is not in here
+          # on a shallow clone.
+          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
+
+      # Written before the build and left uncommitted: the build context is the
+      # working tree, so the image ships with its own entry. The release job
+      # commits the same file.
+      - name: Write the changelog entry for this release
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: node scripts/changelog.mjs --version "$VERSION" --write
 
       - uses: docker/login-action@v3
         with:
@@ -156,6 +169,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node scripts/changelog.mjs --version "$VERSION" --write
+          node scripts/changelog.mjs --version "$VERSION" --notes "$RUNNER_TEMP/notes.md"
           npm version "$VERSION" --no-git-tag-version > /dev/null
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -171,4 +186,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.version }}
-        run: gh release create "$VERSION" --title "$VERSION" --generate-notes --verify-tag
+        run: gh release create "$VERSION" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
