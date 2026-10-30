@@ -158,15 +158,15 @@ services:
       timeout: 5s
       retries: 5
 
-  # Speech to text for the composer. Off unless asked for: VOICE_ENABLED=1 in
-  # .env points web at it, and `docker compose --profile voice up -d` starts it.
-  # The model is downloaded once into its volume and unloaded again a few
-  # minutes after the last recording, so it costs RAM only while in use.
+  # Speech to text for the composer. It runs with the stack: a profile would
+  # need a flag on every `up`, and a deploy that passes it is easy to forget.
+  # Nothing is loaded until a recording arrives, and the model is unloaded again
+  # minutes after the last one, so an unused service sits at its idle footprint.
+  # VOICE_ENABLED=1 in .env is what points web at it and shows the mic.
   voice:
     image: ghcr.io/speaches-ai/speaches:latest-cpu
     container_name: saale-voice
     restart: unless-stopped
-    profiles: ["voice"]
     volumes:
       - voice_models:/home/ubuntu/.cache/huggingface/hub
     environment:
@@ -175,6 +175,16 @@ services:
       - STT_MODEL_TTL=600
       # Pulled at startup so the first recording is not a download.
       - PRELOAD_MODELS=["${VOICE_MODEL:-Systran/faster-whisper-small}"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
 
   searxng:
     image: searxng/searxng:latest
@@ -254,6 +264,7 @@ volumes:
   uploads_data:
   # Speech models. keeping them means a redeploy does not download again.
   voice_models:
+    name: saale_voice_models
   # User data: one directory per user and council. Compose creates it on the
   # first deploy, so a fresh checkout needs no manual step. `down -v` deletes it,
   # so never pass -v.

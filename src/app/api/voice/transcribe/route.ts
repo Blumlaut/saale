@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       signal: AbortSignal.timeout(VOICE_TIMEOUT_MS),
     });
   } catch (err) {
-    console.error("Failed to reach the transcription server:", err);
+    console.error(`Failed to reach the transcription server at ${config.url}:`, err);
     return NextResponse.json({ error: "The transcription server did not answer" }, { status: 502 });
   }
 
