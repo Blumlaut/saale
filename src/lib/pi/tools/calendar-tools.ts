@@ -19,6 +19,8 @@ const calendarEventSchema = Type.Object({
   location: Type.Union([Type.String(), Type.Null()]),
   dtStart: Type.String(),
   dtEnd: Type.Union([Type.String(), Type.Null()]),
+  /** IANA zone the event's wall-clock times are read in. */
+  timeZone: Type.Union([Type.String(), Type.Null()]),
   allDay: Type.Boolean(),
   calendarName: Type.String(),
   calendarColor: Type.Union([Type.String(), Type.Null()]),
@@ -126,6 +128,7 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
       location: e.location,
       dtStart: e.dtStart.toISOString(),
       dtEnd: e.dtEnd?.toISOString() ?? null,
+      timeZone: e.timeZone,
       allDay: e.allDay,
       calendarName: e.calendar.name,
       calendarColor: e.calendar.color,
