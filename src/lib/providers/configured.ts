@@ -7,8 +7,13 @@
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { buildGlobalModelRuntime, buildModelRuntime, fetchOpenAIModels } from "@/lib/pi/models";
-import { providerCatalog, type ProviderCatalogView } from "@/lib/providers/catalog";
-import { CUSTOM_PROVIDER_ID, definesProviderModels } from "@/lib/providers/config";
+import {
+  endpointCatalogEntry,
+  providerCatalog,
+  type ProviderCatalogView,
+} from "@/lib/providers/catalog";
+import { CUSTOM_PROVIDER_ID, endpointProviderId, isEndpointProvider } from "@/lib/providers/config";
+import { endpointName } from "@/lib/providers/endpoint";
 import { parseProviderLimits } from "@/lib/providers/limits";
 import {
   detectAndStoreProviderCapabilities,
@@ -89,30 +94,36 @@ export async function listConfiguredProviders(
   const inheritedRows = new Map(
     globalRows.filter((row) => !ownRows.has(row.provider)).map((row) => [row.provider, row]),
   );
-  const rowFor = (provider: string) => ownRows.get(provider) ?? inheritedRows.get(provider);
-
-  const availableProviders: ProviderCatalogView[] = providerCatalog(modelRuntime).map((entry) => {
-    const row = rowFor(entry.id);
-    // Saale's own endpoint is configured by its row, not by Pi's auth state: a
-    // local server needs no key, and an empty key still resolves.
-    const status = entry.custom
-      ? {
-          configured: row !== undefined,
-          source: row ? (ownRows.has(entry.id) ? "stored" : "global") : null,
-        }
-      : (() => {
-          const resolved = modelRuntime.getProviderAuthStatus(entry.id);
-          return { configured: resolved.configured, source: resolved.source ?? null };
-        })();
-
+  const piProviders: ProviderCatalogView[] = providerCatalog(modelRuntime).map((entry) => {
+    const resolved = modelRuntime.getProviderAuthStatus(entry.id);
     return {
       ...entry,
-      configured: status.configured,
-      source: status.source,
+      configured: resolved.configured,
+      source: resolved.source ?? null,
       // An admin's own rows are the global configuration.
       isGlobal: global || (!ownRows.has(entry.id) && inheritedRows.has(entry.id)),
     };
   });
+
+  // An endpoint is configured by its row, not by Pi's auth state: a local
+  // server needs no key, and an empty key still resolves.
+  const endpointProviders: ProviderCatalogView[] = [...ownRows.values(), ...inheritedRows.values()]
+    .filter((row) => isEndpointProvider(row.provider))
+    .map((row) => ({
+      ...endpointCatalogEntry({
+        id: row.provider,
+        name: endpointName(row),
+        baseUrl: row.baseUrl,
+        modelCount: modelRuntime.getModels(row.provider).length,
+      }),
+      configured: true,
+      source: ownRows.has(row.provider) ? "stored" : "global",
+      isGlobal: global || !ownRows.has(row.provider),
+    }));
+
+  const availableProviders = [...piProviders, ...endpointProviders].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
 
   return {
     providers: rows.map((row) => ({
@@ -125,18 +136,19 @@ export async function listConfiguredProviders(
 }
 
 /**
- * Store the owner's OpenAI-compatible endpoint and learn its models.
+ * Store one of the owner's OpenAI-compatible endpoints and learn its models.
  *
- * Asking the endpoint what it serves is where Saale learns the models, and
- * which of them accept images.
+ * A call without a provider id adds another endpoint. Asking the endpoint what
+ * it serves is where Saale learns the models, and which of them accept images.
  */
 export async function saveCustomEndpoint(
   owner: ProviderOwner,
   body: ConfiguredProviderBody,
 ): Promise<ProviderWriteOutcome> {
-  const { provider, apiKey, label, baseUrl } = body;
+  const { apiKey, label, baseUrl } = body;
+  const provider = typeof body.provider === "string" && body.provider ? body.provider : null;
 
-  if (provider !== CUSTOM_PROVIDER_ID) {
+  if (provider && !isEndpointProvider(provider)) {
     return {
       ok: false,
       status: 400,
@@ -158,7 +170,7 @@ export async function saveCustomEndpoint(
     };
   }
 
-  const parsedLimits = parseProviderLimits(provider, body);
+  const parsedLimits = parseProviderLimits(CUSTOM_PROVIDER_ID, body);
   if ("error" in parsedLimits) {
     return { ok: false, status: 400, error: parsedLimits.error };
   }
@@ -172,17 +184,17 @@ export async function saveCustomEndpoint(
   };
 
   let key;
-  if (owner.userId) {
-    key = await prisma.providerApiKey.upsert({
-      where: { userId_provider: { userId: owner.userId, provider } },
-      create: { userId: owner.userId, provider, ...fields },
-      update: fields,
-    });
-  } else {
+  if (provider) {
     const existing = await findRow(owner, provider);
-    key = existing
-      ? await prisma.providerApiKey.update({ where: { id: existing.id }, data: fields })
-      : await prisma.providerApiKey.create({ data: { userId: null, provider, ...fields } });
+    if (!existing) {
+      return { ok: false, status: 404, error: "This endpoint is not configured" };
+    }
+    key = await prisma.providerApiKey.update({ where: { id: existing.id }, data: fields });
+  } else {
+    const id = await unusedEndpointProviderId(owner, typeof label === "string" ? label : "");
+    key = await prisma.providerApiKey.create({
+      data: { userId: owner.userId, provider: id, ...fields },
+    });
   }
 
   const discoveredModels = await fetchOpenAIModels(baseUrl, secret || undefined);
@@ -208,7 +220,7 @@ export async function saveCustomEndpoint(
       contextWindow: key.contextWindow,
       maxOutputTokens: key.maxOutputTokens,
       configured: true,
-      displayName: definesProviderModels(provider) ? "OpenAI-compatible" : provider,
+      displayName: endpointName(key),
       discoveredModels,
       modelCount: discoveredModels.length,
       visionModels,
@@ -216,14 +228,30 @@ export async function saveCustomEndpoint(
   };
 }
 
-/** Update the endpoint's model limits without touching its API key. */
+/** An endpoint id the owner has not taken, from the name it was given. */
+async function unusedEndpointProviderId(owner: ProviderOwner, label: string): Promise<string> {
+  const rows = await prisma.providerApiKey.findMany({
+    where: { userId: owner.userId },
+    select: { provider: true },
+  });
+  const taken = new Set(rows.map((row) => row.provider));
+
+  const base = endpointProviderId(label);
+  let provider = base;
+  for (let suffix = 2; taken.has(provider); suffix += 1) {
+    provider = `${base}-${suffix}`;
+  }
+  return provider;
+}
+
+/** Update an endpoint's model limits without touching its API key. */
 export async function saveCustomEndpointLimits(
   owner: ProviderOwner,
   body: ConfiguredProviderBody,
 ): Promise<ProviderWriteOutcome> {
   const provider = body.provider;
 
-  if (provider !== CUSTOM_PROVIDER_ID) {
+  if (typeof provider !== "string" || !isEndpointProvider(provider)) {
     return { ok: false, status: 400, error: "provider is required" };
   }
 

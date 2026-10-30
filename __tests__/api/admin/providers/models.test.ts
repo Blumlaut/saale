@@ -12,7 +12,7 @@ vi.mock("@/lib/pi/models", () => ({
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
-  readEndpointRow: vi.fn(),
+  readEndpointRows: vi.fn(),
 }));
 
 import { requirePermission } from "@/lib/auth";
@@ -52,7 +52,7 @@ describe("GET /api/admin/providers/models", () => {
       user: { id: "admin-1" },
     } as never);
     stubRuntime([]);
-    vi.mocked(endpoint.readEndpointRow).mockResolvedValue(null);
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
   });
 
   it("returns 401 when the caller is not an admin", async () => {
@@ -177,15 +177,19 @@ describe("GET /api/admin/providers/models", () => {
       ],
       { custom: "OpenAI-compatible" },
     );
-    vi.mocked(endpoint.readEndpointRow).mockResolvedValue({
-      id: "key-1",
-      userId: null,
-      baseUrl: "http://localhost:8080/v1",
-      encryptedKey: "enc()",
-      contextWindow: 131_072,
-      maxOutputTokens: 8_192,
-      modelCapabilities: { local: { contextWindow: 32_768, maxOutputTokens: 4_096 } },
-    });
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([
+      {
+        id: "key-1",
+        userId: null,
+        provider: "custom",
+        label: "",
+        baseUrl: "http://localhost:8080/v1",
+        encryptedKey: "enc()",
+        contextWindow: 131_072,
+        maxOutputTokens: 8_192,
+        modelCapabilities: { local: { contextWindow: 32_768, maxOutputTokens: 4_096 } },
+      },
+    ]);
 
     const body = await (await GET()).json();
 
@@ -196,12 +200,14 @@ describe("GET /api/admin/providers/models", () => {
       maxOutputTokens: 4_096,
       overrides: { contextWindow: 32_768, maxOutputTokens: 4_096 },
     });
-    expect(body.endpointLimits).toEqual({ contextWindow: 131_072, maxOutputTokens: 8_192 });
+    expect(body.endpointLimits).toEqual({
+      custom: { contextWindow: 131_072, maxOutputTokens: 8_192 },
+    });
   });
 
   it("returns an empty listing when the global configuration has no models", async () => {
     const body = await (await GET()).json();
 
-    expect(body).toEqual({ models: {}, providers: [], endpointLimits: null });
+    expect(body).toEqual({ models: {}, providers: [], endpointLimits: {} });
   });
 });

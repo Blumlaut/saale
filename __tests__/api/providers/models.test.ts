@@ -19,7 +19,7 @@ vi.mock("@/lib/pi/models", () => ({
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
-  readEndpointRow: vi.fn(),
+  readEndpointRows: vi.fn(),
 }));
 
 import * as auth from "@/lib/auth";
@@ -31,7 +31,7 @@ import { GET } from "@/app/api/providers/models/route";
 describe("GET /api/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(endpoint.readEndpointRow).mockResolvedValue(null);
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
   });
 
   /* ── Auth ── */
@@ -184,15 +184,19 @@ describe("GET /api/providers/models", () => {
       ],
     });
     vi.mocked(db.prisma.appSettings.findUnique).mockResolvedValue(null);
-    vi.mocked(endpoint.readEndpointRow).mockResolvedValue({
-      id: "key-1",
-      userId: "user-1",
-      baseUrl: "http://localhost:8080/v1",
-      encryptedKey: "enc()",
-      contextWindow: 131_072,
-      maxOutputTokens: 8_192,
-      modelCapabilities: { small: { contextWindow: 4_096 } },
-    });
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([
+      {
+        id: "key-1",
+        userId: "user-1",
+        provider: "custom",
+        label: "",
+        baseUrl: "http://localhost:8080/v1",
+        encryptedKey: "enc()",
+        contextWindow: 131_072,
+        maxOutputTokens: 8_192,
+        modelCapabilities: { small: { contextWindow: 4_096 } },
+      },
+    ]);
 
     const body = await (await GET(new NextRequest("http://localhost/api/providers/models"))).json();
 
@@ -205,7 +209,9 @@ describe("GET /api/providers/models", () => {
       contextWindow: 4_096,
       overrides: { contextWindow: 4_096 },
     });
-    expect(body.endpointLimits).toEqual({ contextWindow: 131_072, maxOutputTokens: 8_192 });
+    expect(body.endpointLimits).toEqual({
+      custom: { contextWindow: 131_072, maxOutputTokens: 8_192 },
+    });
   });
 
   it("excludes disabled models by default", async () => {
@@ -370,7 +376,7 @@ describe("GET /api/providers/models", () => {
           vision: false,
         },
         {
-          provider: "custom-provider",
+          provider: "local-server",
           id: "custom-model",
           name: "Custom Model",
           reasoning: false,
@@ -391,8 +397,8 @@ describe("GET /api/providers/models", () => {
     const anthropicProvider = body.providers.find((p: { id: string }) => p.id === "anthropic");
     expect(anthropicProvider.name).toBe("Anthropic");
 
-    const customProvider = body.providers.find((p: { id: string }) => p.id === "custom-provider");
-    expect(customProvider.name).toBe("custom-provider"); // fallback to id
+    const customProvider = body.providers.find((p: { id: string }) => p.id === "local-server");
+    expect(customProvider.name).toBe("local-server"); // fallback to id
   });
 
   it("calls buildModelRuntime with user ID", async () => {

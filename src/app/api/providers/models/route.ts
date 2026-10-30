@@ -9,7 +9,7 @@ import {
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
-import { readEndpointRow } from "@/lib/providers/endpoint";
+import { readEndpointRows } from "@/lib/providers/endpoint";
 
 /**
  * GET /api/providers/models. Returns available models based on user's configured providers.
@@ -20,14 +20,19 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const searchParams = request.nextUrl.searchParams;
-  const [{ models, modelRuntime }, endpoint] = await Promise.all([
+  const [{ models, modelRuntime }, endpoints] = await Promise.all([
     buildModelRuntime(authResult.user.id),
-    readEndpointRow({ kind: "user", userId: authResult.user.id }),
+    readEndpointRows({ kind: "user", userId: authResult.user.id }),
   ]);
 
-  // What the user set per model on their endpoint, so the editor can tell an
+  // What the user set per model on each endpoint, so the editor can tell an
   // override from an inherited value.
-  const stored: ModelCapabilityMap = parseModelCapabilityMap(endpoint?.modelCapabilities);
+  const storedByProvider = new Map<string, ModelCapabilityMap>(
+    endpoints.map((endpoint) => [
+      endpoint.provider,
+      parseModelCapabilityMap(endpoint.modelCapabilities),
+    ]),
+  );
 
   // Load disabled models for this user
   const settings = await prisma.appSettings.findUnique({
@@ -62,7 +67,7 @@ export async function GET(request: NextRequest) {
     if (!byProvider[provider]) {
       byProvider[provider] = [];
     }
-    const overrides = configuredLimits(stored, model.id);
+    const overrides = configuredLimits(storedByProvider.get(provider) ?? {}, model.id);
     byProvider[provider]!.push({
       id: model.id,
       name: model.name,
@@ -90,10 +95,14 @@ export async function GET(request: NextRequest) {
     models: byProvider,
     totalModels: displayModels.length,
     disabledModels: Array.from(disabledSet),
-    // The endpoint-wide defaults a model's own value falls back to.
-    endpointLimits:
-      endpoint && endpoint.baseUrl
-        ? { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens }
-        : null,
+    // Per endpoint: the defaults a model's own value falls back to.
+    endpointLimits: Object.fromEntries(
+      endpoints
+        .filter((endpoint) => endpoint.baseUrl)
+        .map((endpoint) => [
+          endpoint.provider,
+          { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens },
+        ]),
+    ),
   });
 }

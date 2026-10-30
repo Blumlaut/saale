@@ -6,18 +6,15 @@
  * Saale lists that rather than keeping a list of its own, so a provider Pi gains
  * appears in Saale's settings with nothing to change here.
  *
- * Saale's own OpenAI-compatible endpoint is appended: Pi cannot know about an
- * endpoint the user runs.
+ * Saale's own OpenAI-compatible endpoints are not here: they are read from
+ * their rows (`endpointCatalogEntry`), since Pi cannot know about an endpoint
+ * the user runs.
  */
 
 import type { Provider } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-import {
-  CUSTOM_PROVIDER_ID,
-  CUSTOM_PROVIDER_LABEL,
-  definesProviderModels,
-} from "@/lib/providers/config";
+import { definesProviderModels, isEndpointProvider } from "@/lib/providers/config";
 
 /** One way a provider can be authenticated, as Pi describes it. */
 export interface ProviderAuthMethod {
@@ -81,9 +78,8 @@ export function providerCatalog(modelRuntime: ModelRuntime): ProviderCatalogEntr
   const entries: ProviderCatalogEntry[] = [];
 
   for (const provider of modelRuntime.getProviders()) {
-    // Saale's own endpoint is appended below: once it is registered, the
-    // runtime also reports it, and it must not appear twice.
-    if (provider.id === CUSTOM_PROVIDER_ID) continue;
+    // An endpoint Saale registered is listed from its row, with its own name.
+    if (isEndpointProvider(provider.id)) continue;
 
     const modelCount = provider.getModels().length;
     const configured = modelRuntime.getProviderAuthStatus(provider.id).configured;
@@ -100,17 +96,19 @@ export function providerCatalog(modelRuntime: ModelRuntime): ProviderCatalogEntr
     });
   }
 
-  entries.push({
-    id: CUSTOM_PROVIDER_ID,
-    name: CUSTOM_PROVIDER_LABEL,
-    baseUrl: null,
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The catalog entry for one OpenAI-compatible endpoint the scope has. */
+export function endpointCatalogEntry(
+  endpoint: Pick<ProviderCatalogEntry, "id" | "name" | "baseUrl" | "modelCount">,
+): ProviderCatalogEntry {
+  return {
+    ...endpoint,
     methods: [
       { type: "api_key", label: "API key (optional for a local server)", subscription: false },
     ],
-    modelCount: modelRuntime.getModels(CUSTOM_PROVIDER_ID).length,
     modelsConfigurable: true,
     custom: true,
-  });
-
-  return entries.sort((a, b) => a.name.localeCompare(b.name));
+  };
 }

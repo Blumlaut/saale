@@ -11,12 +11,12 @@ import {
   type ModelCapabilities,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
-import { CUSTOM_PROVIDER_ID } from "@/lib/providers/config";
+import { CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
 import {
   createProviderCredentialStore,
   type ProviderScope,
 } from "@/lib/providers/credential-store";
-import { endpointApiKey, readEndpointRow } from "@/lib/providers/endpoint";
+import { endpointApiKey, endpointName, readEndpointRows } from "@/lib/providers/endpoint";
 import { resolveModelLimits, type ProviderModelLimits } from "@/lib/providers/limits";
 import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
 
@@ -193,8 +193,8 @@ function defineDiscoveredModel(
 /**
  * Register a provider from its `/models` listing.
  *
- * Used for Saale's own OpenAI-compatible endpoint, whose models Pi cannot know.
- * The admin model browser registers the global endpoint the same way, so both
+ * Used for Saale's own OpenAI-compatible endpoints, whose models Pi cannot know.
+ * The admin model browser registers the global endpoints the same way, so both
  * see the same models.
  *
  * @returns The model ids the provider listed (empty when discovery failed).
@@ -203,6 +203,8 @@ export async function registerDiscoveredModels(
   runtime: ModelRuntime,
   options: {
     provider: string;
+    /** What the provider goes by in the UI. */
+    name?: string | undefined;
     baseUrl: string;
     apiKey?: string | undefined;
     limits: ProviderModelLimits;
@@ -215,6 +217,7 @@ export async function registerDiscoveredModels(
   const reported = new Map(listing.models.map((model) => [model.id, model.capabilities]));
 
   runtime.registerProvider(options.provider, {
+    name: options.name?.trim() || CUSTOM_PROVIDER_LABEL,
     baseUrl,
     apiKey: options.apiKey || "placeholder",
     api: "openai-completions",
@@ -235,29 +238,42 @@ export async function registerDiscoveredModels(
 }
 
 /**
- * Register the scope's OpenAI-compatible endpoint, if it has one.
+ * Register every OpenAI-compatible endpoint the scope can use.
  *
- * Its API key goes through `setRuntimeApiKey` rather than the credential store:
+ * The API key goes through `setRuntimeApiKey` rather than the credential store:
  * Pi has no auth flow for an endpoint it does not know, and the limits and
  * per-model capabilities Saale records are what describe its models.
+ *
+ * @returns One entry per discovered model, tagged with the endpoint serving it.
  */
-async function registerCustomEndpoint(modelRuntime: ModelRuntime, scope: ProviderScope) {
-  const row = await readEndpointRow(scope);
-  const baseUrl = row?.baseUrl;
-  if (!baseUrl) return [];
+async function registerCustomEndpoints(
+  modelRuntime: ModelRuntime,
+  scope: ProviderScope,
+): Promise<Array<{ provider: string; id: string }>> {
+  const rows = await readEndpointRows(scope);
+  const discovered: Array<{ provider: string; id: string }> = [];
 
-  const apiKey = endpointApiKey(row);
-  if (apiKey) {
-    await modelRuntime.setRuntimeApiKey(CUSTOM_PROVIDER_ID, apiKey);
+  for (const row of rows) {
+    const baseUrl = row.baseUrl;
+    if (!baseUrl) continue;
+
+    const apiKey = endpointApiKey(row);
+    if (apiKey) {
+      await modelRuntime.setRuntimeApiKey(row.provider, apiKey);
+    }
+
+    const ids = await registerDiscoveredModels(modelRuntime, {
+      provider: row.provider,
+      name: endpointName(row),
+      baseUrl,
+      apiKey,
+      limits: { contextWindow: row.contextWindow, maxOutputTokens: row.maxOutputTokens },
+      capabilities: parseModelCapabilityMap(row.modelCapabilities),
+    });
+    discovered.push(...ids.map((id) => ({ provider: row.provider, id })));
   }
 
-  return registerDiscoveredModels(modelRuntime, {
-    provider: CUSTOM_PROVIDER_ID,
-    baseUrl,
-    apiKey,
-    limits: { contextWindow: row.contextWindow, maxOutputTokens: row.maxOutputTokens },
-    capabilities: parseModelCapabilityMap(row.modelCapabilities),
-  });
+  return discovered;
 }
 
 /** How a runtime's model list is derived. */
@@ -298,7 +314,7 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
     allowModelNetwork: false,
   });
 
-  const discovered = await registerCustomEndpoint(modelRuntime, scope);
+  const discovered = await registerCustomEndpoints(modelRuntime, scope);
 
   // Detached, throttled, and skipped entirely under PI_OFFLINE: Pi publishes a
   // per-provider catalog so a model that shipped after the installed package is
@@ -316,14 +332,14 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
     vision: m.input.includes("image"),
   }));
 
-  // The custom endpoint's models are registered above; carry the ones the
-  // availability snapshot has not picked up yet.
+  // The endpoints' models are registered above; carry the ones the availability
+  // snapshot has not picked up yet.
   const knownIds = new Set(allModels.map((m) => `${m.provider}:${m.id}`));
-  for (const id of discovered) {
-    if (knownIds.has(`${CUSTOM_PROVIDER_ID}:${id}`)) continue;
-    const model = modelRuntime.getModel(CUSTOM_PROVIDER_ID, id);
+  for (const { provider, id } of discovered) {
+    if (knownIds.has(`${provider}:${id}`)) continue;
+    const model = modelRuntime.getModel(provider, id);
     allModels.push({
-      provider: CUSTOM_PROVIDER_ID,
+      provider,
       id,
       name: model?.name ?? id,
       reasoning: model?.reasoning ?? false,

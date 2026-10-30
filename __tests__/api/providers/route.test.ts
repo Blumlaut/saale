@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
     providerApiKey: {
       upsert: vi.fn(),
       findUnique: vi.fn(),
+      create: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
       deleteMany: vi.fn(),
@@ -52,6 +53,23 @@ const patch = (body: unknown) =>
   });
 
 describe("POST /api/providers", () => {
+  /** A stored endpoint row, as a write hands one back. */
+  const endpointRow = (provider: string, overrides: Record<string, unknown> = {}) => ({
+    id: "key-1",
+    userId: "user-1",
+    provider,
+    encryptedKey: "enc()",
+    label: "",
+    baseUrl: "http://localhost:8080/v1",
+    encryptedCredential: null,
+    contextWindow: null,
+    maxOutputTokens: null,
+    modelCapabilities: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     authed();
@@ -60,26 +78,17 @@ describe("POST /api/providers", () => {
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ data: [] }) })),
     );
-    vi.mocked(db.prisma.providerApiKey.upsert).mockResolvedValue({
-      id: "key-1",
-      userId: "user-1",
-      provider: "custom",
-      encryptedKey: "enc()",
-      label: "",
-      baseUrl: "http://localhost:8080/v1",
-      encryptedCredential: null,
-      contextWindow: null,
-      maxOutputTokens: null,
-      modelCapabilities: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([] as never);
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(null as never);
+    vi.mocked(db.prisma.providerApiKey.create).mockResolvedValue(
+      endpointRow("custom-endpoint") as never,
+    );
   });
 
-  it("stores model limits for an OpenAI-compatible provider", async () => {
+  it("adds an endpoint under a provider id taken from its name", async () => {
     const response = await POST(
       post({
-        provider: "custom",
+        label: "llama.cpp",
         baseUrl: "http://localhost:8080/v1",
         contextWindow: 32768,
         maxOutputTokens: 8192,
@@ -87,24 +96,59 @@ describe("POST /api/providers", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(db.prisma.providerApiKey.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({ contextWindow: 32768, maxOutputTokens: 8192 }),
-        update: expect.objectContaining({ contextWindow: 32768, maxOutputTokens: 8192 }),
+    expect(db.prisma.providerApiKey.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "user-1",
+        provider: "custom-llama-cpp",
+        contextWindow: 32768,
+        maxOutputTokens: 8192,
       }),
+    });
+  });
+
+  it("gives a second endpoint of the same name its own id", async () => {
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
+      { provider: "custom-llama-cpp" },
+    ] as never);
+
+    await POST(post({ label: "llama.cpp", baseUrl: "http://localhost:9090/v1" }));
+
+    expect(db.prisma.providerApiKey.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ provider: "custom-llama-cpp-2" }),
+    });
+  });
+
+  it("updates the endpoint the body names, leaving the scope's others alone", async () => {
+    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue({ id: "key-2" } as never);
+    vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue(
+      endpointRow("custom-openrouter") as never,
     );
+
+    const response = await POST(
+      post({ provider: "custom-openrouter", baseUrl: "http://localhost:1234/v1" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(db.prisma.providerApiKey.update).toHaveBeenCalledWith({
+      where: { id: "key-2" },
+      data: expect.objectContaining({ baseUrl: "http://localhost:1234/v1" }),
+    });
+    expect(db.prisma.providerApiKey.create).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for an endpoint the scope does not have", async () => {
+    const response = await POST(post({ provider: "custom-vllm", baseUrl: "http://x.test/v1" }));
+
+    expect(response.status).toBe(404);
+    expect(db.prisma.providerApiKey.create).not.toHaveBeenCalled();
   });
 
   it("stores null for a limit the user left empty", async () => {
-    await POST(
-      post({ provider: "custom", baseUrl: "http://localhost:8080/v1", contextWindow: 32768 }),
-    );
+    await POST(post({ baseUrl: "http://localhost:8080/v1", contextWindow: 32768 }));
 
-    expect(db.prisma.providerApiKey.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: expect.objectContaining({ contextWindow: 32768, maxOutputTokens: null }),
-      }),
-    );
+    expect(db.prisma.providerApiKey.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ contextWindow: 32768, maxOutputTokens: null }),
+    });
   });
 
   it("rejects model limits for a catalog-backed provider", async () => {
@@ -116,18 +160,18 @@ describe("POST /api/providers", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("OpenAI-compatible"),
     });
-    expect(db.prisma.providerApiKey.upsert).not.toHaveBeenCalled();
+    expect(db.prisma.providerApiKey.create).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid limit instead of silently clamping it", async () => {
     for (const invalid of [-1, 0, "abc"]) {
       const response = await POST(
-        post({ provider: "custom", baseUrl: "http://localhost:8080/v1", maxOutputTokens: invalid }),
+        post({ baseUrl: "http://localhost:8080/v1", maxOutputTokens: invalid }),
       );
 
       expect(response.status).toBe(400);
     }
-    expect(db.prisma.providerApiKey.upsert).not.toHaveBeenCalled();
+    expect(db.prisma.providerApiKey.create).not.toHaveBeenCalled();
   });
 
   it("records which of the endpoint's models can see images", async () => {
@@ -157,7 +201,7 @@ describe("POST /api/providers", () => {
     );
     vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue({} as never);
 
-    const response = await POST(post({ provider: "custom", baseUrl: "http://localhost:8080/v1" }));
+    const response = await POST(post({ baseUrl: "http://localhost:8080/v1" }));
 
     expect(response.status).toBe(200);
     expect(db.prisma.providerApiKey.update).toHaveBeenCalledWith({
@@ -173,20 +217,11 @@ describe("POST /api/providers", () => {
   });
 
   it("keeps capabilities the user set when the endpoint cannot answer", async () => {
-    vi.mocked(db.prisma.providerApiKey.upsert).mockResolvedValue({
-      id: "key-1",
-      userId: "user-1",
-      provider: "custom",
-      encryptedKey: "enc()",
-      label: "",
-      baseUrl: "http://localhost:8080/v1",
-      encryptedCredential: null,
-      contextWindow: null,
-      maxOutputTokens: null,
-      modelCapabilities: { "hand-set": { vision: true } },
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    vi.mocked(db.prisma.providerApiKey.create).mockResolvedValue(
+      endpointRow("custom-endpoint", {
+        modelCapabilities: { "hand-set": { vision: true } },
+      }) as never,
+    );
     vi.mocked(db.prisma.providerApiKey.update).mockResolvedValue({} as never);
     vi.stubGlobal(
       "fetch",
@@ -197,7 +232,7 @@ describe("POST /api/providers", () => {
       ),
     );
 
-    await POST(post({ provider: "custom", baseUrl: "http://localhost:8080/v1" }));
+    await POST(post({ baseUrl: "http://localhost:8080/v1" }));
 
     // `/props` answered nothing, so the stored override stands and no write is
     // needed to say so.
@@ -381,17 +416,26 @@ describe("GET /api/providers", () => {
     });
   });
 
-  it("appends Saale's own OpenAI-compatible endpoint to Pi's catalog", async () => {
-    const body = await (await GET()).json();
+  it("lists every endpoint the scope has, each under its own name", async () => {
+    vi.mocked(db.prisma.providerApiKey.findMany).mockResolvedValue([
+      row({ provider: "custom-llama-cpp", label: "llama.cpp" }),
+      row({ provider: "custom-openrouter", label: "OpenRouter" }),
+    ] as never);
 
-    expect(body.availableProviders.at(-1)).toMatchObject({
-      id: "custom",
-      name: "OpenAI-compatible",
+    const body = await (await GET()).json();
+    const endpoints = body.availableProviders.filter((entry: { custom: boolean }) => entry.custom);
+
+    expect(endpoints).toHaveLength(2);
+    expect(endpoints[0]).toMatchObject({
+      id: "custom-llama-cpp",
+      name: "llama.cpp",
       custom: true,
+      configured: true,
       modelsConfigurable: true,
     });
-    // The OpenRouter/Together-style duplication is gone: Pi's own catalog is
-    // the only source, so no provider appears twice.
+    expect(endpoints[1]).toMatchObject({ id: "custom-openrouter", name: "OpenRouter" });
+    // Pi's own catalog is the only source of Pi's providers, so no provider
+    // appears twice and the endpoints are not read from the runtime.
     const ids = body.availableProviders.map((entry: { id: string }) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);
   });

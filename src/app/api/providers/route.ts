@@ -21,7 +21,8 @@ export async function GET() {
 }
 
 /**
- * POST /api/providers. configure Saale's own OpenAI-compatible endpoint.
+ * POST /api/providers. add an OpenAI-compatible endpoint, or update one the user
+ * already has (its provider id in the body).
  *
  * Every other provider is configured by signing in to it
  * (`POST /api/providers/login`), because Pi owns how those providers

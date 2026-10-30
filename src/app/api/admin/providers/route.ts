@@ -21,7 +21,8 @@ export async function GET() {
 }
 
 /**
- * POST /api/admin/providers. configure the *global* OpenAI-compatible endpoint.
+ * POST /api/admin/providers. add a *global* OpenAI-compatible endpoint, or
+ * update one that exists (its provider id in the body).
  *
  * Every other provider is configured by signing in to it
  * (`POST /api/admin/providers/login`), because Pi owns how those providers
@@ -38,9 +39,8 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * PATCH /api/admin/providers. Update the global endpoint's model defaults
- * without touching its API key (so the UI never has to re-submit a stored
- * credential).
+ * PATCH /api/admin/providers. Update a global endpoint's model defaults without
+ * touching its API key (so the UI never has to re-submit a stored credential).
  */
 export async function PATCH(request: NextRequest) {
   const authResult = await requirePermission("admin", "providers");

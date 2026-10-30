@@ -1,23 +1,26 @@
 /**
- * Reading the row that describes a credential scope's OpenAI-compatible
- * endpoint.
+ * Reading the rows that describe a credential scope's OpenAI-compatible
+ * endpoints.
  *
- * One endpoint per scope: a user's own row wins, otherwise they inherit the
- * global one, exactly as they inherit a provider credential. an admin's local
- * endpoint is usable by everyone, and its models must be pickable for everyone.
+ * A scope can run several: each is its own provider (`custom-<slug>`), a user
+ * sees the endpoints they linked plus the ones an admin linked globally, and
+ * their own row for an id wins over the global one. An admin's local endpoint is
+ * usable by everyone, and its models must be pickable for everyone.
  *
  * Server-only: it reads the database and decrypts the stored key.
  */
 
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
-import { CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
+import { CUSTOM_PROVIDER_LABEL, isEndpointProvider } from "@/lib/providers/config";
 import type { ProviderScope } from "@/lib/providers/credential-store";
 
-/** The columns of an endpoint row that describe its models. */
+/** The columns of an endpoint row that describe it and its models. */
 const ENDPOINT_COLUMNS = {
   id: true,
   userId: true,
+  provider: true,
+  label: true,
   baseUrl: true,
   encryptedKey: true,
   contextWindow: true,
@@ -27,8 +30,10 @@ const ENDPOINT_COLUMNS = {
 
 export interface EndpointRow {
   id: string;
-  /** null for the global (admin) endpoint. */
+  /** null for a global (admin) endpoint. */
   userId: string | null;
+  provider: string;
+  label: string;
   baseUrl: string | null;
   encryptedKey: string;
   contextWindow: number | null;
@@ -36,22 +41,43 @@ export interface EndpointRow {
   modelCapabilities: unknown;
 }
 
-/** The scope's endpoint row, or `null` when it has not configured one. */
-export async function readEndpointRow(scope: ProviderScope): Promise<EndpointRow | null> {
-  if (scope.kind === "user") {
-    const own = await prisma.providerApiKey.findUnique({
-      where: { userId_provider: { userId: scope.userId, provider: CUSTOM_PROVIDER_ID } },
-      select: ENDPOINT_COLUMNS,
-    });
-    if (own) return own;
-  }
+/** What a row goes by in the UI. */
+export function endpointName(row: Pick<EndpointRow, "label">): string {
+  return row.label.trim() || CUSTOM_PROVIDER_LABEL;
+}
 
-  // The global scope has no compound-unique lookup (Prisma types
-  // `userId_provider.userId` as non-null), so it reads the row by its columns.
-  return prisma.providerApiKey.findFirst({
-    where: { userId: null, provider: CUSTOM_PROVIDER_ID },
+/** Every endpoint the scope can use, its own rows first. */
+export async function readEndpointRows(scope: ProviderScope): Promise<EndpointRow[]> {
+  const userId = scope.kind === "global" ? null : scope.userId;
+
+  const own = await prisma.providerApiKey.findMany({
+    where: { userId },
     select: ENDPOINT_COLUMNS,
+    orderBy: { createdAt: "asc" },
   });
+  const ownEndpoints = own.filter((row) => isEndpointProvider(row.provider));
+  if (scope.kind === "global") return ownEndpoints;
+
+  const global = await prisma.providerApiKey.findMany({
+    where: { userId: null },
+    select: ENDPOINT_COLUMNS,
+    orderBy: { createdAt: "asc" },
+  });
+  const ownProviders = new Set(ownEndpoints.map((row) => row.provider));
+
+  return [
+    ...ownEndpoints,
+    ...global.filter((row) => isEndpointProvider(row.provider) && !ownProviders.has(row.provider)),
+  ];
+}
+
+/** One endpoint of the scope by its provider id, or `null`. */
+export async function readEndpointRow(
+  scope: ProviderScope,
+  provider: string,
+): Promise<EndpointRow | null> {
+  const rows = await readEndpointRows(scope);
+  return rows.find((row) => row.provider === provider) ?? null;
 }
 
 /**

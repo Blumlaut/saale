@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 
 import { requirePermission } from "@/lib/auth";
 import { buildAdminModelList } from "@/lib/pi/models";
-import { configuredLimits, parseModelCapabilityMap } from "@/lib/providers/capabilities";
+import {
+  configuredLimits,
+  parseModelCapabilityMap,
+  type ModelCapabilityMap,
+} from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
-import { readEndpointRow } from "@/lib/providers/endpoint";
+import { readEndpointRows } from "@/lib/providers/endpoint";
 
 /**
  * GET /api/admin/providers/models. List every model the *global* provider
@@ -18,14 +22,19 @@ export async function GET() {
   const authResult = await requirePermission("admin", "providers");
   if (!authResult.ok) return authResult.response;
 
-  const [{ models: available, modelRuntime }, endpoint] = await Promise.all([
+  const [{ models: available, modelRuntime }, endpoints] = await Promise.all([
     buildAdminModelList(),
-    readEndpointRow({ kind: "global" }),
+    readEndpointRows({ kind: "global" }),
   ]);
 
-  // What the admin set per model on the global endpoint, so the editor can tell
+  // What the admin set per model on each global endpoint, so the editor can tell
   // an override from an inherited value.
-  const stored = parseModelCapabilityMap(endpoint?.modelCapabilities);
+  const storedByProvider = new Map<string, ModelCapabilityMap>(
+    endpoints.map((endpoint) => [
+      endpoint.provider,
+      parseModelCapabilityMap(endpoint.modelCapabilities),
+    ]),
+  );
 
   // Group by provider
   const models: Record<
@@ -42,7 +51,7 @@ export async function GET() {
   > = {};
 
   for (const m of available) {
-    const overrides = configuredLimits(stored, m.id);
+    const overrides = configuredLimits(storedByProvider.get(m.provider) ?? {}, m.id);
     const list = (models[m.provider] ??= []);
     list.push({
       id: m.id,
@@ -67,10 +76,14 @@ export async function GET() {
   return NextResponse.json({
     models,
     providers,
-    // The endpoint-wide defaults a model's own value falls back to.
-    endpointLimits:
-      endpoint && endpoint.baseUrl
-        ? { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens }
-        : null,
+    // Per endpoint: the defaults a model's own value falls back to.
+    endpointLimits: Object.fromEntries(
+      endpoints
+        .filter((endpoint) => endpoint.baseUrl)
+        .map((endpoint) => [
+          endpoint.provider,
+          { contextWindow: endpoint.contextWindow, maxOutputTokens: endpoint.maxOutputTokens },
+        ]),
+    ),
   });
 }

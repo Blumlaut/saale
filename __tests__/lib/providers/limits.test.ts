@@ -8,7 +8,11 @@ import {
   parseTokenLimit,
   resolveModelLimits,
 } from "@/lib/providers/limits";
-import { definesProviderModels } from "@/lib/providers/config";
+import {
+  definesProviderModels,
+  endpointProviderId,
+  isEndpointProvider,
+} from "@/lib/providers/config";
 
 describe("parseTokenLimit", () => {
   it("accepts positive integers from numbers and numeric strings", () => {
@@ -188,6 +192,10 @@ describe("definesProviderModels", () => {
     expect(definesProviderModels("custom")).toBe(true);
   });
 
+  it("covers every additional endpoint of the scope", () => {
+    expect(definesProviderModels(endpointProviderId("llama.cpp"))).toBe(true);
+  });
+
   it("excludes every provider Pi's catalog describes", () => {
     for (const provider of [
       "anthropic",
@@ -204,5 +212,31 @@ describe("definesProviderModels", () => {
     ]) {
       expect(definesProviderModels(provider)).toBe(false);
     }
+  });
+});
+
+describe("endpointProviderId", () => {
+  it("builds a provider id a model reference can carry", () => {
+    // A reference splits on the first `:` or `/`, so the id holds neither.
+    expect(endpointProviderId("llama.cpp")).toBe("custom-llama-cpp");
+    expect(endpointProviderId("OpenRouter")).toBe("custom-openrouter");
+    expect(endpointProviderId("vLLM @ 8080")).toBe("custom-vllm-8080");
+  });
+
+  it("names an endpoint that was given no name", () => {
+    expect(endpointProviderId("")).toBe("custom-endpoint");
+    expect(endpointProviderId("  ")).toBe("custom-endpoint");
+  });
+
+  it("stays within the length the id is cut to", () => {
+    const id = endpointProviderId("a".repeat(80));
+    expect(id).toBe(`custom-${"a".repeat(32)}`);
+  });
+
+  it("recognises an endpoint id and every other provider", () => {
+    expect(isEndpointProvider(endpointProviderId("mine"))).toBe(true);
+    expect(isEndpointProvider("custom")).toBe(true);
+    expect(isEndpointProvider("anthropic")).toBe(false);
+    expect(isEndpointProvider("openai")).toBe(false);
   });
 });

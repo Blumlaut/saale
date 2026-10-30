@@ -60,10 +60,10 @@ export function ModelAvailability() {
 
   // ─── Per-model limits ───
   const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
-  const [endpointLimits, setEndpointLimits] = useState<{
-    contextWindow: number | null;
-    maxOutputTokens: number | null;
-  } | null>(null);
+  /** Endpoint provider id → the defaults its models fall back to. */
+  const [endpointLimits, setEndpointLimits] = useState<
+    Record<string, { contextWindow: number | null; maxOutputTokens: number | null }>
+  >({});
 
   // Auto-clear save status
   useEffect(() => {
@@ -87,14 +87,14 @@ export function ModelAvailability() {
       const data = await fetchJson<{
         models: Record<string, AvailableModel[]>;
         providers: AvailableProvider[];
-        endpointLimits?: {
-          contextWindow: number | null;
-          maxOutputTokens: number | null;
-        } | null;
+        endpointLimits?: Record<
+          string,
+          { contextWindow: number | null; maxOutputTokens: number | null }
+        >;
       }>("/api/admin/providers/models");
       setAvailableModels(data.models ?? {});
       setModelProviders(data.providers ?? []);
-      setEndpointLimits(data.endpointLimits ?? null);
+      setEndpointLimits(data.endpointLimits ?? {});
     } catch {
       // No models available yet
     } finally {
@@ -156,7 +156,7 @@ export function ModelAvailability() {
       contextWindow: model.contextWindow,
       maxOutputTokens: model.maxOutputTokens,
       overrides: model.overrides,
-      endpointLimits,
+      endpointLimits: endpointLimits[providerId] ?? null,
     });
   };
 

@@ -62,23 +62,45 @@ function catalogModel(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** One endpoint row, as the runtime reads it. */
+function endpointRow(overrides: Record<string, unknown>, userId: string | null) {
+  return {
+    id: "key-1",
+    userId,
+    provider: "custom",
+    label: "",
+    baseUrl: "http://localhost:8080/v1",
+    encryptedKey: "enc(key-1)",
+    contextWindow: null,
+    maxOutputTokens: null,
+    modelCapabilities: null,
+    ...overrides,
+  };
+}
+
+/** The endpoint rows a scope reads: the user's own, and the global ones. */
+function stubEndpointRows(
+  userRows: Array<Record<string, unknown>>,
+  globalRows: Array<Record<string, unknown>> = [],
+) {
+  vi.mocked(db.prisma.providerApiKey.findMany).mockImplementation((async (args: {
+    where: { userId: string | null };
+  }) =>
+    (args.where.userId === null ? globalRows : userRows).map((row) =>
+      endpointRow(row, args.where.userId),
+    )) as never);
+}
+
 /**
- * The user's OpenAI-compatible endpoint row, as the runtime reads it.
+ * One endpoint, in the user's scope unless `scope` says it is the admin's.
  * `stubEndpointRow()` with no argument means no endpoint at all.
  */
-function stubEndpointRow(overrides?: Record<string, unknown>) {
-  vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(
-    (overrides === undefined
-      ? null
-      : {
-          baseUrl: "http://localhost:8080/v1",
-          encryptedKey: "enc(key-1)",
-          contextWindow: null,
-          maxOutputTokens: null,
-          modelCapabilities: null,
-          ...overrides,
-        }) as never,
-  );
+function stubEndpointRow(overrides?: Record<string, unknown>, scope: "user" | "global" = "user") {
+  if (overrides === undefined) {
+    stubEndpointRows([], []);
+    return;
+  }
+  stubEndpointRows(scope === "user" ? [overrides] : [], scope === "global" ? [overrides] : []);
 }
 
 /** The runtime the SDK would return, with only what Saale uses. */
@@ -277,10 +299,10 @@ describe("buildModelRuntime", () => {
   });
 
   it("prefers the user's own endpoint over the global one", async () => {
-    stubEndpointRow({ baseUrl: "http://user-host:8080/v1" });
-    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue({
-      baseUrl: "http://global-host:8080/v1",
-    } as never);
+    stubEndpointRows(
+      [{ baseUrl: "http://user-host:8080/v1" }],
+      [{ baseUrl: "http://global-host:8080/v1" }],
+    );
     stubModelListing(["local-model"]);
     const runtime = stubRuntime();
 
@@ -295,14 +317,17 @@ describe("buildModelRuntime", () => {
   it("inherits the global endpoint for a user who has none of their own", async () => {
     // An admin's local endpoint is usable by everyone, so its models have to be
     // registered for everyone  reading only the user's own row hid them.
-    vi.mocked(db.prisma.providerApiKey.findUnique).mockResolvedValue(null as never);
-    vi.mocked(db.prisma.providerApiKey.findFirst).mockResolvedValue({
-      baseUrl: "http://global-host:8080/v1",
-      encryptedKey: "enc()",
-      contextWindow: 4096,
-      maxOutputTokens: 1024,
-      modelCapabilities: null,
-    } as never);
+    stubEndpointRows(
+      [],
+      [
+        {
+          baseUrl: "http://global-host:8080/v1",
+          encryptedKey: "enc()",
+          contextWindow: 4096,
+          maxOutputTokens: 1024,
+        },
+      ],
+    );
     stubModelListing(["local-model"]);
     const runtime = stubRuntime();
 
@@ -321,15 +346,46 @@ describe("buildModelRuntime", () => {
     expect(models.map((m) => `${m.provider}:${m.id}`)).toEqual(["custom:local-model"]);
   });
 
-  it("reads the global endpoint for the global runtime", async () => {
+  it("reads the global endpoints for the global runtime", async () => {
     await buildGlobalModelRuntime();
 
-    expect(db.prisma.providerApiKey.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: null, provider: "custom" } }),
+    expect(db.prisma.providerApiKey.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: null } }),
     );
   });
 
   describe("Saale's OpenAI-compatible endpoint", () => {
+    it("registers every endpoint the scope has, under its own provider id", async () => {
+      stubEndpointRows([
+        {
+          id: "key-1",
+          provider: "custom-llama-cpp",
+          label: "llama.cpp",
+          baseUrl: "http://llama:8080/v1",
+        },
+        { id: "key-2", provider: "custom-vllm", label: "vLLM", baseUrl: "http://vllm:8000/v1" },
+      ]);
+      stubModelListing(["local-model"]);
+      const runtime = stubRuntime();
+
+      const { models } = await buildModelRuntime("user-1");
+
+      // Each keeps its own base URL and name, so a model reference says which
+      // server it came from and both stay pickable side by side.
+      expect(runtime.registerProvider).toHaveBeenCalledWith(
+        "custom-llama-cpp",
+        expect.objectContaining({ name: "llama.cpp", baseUrl: "http://llama:8080/v1" }),
+      );
+      expect(runtime.registerProvider).toHaveBeenCalledWith(
+        "custom-vllm",
+        expect.objectContaining({ name: "vLLM", baseUrl: "http://vllm:8000/v1" }),
+      );
+      expect(models.map((m) => `${m.provider}:${m.id}`)).toEqual([
+        "custom-llama-cpp:local-model",
+        "custom-vllm:local-model",
+      ]);
+    });
+
     it("registers the endpoint's models, with the user's limits", async () => {
       stubEndpointRow({ contextWindow: 32_768, maxOutputTokens: 8_192 });
       vi.mocked(crypto.decrypt).mockReturnValue("local-key");

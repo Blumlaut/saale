@@ -87,7 +87,8 @@ export function ModelsSection() {
   const [search, setSearch] = useState("");
   const [savingVision, setSavingVision] = useState<string | null>(null);
   const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
-  const [endpointLimits, setEndpointLimits] = useState<EndpointLimits | null>(null);
+  /** Endpoint provider id → the defaults its models fall back to. */
+  const [endpointLimits, setEndpointLimits] = useState<Record<string, EndpointLimits>>({});
   const [configurableProviders, setConfigurableProviders] = useState<Set<string>>(new Set());
   /** Bumped when providers change, so the pickers drop their cached list. */
   const [pickerKey, setPickerKey] = useState(0);
@@ -97,7 +98,7 @@ export function ModelsSection() {
       const data = await fetchJson<{
         models: Record<string, AvailableModel[]>;
         providers?: AvailableProvider[];
-        endpointLimits?: EndpointLimits | null;
+        endpointLimits?: Record<string, EndpointLimits>;
       }>("/api/providers/models?includeDisabled=true");
 
       const all: FullModelInfo[] = [];
@@ -111,7 +112,7 @@ export function ModelsSection() {
       all.sort((a, b) => a.name.localeCompare(b.name));
 
       setAllModels(all);
-      setEndpointLimits(data.endpointLimits ?? null);
+      setEndpointLimits(data.endpointLimits ?? {});
       setConfigurableProviders(
         new Set((data.providers ?? []).filter((p) => p.modelsConfigurable).map((p) => p.id)),
       );
@@ -504,7 +505,7 @@ export function ModelsSection() {
                                               contextWindow: model.contextWindow,
                                               maxOutputTokens: model.maxOutputTokens,
                                               overrides: model.overrides,
-                                              endpointLimits,
+                                              endpointLimits: endpointLimits[providerKey] ?? null,
                                             })
                                           }
                                         >
