@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Brain, Eye, Loader2, Search, Sparkles, ChevronDown, Check } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 
@@ -196,6 +195,7 @@ export function ModelPicker({
             compact ? "min-w-0" : "",
             className,
           )}
+          title={selected?.name}
         >
           {loading ? (
             <Loader2 className="text-muted-foreground animate-shrink h-3.5 w-3.5" />
@@ -209,7 +209,7 @@ export function ModelPicker({
         </span>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[300px] gap-0 p-0 sm:w-[340px]" align="start">
+      <PopoverContent className="w-[300px] gap-0 p-0 sm:w-[380px]" align="start">
         {/* Search */}
         <div className="p-2 pb-1">
           <div className="relative">
@@ -232,7 +232,7 @@ export function ModelPicker({
         <Separator />
 
         {/* Model list */}
-        <ScrollArea className="max-h-[320px]">
+        <ScrollArea className="max-h-[340px]">
           <div className="p-1" onKeyDown={handleKeyDown}>
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -282,20 +282,18 @@ export function ModelPicker({
                           {isSelected && <Check className="text-primary h-3.5 w-3.5" />}
                         </div>
 
-                        {/* Model info */}
+                        {/* the group label already names the provider */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
-                              className={cn("truncate text-sm", isSelected ? "font-medium" : "")}
+                              className={cn(
+                                "line-clamp-2 min-w-0 flex-1 text-sm break-words",
+                                isSelected && "font-medium",
+                              )}
+                              title={model.name}
                             >
                               {model.name}
                             </span>
-                            <Badge
-                              variant="outline"
-                              className="shrink-0 rounded-full px-1.5 text-[10px] font-normal"
-                            >
-                              {model.providerName}
-                            </Badge>
                             {model.reasoning && (
                               <Sparkles className="text-muted-foreground h-3 w-3 shrink-0" />
                             )}
