@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import { createChatSessionRow } from "@/lib/chat/create-session";
-import { ownedProjectId } from "@/lib/coder/projects";
+import { getProjectSettings, ownedProjectId } from "@/lib/coder/projects";
 import { getActiveSessions } from "@/lib/redis";
 
 /**
@@ -12,7 +12,8 @@ import { getActiveSessions } from "@/lib/redis";
  *
  * A chat with a `projectId` belongs to a coder project; without the query
  * parameter only normal chats are listed, so coder chats never show up in the
- * chat view. With it, the project's coder chats are listed instead.
+ * chat view. With it, the project's coder chats are listed instead, along with
+ * the project the list's header names.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
@@ -20,6 +21,11 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const projectId = searchParams.get("projectId");
+
+  const project = projectId ? await getProjectSettings(authResult.user.id, projectId) : null;
+  if (projectId && !project) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const sessions = await prisma.chatSession.findMany({
     where: { userId: authResult.user.id, projectId },
@@ -37,6 +43,8 @@ export async function GET(request: NextRequest) {
       createdAt: true,
       updatedAt: true,
       lastActivityAt: true,
+      origin: true,
+      coderWorktree: { select: { branch: true } },
       _count: { select: { scriptWatchers: true } },
     },
   });
@@ -45,6 +53,16 @@ export async function GET(request: NextRequest) {
   const activeSessionIds = await getActiveSessions(authResult.user.id);
 
   return NextResponse.json({
+    // What the list's header names for a project's chats. A normal chat list
+    // has no project to name.
+    project: project
+      ? {
+          id: project.id,
+          name: project.name,
+          slug: project.slug,
+          defaultBranch: project.defaultBranch,
+        }
+      : null,
     sessions: sessions.map((s) => ({
       id: s.id,
       title: s.title,
@@ -53,6 +71,8 @@ export async function GET(request: NextRequest) {
       messageCount: s.messageCount,
       watcherCount: s._count.scriptWatchers,
       isGenerating: activeSessionIds.has(s.id),
+      origin: s.origin,
+      worktree: s.coderWorktree ? { branch: s.coderWorktree.branch } : null,
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
       lastActivityAt: s.lastActivityAt.toISOString(),

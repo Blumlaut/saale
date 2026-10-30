@@ -10,14 +10,21 @@ import { NextRequest } from "next/server";
  * to someone else's repo.
  */
 
-const { mockRequireSession, mockFindMany, mockCreate, mockGetActiveSessions, mockOwnedProjectId } =
-  vi.hoisted(() => ({
-    mockRequireSession: vi.fn(),
-    mockFindMany: vi.fn(),
-    mockCreate: vi.fn(),
-    mockGetActiveSessions: vi.fn(),
-    mockOwnedProjectId: vi.fn(),
-  }));
+const {
+  mockRequireSession,
+  mockFindMany,
+  mockCreate,
+  mockGetActiveSessions,
+  mockOwnedProjectId,
+  mockGetProjectSettings,
+} = vi.hoisted(() => ({
+  mockRequireSession: vi.fn(),
+  mockFindMany: vi.fn(),
+  mockCreate: vi.fn(),
+  mockGetActiveSessions: vi.fn(),
+  mockOwnedProjectId: vi.fn(),
+  mockGetProjectSettings: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({ requireSession: mockRequireSession }));
 
@@ -31,7 +38,10 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/redis", () => ({ getActiveSessions: mockGetActiveSessions }));
 
-vi.mock("@/lib/coder/projects", () => ({ ownedProjectId: mockOwnedProjectId }));
+vi.mock("@/lib/coder/projects", () => ({
+  ownedProjectId: mockOwnedProjectId,
+  getProjectSettings: mockGetProjectSettings,
+}));
 
 import { GET, POST } from "@/app/api/chat/sessions/route";
 
@@ -43,10 +53,24 @@ const STORED_ROW = {
   title: "Normal chat",
   temporary: false,
   messageCount: 2,
+  origin: "user",
+  coderWorktree: null,
   createdAt: NOW,
   updatedAt: NOW,
   lastActivityAt: NOW,
   _count: { scriptWatchers: 0 },
+};
+
+const PROJECT = {
+  id: "project-1",
+  name: "Saale Web",
+  slug: "saale-web",
+  repoPath: "projects/saale-web",
+  defaultBranch: "main",
+  originUrl: null,
+  envFiles: [],
+  setupScript: null,
+  chatMode: "worktree" as const,
 };
 
 function listRequest(query = ""): NextRequest {
@@ -67,6 +91,7 @@ beforeEach(() => {
   mockFindMany.mockResolvedValue([STORED_ROW]);
   mockGetActiveSessions.mockResolvedValue(new Set<string>());
   mockOwnedProjectId.mockResolvedValue(null);
+  mockGetProjectSettings.mockResolvedValue(PROJECT);
   mockCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
     Promise.resolve({ ...STORED_ROW, ...data }),
   );
@@ -89,8 +114,47 @@ describe("GET /api/chat/sessions", () => {
     const res = await GET(listRequest("?projectId=project-1"));
 
     expect(res.status).toBe(200);
+    expect(mockGetProjectSettings).toHaveBeenCalledWith(USER, "project-1");
     const args = mockFindMany.mock.calls[0]![0] as { where: Record<string, unknown> };
     expect(args.where).toEqual({ userId: USER, projectId: "project-1" });
+  });
+
+  it("names the project and each chat's branch in a project's list", async () => {
+    mockFindMany.mockResolvedValue([
+      { ...STORED_ROW, origin: "watcher", coderWorktree: { branch: "wt/chat-1" } },
+    ]);
+
+    const res = await GET(listRequest("?projectId=project-1"));
+    const body = (await res.json()) as {
+      project: { name: string; slug: string; defaultBranch: string } | null;
+      sessions: Array<{ origin: string; worktree: { branch: string } | null }>;
+    };
+
+    expect(body.project).toEqual({
+      id: "project-1",
+      name: "Saale Web",
+      slug: "saale-web",
+      defaultBranch: "main",
+    });
+    expect(body.sessions[0]?.origin).toBe("watcher");
+    expect(body.sessions[0]?.worktree).toEqual({ branch: "wt/chat-1" });
+  });
+
+  it("answers 404 for a project that is not this user's", async () => {
+    mockGetProjectSettings.mockResolvedValue(null);
+
+    const res = await GET(listRequest("?projectId=someone-elses"));
+
+    expect(res.status).toBe(404);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it("has no project header to name in the chat view", async () => {
+    const res = await GET(listRequest());
+    const body = (await res.json()) as { project: unknown };
+
+    expect(mockGetProjectSettings).not.toHaveBeenCalled();
+    expect(body.project).toBeNull();
   });
 
   it("marks a chat that is generating from the redis set", async () => {
@@ -128,6 +192,7 @@ describe("POST /api/chat/sessions with a project", () => {
 
   it("answers 404 for another user's project and creates nothing", async () => {
     mockOwnedProjectId.mockResolvedValue(null);
+    mockGetProjectSettings.mockResolvedValue(PROJECT);
 
     const res = await POST(postRequest({ title: "Fix it", projectId: "someone-elses" }));
 
