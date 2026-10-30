@@ -24,6 +24,7 @@ import {
   serializeQueuedMessages,
 } from "@/lib/chat/queue";
 import { promptTitleFields } from "@/lib/chat/derive-title";
+import { expandPromptInChat } from "@/lib/prompts/chat";
 import { serializeChatMessage } from "@/lib/chat/serialize-message";
 import {
   buildAttachmentPromptText,
@@ -197,18 +198,26 @@ export async function POST(
     // Strip null bytes and limit length
     const sanitizedContent = content.replace(/\0/g, "").slice(0, 100_000);
 
+    // A prompt expands before the row is written, so the stored text is the
+    // text the model gets and an edit still finds it in the transcript.
+    const messageContent = await expandPromptInChat({
+      userId: authResult.userId,
+      sessionId,
+      text: sanitizedContent,
+    });
+
     // Append file-reference lines so the model knows where uploaded files
     // live (same convention as Telegram documents).
     const promptContent =
       attachments.length > 0
-        ? `${sanitizedContent ? `${sanitizedContent}\n` : ""}${buildAttachmentPromptText(
+        ? `${messageContent ? `${messageContent}\n` : ""}${buildAttachmentPromptText(
             attachments.map((att) => ({
               fileName: att.fileName,
               mimeType: att.mimeType,
               agentPath: att.agentPath,
             })),
           )}`
-        : sanitizedContent;
+        : messageContent;
 
     // A message that arrives while tool approvals are waiting is the user's
     // answer to them: deny the pending request(s) and hand the message to the
@@ -261,7 +270,7 @@ export async function POST(
     // Update session metadata. sending a message is real chat activity, so
     // also advance lastActivityAt (the UI's sort/display timestamp). The chat is
     // named here, in the request that carried the prompt.
-    const titleText = sanitizedContent || attachments[0]?.fileName || "Attachment";
+    const titleText = messageContent || attachments[0]?.fileName || "Attachment";
     const updatedSession = await prisma.chatSession.update({
       where: { id: sessionId, userId: authResult.userId },
       data: {

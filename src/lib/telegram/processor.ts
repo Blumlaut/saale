@@ -1,4 +1,5 @@
 import { createBot, sendTelegramMessage } from "./client";
+import { expandPromptInChat } from "@/lib/prompts/chat";
 import { resolveTelegramTarget } from "./routing";
 import { runRoutedTelegramMessage } from "./routed-run";
 import { buildQuotedContext, type QuotedMessageContext } from "./reply-context";
@@ -134,6 +135,15 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
       // Continue without the file. the text/caption is still processed
     }
   }
+
+  // A `/name` that names one of the chat's prompts becomes its content here,
+  // before the file's reference lines are appended, so the arguments stay the
+  // user's own words.
+  promptText = await expandPromptInChat({
+    userId,
+    sessionId: target.sessionId,
+    text: promptText,
+  });
 
   // Build final prompt text (caption + file description for media messages)
   if (processedFile) {
