@@ -73,6 +73,16 @@ export function createFakeProvider(tree: FakeTree, root = "/workspace"): FilePro
       files.set(path, data.toString("utf8"));
     },
 
+    async append(path: string, data: Buffer): Promise<void> {
+      files.set(path, (files.get(path) ?? "") + data.toString("utf8"));
+    },
+
+    async copy(from: string, to: string): Promise<void> {
+      const value = files.get(from);
+      if (typeof value !== "string") throw new Error(`not a file: ${from}`);
+      files.set(to, value);
+    },
+
     async createDirectory(path: string): Promise<void> {
       files.set(path, null);
     },

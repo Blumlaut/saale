@@ -35,6 +35,7 @@ import {
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
+import { UploadProgressBar } from "@/components/ui/upload-progress";
 import { FileDeleteDialog } from "./file-delete-dialog";
 import { FileRowMenuItems, type FileRowActions } from "./file-row-menu";
 import { FilePromptSheet } from "./file-prompt-sheet";
@@ -399,6 +400,13 @@ export function FileBrowser({
               </Button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Bytes on their way in. Sits above the list so it stays visible while the folder scrolls. */}
+      {browser.uploadProgress && (
+        <div className={cn("shrink-0 border-b py-2", dense ? "px-2" : "px-4 @min-[480px]:px-6")}>
+          <UploadProgressBar progress={browser.uploadProgress} />
         </div>
       )}
 

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { fetchJson, postJson, type FetchError } from "@/lib/http";
-import { HIDE_DOTFILES_DEFAULT } from "@/lib/files/config";
+import { HIDE_DOTFILES_DEFAULT, MAX_UPLOAD_FILES } from "@/lib/files/config";
+import { uploadFile, type UploadFailure, type UploadProgress } from "@/lib/files/upload-client";
 import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
 import type { FileEntry, FileListing } from "@/lib/files/types";
 
@@ -36,6 +37,8 @@ export interface FileBrowserController {
   rename: (entry: FileEntry, name: string) => Promise<boolean>;
   remove: (entries: FileEntry[]) => Promise<boolean>;
   upload: (files: File[], options?: { overwrite?: boolean }) => Promise<boolean>;
+  /** Where the batch in flight has got to, or null when nothing is uploading. */
+  uploadProgress: UploadProgress | null;
   downloadUrl: (entry: FileEntry) => string;
   zipUrl: () => string;
   /** Archive URL for an explicit set of rows. used by a folder's row menu. */
@@ -62,8 +65,8 @@ export interface UseFileBrowserOptions {
  * on screen while the next one loads (`refreshing`) instead of blanking the
  * panel. a folder switch that flashes empty reads as a failure.
  */
-/** What the upload endpoint reports back. */
-type UploadSkipped = { name: string; reason: "exists" | "invalid-name" | "too-large" };
+/** What the upload endpoints reported, one entry per file that did not land. */
+type UploadSkipped = { name: string; reason: UploadFailure; message: string };
 type UploadOutcome =
   { ok: true; uploaded: string[]; skipped: UploadSkipped[] } | { ok: false; message: string };
 
@@ -106,7 +109,7 @@ function reportUpload(
 
   const rejected = outcome.skipped.filter((skip) => skip.reason !== "exists");
   if (rejected.length > 0) {
-    report(`${rejected.map((skip) => skip.name).join(", ")} could not be uploaded.`);
+    report(rejected.map((skip) => `${skip.name}: ${skip.message}`).join(" "));
   }
 }
 
@@ -127,6 +130,7 @@ export function useFileBrowser({
     { validate: isBoolean },
   );
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
 
   const sequence = useRef(0);
   const anchor = useRef<number | null>(null);
@@ -297,28 +301,48 @@ export function useFileBrowser({
     [afterMutation, report],
   );
 
-  /** Send the batch and refresh; success or failure is reported by the caller. */
+  /**
+   * Send the batch and refresh; success or failure is reported by the caller.
+   *
+   * Files go one at a time: the workspace is a folder the user is watching, and
+   * a batch that streams in order is easier to follow than one bar for four
+   * files moving together.
+   */
   const applyUpload = useCallback(
     async (files: File[], overwrite: boolean): Promise<UploadOutcome> => {
-      const form = new FormData();
-      for (const file of files) form.append("files", file);
+      if (files.length === 0) return { ok: true, uploaded: [], skipped: [] };
+      if (files.length > MAX_UPLOAD_FILES) {
+        return { ok: false, message: `Upload at most ${MAX_UPLOAD_FILES} files at a time` };
+      }
 
-      const query = new URLSearchParams({ target });
-      if (current.current) query.set("dir", current.current);
-      if (overwrite) query.set("overwrite", "1");
+      // The resolved folder, not what was asked for: the server hands back
+      // absolute paths, and an upload into the root names it.
+      const dir = path;
+      const uploaded: string[] = [];
+      const skipped: UploadSkipped[] = [];
 
       try {
-        const result = await fetchJson<{ uploaded: string[]; skipped: UploadSkipped[] }>(
-          `/api/files/upload?${query.toString()}`,
-          { method: "POST", body: form },
-        );
-        await afterMutation();
-        return { ok: true, uploaded: result.uploaded, skipped: result.skipped };
+        for (const [position, file] of files.entries()) {
+          const result = await uploadFile(file, {
+            target,
+            dir,
+            overwrite,
+            batch: { index: position + 1, count: files.length },
+            onProgress: setUploadProgress,
+          });
+          if (result.ok) uploaded.push(result.name);
+          else skipped.push({ name: result.name, reason: result.reason, message: result.message });
+        }
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : "Upload failed." };
+      } finally {
+        setUploadProgress(null);
       }
+
+      await afterMutation();
+      return { ok: true, uploaded, skipped };
     },
-    [target, afterMutation],
+    [target, path, afterMutation],
   );
 
   const retryUpload = useCallback((files: File[]) => applyUpload(files, true), [applyUpload]);
@@ -436,6 +460,7 @@ export function useFileBrowser({
     rename,
     remove,
     upload,
+    uploadProgress,
     downloadUrl,
     zipUrl,
     zipUrlFor,

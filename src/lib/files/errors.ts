@@ -41,6 +41,21 @@ export class FileModifiedError extends Error {
   }
 }
 
+/**
+ * A chunked upload the server will not continue: a chunk that does not line up
+ * with the bytes already staged, or a file that finished short of its declared
+ * size.
+ */
+export class FileUploadError extends Error {
+  readonly status: 409 | 413;
+
+  constructor(message: string, status: 409 | 413 = 409) {
+    super(message);
+    this.name = "FileUploadError";
+    this.status = status;
+  }
+}
+
 /** A zip download would exceed a configured ceiling. */
 export class FileLimitError extends Error {
   constructor(message: string) {

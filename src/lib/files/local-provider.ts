@@ -192,12 +192,29 @@ export function createLocalFileProvider(options: {
       await own(real);
     },
 
+    async append(target: string, data: Buffer): Promise<void> {
+      await mkdirOwned(dirName(target));
+      const real = await resolveReal(target);
+      await fs.appendFile(real, data);
+      await own(real);
+    },
+
+    async copy(from: string, to: string): Promise<void> {
+      await mkdirOwned(dirName(to));
+      const source = await resolveReal(from);
+      const destination = await resolveReal(to);
+      await fs.copyFile(source, destination);
+      await own(destination);
+    },
+
     async createDirectory(target: string): Promise<void> {
       await mkdirOwned(await resolveReal(target));
     },
 
     async rename(from: string, to: string): Promise<void> {
+      await mkdirOwned(dirName(to));
       await fs.rename(await resolveReal(from), await resolveReal(to));
+      await own(await resolveReal(to));
     },
 
     async remove(target: string): Promise<void> {
