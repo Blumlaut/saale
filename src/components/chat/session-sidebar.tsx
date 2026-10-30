@@ -7,7 +7,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { PinnedChatGroup, ChatListRow } from "@/components/chat/chat-list";
+import { PinnedChatGroup, ChatListRow, WatcherChatBadge } from "@/components/chat/chat-list";
 import { fetchJson, postJson } from "@/lib/http";
 import {
   broadcastSessionsDeleted,
@@ -25,6 +25,7 @@ import {
   Loader2,
   Ghost,
   GitBranch,
+  ChevronLeft,
   ChevronRight,
   MessageSquarePlus,
   Radar,
@@ -42,6 +43,18 @@ interface ChatSession {
   lastActivityAt?: string;
   isGenerating?: boolean;
   forkedFromSessionId?: string;
+  /** "watcher" for a chat a watcher fire opened. */
+  origin?: string;
+  /** The checkout a coder chat runs in. */
+  worktree?: { branch: string } | null;
+}
+
+/** The project a coder chat list belongs to, as its header names it. */
+interface CoderProjectHeader {
+  id: string;
+  name: string;
+  slug: string;
+  defaultBranch: string;
 }
 
 /** Answer of the bulk delete endpoint. ids that went, ids that did not. */
@@ -49,8 +62,6 @@ interface BulkDeleteResponse {
   deleted: string[];
   failed: Array<{ sessionId: string; error: string; code?: string }>;
 }
-
-const TITLE_MAX_CHARS = 25;
 
 function watcherLabel(count: number): string {
   return `${count} ${count === 1 ? "watcher" : "watchers"} attached`;
@@ -68,15 +79,27 @@ function formatDate(dateStr: string) {
   return date.toLocaleDateString();
 }
 
+/**
+ * One user's chat list, in the chat view and in a coder project.
+ *
+ * The two lists read the same endpoint (a project's chats are the same rows,
+ * with a `projectId`), so a row opens, pins, picks and deletes the same way in
+ * both. A project list adds the project's name and each chat's branch, which is
+ * what tells two chats of one project apart.
+ */
 export function SessionSidebar({
   activeSessionId,
   onNewChat,
+  projectId,
 }: {
   activeSessionId?: string;
   onNewChat?: () => void;
+  /** Set for a coder project's chats. */
+  projectId?: string;
 }) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [project, setProject] = useState<CoderProjectHeader | null>(null);
   const [loading, setLoading] = useState(true);
   const [olderOpen, setOlderOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
@@ -85,20 +108,28 @@ export function SessionSidebar({
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
+  const listUrl = projectId
+    ? `/api/chat/sessions?projectId=${encodeURIComponent(projectId)}`
+    : "/api/chat/sessions";
+
   // No separate mode flag: a selection exists exactly as long as chats are
   // picked, so dropping the last one leaves the list back in its normal state.
   const selecting = selectedIds.size > 0;
 
   const fetchSessions = useCallback(async () => {
     try {
-      const data = await fetchJson<{ sessions: ChatSession[] }>("/api/chat/sessions");
+      const data = await fetchJson<{
+        sessions: ChatSession[];
+        project?: CoderProjectHeader | null;
+      }>(listUrl);
       setSessions(data.sessions);
+      setProject(data.project ?? null);
     } catch (err) {
       console.error("Failed to load chat sessions:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [listUrl]);
 
   useEffect(() => {
     fetchSessions();
@@ -175,7 +206,7 @@ export function SessionSidebar({
     setSelectedIds(new Set(survivors));
     setPendingDelete(survivors.length > 0 ? survivors : null);
     if (activeSessionId && deleted.has(activeSessionId)) {
-      router.push("/dashboard/chat");
+      router.push(projectId ? `/dashboard/coder/${projectId}` : "/dashboard/chat");
     }
     if (result.failed.length === 0) return;
 
@@ -241,13 +272,16 @@ export function SessionSidebar({
     setOlderOpen(olderAutoOpen);
   }, [activeSessionId, olderAutoOpen]);
 
-  const openSession = useCallback((id: string) => router.push(`/dashboard/chat/${id}`), [router]);
+  const openSession = useCallback(
+    (id: string) =>
+      router.push(projectId ? `/dashboard/coder/${projectId}/${id}` : `/dashboard/chat/${id}`),
+    [router, projectId],
+  );
 
   const renderRow = (session: ChatSession) => (
     <ChatListRow
       key={session.id}
       title={session.title}
-      titleMaxChars={TITLE_MAX_CHARS}
       active={session.id === activeSessionId}
       pinned={session.pinned}
       deleting={deletingIds.includes(session.id)}
@@ -260,6 +294,7 @@ export function SessionSidebar({
             <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
           )}
           {session.temporary && <Ghost className="text-muted-foreground h-3 w-3 shrink-0" />}
+          {session.origin === "watcher" && <WatcherChatBadge />}
           {session.watcherCount > 0 && (
             // Watchers go when the chat goes, and are otherwise only visible
             // inside the conversation, so the list has to own up to them.
@@ -276,10 +311,18 @@ export function SessionSidebar({
       }
       subtitle={
         <>
-          {formatDate(session.lastActivityAt ?? session.updatedAt)} · {session.messageCount}{" "}
-          messages
-          {session.forkedFromSessionId && " · fork"}
-          {session.temporary && " · auto-delete"}
+          <span className="shrink-0">
+            {formatDate(session.lastActivityAt ?? session.updatedAt)}
+          </span>
+          {/* A branch tells two chats of one project apart, so it takes the room
+              the message count gets in the chat view. */}
+          {session.worktree ? (
+            <span className="min-w-0 truncate">{session.worktree.branch}</span>
+          ) : (
+            <span className="shrink-0">{session.messageCount} messages</span>
+          )}
+          {session.forkedFromSessionId && <span className="shrink-0">fork</span>}
+          {session.temporary && <span className="shrink-0">auto-delete</span>}
         </>
       }
       selection={{
@@ -301,20 +344,42 @@ export function SessionSidebar({
     (count, id) => count + (sessions.find((s) => s.id === id)?.watcherCount ?? 0),
     0,
   );
+  // A project change keeps the last header until the new list answers.
+  const header = project?.id === projectId ? project : null;
 
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
-      {/* Header */}
-      <div className="border-border/30 flex h-11 shrink-0 items-center border-b px-4">
-        <h2 className="text-sm font-semibold">Conversations</h2>
-      </div>
+      {/* Header. a project's chat list names the project and leads back to the
+          rest of them. */}
+      {projectId ? (
+        <div className="border-border/30 flex shrink-0 items-center gap-1 border-b px-2 py-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="All projects"
+            onClick={() => router.push("/dashboard/coder")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{header?.name ?? "Project"}</p>
+            <p className="text-muted-foreground truncate text-xs">
+              {header ? `${header.slug} · ${header.defaultBranch}` : ""}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="border-border/30 flex h-11 shrink-0 items-center border-b px-4">
+          <h2 className="text-sm font-semibold">Conversations</h2>
+        </div>
+      )}
 
-      {/* New chat. mobile sheet only (the desktop header owns its own action) */}
+      {/* New chat. the desktop views own their own action. */}
       {onNewChat && (
         <div className="border-border/30 border-b p-2">
           <Button className="h-9 w-full justify-center gap-2 rounded-lg" onClick={onNewChat}>
             <MessageSquarePlus className="h-4 w-4" />
-            New Chat
+            New chat
           </Button>
         </div>
       )}

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ChatInterface } from "@/components/chat/chat-interface";
-import { ProjectChats } from "@/components/coder/project-chats";
+import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { ProjectList } from "@/components/coder/project-list";
 import { ProvisioningNotice } from "@/components/coder/provisioning-notice";
 import { WorktreePanel } from "@/components/coder/worktree-panel";
@@ -123,7 +123,7 @@ export default function CoderLayout() {
         {/* Phones show only the chat list; the header button starts a new
             chat, so the empty state only earns its half at md and up. */}
         <div className="min-w-0 flex-1 md:w-64 md:flex-none">
-          <ProjectChats projectId={projectId} onNewChat={newChat} />
+          <SessionSidebar projectId={projectId} onNewChat={newChat} />
         </div>
         <div className="hidden min-w-0 flex-1 md:block">
           <GlassPanel className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
@@ -153,7 +153,7 @@ export default function CoderLayout() {
             {...coderChatSidebar.handleProps}
             className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
           />
-          <ProjectChats projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
+          <SessionSidebar projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col md:ml-4">
@@ -177,7 +177,7 @@ export default function CoderLayout() {
                     <SheetTitle>Project chats</SheetTitle>
                   </SheetHeader>
                   <div className="h-full">
-                    <ProjectChats
+                    <SessionSidebar
                       projectId={projectId}
                       activeSessionId={sessionId}
                       onNewChat={newChat}

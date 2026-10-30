@@ -53,13 +53,31 @@ const SESSIONS = [
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
+/** The project a coder chat list belongs to, as its header names it. */
+type ProjectHeader = { id: string; name: string; slug: string; defaultBranch: string };
+
+const PROJECT: ProjectHeader = {
+  id: "project-1",
+  name: "Saale Web",
+  slug: "saale-web",
+  defaultBranch: "main",
+};
+
 /** Server answer for a bulk delete  ids that went, ids that did not. */
 type BulkResponse = {
   deleted: string[];
   failed: Array<{ sessionId: string; error: string; code?: string }>;
 };
 
-function mockSessions(sessions = SESSIONS, bulk?: BulkResponse | BulkResponse[]) {
+/** The list URL the last mock answered, so a test can assert on the call. */
+let listUrl = "/api/chat/sessions";
+
+function mockSessions(
+  sessions = SESSIONS,
+  bulk?: BulkResponse | BulkResponse[],
+  project?: ProjectHeader,
+) {
+  listUrl = project ? `/api/chat/sessions?projectId=${project.id}` : "/api/chat/sessions";
   // A list of answers answers one request each. the second one is the retry.
   const answers = Array.isArray(bulk) ? [...bulk] : null;
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
@@ -73,10 +91,20 @@ function mockSessions(sessions = SESSIONS, bulk?: BulkResponse | BulkResponse[])
       const body = JSON.parse(String(init.body)) as { pinned?: boolean };
       return new Response(JSON.stringify({ session: { pinned: body.pinned } }), { status: 200 });
     }
-    expect(url).toBe("/api/chat/sessions");
-    return new Response(JSON.stringify({ sessions }), { status: 200 });
+    expect(url).toBe(listUrl);
+    return new Response(JSON.stringify({ sessions, project: project ?? null }), { status: 200 });
   });
   vi.stubGlobal("fetch", fetchMock);
+}
+
+/** A chat of a project: the same row, with the checkout it runs in. */
+function coderChat(id: string, title: string, extra: Record<string, unknown> = {}) {
+  return {
+    ...session(id, title, 0.2),
+    origin: "user",
+    worktree: { branch: `coder/${id}` },
+    ...extra,
+  };
 }
 
 /** The row's main button  the click target that opens (or selects) a chat. */
@@ -86,6 +114,18 @@ function rowButton(title: string) {
 
 async function renderSidebar(activeSessionId?: string, expected = "Fresh chat") {
   const view = render(<SessionSidebar {...(activeSessionId ? { activeSessionId } : {})} />);
+  await screen.findByText(expected);
+  return view;
+}
+
+async function renderProjectSidebar(activeSessionId?: string, expected = "Fix the sidebar") {
+  const view = render(
+    <SessionSidebar
+      projectId={PROJECT.id}
+      {...(activeSessionId ? { activeSessionId } : {})}
+      onNewChat={vi.fn()}
+    />,
+  );
   await screen.findByText(expected);
   return view;
 }
@@ -515,5 +555,84 @@ describe("SessionSidebar pinned chats", () => {
 
     await revealRowActions("Fresh chat");
     expect(await screen.findByRole("menuitem", { name: "Pin chat" })).toBeInTheDocument();
+  });
+});
+
+describe("SessionSidebar for a coder project", () => {
+  it("lists the project's chats under its name, each with the branch it runs in", async () => {
+    mockSessions(
+      [coderChat("s-1", "Fix the sidebar"), coderChat("s-2", "Ship the panel")],
+      undefined,
+      PROJECT,
+    );
+
+    await renderProjectSidebar();
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/chat/sessions?projectId=project-1", undefined);
+    expect(screen.getByText("Saale Web")).toBeInTheDocument();
+    expect(screen.getByText("saale-web · main")).toBeInTheDocument();
+    expect(screen.getByText("coder/s-1")).toBeInTheDocument();
+    // The list's own actions come with it: picking several chats still works.
+    expect(screen.getByRole("button", { name: "Actions for Fix the sidebar" })).toBeInTheDocument();
+    expect(screen.queryByText("Conversations")).not.toBeInTheDocument();
+  });
+
+  it("opens a chat on its project's page", async () => {
+    mockSessions([coderChat("s-1", "Fix the sidebar")], undefined, PROJECT);
+    await renderProjectSidebar();
+
+    fireEvent.click(rowButton("Fix the sidebar"));
+
+    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/project-1/s-1");
+  });
+
+  it("leads back to the project list from the header", async () => {
+    mockSessions([coderChat("s-1", "Fix the sidebar")], undefined, PROJECT);
+    await renderProjectSidebar();
+
+    fireEvent.click(screen.getByRole("button", { name: "All projects" }));
+
+    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder");
+  });
+
+  it("marks a chat a watcher opened", async () => {
+    mockSessions(
+      [coderChat("s-1", "Fix the sidebar", { origin: "watcher" }), coderChat("s-2", "Ship it")],
+      undefined,
+      PROJECT,
+    );
+
+    await renderProjectSidebar();
+
+    const row = rowButton("Fix the sidebar").closest("[data-slot=session-row]") as HTMLElement;
+    expect(row.textContent).toContain("Bot");
+    expect(rowButton("Ship it").closest("[data-slot=session-row]")?.textContent).not.toContain(
+      "Bot",
+    );
+  });
+
+  it("deletes several of a project's chats in one request", async () => {
+    mockSessions(
+      [coderChat("s-1", "Fix the sidebar"), coderChat("s-2", "Ship it")],
+      undefined,
+      PROJECT,
+    );
+    await renderProjectSidebar("s-1");
+
+    fireEvent.click(rowButton("Fix the sidebar"), { ctrlKey: true });
+    fireEvent.click(rowButton("Ship it"), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByText("Ship it")).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/chat/sessions/bulk",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ ids: ["s-1", "s-2"] }),
+      }),
+    );
+    // The open chat is gone with them, so the project page takes over.
+    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/project-1");
   });
 });

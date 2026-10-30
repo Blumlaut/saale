@@ -40,21 +40,6 @@ export interface CoderProjectChat {
   worktree: { path: string; branch: string; status: string } | null;
 }
 
-export interface CoderProjectDetail {
-  project: {
-    id: string;
-    name: string;
-    slug: string;
-    repoPath: string;
-    defaultBranch: string;
-    originUrl: string | null;
-    envFiles: { path: string; content: string }[];
-    setupScript: string | null;
-    chatMode: CoderChatMode;
-  };
-  chats: CoderProjectChat[];
-}
-
 /** One changed path in a chat's worktree. */
 export interface CoderChange {
   path: string;
@@ -247,21 +232,6 @@ export function useProjects() {
     refreshKey,
   );
   return { projects: data?.projects ?? [], loading, error, reload };
-}
-
-/**
- * One project and its chats.
- *
- * `activeSessionId` is not just for highlighting: opening a chat refetches the
- * list, so the chat that was started from this panel is in it.
- */
-export function useProject(projectId: string | null, activeSessionId: string | null = null) {
-  const refreshKey = useListRefresh(activeSessionId);
-  const { data, loading, error, reload } = useLoad<CoderProjectDetail>(
-    projectId ? `/api/coder/projects/${encodeURIComponent(projectId)}` : null,
-    refreshKey,
-  );
-  return { project: data?.project ?? null, chats: data?.chats ?? [], loading, error, reload };
 }
 
 /**

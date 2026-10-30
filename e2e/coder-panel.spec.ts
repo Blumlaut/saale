@@ -61,6 +61,22 @@ const CHAT = {
   worktree: { path: WORKTREE, branch: BRANCH, status: "active" },
 };
 
+/** The project's chat list reads the chat endpoint, so a row has its own shape. */
+const CHAT_SESSION = {
+  id: CHAT_ID,
+  title: CHAT.title,
+  temporary: false,
+  pinned: false,
+  messageCount: 0,
+  watcherCount: 0,
+  isGenerating: false,
+  origin: "user",
+  worktree: { branch: BRANCH },
+  createdAt: NOW,
+  updatedAt: NOW,
+  lastActivityAt: NOW,
+};
+
 const STATUS = {
   worktree: { path: WORKTREE, branch: BRANCH, baseSha: "0".repeat(40), mode: "worktree" },
   project: { id: PROJECT_ID, name: PROJECT.name, slug: PROJECT.slug },
@@ -148,7 +164,6 @@ const DIFF = [
 
 /** What one test wants the panel to read differently from the shared fixtures. */
 interface CoderMockOptions {
-  deleteStatus?: number;
   /** Fields to replace on the worktree status, e.g. an empty change list. */
   status?: Partial<typeof STATUS>;
 }
@@ -183,18 +198,24 @@ async function mockCoder(page: Page, options: CoderMockOptions = {}) {
     });
   });
 
-  await page.route(new RegExp(`/api/coder/projects/${PROJECT_ID}$`), (route) => {
-    if (route.request().method() === "DELETE") {
-      const status = options.deleteStatus ?? 200;
-      return route.fulfill({
-        status,
-        json:
-          status === 200
-            ? { ok: true }
-            : { error: "error: the working tree is dirty, use --force to remove" },
-      });
-    }
-    return route.fulfill({ json: { project: PROJECT, chats: [CHAT] } });
+  await page.route(/\/api\/chat\/sessions(\?projectId=[^&]*)?$/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        project: {
+          id: PROJECT_ID,
+          name: PROJECT.name,
+          slug: PROJECT.slug,
+          defaultBranch: PROJECT.defaultBranch,
+        },
+        sessions: [CHAT_SESSION],
+      },
+    });
+  });
+
+  await page.route(/\/api\/chat\/sessions\/bulk$/, (route) => {
+    const { ids } = JSON.parse(route.request().postData() ?? "{}") as { ids: string[] };
+    return route.fulfill({ json: { deleted: ids, failed: [] } });
   });
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/status(\\?|$)`), (route) =>
@@ -681,9 +702,15 @@ test.describe("coder panel", () => {
   test("keeps the chat when git refuses to remove its worktree", async ({ browser }) => {
     const context = await sessionContext(browser);
     const page = await context.newPage();
-    await mockCoder(page, { deleteStatus: 409 });
-    await page.route(/\/api\/chat\/sessions\/[^/]+$/, (route) =>
-      route.fulfill({ status: 409, json: { error: "error: the working tree is dirty" } }),
+    await mockCoder(page);
+    // git refuses to remove a worktree that still holds uncommitted work.
+    await page.route(/\/api\/chat\/sessions\/bulk$/, (route) =>
+      route.fulfill({
+        json: {
+          deleted: [],
+          failed: [{ sessionId: CHAT_ID, error: "error: the working tree is dirty" }],
+        },
+      }),
     );
 
     await gotoAndSettle(page, `/dashboard/coder/${PROJECT_ID}`);

@@ -40,8 +40,6 @@ export interface ChatListRowProps {
   pinned?: boolean;
   /** Swaps the row menu's icon for a spinner while a delete runs. */
   deleting?: boolean;
-  /** Cuts the title to this many characters. CSS truncation otherwise. */
-  titleMaxChars?: number;
   selection?: ChatRowSelection;
   onTogglePin?: () => void;
   onDelete: () => void;
@@ -51,10 +49,6 @@ export interface ChatListRowProps {
   onOpen?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }
 
-function cutTitle(title: string, max?: number): string {
-  return max !== undefined && title.length > max ? `${title.slice(0, max)}…` : title;
-}
-
 export function ChatListRow({
   title,
   subtitle,
@@ -62,7 +56,6 @@ export function ChatListRow({
   active = false,
   pinned = false,
   deleting = false,
-  titleMaxChars,
   selection,
   onTogglePin,
   onDelete,
@@ -111,7 +104,7 @@ export function ChatListRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col py-2">
         <span className="flex items-center gap-1.5">
-          <span className="truncate font-medium">{cutTitle(title, titleMaxChars)}</span>
+          <span className="truncate font-medium">{title}</span>
           {accessories}
           {pinned && <Pin className="text-muted-foreground h-3 w-3 shrink-0" />}
         </span>

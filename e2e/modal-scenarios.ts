@@ -584,6 +584,36 @@ async function gotoChatSession(page: Page, sessionId: string) {
 
 /** A project list and one project's chats, so the coder overlays have rows. */
 async function mockCoderProjects(page: Page) {
+  // The project's chat list reads the chat endpoint, filtered by project.
+  await page.route(/\/api\/chat\/sessions\?projectId=[^&]+$/, (route) =>
+    route.fulfill({
+      json: {
+        project: {
+          id: "e2e-project",
+          name: "e2e-project-with-a-long-name",
+          slug: "e2e-project-with-a-long-name",
+          defaultBranch: "main",
+        },
+        sessions: [
+          {
+            id: "e2e-coder-chat",
+            title: "A coder chat with a long title that has to wrap instead of widen",
+            temporary: false,
+            pinned: false,
+            messageCount: 3,
+            watcherCount: 0,
+            isGenerating: false,
+            origin: "user",
+            worktree: { branch: "wt/c-1a2b3c4d-with-an-unusually-long-branch-name" },
+            createdAt: NOW,
+            updatedAt: NOW,
+            lastActivityAt: NOW,
+          },
+        ],
+      },
+    }),
+  );
+
   await page.route(/\/api\/coder\/projects$/, (route) =>
     route.fulfill({
       json: {
