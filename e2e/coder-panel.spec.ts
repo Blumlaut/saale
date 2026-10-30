@@ -349,6 +349,49 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("pages a long change list and reads a diff only for the file that is open", async ({
+    browser,
+  }) => {
+    const diffs: string[] = [];
+    const changes = Array.from({ length: 130 }, (_, index) => ({
+      path: `generated/file-${index}.ts`,
+      originalPath: null,
+      added: 1,
+      deleted: 0,
+      staged: false,
+      unstaged: true,
+      untracked: false,
+      conflicted: false,
+    }));
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {
+        status: { changes },
+      },
+    );
+    // Registered after the panel has loaded, so a diff request is a real one.
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/diff\\?`), (route) => {
+      diffs.push(route.request().url());
+      return route.fulfill({ json: { diff: DIFF } });
+    });
+
+    // A worktree missing its .gitignore lists thousands of paths; the panel
+    // mounts a page of them and offers the rest.
+    await expect(shown(page, 'button:has-text("Show 30 more")')).toBeVisible();
+    await expect(page.locator('button:has-text("file-120.ts")')).toHaveCount(0);
+    expect(diffs).toHaveLength(0);
+
+    await shown(page, 'button:has-text("Show 30 more")').click();
+    await expect(shown(page, 'button:has-text("file-129.ts")')).toBeVisible();
+
+    await shown(page, 'button:has-text("file-120.ts")').click();
+    await expect(shownText(page, "+added line")).toBeVisible();
+    expect(diffs).toHaveLength(1);
+
+    await context.close();
+  });
+
   test("widens the worktree panel by dragging its edge and remembers the width", async ({
     browser,
   }) => {

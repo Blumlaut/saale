@@ -1,7 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Loader2, Minus, MoreVertical, Plus, Trash2, Undo2 } from "lucide-react";
+import { memo, useMemo, useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  Loader2,
+  Minus,
+  MoreVertical,
+  Plus,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,23 +45,38 @@ function diffBody(diff: string): string {
   return lines.slice(start).join("\n");
 }
 
-/** A unified diff in a box of its own, so a long line scrolls here. */
-export function DiffView({ diff }: { diff: string }) {
+/** A diff's lines with the tint each one earns, worked out once per diff. */
+function diffLines(diff: string): { text: string; className: string }[] {
   const body = diffBody(diff);
-  if (!body.trim()) {
+  if (!body.trim()) return [];
+  return body.split("\n").map((line) => ({
+    text: line || " ",
+    className: cn("px-2 whitespace-pre", lineClass(line)),
+  }));
+}
+
+/**
+ * A unified diff in a box of its own, so a long line scrolls here.
+ *
+ * Memoised: the panel re-reads its worktree every 20 seconds, and a diff of
+ * several thousand lines must not be rebuilt by a poll.
+ */
+export const DiffView = memo(function DiffView({ diff }: { diff: string }) {
+  const lines = useMemo(() => diffLines(diff), [diff]);
+  if (lines.length === 0) {
     return <p className="text-muted-foreground px-3 py-2 text-xs">No changes in this file.</p>;
   }
 
   return (
     <div className="bg-muted/40 mx-2 mb-2 max-h-80 overflow-auto rounded-lg font-mono text-[11px] leading-relaxed">
-      {body.split("\n").map((line, index) => (
-        <div key={index} className={cn("px-2 whitespace-pre", lineClass(line))}>
-          {line || " "}
+      {lines.map((line, index) => (
+        <div key={index} className={line.className}>
+          {line.text}
         </div>
       ))}
     </div>
   );
-}
+});
 
 /** The status letter a git user reads in half a second. */
 function statusLetter(change: CoderChange): { letter: string; className: string } {
@@ -249,6 +273,59 @@ function ChangeRow({
   );
 }
 
+/**
+ * How many rows a section mounts before the rest wait for a click.
+ *
+ * A worktree missing its .gitignore lists tens of thousands of untracked paths,
+ * and every row is a control with a menu.
+ */
+const CHANGE_PAGE = 100;
+
+/** One section's rows, a page at a time. */
+function ChangeRows({
+  sessionId,
+  changes,
+  group,
+  actions,
+  onDiscard,
+}: {
+  sessionId: string;
+  changes: CoderChange[];
+  group: "staged" | "unstaged";
+  actions: ReturnType<typeof useGitActions>;
+  onDiscard: (change: CoderChange) => void;
+}) {
+  const [limit, setLimit] = useState(CHANGE_PAGE);
+  const shown = changes.slice(0, limit);
+  const hidden = changes.length - shown.length;
+
+  return (
+    <div className="flex flex-col">
+      {shown.map((change) => (
+        <ChangeRow
+          key={change.path}
+          sessionId={sessionId}
+          change={change}
+          group={group}
+          actions={actions}
+          onDiscard={onDiscard}
+        />
+      ))}
+      {hidden > 0 && (
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground mx-2 my-1.5 gap-1.5 self-center"
+          onClick={() => setLimit((value) => value + CHANGE_PAGE)}
+        >
+          <ChevronDown className="h-3 w-3" />
+          Show {hidden} more
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** The line counts one group carries, next to its label. */
 function counts(list: CoderChange[]) {
   const totals = list.reduce(
@@ -323,16 +400,13 @@ export function ChangeList({
             />
           }
         >
-          {staged.map((change) => (
-            <ChangeRow
-              key={`staged:${change.path}`}
-              sessionId={sessionId}
-              change={change}
-              group="staged"
-              actions={actions}
-              onDiscard={(target) => setDiscarding([target])}
-            />
-          ))}
+          <ChangeRows
+            sessionId={sessionId}
+            changes={staged}
+            group="staged"
+            actions={actions}
+            onDiscard={(target) => setDiscarding([target])}
+          />
         </CollapsibleSection>
       )}
 
@@ -359,16 +433,13 @@ export function ChangeList({
             </span>
           </div>
         ) : (
-          unstaged.map((change) => (
-            <ChangeRow
-              key={`unstaged:${change.path}`}
-              sessionId={sessionId}
-              change={change}
-              group="unstaged"
-              actions={actions}
-              onDiscard={(target) => setDiscarding([target])}
-            />
-          ))
+          <ChangeRows
+            sessionId={sessionId}
+            changes={unstaged}
+            group="unstaged"
+            actions={actions}
+            onDiscard={(target) => setDiscarding([target])}
+          />
         )}
       </CollapsibleSection>
 
