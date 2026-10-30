@@ -2,24 +2,9 @@
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ModelPicker } from "@/components/shared/model-picker";
-import { ThinkingSelector } from "./thinking-selector";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
-import {
-  Loader2,
-  Settings2,
-  ChevronDown,
-  Ghost,
-  Pencil,
-  MessageSquarePlus,
-  Radar,
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Loader2, Ghost, Pencil, MessageSquarePlus, Radar } from "lucide-react";
 import { ShareButton } from "./share-button";
 import { cn } from "@/lib/utils";
 
@@ -30,14 +15,10 @@ interface ChatHeaderProps {
   temporaryMode: boolean;
   isLoading: boolean;
   sessionId: string;
-  modelId: string;
-  thinkingLevel: string;
   onTitleChange: (value: string) => void;
   onStartEditing: () => void;
   onCancelEditing: () => void;
   onSaveTitle: (title: string) => void;
-  onModelChange: (value: string) => void;
-  onThinkingChange: (value: string) => void;
   onTemporaryChange: (checked: boolean) => void;
   /** False when the view has no temporary mode (a coder chat). */
   onNewChat: () => void;
@@ -64,14 +45,10 @@ export function ChatHeader({
   temporaryMode,
   isLoading,
   sessionId,
-  modelId,
-  thinkingLevel,
   onTitleChange,
   onStartEditing,
   onCancelEditing,
   onSaveTitle,
-  onModelChange,
-  onThinkingChange,
   onTemporaryChange,
   onNewChat,
   linksCount,
@@ -81,9 +58,6 @@ export function ChatHeader({
   extraActions,
   hideTemporaryToggle,
 }: ChatHeaderProps) {
-  const [provider, ...modelParts] = modelId.split("/");
-  const modelName = modelParts.join("/");
-
   return (
     <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
       {/* Mobile: session list */}
@@ -153,38 +127,6 @@ export function ChatHeader({
         {!hideTemporaryToggle && (
           <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
         )}
-        <div className={cn("items-center gap-1", linksOpen ? "hidden" : "hidden md:flex")}>
-          <ModelPicker value={modelId} onChange={onModelChange} />
-          <ThinkingSelector
-            value={thinkingLevel}
-            onChange={onThinkingChange}
-            modelProvider={provider || undefined}
-            modelName={modelName || undefined}
-          />
-        </div>
-        <div className={cn(linksOpen ? "flex" : "md:hidden")}>
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <span className="hover:bg-accent/60 inline-flex h-7 items-center gap-1 rounded px-1.5 text-sm transition-colors">
-                <Settings2 className="h-3.5 w-3.5" />
-                <ChevronDown className="h-3 w-3" />
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 pt-1.5 pb-1">
-                <ModelPicker value={modelId} onChange={onModelChange} compact />
-              </div>
-              <div className="border-border/50 border-t px-2 pt-1.5 pb-1">
-                <ThinkingSelector
-                  value={thinkingLevel}
-                  onChange={onThinkingChange}
-                  modelProvider={provider || undefined}
-                  modelName={modelName || undefined}
-                />
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
         {extraActions}
         <Button
           className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"

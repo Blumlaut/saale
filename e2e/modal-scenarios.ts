@@ -999,6 +999,15 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "chat · settings",
+    path: "/dashboard/chat",
+    sources: ["src/components/chat/chat-settings-sheet.tsx"],
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, '[aria-label="Chat settings"]');
+    },
+  },
+  {
     name: "chat · linked watchers",
     path: "/dashboard/chat",
     sources: ["src/components/chat/session-links-panel.tsx"],
