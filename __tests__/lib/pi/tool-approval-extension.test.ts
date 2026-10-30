@@ -333,15 +333,49 @@ describe("tool approval gate", () => {
       expect(mockRequestToolApproval).not.toHaveBeenCalled();
     });
 
-    it("marks a card for a script that reaches tools by a computed name", async () => {
+    it("asks nothing for a script that only searches the catalog", async () => {
+      const { call } = setup({ tools: REGISTRY });
+      // Searching is how the model reaches a deferred tool. The script names none
+      // of them, so there is nothing to put on a card; the calls it makes ask
+      // for themselves, as a direct call would.
+      expect(
+        await call({
+          toolName: "codemode",
+          input: { code: "const found = await searchTools('mail'); return found;" },
+        }),
+      ).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
+    it("notes the tools a script can still pick by name", async () => {
       const { call } = setup({ tools: REGISTRY });
       await call({
         toolName: "codemode",
-        input: { code: "const name = pick(); await tools[name]({});" },
+        input: { code: "await tools.mail_send({ to: 'a' }); await tools[pick()]({});" },
       });
       expect(mockRequestToolApproval).toHaveBeenCalledWith(
-        expect.objectContaining({ batch: expect.objectContaining({ dynamic: true }) }),
+        expect.objectContaining({ batch: { tools: ["mail_send"], dynamic: true } }),
       );
+    });
+
+    it("leaves a call the script picked by name to ask for itself", async () => {
+      const { call, sessionId } = setup({ tools: REGISTRY });
+      const toolCallId = uniqueId("script");
+      await call({
+        toolName: "codemode",
+        toolCallId,
+        input: { code: "await tools[pick()]({});" },
+      });
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+
+      await call({
+        toolName: "mail_send",
+        toolCallId: `${toolCallId}/1`,
+        parentToolCallId: toolCallId,
+        input: { to: "a" },
+      });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+      expect(isApprovalScopeGranted({ sessionId, toolCallId, toolName: "mail_send" })).toBe(false);
     });
 
     it("releases the scope when the script's result arrives", async () => {

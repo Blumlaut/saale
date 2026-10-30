@@ -181,6 +181,9 @@ async function ask(options: {
  * What the card covers is read from the script's source, so a call to a tool
  * the script reaches by a computed name is not covered and asks for itself. The
  * card says so, so an approval never reads as a blanket one.
+ *
+ * A script that searches the catalog costs no click: the only calls a card could
+ * name are the ones the source shows, and `searchTools` shows none.
  */
 async function decideScript(options: {
   policy: ToolPolicy;
@@ -235,20 +238,19 @@ function isReadOnlyTool(pi: ExtensionAPI, toolName: string): boolean {
 /**
  * The tools a script reaches that would each ask for approval on their own.
  *
- * A script whose source does not show what it reaches (a computed name, the
- * catalog) could call anything the session can, so every callable tool that
- * would ask is covered — the same reading a watcher's grant takes, and the card
- * says so. Command-aware `auto` tools stay out: their decision is made from the
- * command they are called with, which only exists at the call.
+ * Only names the source shows count. A script that picks a tool by a computed
+ * name reaches something this answer cannot see, so that call asks for itself
+ * when it happens — a card up front would cover calls the script may never make.
+ * Command-aware `auto` tools stay out either way: their decision is made from
+ * the command they are called with, which only exists at the call.
  */
 function referencedCallsNeedingApproval(
-  references: { keys: readonly string[]; dynamic: boolean },
+  references: { keys: readonly string[] },
   pi: ExtensionAPI,
   context: ToolPolicyContext,
 ): string[] {
   const callable = callableToolNames(pi);
-  const covered = references.dynamic ? callable : resolveReferencedTools(references.keys, callable);
-  return covered.filter(
+  return resolveReferencedTools(references.keys, callable).filter(
     (toolName) =>
       resolveToolPolicy(toolName, context, { readOnly: isReadOnlyTool(pi, toolName) }) === "ask",
   );
