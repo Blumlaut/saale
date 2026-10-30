@@ -5,12 +5,20 @@
 - Docker with Compose v2.
 - A domain, if you want HTTPS or coder previews. Everything else works on `localhost`.
 
-## First start
+## Set it up
+
+Saale runs from published images, so a deployment is three files and a `pull`. Take them
+from the release you want:
 
 ```bash
-git clone https://github.com/Blumlaut/saale.git
-cd saale
-cp .env.example .env
+mkdir saale && cd saale
+export SAALE_VERSION=2026.10.0
+base="https://raw.githubusercontent.com/Blumlaut/saale/$SAALE_VERSION"
+curl -fsSLO "$base/docker-compose.prod.yml"
+curl -fsSLO "$base/.env.example"
+mkdir -p searxng
+curl -fsSL -o searxng/settings.yml "$base/searxng/settings.yml"
+mv .env.example .env
 ```
 
 Replace the four secrets in `.env`. Each is a random string:
@@ -25,14 +33,24 @@ openssl rand -hex 32      # WORKER_API_KEY
 `ENCRYPTION_KEY` must be 64 hex characters: it decrypts the mail passwords in the
 database, and changing it later makes them unreadable.
 
+Also write the release down, so an update is a change of one line:
+
+```dotenv
+SAALE_VERSION="2026.10.0"
+```
+
 Then:
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-That builds the images, applies the database migrations and starts the stack. Open
-<http://localhost:3630> and create the first account. The first account is the admin.
+Open <http://localhost:3630> and create the first account. The first account is the admin.
+
+Releases are cut once a day, and only when something changed. Leave `SAALE_VERSION` out
+of `.env` and the stack follows `latest` instead, which moves with every release.
+
+Changing the code itself is a different setup: see [development.md](development.md).
 
 ## On a domain
 
@@ -43,7 +61,7 @@ BETTER_AUTH_URL="https://saale.example.com"
 ```
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Sessions, OAuth redirects, webhooks and preview hostnames all derive from that one
@@ -85,9 +103,9 @@ Coder previews need a wildcard host and a certificate of their own: see
 | `postgres`     | Database.                                                                   |
 | `redis`        | Queue and live session state.                                               |
 
-`docker compose up` also builds the image those per-user containers run
-(`saale-sandbox`). They live outside the compose project, so `docker compose down` leaves
-them alone.
+The image those per-user containers run (`saale-sandbox`) is pulled with the rest of the
+stack, and the containers themselves live outside the compose project, so
+`docker compose down` leaves them alone.
 
 A user's container mounts one directory of the `saale_workspaces` volume. That directory
 is the whole of what the agent can read and write, and no other user's files are at any
@@ -104,9 +122,12 @@ volume has rows pointing at files that are not there.
 
 ## Updating
 
+Change `SAALE_VERSION` in `.env`, then:
+
 ```bash
-git pull
-docker compose up -d --build
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-The migrations run before `web` and `worker` start, so nothing else is needed.
+The migrations run before `web` and `worker` start, so nothing else is needed. The version
+a running instance is on is in the console footer.

@@ -63,9 +63,12 @@ Docker with Compose v2, and a domain if you want HTTPS and coder previews.
 ```bash
 git clone https://github.com/Blumlaut/saale.git
 cd saale
-cp .env.example .env    # fill in the four secrets
-docker compose up -d --build
+cp .env.example .env                            # fill in the four secrets
+docker compose -f docker-compose.prod.yml up -d
 ```
+
+That pulls the published images; nothing is built. `docker-compose.yml` builds the same
+stack from the checkout, which is what changing the code uses.
 
 Open <http://localhost:3630> and create the first account, which is the admin. The agent
 needs a model: add a provider key in Settings.
