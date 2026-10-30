@@ -45,7 +45,6 @@ import {
   PROMPT_DESCRIPTION_MAX,
   PROMPT_NAME_MAX,
   PROMPT_SCOPES,
-  PROMPT_SCOPE_DESCRIPTIONS,
   PROMPT_SCOPE_LABELS,
   type PromptScope,
 } from "@/lib/prompts/rules";
@@ -303,7 +302,7 @@ export function PromptsSection() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="prompt-hint">Argument hint</Label>
+                <Label htmlFor="prompt-hint">Arguments</Label>
                 <Input
                   id="prompt-hint"
                   value={draft?.argumentHint ?? ""}
@@ -339,9 +338,6 @@ export function PromptsSection() {
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-muted-foreground text-xs">
-                  {PROMPT_SCOPE_DESCRIPTIONS[draft?.scope ?? "any"]}
-                </p>
               </div>
             </div>
 
