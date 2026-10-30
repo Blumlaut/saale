@@ -438,7 +438,7 @@ export function InputBar({
         </div>
       )}
 
-      <div className="border-border bg-card relative flex items-center gap-2 rounded-none border px-3 py-2 md:rounded-2xl">
+      <div className="border-input bg-card relative flex items-center gap-2 rounded-none border px-3 py-2 md:rounded-2xl">
         {/* File upload button. any file type */}
         <Button
           variant="ghost"
@@ -469,7 +469,7 @@ export function InputBar({
           onKeyDown={handleKeyDown}
           placeholder="Message Saale..."
           className={cn(
-            "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0 dark:bg-transparent",
+            "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
             "placeholder:text-muted-foreground",
           )}
           rows={1}
