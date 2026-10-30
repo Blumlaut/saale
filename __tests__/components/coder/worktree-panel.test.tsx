@@ -67,9 +67,18 @@ const STATE: CoderSessionState = {
   behind: 0,
   changes: [],
   commits: [],
+  commitsTruncated: false,
+  remotes: [],
+  stashes: 0,
   scripts: [],
   provisioning: null,
   setupFailure: null,
+};
+
+const PANEL_PROPS = {
+  pullRequest: null,
+  onLoadMoreCommits: () => {},
+  loadingMoreCommits: false,
 };
 
 function renderPanel(state: CoderSessionState | null) {
@@ -81,6 +90,7 @@ function renderPanel(state: CoderSessionState | null) {
       error={null}
       onRefresh={() => {}}
       refreshing={false}
+      {...PANEL_PROPS}
     />,
   );
 }
@@ -96,6 +106,8 @@ describe("WorktreePanel: a commit in the list", () => {
     subject: "read a tool's icon from the catalog once",
     date: new Date().toISOString(),
     author: "Ada",
+    refs: [],
+    pushed: true,
   };
 
   function mockCommitDiff() {

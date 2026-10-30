@@ -78,6 +78,7 @@ const STATUS = {
       staged: true,
       unstaged: false,
       untracked: false,
+      conflicted: false,
     },
     {
       path: "notes.md",
@@ -87,10 +88,14 @@ const STATUS = {
       staged: false,
       unstaged: true,
       untracked: false,
+      conflicted: false,
     },
   ],
   // The panel renders a run button per script; the field is required.
   scripts: [{ name: "test", command: "npm test", runCommand: "npm test" }],
+  remotes: [{ name: "origin", url: "git@github.com:acme/e2e-project.git" }],
+  stashes: 0,
+  commitsTruncated: false,
   commits: [
     {
       sha: "abcdef1234567890",
@@ -98,6 +103,8 @@ const STATUS = {
       subject: "add the coder panel with a subject long enough to need two lines here",
       date: NOW,
       author: "e2e",
+      refs: [],
+      pushed: false,
     },
   ],
 };
@@ -183,7 +190,7 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
     return route.fulfill({ json: { project: PROJECT, chats: [CHAT] } });
   });
 
-  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status$`), (route) =>
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status(\\?|$)`), (route) =>
     route.fulfill({ json: STATUS }),
   );
 
@@ -365,6 +372,71 @@ test.describe("coder panel", () => {
     await expect
       .poll(async () => (await handleAfterReload.boundingBox())?.x ?? 0)
       .toBeLessThan(handleX + 4);
+
+    await context.close();
+  });
+
+  test("commits what is staged, saying so first", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, 'button:has-text("Commit…")').click();
+    await shown(page, 'textarea[aria-label="Commit message"]').fill("add the panel's git actions");
+    await page.locator('[role="dialog"]:visible button:has-text("Commit")').last().click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({
+      action: "commit",
+      message: "add the panel's git actions",
+      amend: false,
+      push: false,
+    });
+
+    await context.close();
+  });
+
+  test("marks a commit only this checkout has and pushes the branch", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    // The branch is two ahead, and the commit above the upstream says why.
+    await expect(shown(page, '[aria-label="Not pushed"]')).toBeVisible();
+
+    await shown(page, '[aria-label="Push"]').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "push" });
+
+    await context.close();
+  });
+
+  test("discards a file only after asking", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="Actions for notes.md"]').click();
+    await shown(page, '[role="menuitem"]:has-text("Discard changes")').click();
+
+    await expect(page.locator('[role="alertdialog"]:visible')).toContainText("notes.md");
+    await expect(page.locator('[role="alertdialog"]:visible')).toContainText("cannot be undone");
+    expect(sent).toHaveLength(0);
+
+    await page.locator('[role="alertdialog"]:visible button:has-text("Discard")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "discard", paths: ["notes.md"] });
 
     await context.close();
   });
