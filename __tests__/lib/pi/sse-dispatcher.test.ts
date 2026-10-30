@@ -200,6 +200,47 @@ describe("SseDispatcher", () => {
       expect(mockSubscribeSessionEvents).toHaveBeenCalledTimes(1);
       expect(dispatcher.clientCount).toBe(1);
     });
+
+    it("shares one bus subscription between clients connecting at once", async () => {
+      const a = createMockController();
+      const b = createMockController();
+
+      await Promise.all([
+        dispatcher.subscribe(a.controller, a.encoder, -1),
+        dispatcher.subscribe(b.controller, b.encoder, -1),
+      ]);
+
+      expect(mockSubscribeSessionEvents).toHaveBeenCalledTimes(1);
+      expect(busListeners.size).toBe(1);
+
+      emitLive(dispatcher, 1, "token", { text: "both" });
+      expect(a.enqueueMock).toHaveBeenCalledTimes(1);
+      expect(b.enqueueMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases a bus subscription that settles after its last client left", async () => {
+      let release!: () => void;
+      mockSubscribeSessionEvents.mockImplementationOnce(
+        (_sessionId: string, listener: (evt: unknown) => void) => {
+          busListeners.add(listener as never);
+          return new Promise<() => void>((resolve) => {
+            release = () => {
+              busListeners.delete(listener as never);
+              resolve(() => busListeners.clear());
+            };
+          });
+        },
+      );
+      const mock = createMockController();
+
+      const subscribing = dispatcher.subscribe(mock.controller, mock.encoder, -1);
+      dispatcher.unsubscribe(mock.controller);
+      release();
+      await subscribing;
+
+      expect(dispatcher.clientCount).toBe(0);
+      expect(busListeners.size).toBe(0);
+    });
   });
 
   describe("unsubscribe", () => {

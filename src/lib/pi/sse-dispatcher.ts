@@ -58,6 +58,8 @@ const MAX_SEEN_IDS = 200;
 export class SseDispatcher {
   private clients = new Map<ReadableStreamDefaultController, SseClient>();
   private unsubBus: (() => void) | null = null;
+  /** In-flight bus subscription, shared by clients connecting at the same time. */
+  private busPending: Promise<() => void> | null = null;
 
   constructor(private readonly sessionId: string) {}
 
@@ -84,9 +86,8 @@ export class SseDispatcher {
     const client: SseClient = { controller, encoder, seenIds: new Set() };
     this.clients.set(controller, client);
 
-    if (!this.unsubBus) {
-      this.unsubBus = await subscribeSessionEvents(this.sessionId, (evt) => this.forward(evt));
-    }
+    await this.ensureBusSubscription();
+    if (!this.clients.has(controller)) return;
 
     // Only the run still in flight: a finished one is already in the DB and
     // replaying it would rebuild it on top of itself (see `liveRunEvents`).
@@ -106,6 +107,30 @@ export class SseDispatcher {
       this.unsubBus();
       this.unsubBus = null;
     }
+  }
+
+  /**
+   * Hold the session's bus subscription for as long as a client is registered.
+   *
+   * Concurrent connects share one subscription, and one that is set up after
+   * its last client left is released again so it cannot outlive the client.
+   */
+  private async ensureBusSubscription(): Promise<void> {
+    if (this.unsubBus) return;
+
+    const pending = (this.busPending ??= subscribeSessionEvents(this.sessionId, (evt) =>
+      this.forward(evt),
+    ));
+    const unsub = await pending;
+    if (this.busPending === pending) this.busPending = null;
+
+    // Another client's connect may have installed it while we waited.
+    if (this.unsubBus) return;
+    if (this.clients.size === 0) {
+      unsub();
+      return;
+    }
+    this.unsubBus = unsub;
   }
 
   /**
@@ -140,6 +165,9 @@ export class SseDispatcher {
       this.unsubBus();
       this.unsubBus = null;
     }
+    // A subscription still being set up is released by `ensureBusSubscription`
+    // once it settles, since no client is left by then.
+    await this.busPending;
   }
 
   /** Forward a live or replayed event to a client (or all clients). */
