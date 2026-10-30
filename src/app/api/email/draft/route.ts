@@ -195,6 +195,10 @@ Rules:
         },
       });
 
+      /** How often the growing draft is re-sent to the composer. */
+      const TOKEN_PUBLISH_INTERVAL_MS = 100;
+      let lastTokenSentAt = 0;
+
       /** Outcome of the last finished attempt (see the `agent_end` case). */
       let lastAttemptError: string | null = null;
       let lastAttemptText = "";
@@ -205,7 +209,12 @@ Rules:
         if (event.type === "message_update" && event.message.role === "assistant") {
           const text = extractText((event.message as { content: unknown[] }).content);
           currentText = text;
-          if (text) {
+          // Deltas re-send the whole draft, so token by token costs the draft's
+          // length again on every one. The composer only needs to keep up with
+          // the eye; the close below still hands over the final text.
+          const now = Date.now();
+          if (text && now - lastTokenSentAt >= TOKEN_PUBLISH_INTERVAL_MS) {
+            lastTokenSentAt = now;
             sendEvent(controller, "token", { text });
           }
         }

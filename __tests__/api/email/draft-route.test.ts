@@ -164,6 +164,26 @@ describe("POST /api/email/draft", () => {
     expect(result[1]?.data).toEqual({ text: "Hi Ada, sounds good." });
   });
 
+  it("re-sends the growing draft at most ten times a second", async () => {
+    // Every delta carries the whole draft, so publishing each one spends the
+    // draft's length again per token. The composer only has to keep up with the
+    // eye; the done event still hands over the final text.
+    const { events } = await start();
+
+    for (const text of ["Hi", "Hi Ada", "Hi Ada,", "Hi Ada, sounds good."]) {
+      fake.emit({ type: "message_update", message: ASSISTANT_TEXT(text) });
+    }
+    fake.emit({
+      type: "agent_end",
+      messages: [ASSISTANT_TEXT("Hi Ada, sounds good.")],
+    });
+    fake.emit({ type: "agent_settled" });
+
+    const result = await events;
+    expect(result.filter((e) => e.event === "token")).toHaveLength(1);
+    expect(result.at(-1)?.data).toEqual({ text: "Hi Ada, sounds good." });
+  });
+
   it("reports a provider failure instead of a successful empty draft", async () => {
     const { events } = await start();
 
