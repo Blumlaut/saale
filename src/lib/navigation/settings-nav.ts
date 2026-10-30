@@ -24,6 +24,7 @@ export const SETTINGS_SECTION_IDS = [
   "notifications",
   "models",
   "personality",
+  "prompts",
   "tools",
   "memories",
   "email",
@@ -79,6 +80,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     href: "/dashboard/settings/personality",
     label: "Personality",
     description: "The instructions the assistant works from",
+  },
+  {
+    id: "prompts",
+    group: "assistant",
+    href: "/dashboard/settings/prompts",
+    label: "Prompts",
+    description: "Reusable prompts you send as /name",
   },
   {
     id: "tools",
