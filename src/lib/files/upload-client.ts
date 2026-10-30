@@ -202,14 +202,14 @@ async function beginAndSend(
     }
     return { ok: true, uploadId };
   } catch (err) {
-    await discard(options.target, uploadId);
+    await discardStagedUpload(options.target, uploadId);
     if (err instanceof Refused) return failure(file, err.status, { error: err.message });
     throw err;
   }
 }
 
 /** Forget the bytes of an upload the client gave up on. */
-async function discard(target: string, uploadId: string): Promise<void> {
+export async function discardStagedUpload(target: string, uploadId: string): Promise<void> {
   try {
     await postJson(url("/api/files/upload/abort", target), { uploadId });
   } catch (err) {
@@ -246,7 +246,7 @@ export async function uploadFile(file: File, options: UploadOptions): Promise<Up
     options.signal,
   );
   if (done.status >= 400) {
-    await discard(options.target, started.uploadId);
+    await discardStagedUpload(options.target, started.uploadId);
     return failure(file, done.status, done.body);
   }
 

@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockStageFile } = vi.hoisted(() => ({ mockStageFile: vi.fn() }));
+const { mockStageFile, mockDiscardStagedUpload } = vi.hoisted(() => ({
+  mockStageFile: vi.fn(),
+  mockDiscardStagedUpload: vi.fn(),
+}));
 
-vi.mock("@/lib/files/upload-client", () => ({ stageFile: mockStageFile }));
+vi.mock("@/lib/files/upload-client", () => ({
+  stageFile: mockStageFile,
+  discardStagedUpload: mockDiscardStagedUpload,
+}));
 
 import { sendChatMessage } from "@/lib/chat/send-message";
 
@@ -11,6 +17,7 @@ const mockFetch = vi.fn();
 beforeEach(() => {
   mockFetch.mockReset();
   mockStageFile.mockReset();
+  mockDiscardStagedUpload.mockReset();
   vi.stubGlobal("fetch", mockFetch);
 });
 
@@ -102,6 +109,33 @@ describe("sendChatMessage", () => {
         { uploadId: "u-1", fileName: "snapshot.tar", size: 42, mimeType: "application/x-tar" },
       ],
     });
+  });
+
+  it("refuses a batch over the attachment cap before staging anything", async () => {
+    const files = Array.from({ length: 21 }, (_, index) =>
+      sizedFile(`part-${index}.bin`, "application/octet-stream", 4),
+    );
+
+    const result = await sendChatMessage("sess-1", "look", files);
+
+    expect(result).toEqual({ kind: "error", message: "Attach at most 20 files at a time" });
+    expect(mockStageFile).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("drops the staged bytes when the message is refused", async () => {
+    mockStageFile.mockResolvedValueOnce({
+      ok: true,
+      staged: { uploadId: "u-1", fileName: "snapshot.tar", size: 4, mimeType: "application/x-tar" },
+    });
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "Content is required" }, 400));
+
+    const result = await sendChatMessage("sess-1", "  ", [
+      sizedFile("snapshot.tar", "application/x-tar", 4),
+    ]);
+
+    expect(result).toEqual({ kind: "error", message: "Content is required" });
+    expect(mockDiscardStagedUpload).toHaveBeenCalledWith("user", "u-1");
   });
 
   it("refuses a file over the ceiling before staging it", async () => {

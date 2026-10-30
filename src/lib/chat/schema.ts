@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { MAX_CHAT_ATTACHMENTS } from "./attachment-limits";
 
 export const sendMessageSchema = z.object({
   content: z.string().optional(),
@@ -20,6 +21,6 @@ export const sendMessageSchema = z.object({
         size: z.number().int().nonnegative(),
       }),
     )
-    .max(20)
+    .max(MAX_CHAT_ATTACHMENTS)
     .optional(),
 });

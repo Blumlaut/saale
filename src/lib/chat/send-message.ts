@@ -1,10 +1,16 @@
 import type { Message } from "@/components/chat/types";
 import {
+  MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_FILE_BYTES,
   MAX_CHAT_IMAGE_BYTES,
   isImageMime,
 } from "@/lib/chat/attachment-limits";
-import { stageFile, type StagedFile, type UploadProgress } from "@/lib/files/upload-client";
+import {
+  discardStagedUpload,
+  stageFile,
+  type StagedFile,
+  type UploadProgress,
+} from "@/lib/files/upload-client";
 import { formatFileSize } from "@/lib/utils";
 
 /**
@@ -46,6 +52,11 @@ function tooLarge(file: File): string | null {
   return null;
 }
 
+/** Drop staged bytes the message will not use. */
+async function discardStaged(staged: StagedFile[]): Promise<void> {
+  for (const file of staged) await discardStagedUpload("user", file.uploadId);
+}
+
 /** Stage every file in the user's workspace, reporting bytes as they land. */
 async function stageAttachments(
   files: File[],
@@ -56,7 +67,10 @@ async function stageAttachments(
   try {
     for (const [position, file] of files.entries()) {
       const refusal = tooLarge(file);
-      if (refusal) return { ok: false, message: refusal };
+      if (refusal) {
+        await discardStaged(staged);
+        return { ok: false, message: refusal };
+      }
 
       const result = await stageFile(file, {
         target: "user",
@@ -66,7 +80,10 @@ async function stageAttachments(
         onProgress: options.onProgress ?? undefined,
         signal: options.signal,
       });
-      if (!result.ok) return { ok: false, message: result.message };
+      if (!result.ok) {
+        await discardStaged(staged);
+        return { ok: false, message: result.message };
+      }
       staged.push(result.staged);
     }
   } finally {
@@ -86,6 +103,12 @@ export async function sendChatMessage(
 
   let attachments: StagedFile[] = [];
   if (files && files.length > 0) {
+    if (files.length > MAX_CHAT_ATTACHMENTS) {
+      return {
+        kind: "error",
+        message: `Attach at most ${MAX_CHAT_ATTACHMENTS} files at a time`,
+      };
+    }
     const staging = await stageAttachments(files, options);
     if (!staging.ok) return { kind: "error", message: staging.message };
     attachments = staging.staged;
@@ -99,6 +122,9 @@ export async function sendChatMessage(
   });
 
   if (!res.ok) {
+    // Nothing adopted the staged files, so they would sit in the scratch
+    // directory until it is emptied.
+    await discardStaged(attachments);
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     if (res.status === 404) return { kind: "not-found" };
     if (res.status === 409) return { kind: "conflict" };
