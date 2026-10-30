@@ -258,7 +258,7 @@ Everything with a default is optional. The compose file sets the database and Re
 `.env.example` lists the rest, with comments.
 
 Voice input is on by default and needs the `voice` container up alongside the app: `docker compose ps`
-lists it, and its first start downloads the model into `saale_voice_models`
+lists it, and its first start downloads the model into `saale_voice_cache`
 (a few hundred MB, once). A 502 from the composer means the app reached its
 `VOICE_URL` and nothing answered there, so check that container's logs before
 anything else.
