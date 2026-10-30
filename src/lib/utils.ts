@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
  * there. otherwise it is simply unreachable on a phone.
  */
 export const ROW_ACTION =
-  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100";
+  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 data-popup-open:opacity-100";
 
 /** Format a byte count for display (e.g. 1536 → "1.5 KB"). */
 export function formatFileSize(bytes: number): string {
