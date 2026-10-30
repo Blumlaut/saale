@@ -3,21 +3,31 @@ import { NextRequest } from "next/server";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireChatSessionOwner, mockPrisma, mockIsSessionActive, mockIsAgentBuilding } =
-  vi.hoisted(() => ({
-    mockRequireChatSessionOwner: vi.fn(),
-    mockPrisma: {
-      chatMessage: { findMany: vi.fn() },
-    },
-    mockIsSessionActive: vi.fn().mockResolvedValue(false),
-    mockIsAgentBuilding: vi.fn().mockResolvedValue(false),
-  }));
+const {
+  mockRequireChatSessionOwner,
+  mockPrisma,
+  mockIsSessionActive,
+  mockIsAgentBuilding,
+  mockResolveModelForPurpose,
+} = vi.hoisted(() => ({
+  mockRequireChatSessionOwner: vi.fn(),
+  mockPrisma: {
+    chatMessage: { findMany: vi.fn() },
+  },
+  mockIsSessionActive: vi.fn().mockResolvedValue(false),
+  mockIsAgentBuilding: vi.fn().mockResolvedValue(false),
+  mockResolveModelForPurpose: vi.fn(),
+}));
 
 vi.mock("@/lib/auth", () => ({
   requireChatSessionOwner: mockRequireChatSessionOwner,
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
+
+vi.mock("@/lib/pi/model-resolution", () => ({
+  resolveModelForPurpose: mockResolveModelForPurpose,
+}));
 
 vi.mock("@/lib/redis", () => ({
   isAgentBuilding: mockIsAgentBuilding,
@@ -46,6 +56,22 @@ function baseMessage(overrides: Record<string, unknown>) {
   };
 }
 
+function baseSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: SESSION_ID,
+    temporary: false,
+    modelProvider: "openai",
+    modelName: "gpt-5",
+    thinkingLevel: "default",
+    toolConfig: null,
+    activeToolCallId: null,
+    activeToolName: null,
+    activeToolArgs: null,
+    activeToolStartedAt: null,
+    ...overrides,
+  };
+}
+
 async function get() {
   const res = await GET(
     new NextRequest(`http://localhost/api/chat/sessions/${SESSION_ID}/messages`),
@@ -58,24 +84,55 @@ beforeEach(() => {
   mockRequireChatSessionOwner.mockResolvedValue({
     ok: true,
     userId: USER_ID,
-    session: {
-      id: SESSION_ID,
-      temporary: false,
-      modelProvider: "openai",
-      modelName: "gpt-5",
-      thinkingLevel: "default",
-      toolConfig: null,
-      activeToolCallId: null,
-      activeToolName: null,
-      activeToolArgs: null,
-      activeToolStartedAt: null,
-    },
+    session: baseSession(),
   });
   mockIsSessionActive.mockResolvedValue(false);
   mockIsAgentBuilding.mockResolvedValue(false);
+  mockResolveModelForPurpose.mockResolvedValue(undefined);
 });
 
 describe("GET /api/chat/sessions/[sessionId]/messages", () => {
+  it("names the model a chat without one of its own falls back to", async () => {
+    mockRequireChatSessionOwner.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      session: baseSession({ modelProvider: null, modelName: null }),
+    });
+    mockResolveModelForPurpose.mockResolvedValue({
+      provider: "anthropic",
+      name: "claude-sonnet-4",
+    });
+    mockPrisma.chatMessage.findMany.mockResolvedValue([]);
+
+    const body = await get();
+
+    // The header says what will answer instead of an empty picker.
+    expect(body.session.defaultModel).toEqual({ provider: "anthropic", name: "claude-sonnet-4" });
+    expect(mockResolveModelForPurpose).toHaveBeenCalledWith(USER_ID, "chat");
+  });
+
+  it("reports no default when nothing resolves, so the header says so", async () => {
+    mockRequireChatSessionOwner.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      session: baseSession({ modelProvider: null, modelName: null }),
+    });
+    mockPrisma.chatMessage.findMany.mockResolvedValue([]);
+
+    const body = await get();
+
+    expect(body.session.defaultModel).toBeNull();
+  });
+
+  it("leaves a chat's own model alone", async () => {
+    mockPrisma.chatMessage.findMany.mockResolvedValue([]);
+
+    const body = await get();
+
+    expect(body.session.defaultModel).toBeNull();
+    expect(mockResolveModelForPurpose).not.toHaveBeenCalled();
+  });
+
   it("returns the provider error of a failed assistant turn", async () => {
     mockPrisma.chatMessage.findMany.mockResolvedValue([
       baseMessage({ id: "u1", role: "user", content: "hi" }),

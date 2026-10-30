@@ -18,6 +18,8 @@ interface ChatHeaderProps {
   isLoading: boolean;
   sessionId: string;
   modelId: string;
+  /** Model that answers while the chat has none picked (the default). */
+  defaultModelId: string;
   onModelChange: (value: string) => void;
   onTitleChange: (value: string) => void;
   onStartEditing: () => void;
@@ -52,6 +54,7 @@ export function ChatHeader({
   isLoading,
   sessionId,
   modelId,
+  defaultModelId,
   onModelChange,
   onTitleChange,
   onStartEditing,
@@ -140,6 +143,8 @@ export function ChatHeader({
         <ModelPicker
           value={modelId}
           onChange={onModelChange}
+          fallback={defaultModelId}
+          placeholder="No Model"
           triggerClassName="max-w-[32vw] md:max-w-none"
         />
         {settings && <ChatSettingsSheet settings={settings} />}

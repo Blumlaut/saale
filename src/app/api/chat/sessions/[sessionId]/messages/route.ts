@@ -36,6 +36,7 @@ import {
   type StoredChatFile,
 } from "@/lib/file-attachment";
 import { FileNotFoundError, FileUploadError } from "@/lib/files/errors";
+import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages. Get messages for a session
@@ -72,6 +73,11 @@ export async function GET(
     isSendQueueHeld(sessionId),
   ]);
 
+  const fallbackModel =
+    chatSession.modelProvider && chatSession.modelName
+      ? null
+      : ((await resolveModelForPurpose(authResult.userId, "chat")) ?? null);
+
   // The active tool (if any) is persisted by the session event tracker at
   // tool_execution_start and cleared at tool_execution_end. It lets a client
   // that connects/refreshes mid-tool. when the SSE buffer replay is
@@ -97,6 +103,9 @@ export async function GET(
       temporary: chatSession.temporary,
       modelProvider: chatSession.modelProvider,
       modelName: chatSession.modelName,
+      // What answers while the chat has picked no model. the header names it
+      // instead of showing an empty picker. Null when nothing resolves.
+      defaultModel: fallbackModel,
       thinkingLevel: chatSession.thinkingLevel,
       toolConfig: chatSession.toolConfig,
       isGenerating,

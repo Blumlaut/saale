@@ -161,6 +161,7 @@ export function ChatInterface({
     setEditingTitle,
     modelId,
     setModelId,
+    defaultModelId,
     thinkingLevel,
     setThinkingLevel,
     toolConfig,
@@ -972,6 +973,7 @@ export function ChatInterface({
               isLoading={isLoading}
               sessionId={sessionId}
               modelId={modelId}
+              defaultModelId={defaultModelId}
               onModelChange={setModelId}
               settings={{
                 modelId,

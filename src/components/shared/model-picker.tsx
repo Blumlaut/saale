@@ -45,6 +45,11 @@ interface ModelPickerProps {
   triggerClassName?: string;
   /** Placeholder when no model is selected */
   placeholder?: string;
+  /**
+   * Model applied while nothing is picked (the chat default), as
+   * "provider/modelId". The trigger names it, so the header says what answers.
+   */
+  fallback?: string;
   /** Whether to show the trigger as compact (icon + name only) */
   compact?: boolean;
   /**
@@ -67,6 +72,7 @@ export function ModelPicker({
   onChange,
   className,
   placeholder = "Select model",
+  fallback,
   compact = false,
   endpoint = "/api/providers/models",
   triggerClassName,
@@ -159,6 +165,14 @@ export function ModelPicker({
   }, [filteredGroups]);
 
   const selected = models.find((m) => `${m.provider}/${m.id}` === value);
+  // The fallback can be missing from the list (a disabled model, a provider the
+  // user has no key for), so the reference itself stands in for its name.
+  const fallbackModel = fallback
+    ? models.find((m) => `${m.provider}/${m.id}` === fallback)
+    : undefined;
+  const fallbackLabel = fallback
+    ? (fallbackModel?.name ?? fallback.slice(fallback.indexOf("/") + 1))
+    : null;
 
   const handleSelect = (modelValue: string) => {
     onChange(modelValue);
@@ -195,7 +209,7 @@ export function ModelPicker({
             compact ? "min-w-0" : "",
             className,
           )}
-          title={selected?.name}
+          title={selected?.name ?? (fallbackLabel ? `Default: ${fallbackLabel}` : undefined)}
         >
           {loading ? (
             <Loader2 className="text-muted-foreground animate-shrink h-3.5 w-3.5" />
@@ -203,7 +217,7 @@ export function ModelPicker({
             <Brain className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           )}
           <span className="min-w-0 flex-1 truncate text-left text-sm">
-            {loading ? "Loading..." : selected ? selected.name : placeholder}
+            {loading ? "Loading..." : (selected?.name ?? fallbackLabel ?? placeholder)}
           </span>
           <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
         </span>
@@ -260,6 +274,7 @@ export function ModelPicker({
                   {providerModels.map((model) => {
                     const modelValue = `${model.provider}/${model.id}`;
                     const isSelected = modelValue === value;
+                    const isFallback = !value && modelValue === fallback;
                     const flatIndex = flatList.findIndex(
                       (item) =>
                         item.model.id === model.id && item.model.provider === model.provider,
@@ -300,6 +315,11 @@ export function ModelPicker({
                             {model.vision && (
                               <span title="Accepts image input">
                                 <Eye className="text-muted-foreground h-3 w-3 shrink-0" />
+                              </span>
+                            )}
+                            {isFallback && (
+                              <span className="text-muted-foreground shrink-0 text-xs">
+                                default
                               </span>
                             )}
                           </div>

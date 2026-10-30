@@ -15,6 +15,7 @@ interface SessionData {
   title?: string;
   modelProvider?: string;
   modelName?: string;
+  defaultModel?: { provider: string; name: string } | null;
   thinkingLevel?: string;
   toolConfig?: ToolConfig;
 }
@@ -26,6 +27,8 @@ export function useChatSessionState(sessionId: string) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [modelId, setModelId] = useState("");
+  // What answers while the chat has no model of its own.
+  const [defaultModelId, setDefaultModelId] = useState("");
   const [thinkingLevel, setThinkingLevel] = useState("off");
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
 
@@ -69,6 +72,9 @@ export function useChatSessionState(sessionId: string) {
         setModelId(modelStr);
         prevModelIdRef.current = modelStr;
       }
+      setDefaultModelId(
+        session.defaultModel ? `${session.defaultModel.provider}/${session.defaultModel.name}` : "",
+      );
       if (session.thinkingLevel) {
         setThinkingLevel(session.thinkingLevel);
         prevThinkingLevelRef.current = session.thinkingLevel;
@@ -149,6 +155,7 @@ export function useChatSessionState(sessionId: string) {
     setEditingTitle,
     modelId,
     setModelId,
+    defaultModelId,
     thinkingLevel,
     setThinkingLevel,
     toolConfig,
