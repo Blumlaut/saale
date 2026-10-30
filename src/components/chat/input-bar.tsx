@@ -2,6 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect, useImperativeHandle, useMemo } from "react";
 import { insertQuote as insertQuoteAtCaret } from "@/lib/chat/quote-insert";
+import { insertAtCaret } from "@/lib/chat/caret-insert";
+import { useVoiceAvailability } from "@/hooks/use-voice-availability";
+import { VoiceInputButton } from "./voice-input-button";
 import { isSendKey } from "@/lib/chat/enter-to-send";
 import { Button } from "@/components/ui/button";
 import { UploadProgressBar } from "@/components/ui/upload-progress";
@@ -80,6 +83,7 @@ export function InputBar({
   uploadProgress,
 }: InputBarProps) {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const voiceEnabled = useVoiceAvailability();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,6 +155,23 @@ export function InputBar({
         autoResize();
       }
       onValueChange(next.value);
+    },
+    [value, onValueChange, autoResize],
+  );
+
+  const insertSpokenText = useCallback(
+    (transcript: string) => {
+      const el = textareaRef.current;
+      const caret = el?.selectionStart ?? value.length;
+      const next = insertAtCaret(value, transcript, caret);
+      if (next === value) return;
+      if (el) {
+        el.value = next;
+        el.focus();
+        el.setSelectionRange(next.length, next.length);
+        autoResize();
+      }
+      onValueChange(next);
     },
     [value, onValueChange, autoResize],
   );
@@ -435,6 +456,8 @@ export function InputBar({
           className="hidden"
           onChange={handleFileChange}
         />
+
+        {voiceEnabled && <VoiceInputButton onText={insertSpokenText} />}
 
         {/* Textarea. stays editable while Pi works so messages can be queued */}
         <Textarea
