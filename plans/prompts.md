@@ -42,7 +42,7 @@ which is where a project keeps instructions about itself.
   names one of the chat's prompts. A name no prompt answers to reaches the model as
   ordinary text, as before.
 - **The editor is a Settings section.** A list plus an edit dialog, like Memories: name,
-  description, argument hint, scope, prompt.
+  description, what to type after the name, scope, prompt.
 - **No starter prompts and no examples.** A new user starts with an empty list.
 
 ## Schema
