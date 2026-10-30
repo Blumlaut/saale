@@ -92,3 +92,51 @@ describe("the prod compose file", () => {
     );
   });
 });
+
+/**
+ * Image names are the one thing compose and the workflow spell out separately,
+ * and a release that publishes `saale-saale` leaves every install on a 404.
+ */
+describe("the release workflow", () => {
+  const PREFIX = "ghcr.io/blumlaut/saale";
+
+  interface ReleaseWorkflow {
+    jobs: {
+      images: {
+        strategy: { matrix: { include: Array<{ suffix?: string }> } };
+        steps: Array<{ with?: Record<string, string> }>;
+      };
+    };
+  }
+
+  const workflow = parse(
+    readFileSync(path.join(ROOT, ".github/workflows/release.yml"), "utf8"),
+  ) as ReleaseWorkflow;
+
+  function published(): string[] {
+    const tags = workflow.jobs.images.steps.find((step) => step.with?.tags)?.with?.tags ?? "";
+    expect(tags, "the tags must follow the matrix").toContain("${{ matrix.suffix }}");
+    return workflow.jobs.images.strategy.matrix.include.map(
+      ({ suffix = "" }) => `${PREFIX}${suffix}`,
+    );
+  }
+
+  function pulled(): string[] {
+    const images: string[] = [];
+    for (const service of Object.values(prod.services)) {
+      if (typeof service.image === "string" && service.image.startsWith(`${PREFIX}`)) {
+        images.push(service.image.split(":")[0]!);
+      }
+      for (const entry of (service.environment as unknown as string[] | undefined) ?? []) {
+        const match = /^SANDBOX_CONTAINER_IMAGE=([^:]+)/.exec(String(entry));
+        if (match?.[1]) images.push(match[1]);
+      }
+    }
+    return [...new Set(images)];
+  }
+
+  it("publishes exactly the images the prod compose file pulls", () => {
+    const names = published();
+    expect(names.sort()).toEqual(pulled().sort());
+  });
+});

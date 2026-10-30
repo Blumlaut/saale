@@ -113,10 +113,13 @@ jobs:
           - name: saale
             file: Dockerfile
             target: production
+            # The app image is the repository name itself; the others hang off it.
+            suffix: ""
             cache-from: type=gha,scope=saale
           - name: saale-worker
             file: Dockerfile
             target: production-worker
+            suffix: -worker
             # The base image and the installed dependencies are the same layer
             # in both, so the worker reads the web image's cache as well.
             cache-from: |
@@ -126,6 +129,7 @@ jobs:
             file: Dockerfile.sandbox
             # No target: the sandbox image is a single stage.
             target: ""
+            suffix: -sandbox
             cache-from: type=gha,scope=saale-sandbox
     steps:
       - uses: actions/checkout@v7
@@ -160,8 +164,8 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_VERSION=${{ needs.plan.outputs.version }}
           tags: |
-            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:${{ needs.plan.outputs.version }}
-            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:latest
+            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}${{ matrix.suffix }}:${{ needs.plan.outputs.version }}
+            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}${{ matrix.suffix }}:latest
           cache-from: ${{ matrix.cache-from }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           push: true
