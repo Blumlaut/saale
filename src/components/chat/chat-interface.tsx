@@ -971,6 +971,15 @@ export function ChatInterface({
               temporaryMode={temporaryMode}
               isLoading={isLoading}
               sessionId={sessionId}
+              modelId={modelId}
+              onModelChange={setModelId}
+              settings={{
+                modelId,
+                thinkingLevel,
+                onThinkingChange: setThinkingLevel,
+                toolConfig,
+                onToggleTool: toggleTool,
+              }}
               onTitleChange={setTitleDraft}
               onStartEditing={() => {
                 setEditingTitle(true);
@@ -1039,14 +1048,6 @@ export function ChatInterface({
             onValueChange={setDraft}
             isLoading={isLoading}
             onStop={handleStop}
-            settings={{
-              modelId,
-              thinkingLevel,
-              onModelChange: setModelId,
-              onThinkingChange: setThinkingLevel,
-              toolConfig,
-              onToggleTool: toggleTool,
-            }}
             tokenUsage={tokenUsage}
             isCompacting={isCompacting}
             onCompact={handleCompact}

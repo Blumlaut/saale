@@ -1,6 +1,8 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { ModelPicker } from "@/components/shared/model-picker";
+import { ChatSettingsSheet, type ChatSettings } from "./chat-settings-sheet";
 import { Button } from "@/components/ui/button";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
@@ -15,6 +17,8 @@ interface ChatHeaderProps {
   temporaryMode: boolean;
   isLoading: boolean;
   sessionId: string;
+  modelId: string;
+  onModelChange: (value: string) => void;
   onTitleChange: (value: string) => void;
   onStartEditing: () => void;
   onCancelEditing: () => void;
@@ -23,6 +27,8 @@ interface ChatHeaderProps {
   /** False when the view has no temporary mode (a coder chat). */
   onNewChat: () => void;
   linksCount: number;
+  /** Thinking level and tools, opened from the button beside the model. */
+  settings?: ChatSettings;
   linksOpen: boolean;
   onToggleLinks: () => void;
   /** Replaces the chat session sheet on phones (the coder chat lists a project). */
@@ -45,6 +51,8 @@ export function ChatHeader({
   temporaryMode,
   isLoading,
   sessionId,
+  modelId,
+  onModelChange,
   onTitleChange,
   onStartEditing,
   onCancelEditing,
@@ -52,6 +60,7 @@ export function ChatHeader({
   onTemporaryChange,
   onNewChat,
   linksCount,
+  settings,
   linksOpen,
   onToggleLinks,
   mobileListTrigger,
@@ -127,6 +136,13 @@ export function ChatHeader({
         {!hideTemporaryToggle && (
           <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
         )}
+        {/* The model is the one setting worth reading without opening anything. */}
+        <ModelPicker
+          value={modelId}
+          onChange={onModelChange}
+          triggerClassName="max-w-[32vw] md:max-w-none"
+        />
+        {settings && <ChatSettingsSheet settings={settings} />}
         {extraActions}
         <Button
           className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"

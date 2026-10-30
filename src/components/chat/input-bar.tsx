@@ -21,7 +21,6 @@ import { searchCommands } from "@/lib/commands/catalog";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
 import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
-import { ChatSettingsSheet, type ChatSettings } from "./chat-settings-sheet";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
 
@@ -55,8 +54,6 @@ interface InputBarProps {
   onValueChange: (value: string) => void;
   isLoading: boolean;
   onStop: () => void;
-  /** Session settings for the composer menu. absent where the chat has none. */
-  settings?: ChatSettings;
   tokenUsage?: TokenUsage | null;
   isCompacting?: boolean;
   onCompact?: () => void;
@@ -77,7 +74,6 @@ export function InputBar({
   onValueChange,
   isLoading,
   onStop,
-  settings,
   tokenUsage,
   isCompacting,
   onCompact,
@@ -422,8 +418,6 @@ export function InputBar({
       )}
 
       <div className="border-border bg-card relative flex items-center gap-2 rounded-none border px-3 py-2 md:rounded-2xl">
-        {settings && <ChatSettingsSheet settings={settings} />}
-
         {/* File upload button. any file type */}
         <Button
           variant="ghost"

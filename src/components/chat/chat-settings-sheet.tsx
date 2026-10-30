@@ -12,7 +12,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ModelPicker } from "@/components/shared/model-picker";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import { thinkingLevelOptionsFor } from "@/lib/pi/thinking-levels";
@@ -20,22 +19,19 @@ import { isCategoryEnabled, TOOL_CATEGORIES, type ToolCategoryKey } from "@/lib/
 import type { ToolConfig } from "@/lib/pi/tool-categories";
 import { SlidersHorizontal } from "lucide-react";
 
-/** The session's own settings: the model, its thinking level and its tools. */
+/** The session's own settings, apart from the model the header shows. */
 export interface ChatSettings {
+  /** Only read, to know which levels the model offers. */
   modelId: string;
   thinkingLevel: string;
-  onModelChange: (value: string) => void;
   onThinkingChange: (value: string) => void;
   toolConfig: ToolConfig;
   onToggleTool: (category: ToolCategoryKey) => void;
 }
 
-const CONTROL_TRIGGER =
-  "h-9 w-full justify-between rounded-lg border pr-2 pl-2.5 text-sm font-normal dark:bg-input/30";
-
 /**
- * What the next message runs with, opened from the composer. A sheet rather
- * than a menu: the tool list alone is a dozen rows.
+ * How the next message runs: the thinking level and the tools. A sheet rather
+ * than a menu, because the tool list alone is a dozen rows.
  */
 export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
   const [open, setOpen] = useState(false);
@@ -57,22 +53,11 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[400px] sm:max-w-none">
         <SheetHeader className="border-border/30 border-b px-4 pt-4 pb-3">
           <SheetTitle>Chat settings</SheetTitle>
-          <SheetDescription>What the next message runs with.</SheetDescription>
+          <SheetDescription>Thinking level and the tools this chat can use.</SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
           <div className="space-y-2">
-            <Label>Model</Label>
-            <ModelPicker
-              value={settings.modelId}
-              onChange={settings.onModelChange}
-              placeholder="Choose a model"
-              triggerClassName="w-full"
-              className={CONTROL_TRIGGER}
-            />
-          </div>
-
-          <div className="mt-5 space-y-2">
             <Label>Thinking</Label>
             {/* Every level on the surface: picking one costs a single click. */}
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Thinking level">
