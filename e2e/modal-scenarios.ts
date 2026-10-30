@@ -598,7 +598,7 @@ async function mockCoderProjects(page: Page) {
 /** A chat inside a project, so the coder chat header's sheets have somewhere to open from. */
 async function mockCoderChat(page: Page) {
   await mockCoderProjects(page);
-  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status$`), (route) =>
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status(\\?|$)`), (route) =>
     route.fulfill({
       json: {
         worktree: {
@@ -614,14 +614,61 @@ async function mockCoderChat(page: Page) {
         },
         branch: "wt/c-1a2b3c4d",
         head: "1".repeat(40),
-        upstream: "",
-        ahead: 0,
+        upstream: "origin/main",
+        ahead: 2,
         behind: 0,
-        changes: [],
-        commits: [],
+        changes: [
+          {
+            path: "src/components/a-very-long-file-name-that-cannot-wrap-inside-a-narrow-panel.tsx",
+            originalPath: null,
+            added: 12,
+            deleted: 3,
+            staged: false,
+            unstaged: true,
+            untracked: false,
+            conflicted: false,
+          },
+          {
+            path: "src/lib/coder/git-actions-and-everything-the-panel-writes.ts",
+            originalPath: null,
+            added: 40,
+            deleted: 2,
+            staged: true,
+            unstaged: false,
+            untracked: false,
+            conflicted: false,
+          },
+        ],
+        commits: [
+          {
+            sha: "abcdef1234567890",
+            shortSha: "abcdef1",
+            subject: "add the git actions with a subject long enough to need two lines",
+            date: new Date().toISOString(),
+            author: "e2e",
+            refs: [],
+            pushed: false,
+          },
+        ],
         scripts: [],
+        commitsTruncated: false,
+        remotes: [],
+        stashes: 0,
       },
     }),
+  );
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/branches$`), (route) =>
+    route.fulfill({
+      json: {
+        branches: [
+          { name: "wt/c-1a2b3c4d", upstream: "", current: true },
+          { name: "main", upstream: "origin/main", current: false },
+        ],
+      },
+    }),
+  );
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/pull-request$`), (route) =>
+    route.fulfill({ json: { pullRequest: null } }),
   );
   await page.route(/\/api\/chat\/sessions\/[^/]+\/messages/, (route) =>
     route.fulfill({ json: { messages: [] } }),
@@ -1276,6 +1323,38 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: [CODER_LAYOUT],
     mock: mockCoderChat,
     open: (page) => click(page, '[aria-label="Open chat list"]'),
+  },
+  {
+    name: "coder · commit dialog",
+    path: "/dashboard/coder/e2e-project/e2e-coder-chat",
+    sources: ["src/components/coder/commit-dialog.tsx"],
+    mock: mockCoderChat,
+    open: async (page) => {
+      await click(page, '[aria-label="Open worktree panel"]');
+      await click(page, 'button:has-text("Commit…")');
+    },
+  },
+  {
+    name: "coder · discard changes confirmation",
+    path: "/dashboard/coder/e2e-project/e2e-coder-chat",
+    sources: ["src/components/coder/discard-dialog.tsx"],
+    mock: mockCoderChat,
+    open: async (page) => {
+      await click(page, '[aria-label="Open worktree panel"]');
+      await click(page, '[aria-label^="Actions for a-very-long-file-name"]');
+      await click(page, '[role="menuitem"]:has-text("Discard changes")');
+    },
+  },
+  {
+    name: "coder · new branch dialog",
+    path: "/dashboard/coder/e2e-project/e2e-coder-chat",
+    sources: ["src/components/coder/branch-dialog.tsx"],
+    mock: mockCoderChat,
+    open: async (page) => {
+      await click(page, '[aria-label="Open worktree panel"]');
+      await click(page, '[aria-label="Branches"]');
+      await click(page, '[role="menuitem"]:has-text("New branch")');
+    },
   },
   {
     name: "coder · worktree sheet",

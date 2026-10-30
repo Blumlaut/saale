@@ -294,6 +294,40 @@ git worktree remove <dir>                  no --force
 - Archived chats do not exist in Saale today. When one is added, the worktree
   removal belongs at the same hook as chat deletion.
 
+## Git actions
+
+The panel is a git client, not a viewer. Everything below goes through
+`src/lib/coder/actions.ts`, one `POST /api/coder/sessions/:id/git` with an action name and
+nothing about where: the checkout comes from the chat's row, and every path and branch name
+is checked before it reaches a command.
+
+```
+fetch                       git fetch --prune --all
+pull                        git pull --ff-only, or --rebase from the menu
+push                        git push, or push --set-upstream origin <branch>
+commit                      git commit -m <message> [--amend], optionally then push
+stage / unstage             git add -- <paths> | --all, git restore --staged | reset
+discard                     restore --source=HEAD --staged --worktree, clean --force for untracked
+branch                      git switch <name> | switch --create <name>
+stash / stash-pop           stash push --include-untracked, stash pop
+undo-commit                 git reset --soft HEAD~1
+```
+
+- One writer per repo: the same lock `ensureWorktree` takes, keyed by project id, so a push
+  from a button never overlaps a `worktree add` for another chat.
+- Network commands carry the user's `GH_TOKEN` as a one-shot `credential.helper`, so a private
+  remote works without the token reaching `.gitconfig`. A user who ran `gh auth login` has a
+  helper of their own and needs nothing from Saale.
+- `--force` is never passed. A pull is fast-forward or rebase, decided by the button, never
+  by git's defaults.
+- The panel splits the change list into staged and changes, the way a commit sees them: a path
+  is one or both. Conflicts get their own letter, because a worktree that needs a decision
+  should not look like an edit.
+- History marks the commits above the branch's upstream, and draws the upstream's name where
+  they stop. `?commits=` raises the read a page at a time.
+- `gh pr view` / `gh pr create --fill` give the branch its pull request badge and a way to
+  open one, read on its own endpoint so the status poll never pays a network round trip.
+
 ## Steps
 
 Each step is a commit that leaves `npm run check` green.
@@ -365,6 +399,5 @@ Real behaviour:
 
 ## Out of scope
 
-Monaco or any editor, PR creation and push UI, merging worktrees back, per-worktree disk
-quotas, interactive PTY, importing a zip as a project, and ammit's LSP, forge and routines
-panels.
+Monaco or any editor, merging worktrees back, per-worktree disk quotas, importing a zip as a
+project, and ammit's LSP, forge and routines panels.

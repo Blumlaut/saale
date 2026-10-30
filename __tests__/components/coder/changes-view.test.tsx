@@ -27,6 +27,9 @@ const STATE: CoderSessionState = {
   behind: 0,
   changes: [],
   commits: [],
+  commitsTruncated: false,
+  remotes: [],
+  stashes: 0,
   scripts: [],
   provisioning: null,
   setupFailure: null,
@@ -41,6 +44,7 @@ function change(path: string): CoderChange {
     staged: false,
     unstaged: false,
     untracked: true,
+    conflicted: false,
   };
 }
 
@@ -53,6 +57,9 @@ function renderChanges(changes: CoderChange[]) {
       refreshing={false}
       activeCommitSha={null}
       onOpenCommitFile={() => {}}
+      pullRequest={null}
+      onLoadMoreCommits={() => {}}
+      loadingMoreCommits={false}
     />,
   );
 }
