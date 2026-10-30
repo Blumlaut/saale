@@ -167,6 +167,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   watcher_delete: { text: "Deleted a watcher" },
   watcher_test: { text: "Ran a watcher script" },
   watcher_ticks: { text: "Read watcher ticks" },
+  watcher_get: { text: "Read a watcher" },
   watcher_list: {
     text: "Listed watchers",
     count: { field: "count", one: "watcher", many: "watchers" },

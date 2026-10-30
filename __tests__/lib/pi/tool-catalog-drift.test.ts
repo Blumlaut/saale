@@ -185,6 +185,7 @@ describe("tool catalog ↔ implementation drift", () => {
       "settings_list",
       "task_list_pending",
       "task_search",
+      "watcher_get",
       "watcher_list",
       "watcher_ticks",
     ]);

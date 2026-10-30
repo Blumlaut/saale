@@ -61,6 +61,35 @@ const watcherListSchema = Type.Object({
   watchers: Type.Array(watcherSchema),
 });
 
+/** One watcher in full: every field `watcher_update` writes, plus its counters. */
+const watcherDetailSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  script: Type.String(),
+  cronExpression: Type.String(),
+  enabled: Type.Boolean(),
+  /** "chat" | "silent" | "coder". */
+  deliver: Type.String(),
+  sessionId: Type.Union([Type.String(), Type.Null()]),
+  sessionTitle: Type.Union([Type.String(), Type.Null()]),
+  projectId: Type.Union([Type.String(), Type.Null()]),
+  projectName: Type.Union([Type.String(), Type.Null()]),
+  worktreeMode: Type.String(),
+  retentionMinutes: Type.Integer(),
+  wakePrompt: Type.String(),
+  modelId: Type.Union([Type.String(), Type.Null()]),
+  cooldownMinutes: Type.Integer(),
+  ticks: Type.Integer(),
+  fires: Type.Integer(),
+  lastTickAt: Type.Union([Type.String(), Type.Null()]),
+  lastFiredAt: Type.Union([Type.String(), Type.Null()]),
+  lastError: Type.Union([Type.String(), Type.Null()]),
+  lastValue: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+
 /** What one run of a script did. */
 const runOutcomeSchema = Type.Object({
   status: Type.String(),
@@ -139,7 +168,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_list",
       label: "List Watchers",
       description:
-        "List script watchers: the cheap poll jobs that run a script on a schedule and wake you only when it reports something. Shows cadence, delivery target and last outcome.",
+        "List script watchers: the cheap poll jobs that run a script on a schedule and wake you only when it reports something. Shows cadence, delivery target and last outcome. Read one in full, script included, with watcher_get.",
       parameters: Type.Object({}),
       outputSchema: watcherListSchema,
       execute: async () => {
@@ -175,6 +204,56 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
                 lastError: serialized.lastError,
               };
             }),
+          },
+        };
+      },
+    }),
+
+    // ─── watcher_get ────────────────────────────────────────────────────────
+    defineStructuredTool({
+      name: "watcher_get",
+      label: "Read Watcher",
+      description:
+        "Read one watcher in full: the script it runs, its cadence, delivery target, wake instructions, worktree mode, cooldown and model, plus what its last tick did. Everything watcher_update can change is here, so read a watcher you did not create before editing it.",
+      parameters: Type.Object({
+        watcherId: Type.String({ description: "Watcher id." }),
+      }),
+      outputSchema: watcherDetailSchema,
+      execute: async (_toolCallId, params) => {
+        const watcher = await prisma.scriptWatcher.findFirst({
+          where: { id: params.watcherId, userId },
+          include: { session: { select: { title: true } }, project: { select: { name: true } } },
+        });
+        if (!watcher) throw new Error(`Watcher not found: ${params.watcherId}`);
+
+        const serialized = serializeWatcher(watcher);
+
+        return {
+          value: {
+            id: serialized.id,
+            name: serialized.name,
+            description: serialized.description,
+            script: serialized.script,
+            cronExpression: serialized.cronExpression,
+            enabled: serialized.enabled,
+            deliver: serialized.deliver,
+            sessionId: serialized.sessionId,
+            sessionTitle: serialized.sessionTitle,
+            projectId: serialized.projectId,
+            projectName: serialized.projectName,
+            worktreeMode: serialized.worktreeMode,
+            retentionMinutes: serialized.retentionMinutes,
+            wakePrompt: serialized.wakePrompt,
+            modelId: serialized.modelId,
+            cooldownMinutes: serialized.cooldownMinutes,
+            ticks: serialized.tickCount,
+            fires: serialized.fireCount,
+            lastTickAt: serialized.lastTickAt,
+            lastFiredAt: serialized.lastFiredAt,
+            lastError: serialized.lastError,
+            lastValue: serialized.lastValue,
+            createdAt: serialized.createdAt,
+            updatedAt: serialized.updatedAt,
           },
         };
       },
@@ -336,7 +415,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
       name: "watcher_update",
       label: "Update Watcher",
       description:
-        "Update a watcher's script, cadence, delivery target, wake instructions, cooldown or enabled state. A new script runs from the next tick on.",
+        "Update a watcher's script, cadence, delivery target, wake instructions, cooldown or enabled state. Read it with watcher_get first: only the fields you pass change, and the rest keep their stored value. A new script runs from the next tick on.",
       parameters: Type.Object({
         watcherId: Type.String({ description: "Watcher id." }),
         script: Type.Optional(Type.String({ description: "New script body." })),
