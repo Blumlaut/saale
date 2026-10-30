@@ -255,7 +255,7 @@ export function PromptsSection() {
       </GlassPanel>
 
       <Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle>{draft?.id ? "Edit prompt" : "New prompt"}</DialogTitle>
             <DialogDescription>
@@ -264,7 +264,7 @@ export function PromptsSection() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto">
             <div className="space-y-2">
               <Label htmlFor="prompt-name">Name</Label>
               <div className="flex items-center gap-1">
