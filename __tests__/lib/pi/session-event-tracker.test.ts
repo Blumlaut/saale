@@ -309,39 +309,58 @@ describe("createSessionEventTracker", () => {
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    // `toolcall_start`: the id and name are known, the arguments are not.
-    session.emit({
-      type: "message_update",
-      message: {
-        role: "assistant",
-        content: [{ type: "toolCall", id: "tc-1", name: "bash", arguments: {} }],
-      },
-    });
-    // Then each argument delta re-sends the message with the arguments so far.
-    session.emit({
-      type: "message_update",
-      message: {
-        role: "assistant",
-        content: [{ type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git" } }],
-      },
-    });
-    // A delta that changes nothing (text, not arguments) says nothing new.
-    session.emit({
-      type: "message_update",
-      message: {
-        role: "assistant",
-        content: [
-          { type: "text", text: "running it" },
-          { type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git" } },
-        ],
-      },
-    });
+    vi.useFakeTimers();
+    try {
+      // `toolcall_start`: the id and name are known, the arguments are not.
+      session.emit({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "tc-1", name: "bash", arguments: {} }],
+        },
+      });
+      // Then each argument delta re-sends the message with the arguments so far.
+      // Published at most once per TOOL_PENDING_THROTTLE_MS: `tool_start` carries
+      // the final arguments, so the live view can be coarser than the deltas.
+      vi.advanceTimersByTime(250);
+      session.emit({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git" } }],
+        },
+      });
+      vi.advanceTimersByTime(250);
+      // A delta that changes nothing (text, not arguments) says nothing new.
+      session.emit({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "text", text: "running it" },
+            { type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git" } },
+          ],
+        },
+      });
+      session.emit({
+        type: "message_update",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git s" } },
+          ],
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     const pending = published.filter((p) => p.event === "tool_pending");
-    expect(pending).toHaveLength(2);
+    expect(pending).toHaveLength(3);
     expect(pending[0]!.data).toMatchObject({ toolCallId: "tc-1", toolName: "bash", args: {} });
     expect(pending[1]!.data).toMatchObject({ args: { command: "git" } });
-    expect(typeof pending[1]!.data.turnId).toBe("string");
+    expect(pending[2]!.data).toMatchObject({ args: { command: "git s" } });
+    expect(typeof pending[2]!.data.turnId).toBe("string");
 
     // Execution hands the arguments over to `tool_start`; nothing is announced
     // for that call afterwards, even if a replayed update refers to it again.
@@ -358,7 +377,7 @@ describe("createSessionEventTracker", () => {
         content: [{ type: "toolCall", id: "tc-1", name: "bash", arguments: { command: "git " } }],
       },
     });
-    expect(published.filter((p) => p.event === "tool_pending")).toHaveLength(2);
+    expect(published.filter((p) => p.event === "tool_pending")).toHaveLength(3);
 
     const toolStart = published.find((p) => p.event === "tool_start")!;
     expect(toolStart.data.turnId).toBe(pending[0]!.data.turnId);

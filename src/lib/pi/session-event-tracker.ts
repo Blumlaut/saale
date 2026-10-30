@@ -127,6 +127,12 @@ export function createSessionEventTracker(
   const toolLastUpdateAt = new Map<string, number>();
   const TOOL_UPDATE_THROTTLE_MS = 1000;
 
+  // Throttle map for tool_pending. Argument deltas re-send the whole argument
+  // object, so a long file body costs its own length per delta. `tool_start`
+  // carries the final arguments, so a coarser live view loses nothing.
+  const toolPendingAnnouncedAt = new Map<string, number>();
+  const TOOL_PENDING_THROTTLE_MS = 200;
+
   // Token usage tracking (billed totals, cumulative over the run)
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -281,6 +287,12 @@ export function createSessionEventTracker(
       const args = (call.arguments ?? {}) as Record<string, unknown>;
       const serialized = JSON.stringify(args);
       if (announcedToolArgs.get(toolCallId) === serialized) continue;
+
+      const now = Date.now();
+      if (now - (toolPendingAnnouncedAt.get(toolCallId) ?? 0) < TOOL_PENDING_THROTTLE_MS) {
+        continue;
+      }
+      toolPendingAnnouncedAt.set(toolCallId, now);
       announcedToolArgs.set(toolCallId, serialized);
 
       publishSessionEvent(sessionId, "tool_pending", {
@@ -418,6 +430,7 @@ export function createSessionEventTracker(
         // Its arguments are final from here on, and `tool_start` carries them:
         // nothing is left to announce.
         announcedToolArgs.delete(event.toolCallId);
+        toolPendingAnnouncedAt.delete(event.toolCallId);
         toolCallResults.set(event.toolCallId, {
           name: event.toolName,
           args: event.args,
