@@ -15,7 +15,7 @@ nav.sidebar-nav (sticky top-6 h-fit w-56 shrink-0)
       ├─ Search button (ghost, w-full, ⌘K kbd) → portal dropdown (liquid-glass, rounded-xl)
       └─ Nav items (space-y-0.5): the user's visible items, in the user's order (+ Admin for admins)
 └─ Console footer (mt-4 border-t px-3 pt-3)
-   ├─ Row: console-label "Sale v0.1.0" (version in font-mono normal-case) + theme toggle icon button
+   ├─ Row: console-label "Saale v0.1.0" (version in normal-case, same font) + theme toggle icon button
    └─ Orange tick: div.bg-primary.h-0.5.w-8.rounded-full
 ```
 
@@ -72,8 +72,8 @@ The version block is the canonical console micro-label:
 <div className="border-border/60 mt-4 border-t px-3 pt-3">
   <div className="flex items-center justify-between">
     <p className="console-label">
-      Sale{" "}
-      <span className="text-muted-foreground/70 font-mono tracking-normal normal-case">v0.1.0</span>
+      Saale{" "}
+      <span className="text-muted-foreground/70 tracking-normal normal-case">v0.1.0</span>
     </p>
     <Button variant="ghost" size="icon" className="size-7 rounded-md" onClick={/* theme toggle */} aria-label="Toggle theme">
       <Sun className="h-3.5 w-3.5 dark:hidden" />
@@ -157,4 +157,4 @@ For nested views within a section:
 | Active item without orange bar | `before:` pseudo-element tick (3px, `bg-primary`) |
 | `bg-white/N` nav fills | `bg-accent` / `hover:bg-accent/60` |
 | Icon-only desktop nav | Always include text labels |
-| Version text in body font | `console-label` + `font-mono` version, orange tick below |
+| Version text in body font | `console-label` + normal-case version, orange tick below |

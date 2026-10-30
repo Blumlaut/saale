@@ -3,8 +3,8 @@
 ## Fonts
 
 - **UI / body:** `Inter` — loaded via `next/font/google` in `layout.tsx` (`--font-sans`). Neutral, console-appropriate, excellent at small sizes.
-- **Data / console:** `Geist Mono` (`--font-mono`) — code, machine IDs, timestamps, hashes, and `.console-label` micro-labels. Monospace IS part of the console language, but only for data — never for sentences or button labels.
-- Two families, strict split: Inter for words, Geist Mono for data.
+- **Code:** `Geist Mono` (`--font-mono`) — code snippets, commands, file paths, logs and tool output. Mono is for code only.
+- Two families, strict split: Inter for words, Geist Mono for code.
 
 ## Scale
 
@@ -80,15 +80,16 @@ Long text must never break layout:
 | Tertiary | `text-muted-foreground/70` | Placeholders, disabled, hints |
 | Action | `text-primary` | Interactive links (orange) |
 
-## Data Text (Geist Mono)
+## Code Text (Geist Mono)
+
+Mono marks text a machine produced or will consume: a snippet, a command, a path, a log line. An ID, a timestamp, a version or a count is a word like any other and stays Inter.
 
 ```tsx
-// Timestamps, IDs, versions, hashes — mono, small, muted
-<span className="font-mono text-xs text-muted-foreground">2026-09-11T08:57Z</span>
-<span className="font-mono text-[11px] text-muted-foreground">job_a1b2c3</span>
+<code className="font-mono text-xs">npm run check</code>
+<span className="font-mono text-xs text-muted-foreground">.pi/skills/saale-design</span>
 ```
 
-Mono data text is always ≤ `text-xs` and muted unless it is a primary data value.
+Code text is always ≤ `text-xs` and muted unless it is the thing being read.
 
 ## Common Mistakes
 
@@ -98,6 +99,6 @@ Mono data text is always ≤ `text-xs` and muted unless it is a primary data val
 | `text-base` for body | Use `text-sm` |
 | Uppercase labels without `.console-label` | Use sentence case, or the micro-label class |
 | Monospace for sentences/buttons | Inter (`font-sans`) for words |
-| Sans for IDs/timestamps | `font-mono` for data |
+| Mono for an ID, timestamp or count | Inter, like any other word |
 | No truncation on long text | `truncate` or `line-clamp-*` |
 | Hardcoded font sizes | Tailwind scale |

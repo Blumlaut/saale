@@ -26,7 +26,7 @@ When the user asks for a UI element or page:
 - Desktop-first, responsive down to 320px
 - shadcn/ui for all interactive components
 - Flat bordered panels (`GlassPanel` — the name is legacy, the surface is flat)
-- Inter for UI text, Geist Mono for data/console labels (code, IDs, timestamps, micro-labels)
+- Inter for UI text, Geist Mono for code (snippets, commands, paths, logs, the terminal)
 
 ## Quick Workflow
 
@@ -285,7 +285,11 @@ For nested content inside panels, use `liquid-glass-inner` on a plain `<div>` (r
 
 ## Console Micro-Labels
 
-Section labels, panel footers, and metadata use the `.console-label` class — small caps, wide tracking, muted color (`10px / 600 / 0.18em uppercase`). The sidebar footer (`SALE v0.1.0`) and the orange tick under it are the canonical example. Use for: section headers inside panels, status lines, version info. **Do not** use for body text or button labels.
+Section labels, panel footers, and metadata use the `.console-label` class — small caps, wide tracking, muted color (`10px / 600 / 0.18em uppercase`). The sidebar footer (`Saale v0.1.0`) and the orange tick under it are the canonical example. Use for: section headers inside panels, status lines, version info. **Do not** use for body text or button labels.
+
+## Terminal Styling
+
+A terminal-inspired surface belongs to the components that are terminals: `coder/terminal-view.tsx` and its `terminal-surface` styles. Prompt glyphs, blinking cursors, scanlines, ANSI colour output and mono input everywhere else read as a developer tool and are out of the console language.
 
 ## Anti-Patterns (Never Do These)
 
@@ -298,7 +302,8 @@ Section labels, panel footers, and metadata use the `.console-label` class — s
 | Pill-shaped buttons                    | Old design                                                                | `rounded-lg` (12px) rectangular                                        |
 | Rainbow status colors                  | Distracting                                                               | Muted semantic colors, orange = primary action only                    |
 | ALL CAPS body text                     | Aggressive                                                                | Sentence case (micro-labels excepted)                                  |
-| Monospace UI text                      | Developer-tool vibe (except data)                                         | Inter for UI; Geist Mono for data, IDs, timestamps, micro-labels       |
+| Monospace UI text                      | Developer-tool vibe                                                       | Inter for words; Geist Mono for code, commands, paths, logs            |
+| Terminal styling outside a terminal    | Backend tool cosplay                                                      | Plain console surfaces; terminals are the one place for prompts        |
 | Animated backgrounds                   | Distracting                                                               | Static solid background                                                |
 | Page-sized rows in a side panel        | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e            |
 | An editor in a sheet or popover        | Its width is fixed and it hides the chat, and Monaco needs the room       | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
