@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { ShowFileGallery } from "./file-card";
 import { ToolCallView } from "./tool-call-view";
@@ -16,9 +17,16 @@ import type { ToolCallData } from "./types";
  * Files the agent *showed* the user are not work: they are the thing the user
  * is meant to look at, so they never fold away. One is its own attachment card,
  * several become a gallery.
+ *
+ * Memoized: a turn's `toolCalls` array lives as long as its message, so a token
+ * in a later turn leaves every settled turn's cards alone.
  */
-export function ToolCallGroup({ toolCalls }: { toolCalls: readonly ToolCallData[] }) {
-  const { attachments, work } = splitToolCalls(toolCalls);
+export const ToolCallGroup = memo(function ToolCallGroup({
+  toolCalls,
+}: {
+  toolCalls: readonly ToolCallData[];
+}) {
+  const { attachments, work } = useMemo(() => splitToolCalls(toolCalls), [toolCalls]);
 
   return (
     <div className="space-y-1">
@@ -31,4 +39,4 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: readonly ToolCallData[
       ) : null}
     </div>
   );
-}
+});
