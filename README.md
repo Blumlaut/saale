@@ -39,8 +39,9 @@ to-do list, agents, schedules and watchers.
   hands the result to the model, opens a coder chat, or stays silent.
 
 It also works as a coding environment, with Monaco (VS Code's editor) built in. It supports
-worktrees and a full set of repository tools, and GitHub is one `gh auth login` away in the
-workspace terminal.
+worktrees and a full set of repository tools. Connect GitHub once in Settings, under
+Integrations, and your private repositories, pushes and pull requests work from the
+workspace.
 
 ## Screenshots
 
