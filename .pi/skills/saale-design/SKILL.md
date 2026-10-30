@@ -93,7 +93,7 @@ See `references/shadcn-components.md` for the full mapping.
 
 ### Panel with Content
 
-`GlassPanel` applies the flat console surface automatically — never add `liquid-glass` manually (the name is legacy; it is now a flat bordered surface, not glass).
+`GlassPanel` applies the flat console surface automatically (`glass-panel`: `bg-card`, a 1px `border-border`, `rounded-2xl`). Never add surface classes to it by hand.
 
 ```tsx
 import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
@@ -269,19 +269,14 @@ or lets content escape its bounds. Register new overlays in
 and never use a bare `grid` inside an overlay — see
 [references/modals.md](references/modals.md).
 
-### Unified Console Surfaces
+### Surfaces Are Token Utilities
 
-All overlay surfaces include `liquid-glass` by default (legacy name — it renders as a flat bordered popover surface with an elevation shadow, no blur) — no manual class needed:
+There is no surface class to remember. Every surface is the same three utilities on a token:
 
-- `DialogContent` → flat bordered surface
-- `AlertDialogContent` → flat bordered surface
-- `SheetContent` → flat bordered surface
-- `PopoverContent` → flat bordered surface
-- `DropdownMenuContent` → flat bordered surface
-- `SelectContent` → flat bordered surface
-- `TabsList` → flat bordered inner
-
-For nested content inside panels, use `liquid-glass-inner` on a plain `<div>` (renders as a flat muted inset).
+- Overlays (`DialogContent`, `AlertDialogContent`, `SheetContent`, `PopoverContent`, `DropdownMenuContent`, `SelectContent`) → `bg-popover border border-border` plus an elevation shadow, already baked into the primitive. Never add or remove the surface by hand.
+- Panels → `GlassPanel` (`bg-card border border-border rounded-2xl`).
+- A card nested inside a panel → `bg-muted border border-border rounded-xl`.
+- Actions → `<Button>` variants (`default`, `secondary`, `destructive`, `ghost`, `outline`). Never paint a button with a fill utility.
 
 ## Console Micro-Labels
 
@@ -315,7 +310,7 @@ Before committing any UI change, verify `references/review-checklist.md`.
 
 ## Search Tips
 
-- Find flat surface classes: `rg "liquid-glass|glass-panel" src/components/`
+- Find surface classes: `rg "bg-popover|glass-panel|bg-muted border" src/components/`
 - Find leftover glass idioms: `rg "bg-white/\d|backdrop-blur" src/`
 - Find color token usage: `rg "var\(--" src/app/globals.css`
 - Find shadcn component imports: `rg "from \"@/components/ui\"" src/`

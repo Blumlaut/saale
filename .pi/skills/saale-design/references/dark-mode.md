@@ -20,8 +20,8 @@ className = "bg-card text-card-foreground border border-border";
 className = "hover:bg-accent/60";   // hover
 className = "bg-accent";            // selected
 
-// Overlay (dialog/sheet/popover) — liquid-glass utility (flat, bordered, elevated)
-className = "liquid-glass";
+// Overlay (dialog/sheet/popover) — flat, bordered, elevated
+className = "bg-popover border border-border shadow-2xl";
 ```
 
 Never write `dark:bg-white/5` or `dark:bg-black/40` — the tokens already flip per mode.

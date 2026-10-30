@@ -12,44 +12,39 @@ Every content panel in Saale is a **flat, opaque, border-defined surface** on a 
 
 Never use `backdrop-blur`, `bg-white/N` fills, or gradients on surfaces. If a surface looks translucent, it is wrong.
 
-## CSS Utilities (in globals.css)
+## Surface Utilities
 
-Class names are legacy (they came from the glass system) but render as flat console surfaces:
+Surfaces are token utilities, not classes of their own:
 
-| Class | Use | Appearance |
-|-------|-----|-----------|
-| `glass-panel` | Main content panels | Solid `bg-card`, 1px `border-border`, `rounded-2xl` |
-| `glass-panel-subtle` | Inline bars, toolbars, subtle sections | Solid `bg-muted/50`, 1px border, `rounded-xl` |
-| `glass-panel-deep` | Elevated content regions | Solid `bg-card`, 1px border, `rounded-3xl` |
-| `liquid-glass` | Overlay surfaces (sheets, modals, popovers) | Solid `bg-popover`, 1px border, elevation shadow |
-| `liquid-glass-inner` | Nested content cards within panels | Solid `bg-muted`, 1px border |
-| `liquid-glass-pill` | Secondary chips, badges, icon containers | Solid `bg-secondary`, 1px border, hover `bg-muted` |
-| `liquid-glass-accent` | Primary action surfaces | Solid `bg-primary`, orange text-foreground |
-| `liquid-glass-destructive` | Delete, remove, destructive actions | 12% red tint, 35% red border, red text |
+| Layer | Use | Classes |
+|-------|-----|---------|
+| Panel | Main content panels | `glass-panel` (from `GlassPanel`): `bg-card border border-border rounded-2xl` |
+| Subtle bar | Inline bars, toolbars | `bg-muted/50 border border-border rounded-xl` |
+| Overlay | Sheets, modals, popovers, menus | `bg-popover border border-border shadow-2xl`, baked into the primitive |
+| Nested card | A card inside a panel | `bg-muted border border-border rounded-xl` |
+| Action | Buttons | `<Button>` variants — `default` (primary), `secondary`, `destructive`, `ghost`, `outline` |
+
+A surface never gets a hand-written fill: no `bg-primary` or `bg-destructive/10` on a button, and no pill radius — buttons are `rounded-lg`.
 
 ### Usage
 
 ```tsx
-// Sheet / dialog — liquid-glass is baked in, do NOT add it manually
+// Sheet / dialog — the surface comes from the primitive
 <SheetContent className="flex w-full flex-col p-0 sm:w-[440px]">
   {/* content */}
 </SheetContent>
 
 // Nested content card inside a panel
-<div className="liquid-glass-inner rounded-xl px-4 py-3.5">
+<div className="bg-muted border-border rounded-xl border px-4 py-3.5">
   <p className="text-xs text-muted-foreground">Label</p>
   <p className="text-sm">Value</p>
 </div>
 
-// Pill chip (secondary)
-<Button className="liquid-glass-pill h-9 text-xs font-medium" variant="ghost">
-  Action
-</Button>
+// Secondary action
+<Button variant="secondary">Action</Button>
 
-// Accent (primary) button
-<Button className="liquid-glass-accent h-9 text-xs font-medium">
-  Save Changes
-</Button>
+// Primary action
+<Button>Save Changes</Button>
 ```
 
 ## Page Background
@@ -78,7 +73,7 @@ When surfaces overlap:
 
 1. **Background:** solid `--background`
 2. **Layer 1:** `glass-panel` content panels
-3. **Layer 2:** `liquid-glass` overlays (solid `bg-popover` + elevation shadow)
+3. **Layer 2:** overlays (solid `bg-popover`, 1px border, elevation shadow)
 4. **Layer 3:** further popovers/dropdowns — same solid surface, higher `z-`
 
 Every layer is opaque. No blurring, ever.

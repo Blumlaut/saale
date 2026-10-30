@@ -4,7 +4,7 @@
 
 The `GlassPanel` is the primary content container in Saale. Every section of the dashboard lives inside a glass panel.
 
-**All panels use the flat console surface by default.** The `GlassPanel` component applies both `glass-panel` and `liquid-glass` classes automatically (legacy names — they render as a flat, opaque, border-defined surface, not glass). You should never need to add `liquid-glass` manually to a `GlassPanel`.
+**All panels use the flat console surface by default.** The `GlassPanel` component applies the `glass-panel` class: a solid `bg-card`, a 1px `border-border` and `rounded-2xl`. Never add a surface class to a `GlassPanel` by hand.
 
 ## Component Signature
 
@@ -12,7 +12,7 @@ The `GlassPanel` is the primary content container in Saale. Every section of the
 import { GlassPanel, GlassPanelHeader, GlassPanelContent, GlassPanelFooter } from "@/components/ui/glass-panel";
 ```
 
-The base `GlassPanel` applies: `glass-panel liquid-glass` — solid `bg-card`, 1px `border-border`, `rounded-2xl`. No blur, no transparency.
+The base `GlassPanel` applies: `glass-panel` — solid `bg-card`, 1px `border-border`, `rounded-2xl`. No blur, no transparency.
 
 ## Usage
 
@@ -82,19 +82,19 @@ import { Button } from "@/components/ui/button";
 
 ## Overlay Surfaces (Dialogs, Sheets, Popovers, Dropdowns)
 
-All overlay surfaces use the flat `liquid-glass` surface (solid `bg-popover` + 1px border + elevation shadow) by default:
+Every overlay is the flat popover surface: solid `bg-popover`, a 1px `border-border` and an elevation shadow. It is baked into the primitive:
 
-| Component         | Surface Applied |
-| ----------------- | ------------- |
-| `DialogContent`   | ✅ `liquid-glass` |
-| `AlertDialogContent` | ✅ `liquid-glass` |
-| `SheetContent`    | ✅ `liquid-glass` |
-| `PopoverContent`  | ✅ `liquid-glass` |
-| `DropdownMenuContent` | ✅ `liquid-glass` |
-| `SelectContent`   | ✅ `liquid-glass` |
-| `TabsList`        | ✅ `liquid-glass-inner` |
+| Component              | Surface                                  |
+| ---------------------- | ---------------------------------------- |
+| `DialogContent`        | `bg-popover border border-border` + shadow |
+| `AlertDialogContent`   | `bg-popover border border-border` + shadow |
+| `SheetContent`         | `bg-popover border border-border` + shadow |
+| `PopoverContent`       | `bg-popover border border-border` + shadow |
+| `DropdownMenuContent`  | `bg-popover border border-border` + shadow |
+| `SelectContent`        | `bg-popover border border-border` + shadow |
+| `TabsList`             | `bg-muted` (an inset, no border)          |
 
-**Never add `liquid-glass` manually to these components** — it's baked into the base styling.
+**Never add a surface fill to these components** — it is baked into their base styling.
 
 ### SheetContent Usage
 
@@ -117,25 +117,25 @@ All overlay surfaces use the flat `liquid-glass` surface (solid `bg-popover` + 1
 
 ## Inner Elements
 
-For nested content areas inside panels, use `liquid-glass-inner` (renders as a flat muted inset with 1px border):
+For nested content areas inside panels, use a muted inset: `bg-muted` with a 1px `border-border` when it needs an edge.
 
 ```tsx
-<div className="liquid-glass-inner rounded-2xl border-0 p-4">
+<div className="bg-muted border-border rounded-2xl border p-4">
   {/* nested card-like content */}
 </div>
 ```
 
-For buttons, badges, and toggles, use `liquid-glass-pill` or `liquid-glass-accent` (flat fills, rectangular `rounded-lg` buttons):
+Actions are `<Button>` variants, never painted by hand:
 
 ```tsx
-<Button className="liquid-glass-pill">Secondary Button</Button>
-<Button className="liquid-glass-accent">Accent Button</Button>
+<Button variant="secondary">Secondary Button</Button>
+<Button>Accent Button</Button>
 ```
 
 ## Rules
 
-- **Never add `liquid-glass` manually to `GlassPanel`** — it's automatic.
-- **Never nest GlassPanels more than 1 level deep.** If you need nesting, use `liquid-glass-inner` div instead.
+- **Never add a surface class to `GlassPanel`** — it's automatic.
+- **Never nest GlassPanels more than 1 level deep.** If you need nesting, use a `bg-muted border-border` div instead.
 - **Always use `GlassPanelContent` for padding consistency.** Don't add arbitrary `p-*` classes to the panel itself.
 - **One gutter per panel.** Header, content and footer share a 16px gutter, and a row list uses `px-4` so its text lines up with the header. A caller class (`p-0`, `p-3`, `py-16`) replaces the default at every width.
 - **Headers always have `border-b`.** This separates the title from content.

@@ -73,7 +73,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 
 - **Side:** Always `side="right"` (default) — never left for content panels
 - **Width:** `w-[440px]` standard
-- **Surface:** `liquid-glass` is baked into the base `SheetContent` — flat `bg-popover`, 1px `border-border`, elevation shadow. Never add it manually, and never `border-0`/`bg-transparent`
+- **Surface:** the base `SheetContent` is flat `bg-popover` with a 1px `border-border` and an elevation shadow. Never add a fill, and never `border-0`/`bg-transparent`
 - **Structure:** Header (border-b) → scrollable content → footer (border-t) — content scrolls, header/footer stay fixed
 - **Close:** Use the built-in `showCloseButton` (default true) — don't add manual close buttons
 - **Max one sheet at a time.** Never nest sheets or stack a sheet on a dialog.
@@ -118,8 +118,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
     </SheetHeader>
 
     <div className="flex-1 overflow-y-auto px-6 py-5">
-      {/* Info blocks in flat liquid-glass-inner cards */}
-      <div className="liquid-glass-inner rounded-xl px-4 py-4">
+      {/* Info blocks in flat muted cards */}
+      <div className="bg-muted border-border rounded-xl border px-4 py-4">
         {/* date, time, etc. */}
       </div>
     </div>
