@@ -125,12 +125,14 @@ export function InputBar({
     setCommandMenuDismissed(false);
   }, [commandQuery]);
 
-  // Opening the menu re-reads the prompts, whose sources can change while the
-  // chat is open (a project template the agent committed, a prompt added in
-  // another tab).
+  // Typing a slash re-reads the prompts, whose sources change while the chat is
+  // open: a project template the agent committed, a prompt saved in another
+  // tab. It fires on the slash, not on the menu opening, because a name that
+  // matches nothing loaded yet renders no menu to open.
+  const commandTyped = commandQuery !== null;
   useEffect(() => {
-    if (commandMenuOpen) onPromptsRequested?.();
-  }, [commandMenuOpen, onPromptsRequested]);
+    if (commandTyped) onPromptsRequested?.();
+  }, [commandTyped, onPromptsRequested]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
