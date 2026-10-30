@@ -110,14 +110,66 @@ const tailOffset = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientH
  */
 const atTail = (el: HTMLElement, band = BOTTOM_EPSILON_PX) => tailOffset(el) - el.scrollTop <= band;
 
+/** Messages a group mounts: one per bubble, one per turn in a run. */
+const groupRows = (group: MessageGroup) =>
+  group.type === "assistant-group" ? group.messages.length : 1;
+
+/**
+ * First group of the window: the newest groups that fit the turn and row
+ * limits. The newest group always makes it in, and `AssistantGroup` bounds a
+ * single turn that is larger than the budget on its own.
+ */
+function windowStartFor(groups: readonly MessageGroup[]): number {
+  let rows = 0;
+  let start = groups.length;
+  while (start > 0 && groups.length - start < INITIAL_WINDOW_GROUPS) {
+    const next = start - 1;
+    const cost = groupRows(groups[next]!);
+    if (rows > 0 && rows + cost > WINDOW_ROW_BUDGET) break;
+    rows += cost;
+    start = next;
+  }
+  return start;
+}
+
+/**
+ * First group after revealing earlier ones: at most `WINDOW_GROWTH_GROUPS`
+ * more turns, and no more than one row budget's worth of messages.
+ */
+function revealStartFor(groups: readonly MessageGroup[], from: number): number {
+  let rows = 0;
+  let start = from;
+  while (start > 0 && from - start < WINDOW_GROWTH_GROUPS) {
+    const next = start - 1;
+    const cost = groupRows(groups[next]!);
+    if (rows > 0 && rows + cost > WINDOW_ROW_BUDGET) break;
+    rows += cost;
+    start = next;
+  }
+  return start;
+}
+
 /**
  * Rendering window. A long transcript is thousands of DOM nodes (markdown,
  * highlighting, tool cards), and every layout pass pays for all of them
  * including the composer's per-keystroke autosize reflow. Only the tail is
  * rendered; earlier turns are revealed on demand.
+ *
+ * Counted in rows as well as turns: a coder turn runs hundreds of steps, each
+ * its own message with its own card, so 20 turns of a busy chat is a window of
+ * thousands of mounted components (~2KB of heap each). The row budget is what
+ * bounds that.
  */
 const INITIAL_WINDOW_GROUPS = 20;
 const WINDOW_GROWTH_GROUPS = 30;
+/**
+ * Messages the transcript mounts at once. The window counts turns and rows, and
+ * a single turn larger than the whole budget is cut to it: one number bounds
+ * what a transcript can cost, however a run was shaped.
+ */
+const WINDOW_ROW_BUDGET = 150;
+/** Messages one click of a turn's earlier-steps control adds. */
+const STEP_REVEAL_ROWS = 60;
 
 /**
  * Memoized: the composer draft lives in ChatInterface, so an un-memoized list
@@ -203,7 +255,7 @@ export const MessageList = memo(
     // `pinnedStart`: the window held while they are scrolled away from the bottom.
     const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
     const [pinnedStart, setPinnedStart] = useState<number | null>(null);
-    const tailStart = Math.max(0, groupedMessages.length - INITIAL_WINDOW_GROUPS);
+    const tailStart = useMemo(() => windowStartFor(groupedMessages), [groupedMessages]);
     const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
 
     // Track scroll position. arm/disarm auto-scroll with the scroll position
@@ -222,8 +274,10 @@ export const MessageList = memo(
       observedTopRef.current = el.scrollTop;
       setIsAtBottom(atBottom);
       // Reading back: pin the window where the user left it, so arriving turns
-      // only append below. Back at the bottom, follow the tail again.
+      // only append below. Back at the bottom, follow the tail again, and drop
+      // whatever they revealed on the way: the tail is the whole window again.
       setPinnedStart(atBottom ? null : windowStart);
+      if (atBottom && !isAtBottom) setRevealedFrom(null);
       if (movedUp) {
         // Above the last position we saw: nothing drags the view *up* on its
         // own except the browser safeguarding the reader's place, and that is
@@ -237,7 +291,7 @@ export const MessageList = memo(
         // that must not turn following back on under a reader who left.
         armAutoScroll(true);
       }
-    }, [windowStart, armAutoScroll, userIsDriving]);
+    }, [windowStart, armAutoScroll, userIsDriving, isAtBottom]);
 
     // Input drives the view, never the other way round: wheel, touch and keys
     // release auto-scroll as they happen, before the follow effect can pull the
@@ -476,7 +530,7 @@ export const MessageList = memo(
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground hover:text-foreground text-xs"
-                  onClick={() => setRevealedFrom(Math.max(0, windowStart - WINDOW_GROWTH_GROUPS))}
+                  onClick={() => setRevealedFrom(revealStartFor(groupedMessages, windowStart))}
                 >
                   <History className="mr-1.5 h-3.5 w-3.5" />
                   Show {hiddenMessageCount} earlier{" "}
@@ -845,7 +899,7 @@ function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
 }
 
 /** One step's prose: the answer bubble, a provider error, or progress dots. */
-function AssistantMessageBody({
+const AssistantMessageBody = memo(function AssistantMessageBody({
   message,
   isStreaming,
   hug,
@@ -884,7 +938,11 @@ function AssistantMessageBody({
       )}
     </>
   );
-}
+});
+
+/** Whether two group message lists hold the same message objects. */
+const sameMessages = (a: readonly Message[], b: readonly Message[]) =>
+  a.length === b.length && a.every((message, index) => message === b[index]);
 
 /**
  * Renders a group of assistant turns as a single visual unit:
@@ -894,7 +952,7 @@ function AssistantMessageBody({
  * tool card for every step the turn took. with one condensed line each. See
  * `CompactActivity`.
  */
-function AssistantGroup({
+function AssistantGroupImpl({
   messages,
   isBusy,
   compactActivity,
@@ -905,6 +963,9 @@ function AssistantGroup({
   compactActivity: boolean;
 }) {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
+  // A coder turn runs hundreds of steps, each its own card and bubble, so the
+  // oldest of them fold away behind a control.
+  const [rowsShown, setRowsShown] = useState(WINDOW_ROW_BUDGET);
 
   const toggleThinking = (key: string) => {
     setExpandedThinking((prev) => {
@@ -941,6 +1002,15 @@ function AssistantGroup({
   // Combined response text for the copy button (empty when no turn has text)
   const copyText = getAssistantCopyText(visibleMessages);
 
+  // The steps the step-by-step transcript renders. The newest always are, so a
+  // run in flight stays in view. The condensed one folds a run into a line each,
+  // so it reads every step whether or not they are unfolded.
+  const shownMessages =
+    !compactActivity && visibleMessages.length > rowsShown
+      ? visibleMessages.slice(-rowsShown)
+      : visibleMessages;
+  const foldedSteps = visibleMessages.length - shownMessages.length;
+
   // The turn the run is working on, if any. Only its rows report progress, and
   // the flag is turn-scoped rather than per token. otherwise it drops every
   // time a step pauses to run a tool, and the row blinks. Held as the turn's
@@ -966,29 +1036,44 @@ function AssistantGroup({
         data-transcript-column
         className={`max-w-full min-w-0 space-y-2 md:max-w-[85%] ${compactActivity ? "flex-1" : ""}`}
       >
-        {compactActivity
-          ? compactBlocks(visibleMessages, splitToolCalls).map((block) =>
-              block.kind === "activity" ? (
-                <CompactActivity
-                  key={block.key}
-                  reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
-                  toolCalls={block.steps.flatMap((step) => step.work)}
-                  isActive={block.steps.some((step) => step.id === activeTurn)}
-                  renderCall={ToolCallView}
-                  markOf={toolMark}
-                />
-              ) : block.kind === "attachments" ? (
-                <ToolCallGroup key={block.key} toolCalls={block.toolCalls} />
-              ) : (
-                <AssistantMessageBody
-                  key={block.key}
-                  message={block.message}
-                  isStreaming={isActiveTurn(block.message)}
-                  hug
-                />
-              ),
-            )
-          : visibleMessages.map((message) => (
+        {compactActivity ? (
+          compactBlocks(visibleMessages, splitToolCalls).map((block) =>
+            block.kind === "activity" ? (
+              <CompactActivity
+                key={block.key}
+                reasoning={block.steps.flatMap((step) => (step.thinking ? [step.thinking] : []))}
+                toolCalls={block.steps.flatMap((step) => step.work)}
+                isActive={block.steps.some((step) => step.id === activeTurn)}
+                renderCall={ToolCallView}
+                markOf={toolMark}
+              />
+            ) : block.kind === "attachments" ? (
+              <ToolCallGroup key={block.key} toolCalls={block.toolCalls} />
+            ) : (
+              <AssistantMessageBody
+                key={block.key}
+                message={block.message}
+                isStreaming={isActiveTurn(block.message)}
+                hug
+              />
+            ),
+          )
+        ) : (
+          <>
+            {foldedSteps > 0 && (
+              <div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground text-xs"
+                  onClick={() => setRowsShown((shown) => shown + STEP_REVEAL_ROWS)}
+                >
+                  <History className="mr-1.5 h-3.5 w-3.5" />
+                  Show {foldedSteps} earlier {foldedSteps === 1 ? "step" : "steps"}
+                </Button>
+              </div>
+            )}
+            {shownMessages.map((message) => (
               <div key={messageKey(message)}>
                 {/* Thinking block */}
                 {message.thinking && (
@@ -1035,6 +1120,8 @@ function AssistantGroup({
                 )}
               </div>
             ))}
+          </>
+        )}
 
         {/* Single timestamp + copy action for the group */}
         {timestamp && (
@@ -1058,3 +1145,17 @@ function AssistantGroup({
     </div>
   );
 }
+
+/**
+ * Memoized on what a group renders: `groupMessages` rebuilds every group's
+ * message list whenever one message changes, so a token in the newest turn
+ * would otherwise re-render every card in the window. The message objects of
+ * a settled turn keep their identity, which is what the comparison reads.
+ */
+const AssistantGroup = memo(
+  AssistantGroupImpl,
+  (prev, next) =>
+    prev.compactActivity === next.compactActivity &&
+    prev.isBusy === next.isBusy &&
+    sameMessages(prev.messages, next.messages),
+);

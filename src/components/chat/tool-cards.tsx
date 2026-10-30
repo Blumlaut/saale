@@ -112,10 +112,13 @@ export function describeToolCard(name: string, toolCall: ToolCallData): ToolCard
 /** A turn's tool calls, split by how they have to render. */
 export interface ToolCallSplit {
   /** Attachments: the files the turn is showing the user. Never collapsed. */
-  attachments: ToolCallData[];
+  attachments: readonly ToolCallData[];
   /** The rest. what the turn did. Collapsed into one row when there are several. */
-  work: ToolCallData[];
+  work: readonly ToolCallData[];
 }
+
+/** Handed out for the empty side of a split, so it allocates nothing. */
+const NO_CALLS: readonly ToolCallData[] = Object.freeze([]);
 
 /**
  * Split a turn's calls into the files it showed the user and the calls that
@@ -130,5 +133,8 @@ export function splitToolCalls(calls: readonly ToolCallData[]): ToolCallSplit {
     else work.push(call);
   }
 
-  return { attachments, work };
+  return {
+    attachments: attachments.length > 0 ? attachments : NO_CALLS,
+    work: work.length > 0 ? work : NO_CALLS,
+  };
 }

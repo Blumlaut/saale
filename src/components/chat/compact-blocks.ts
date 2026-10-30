@@ -5,19 +5,19 @@ import type { Message, ToolCallData } from "./types";
 export interface CompactStep {
   id: string;
   thinking: string;
-  work: ToolCallData[];
+  work: readonly ToolCallData[];
 }
 
 /** A block of the condensed transcript: a run of activity, or what a step said. */
 export type CompactBlock =
   | { kind: "activity"; key: string; steps: CompactStep[] }
-  | { kind: "attachments"; key: string; toolCalls: ToolCallData[] }
+  | { kind: "attachments"; key: string; toolCalls: readonly ToolCallData[] }
   | { kind: "message"; key: string; message: Message };
 
 /** A turn's calls, split by how the surface has to render them. */
 export interface CompactSplit {
-  work: ToolCallData[];
-  attachments: ToolCallData[];
+  work: readonly ToolCallData[];
+  attachments: readonly ToolCallData[];
 }
 
 /**

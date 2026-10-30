@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { ComponentType } from "react";
 import { Layers } from "lucide-react";
 import { findToolInfo } from "@/lib/pi/tool-infos";
@@ -25,7 +26,7 @@ export type ToolCallRenderer = ComponentType<{ toolCall: ToolCallData }>;
  * share page fold a run without an owner card becoming reachable from it (see
  * `__tests__/share-redaction-coverage.test.ts`).
  */
-export function CollapsedToolCalls({
+export const CollapsedToolCalls = memo(function CollapsedToolCalls({
   toolCalls,
   renderCall: RenderCall,
 }: {
@@ -49,4 +50,4 @@ export function CollapsedToolCalls({
       ))}
     </ToolCard>
   );
-}
+});

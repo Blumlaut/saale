@@ -39,14 +39,97 @@ const DEFAULT_ROW_MAX = 3;
 /** Characters of a diff shown before scrolling. */
 const DEFAULT_DIFF_MAX = 40;
 
+/** A card with nothing to open mounts no state, which most rows have. */
 export function ToolCard({ model, children }: { model: ToolCardModel; children?: ReactNode }) {
-  const [open, setOpen] = useState(model.defaultOpen ?? false);
-  const Icon = model.icon;
   const body = children ?? (model.blocks?.length ? <ToolBlocks blocks={model.blocks} /> : null);
 
-  const header = (
+  if (!body) {
+    return (
+      <ToolCardFrame
+        model={model}
+        head={
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">
+            {headerContent(model, false, false)}
+          </div>
+        }
+      />
+    );
+  }
+
+  return <ExpandableCard model={model} body={body} />;
+}
+
+/** A card whose body folds away behind its header. */
+function ExpandableCard({ model, body }: { model: ToolCardModel; body: ReactNode }) {
+  const [open, setOpen] = useState(model.defaultOpen ?? false);
+
+  return (
+    <ToolCardFrame
+      model={model}
+      head={
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-xs font-normal"
+        >
+          {headerContent(model, true, open)}
+        </Button>
+      }
+      body={open ? <div className="border-border/30 space-y-1.5 border-t p-2">{body}</div> : null}
+    />
+  );
+}
+
+/** The card's border, its header row and the actions that sit beside it. */
+function ToolCardFrame({
+  model,
+  head,
+  body,
+}: {
+  model: ToolCardModel;
+  head: ReactNode;
+  body?: ReactNode;
+}) {
+  return (
+    <div className="liquid-glass-inner rounded-xl">
+      <div className="flex items-center">
+        {head}
+        <ToolCardActions model={model} />
+      </div>
+      {body}
+    </div>
+  );
+}
+
+function ToolCardActions({ model }: { model: ToolCardModel }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5 pr-3">
+      {model.action && (
+        <Button variant="ghost" size="icon-xs" asChild>
+          <a
+            href={model.action.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={model.action.label}
+          >
+            <ExternalLink className="size-3" />
+          </a>
+        </Button>
+      )}
+      <ToolStatusBadge status={model.status} />
+    </div>
+  );
+}
+
+/** The expander mark, the icon, the title and the detail. */
+function headerContent(model: ToolCardModel, expandable: boolean, open: boolean) {
+  const Icon = model.icon;
+
+  return (
     <>
-      {body ? (
+      {expandable ? (
         open ? (
           <ChevronDown className="text-muted-foreground size-3 shrink-0" />
         ) : (
@@ -67,44 +150,6 @@ export function ToolCard({ model, children }: { model: ToolCardModel; children?:
         </span>
       )}
     </>
-  );
-
-  return (
-    <div className="liquid-glass-inner rounded-xl">
-      <div className="flex items-center">
-        {body ? (
-          <Button
-            variant="ghost"
-            size="xs"
-            aria-expanded={open}
-            onClick={() => setOpen((prev) => !prev)}
-            className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-lg px-3 py-2 text-xs font-normal"
-          >
-            {header}
-          </Button>
-        ) : (
-          <div className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2">{header}</div>
-        )}
-
-        <div className="flex shrink-0 items-center gap-1.5 pr-3">
-          {model.action && (
-            <Button variant="ghost" size="icon-xs" asChild>
-              <a
-                href={model.action.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={model.action.label}
-              >
-                <ExternalLink className="size-3" />
-              </a>
-            </Button>
-          )}
-          <ToolStatusBadge status={model.status} />
-        </div>
-      </div>
-
-      {body && open && <div className="border-border/30 space-y-1.5 border-t p-2">{body}</div>}
-    </div>
   );
 }
 
