@@ -75,6 +75,25 @@ export function promptPickerItems(prompts: readonly PromptEntry[]): PromptPicker
 }
 
 /**
+ * Prompts matching a `/`-prefixed query.
+ * Name matches rank above description matches; the given order within each.
+ */
+export function searchPrompts(
+  prompts: readonly PromptPickerItem[],
+  query: string,
+): PromptPickerItem[] {
+  const wanted = query.trim().toLowerCase();
+  if (!wanted) return [...prompts];
+
+  const byName = prompts.filter((prompt) => prompt.name.startsWith(wanted));
+  const byDescription = prompts.filter(
+    (prompt) =>
+      !prompt.name.startsWith(wanted) && prompt.description.toLowerCase().includes(wanted),
+  );
+  return [...byName, ...byDescription];
+}
+
+/**
  * Expand `/name args` against the prompts on offer, or null when the text names
  * no prompt.
  */
