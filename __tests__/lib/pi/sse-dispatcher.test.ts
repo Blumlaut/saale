@@ -219,6 +219,49 @@ describe("SseDispatcher", () => {
     });
   });
 
+  describe("dead clients", () => {
+    /** A controller the runtime already closed (client gone, teardown never reported). */
+    function createClosedController(): ReadableStreamDefaultController {
+      let captured!: ReadableStreamDefaultController;
+      new ReadableStream({
+        start(controller) {
+          captured = controller;
+          controller.close();
+        },
+      });
+      return captured;
+    }
+
+    it("drops a client whose controller is already closed, without logging", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      await dispatcher.subscribe(createClosedController(), new TextEncoder(), -1);
+      expect(dispatcher.clientCount).toBe(1);
+
+      emitLive(dispatcher, 9, "tool_end", { toolCallId: "tc-1", result: "done", isError: false });
+
+      expect(dispatcher.clientCount).toBe(0);
+      expect(busListeners.size).toBe(0);
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+
+    it("keeps forwarding to the live client after dropping a dead one", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const live = createMockController();
+      await dispatcher.subscribe(createClosedController(), new TextEncoder(), -1);
+      await dispatcher.subscribe(live.controller, live.encoder, -1);
+
+      emitLive(dispatcher, 1, "tool_end", { toolCallId: "tc-1" });
+      emitLive(dispatcher, 2, "done", {});
+
+      expect(dispatcher.clientCount).toBe(1);
+      expect(live.enqueueMock).toHaveBeenCalledTimes(2);
+      expect(decodeChunks(live.chunks)).toContain("id: 2");
+      expect(errorSpy).not.toHaveBeenCalled();
+      errorSpy.mockRestore();
+    });
+  });
+
   describe("emitLocal", () => {
     it("sends an event to one client without buffering (no id line)", async () => {
       const mock = createMockController();

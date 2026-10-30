@@ -18,16 +18,7 @@
  * teardowns the runtime never reports.
  */
 
-const CLOSED_CONTROLLER_ERROR_CODE = "ERR_INVALID_STATE";
-
-function isClosedControllerError(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code?: unknown }).code === CLOSED_CONTROLLER_ERROR_CODE
-  );
-}
+import { isClosedControllerError } from "./sse-controller";
 
 export interface SseHeartbeat {
   /** Stop the ping loop. Safe to call multiple times. */

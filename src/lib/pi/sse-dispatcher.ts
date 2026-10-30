@@ -22,6 +22,7 @@
  */
 
 import { getLiveRunEvents } from "./sse-buffer";
+import { isClosedControllerError } from "./sse-controller";
 import { subscribeSessionEvents, type SessionStreamEvent } from "./session-events";
 import { formatSseEvent } from "./stream-logic";
 
@@ -145,6 +146,8 @@ export class SseDispatcher {
   private forward(evt: SessionStreamEvent, only?: SseClient): void {
     const targets = only ? [only] : [...this.clients.values()];
     for (const client of targets) {
+      // An enqueue failure earlier in this pass may have dropped the client.
+      if (this.clients.get(client.controller) !== client) continue;
       // Negative IDs only occur when buffering failed. always forward them.
       // Otherwise skip only what this client has genuinely seen already.
       if (evt.id >= 0 && client.seenIds.has(evt.id)) continue;
@@ -171,6 +174,13 @@ export class SseDispatcher {
     try {
       client.controller.enqueue(client.encoder.encode(formatSseEvent(event, data, id)));
     } catch (err) {
+      // The controller is closed, so this client is gone. Drop it before the
+      // next event logs the same failure (the runtime often never reports the
+      // disconnect through `cancel()` or the request signal).
+      if (isClosedControllerError(err)) {
+        this.unsubscribe(client.controller);
+        return;
+      }
       console.error(`Failed to enqueue SSE event "${event}" for session ${this.sessionId}:`, err);
     }
   }

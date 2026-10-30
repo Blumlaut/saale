@@ -254,6 +254,7 @@ export async function GET(
     stopSupervisor();
     heartbeat?.stop();
     if (streamController) {
+      dispatcher.unsubscribe(streamController);
       try {
         streamController.close();
       } catch (err) {
