@@ -82,20 +82,24 @@ function CommitRow({
               !open && "-rotate-90",
             )}
           />
-          <span className="text-muted-foreground shrink-0 pt-px font-mono text-[11px]">
-            {commit.shortSha}
-          </span>
-          <span className="min-w-0 flex-1 text-xs break-words">
-            {commit.pushed === false && (
-              <ArrowUp
-                aria-label="Not pushed"
-                className="-mt-0.5 mr-1 inline h-3 w-3 text-amber-600 dark:text-amber-400"
-              />
-            )}
-            {commit.subject}
-          </span>
-          <span className="text-muted-foreground shrink-0 pt-px text-[11px] tabular-nums">
-            {formatRelativeDate(commit.date)}
+          {/* The subject gets the whole width and the second line carries the
+              numbers: a three-line wrap per commit makes a history unreadable. */}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline gap-2">
+              <span className="line-clamp-2 min-w-0 flex-1 text-xs">{commit.subject}</span>
+              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
+                {formatRelativeDate(commit.date)}
+              </span>
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5">
+              <span className="text-muted-foreground font-mono text-[10px]">{commit.shortSha}</span>
+              {commit.pushed === false && (
+                <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                  <ArrowUp aria-label="Not pushed" className="h-2.5 w-2.5" />
+                  local
+                </span>
+              )}
+            </span>
           </span>
         </button>
         <DropdownMenu>

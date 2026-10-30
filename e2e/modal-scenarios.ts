@@ -553,6 +553,21 @@ async function mockCoderProjects(page: Page) {
             worktreeCount: 1,
             chatCount: 1,
             lastActivityAt: NOW,
+            // The landing page lists a project's latest chats under it.
+            chats: [
+              {
+                id: "e2e-coder-chat",
+                title: "A coder chat with a long title that has to wrap instead of widen",
+                lastActivityAt: NOW,
+                pinned: false,
+                isGenerating: false,
+                worktree: {
+                  path: "worktrees/e2e/c-1a2b3c4d",
+                  branch: "wt/c-1a2b3c4d",
+                  status: "active",
+                },
+              },
+            ],
           },
         ],
       },

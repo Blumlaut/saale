@@ -146,8 +146,15 @@ const DIFF = [
   "",
 ].join("\n");
 
+/** What one test wants the panel to read differently from the shared fixtures. */
+interface CoderMockOptions {
+  deleteStatus?: number;
+  /** Fields to replace on the worktree status, e.g. an empty change list. */
+  status?: Partial<typeof STATUS>;
+}
+
 /** Every coder route the panel reads, stubbed. */
-async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
+async function mockCoder(page: Page, options: CoderMockOptions = {}) {
   // The folded chat is a stub, so its conversation has to answer too.
   await page.route(new RegExp(`/api/chat/sessions/${FOLDED_CHAT.id}/messages$`), (route) =>
     route.fulfill({ json: { messages: [], session: { title: FOLDED_CHAT.title } } }),
@@ -191,7 +198,7 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
   });
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/status(\\?|$)`), (route) =>
-    route.fulfill({ json: STATUS }),
+    route.fulfill({ json: { ...STATUS, ...options.status } }),
   );
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/diff\\?`), (route) =>
@@ -279,10 +286,10 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
 }
 
 /** A coder page with the API stubbed, on the route this test measures. */
-async function openCoder(browser: Browser, path: string) {
+async function openCoder(browser: Browser, path: string, options: CoderMockOptions = {}) {
   const context = await sessionContext(browser);
   const page = await context.newPage();
-  await mockCoder(page);
+  await mockCoder(page, options);
   await gotoAndSettle(page, path);
   return { context, page };
 }
@@ -414,6 +421,65 @@ test.describe("coder panel", () => {
 
     await expect.poll(() => sent.length).toBe(1);
     expect(sent[0]).toEqual({ action: "push" });
+
+    await context.close();
+  });
+
+  test("switches branch from the branch menu", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/branches$`), (route) =>
+      route.fulfill({
+        json: {
+          branches: [
+            { name: BRANCH, upstream: "", current: true },
+            { name: "main", upstream: "origin/main", current: false },
+          ],
+        },
+      }),
+    );
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="Branches"]').click();
+    await shown(page, '[role="menuitem"]:has-text("main")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "branch", name: "main" });
+
+    await context.close();
+  });
+
+  test("stashes the worktree from the panel menu", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="More git actions"]').click();
+    await shown(page, '[role="menuitem"]:has-text("Stash changes")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "stash" });
+
+    await context.close();
+  });
+
+  test("keeps the commit dialog away from a clean tree", async ({ browser }) => {
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {
+        status: { changes: [] },
+      },
+    );
+
+    await expect(shownText(page, "Worktree clean. All changes are committed.")).toBeVisible();
+    await expect(page.locator('button:has-text("Commit…")')).toHaveCount(0);
 
     await context.close();
   });
