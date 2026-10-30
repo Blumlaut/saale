@@ -47,7 +47,9 @@ workspace.
 
 ## Multi-User?
 
-Yes, Saale supports global and "local" providers, local providers are configured by users themselves, so a user is not locked into the global models.
+Yes, Saale supports multiple users with permission groups.
+
+Additionally, there are global and "local" providers, local providers are configured by users themselves, so a user is not locked into the global models.
 
 ## Infrastructure Management?
 
