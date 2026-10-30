@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
+import { useColorMode } from "@/hooks/use-color-mode";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FILE_MODIFIED_HEADER, MAX_PREVIEW_BYTES } from "@/lib/files/config";
@@ -50,8 +50,7 @@ export function FileView({
   /** Told when the editor starts or stops holding unsaved text. */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const { resolvedTheme } = useTheme();
-  const theme = resolvedTheme === "dark" ? "dark" : "light";
+  const mode = useColorMode();
   const [view, setView] = useState<View>("code");
   const [file, setFile] = useState<LoadedFile | null>(null);
   const [error, setError] = useState("");
@@ -216,7 +215,7 @@ export function FileView({
               key={filePath}
               content={file?.text ?? ""}
               language={languageFromPath(filePath)}
-              theme={theme}
+              mode={mode}
               readOnly={!editable}
               onContentChange={save.onChange}
               onSave={save.save}

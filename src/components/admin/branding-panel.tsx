@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useTheme } from "next-themes";
+import { useColorMode } from "@/hooks/use-color-mode";
 import { AgentAvatar } from "@/components/brand/agent-avatar";
 import { fetchJson } from "@/lib/http";
 import {
@@ -173,9 +173,9 @@ export function BrandingPanel({
   const [uploading, setUploading] = useState(false);
 
   // The preview opens in the mode the admin is looking at, and switches on its own.
-  const { resolvedTheme } = useTheme();
+  const mode = useColorMode();
   const [previewOverride, setPreviewOverride] = useState<BrandMode | null>(null);
-  const previewMode = previewOverride ?? (resolvedTheme === "dark" ? "dark" : "light");
+  const previewMode = previewOverride ?? mode;
 
   const setToken = (mode: BrandMode, key: BrandColorKey, hex: string | undefined) => {
     const next: BrandColors = { light: { ...colors.light }, dark: { ...colors.dark } };

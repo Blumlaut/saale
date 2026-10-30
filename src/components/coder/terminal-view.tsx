@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "next-themes";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { Ban, CornerDownLeft, Trash2, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useColorMode } from "@/hooks/use-color-mode";
 import { terminalTheme } from "./terminal-theme";
 import { useTerminal, type TerminalSink, type TerminalSize } from "./use-terminal";
 
@@ -59,11 +59,6 @@ function specialKey(event: React.KeyboardEvent<HTMLInputElement>): string | null
   return null;
 }
 
-/** Whether the app is in its dark theme, which the terminal's colours follow. */
-function isDark(): boolean {
-  return document.documentElement.classList.contains("dark");
-}
-
 export function TerminalView({
   sessionId,
   worktree,
@@ -98,7 +93,7 @@ function TerminalPanel({
   worktree: { path: string; branch: string };
   registerRun?: ((run: (command: string) => void) => void) | undefined;
 }) {
-  const { resolvedTheme } = useTheme();
+  const mode = useColorMode();
   const surfaceRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -147,7 +142,6 @@ function TerminalPanel({
       cursorBlink: true,
       // The prompt row under the terminal is where the keystrokes are typed.
       disableStdin: true,
-      theme: terminalTheme(styles, isDark()),
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
@@ -184,12 +178,13 @@ function TerminalPanel({
     };
   }, [resize]);
 
+  // Paints the terminal, including on the mount that follows its creation.
   useEffect(() => {
     const surface = surfaceRef.current;
     const terminal = terminalRef.current;
     if (!surface || !terminal) return;
-    terminal.options.theme = terminalTheme(getComputedStyle(surface), resolvedTheme === "dark");
-  }, [resolvedTheme]);
+    terminal.options.theme = terminalTheme(getComputedStyle(surface), mode === "dark");
+  }, [mode]);
 
   // Let the parent launch commands into this terminal (e.g. a script button).
   const runCommand = useCallback(

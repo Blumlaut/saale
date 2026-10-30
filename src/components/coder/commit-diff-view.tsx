@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Loader2, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
+import { useColorMode } from "@/hooks/use-color-mode";
 import { fetchJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { basenameOf, languageFromPath, previewKindFromPath } from "@/lib/editor/editor-utils";
@@ -42,8 +42,7 @@ export function CommitDiffView({
   initialPath?: string | null;
   onClose: () => void;
 }) {
-  const { resolvedTheme } = useTheme();
-  const theme = resolvedTheme === "dark" ? "dark" : "light";
+  const mode = useColorMode();
   const { files, error: filesError, loading: filesLoading } = useCommitFiles(sessionId, commit.sha);
   const [selectedPath, setSelectedPath] = useState<string | null>(initialPath);
   const [content, setContent] = useState<CommitDiffFileContent | null>(null);
@@ -190,7 +189,7 @@ export function CommitDiffView({
               original={content.original ?? ""}
               modified={content.modified ?? ""}
               language={languageFromPath(content.path)}
-              theme={theme}
+              mode={mode}
             />
           ) : null
         ) : (

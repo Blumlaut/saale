@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type * as monaco from "monaco-editor";
 import { Loader2 } from "lucide-react";
 import { initMonaco } from "@/lib/editor/monaco";
+import type { ColorMode } from "@/lib/theme";
 
 const MONACO_FONT = "Geist Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
@@ -19,7 +20,7 @@ export interface MonacoViewProps {
   content: string;
   /** Monaco language id; "" renders as plaintext. */
   language: string;
-  theme: "light" | "dark";
+  mode: ColorMode;
   fontSize?: number;
   readOnly?: boolean;
   onContentChange?: (content: string) => void;
@@ -30,7 +31,7 @@ export interface MonacoViewProps {
 export function MonacoView({
   content,
   language,
-  theme,
+  mode,
   fontSize = 12,
   readOnly = true,
   onContentChange,
@@ -134,8 +135,8 @@ export function MonacoView({
   }, [language]);
 
   useEffect(() => {
-    void initMonaco().then((m) => m.editor.setTheme(theme === "dark" ? "vs-dark" : "vs"));
-  }, [theme]);
+    void initMonaco().then((m) => m.editor.setTheme(mode === "dark" ? "vs-dark" : "vs"));
+  }, [mode]);
 
   return (
     <div className="relative h-full w-full">

@@ -7,6 +7,7 @@ import { Loader2, Palette } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { InstallAppCard } from "@/components/pwa/install-app-card";
+import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
 import { SidebarNavEditor } from "../components/sidebar-nav-editor";
 import { useUserSettings } from "../components/user-settings-provider";
 
@@ -34,12 +35,12 @@ export function AppearanceSection() {
             <div className="space-y-2">
               <Label>Theme</Label>
               <div className="grid grid-cols-3 gap-3">
-                {(["light", "dark", "system"] as const).map((t) => (
+                {THEME_NAMES.map((t) => (
                   <button
                     key={t}
                     onClick={() => setTheme(t)}
                     className={`rounded-2xl border-2 p-4 text-center transition-all ${
-                      theme === t
+                      (theme ?? DEFAULT_THEME) === t
                         ? "border-primary bg-primary/5"
                         : "border-border/50 hover:border-border"
                     }`}

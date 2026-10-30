@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ChevronDown, ChevronRight, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useColorMode } from "@/hooks/use-color-mode";
 
 /**
  * The one sidebar. Both the dashboard and the admin panel render their items
@@ -261,7 +262,8 @@ export function useRowFlip(order: readonly string[]) {
 
 /** Console footer: version, theme toggle, orange tick. */
 export function SidebarFooter() {
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
+  const mode = useColorMode();
 
   return (
     <div className="border-border/60 mt-4 border-t px-3 pt-3">
@@ -273,7 +275,7 @@ export function SidebarFooter() {
           variant="ghost"
           size="icon"
           className="size-7 rounded-md"
-          onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          onClick={() => setTheme(mode === "dark" ? "light" : "dark")}
           aria-label="Toggle theme"
         >
           <Sun className="h-3.5 w-3.5 dark:hidden" />

@@ -13,8 +13,11 @@
  * `__tests__/lib/branding/theme.test.ts` reads the CSS and fails on drift.
  */
 
-export const BRAND_MODES = ["light", "dark"] as const;
-export type BrandMode = (typeof BRAND_MODES)[number];
+import { COLOR_MODES, type ColorMode } from "@/lib/theme";
+
+/** The schemes an instance carries its own accents for. */
+export const BRAND_MODES = COLOR_MODES;
+export type BrandMode = ColorMode;
 
 export interface BrandColorToken {
   key: BrandColorKey;

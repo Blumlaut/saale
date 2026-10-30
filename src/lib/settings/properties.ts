@@ -37,6 +37,7 @@ import {
   type SidebarNavEntry,
 } from "@/lib/navigation/sidebar-nav";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
+import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
 import {
   BRAND_COLOR_KEYS,
   BRAND_MODES,
@@ -117,8 +118,6 @@ export interface AdminProperty extends PropertyCommon {
 export type Property = UserProperty | AdminProperty;
 
 // ─── Shared schemas ──────────────────────────────────────────────────────────
-
-const THEMES = ["light", "dark", "system"] as const;
 
 const THINKING_LEVEL_VALUES = THINKING_LEVEL_OPTIONS.map((option) => option.id);
 const EXPOSURE_VALUES = TOOL_EXPOSURES.map((option) => option.value);
@@ -243,15 +242,15 @@ const SCALAR_PROPERTIES: UserProperty[] = [
     key: "theme",
     group: GROUP.appearance,
     label: "Theme",
-    description: 'Interface colour scheme: "light", "dark" or "system".',
-    values: THEMES,
+    description: `Interface colour scheme: ${THEME_NAMES.map((name) => `"${name}"`).join(", ")}.`,
+    values: THEME_NAMES,
     columns: ["theme"],
     apply: "none",
     scope: "user",
-    schema: z.enum(THEMES),
+    schema: z.enum(THEME_NAMES),
     read: (row) => row.theme,
     write: (_row, value) => ({
-      theme: value === null ? THEMES[2] : String(value),
+      theme: value === null ? DEFAULT_THEME : String(value),
     }),
   },
   {
