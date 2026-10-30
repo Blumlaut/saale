@@ -30,6 +30,7 @@ import {
   settleSentMessage,
 } from "@/lib/chat/outbound-message";
 import { sendChatMessage } from "@/lib/chat/send-message";
+import type { UploadProgress } from "@/lib/files/upload-client";
 import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
@@ -99,6 +100,9 @@ export function ChatInterface({
   // sends a new message or pushes a queued one.
   const [queuePaused, setQueuePaused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // Bytes of an attachment batch on their way to the workspace. The composer
+  // shows them; the turn has not started yet.
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   // Composer draft. persisted per session, so it survives navigation.
@@ -483,7 +487,10 @@ export function ChatInterface({
       abortRef.current = abortController;
 
       try {
-        const result = await sendChatMessage(sessionId, content, files, abortController.signal);
+        const result = await sendChatMessage(sessionId, content, files, {
+          signal: abortController.signal,
+          onProgress: setUploadProgress,
+        });
 
         // Sending anything resumes a stopped queue (the server clears the hold
         // when it accepts the message).
@@ -1041,6 +1048,7 @@ export function ChatInterface({
             tokenUsage={tokenUsage}
             isCompacting={isCompacting}
             onCompact={handleCompact}
+            uploadProgress={uploadProgress}
           />
 
           <PluginWidgetPanel widgets={pluginWidgets} placement="belowEditor" />

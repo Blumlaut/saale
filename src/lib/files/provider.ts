@@ -45,6 +45,12 @@ export interface FileProvider {
 
   write(path: string, data: Buffer): Promise<void>;
 
+  /** Add bytes to the end of a file, creating it. How a chunked upload is assembled. */
+  append(path: string, data: Buffer): Promise<void>;
+
+  /** Duplicate a file without pulling its bytes into memory. */
+  copy(from: string, to: string): Promise<void>;
+
   createDirectory(path: string): Promise<void>;
 
   rename(from: string, to: string): Promise<void>;

@@ -11,7 +11,15 @@ vi.mock("@/lib/http", async (importOriginal) => ({
 
 vi.mock("@/lib/download", () => ({ downloadFile: vi.fn() }));
 
+vi.mock("@/lib/files/upload-client", () => ({ uploadFile: vi.fn() }));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
 import { fetchJson } from "@/lib/http";
+import { uploadFile } from "@/lib/files/upload-client";
+import { toast } from "sonner";
 import { downloadFile } from "@/lib/download";
 import { FileBrowser } from "@/components/files/file-browser";
 import type { FileListing } from "@/lib/files/types";
@@ -141,6 +149,60 @@ describe("FileBrowser", () => {
 
     // From the anchor to the clicked row, inclusive  all three.
     expect(await screen.findByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("shows how far an upload has got", async () => {
+    let land: (result: { ok: true; name: string }) => void = () => {};
+    vi.mocked(uploadFile).mockImplementation(async (file, options) => {
+      options.onProgress?.({ name: file.name, sent: 512, total: 1024, index: 1, count: 1 });
+      return new Promise((resolve) => {
+        land = resolve;
+      });
+    });
+
+    const { container } = renderBrowser();
+    await screen.findByText("artifacts");
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["x"], "snapshot.tar", { type: "application/x-tar" })] },
+    });
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("snapshot.tar");
+    expect(status).toHaveTextContent("50%");
+    // The browser knows which workspace and folder it is uploading into.
+    expect(vi.mocked(uploadFile).mock.calls[0]?.[1]).toMatchObject({
+      target: "council:c1",
+      dir: ROOT,
+    });
+
+    land({ ok: true, name: "snapshot.tar" });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("offers an overwrite when the name is taken", async () => {
+    vi.mocked(uploadFile).mockResolvedValueOnce({
+      ok: false,
+      name: "notes.md",
+      reason: "exists",
+      message: "1 file(s) already exist",
+    });
+
+    const { container } = renderBrowser();
+    await screen.findByText("artifacts");
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["new"], "notes.md", { type: "text/markdown" })] },
+    });
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith("1 file already exists here", expect.anything());
+    });
+    const options = vi.mocked(toast.warning).mock.calls[0]?.[1] as
+      { action?: { label?: string } } | undefined;
+    expect(options?.action?.label).toBe("Overwrite");
   });
 
   it("keeps the occasional actions in the menu", async () => {

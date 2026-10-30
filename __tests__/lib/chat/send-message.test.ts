@@ -1,12 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const { mockStageFile, mockDiscardStagedUpload } = vi.hoisted(() => ({
+  mockStageFile: vi.fn(),
+  mockDiscardStagedUpload: vi.fn(),
+}));
+
+vi.mock("@/lib/files/upload-client", () => ({
+  stageFile: mockStageFile,
+  discardStagedUpload: mockDiscardStagedUpload,
+}));
+
 import { sendChatMessage } from "@/lib/chat/send-message";
 
 const mockFetch = vi.fn();
 
 beforeEach(() => {
   mockFetch.mockReset();
+  mockStageFile.mockReset();
+  mockDiscardStagedUpload.mockReset();
   vi.stubGlobal("fetch", mockFetch);
 });
+
+/** A file whose declared size the test chooses, without allocating the bytes. */
+function sizedFile(name: string, type: string, size: number): File {
+  const file = new File([new Uint8Array(1)], name, { type });
+  Object.defineProperty(file, "size", { value: size });
+  return file;
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -60,18 +80,87 @@ describe("sendChatMessage", () => {
     });
   });
 
-  it("sends files as multipart form data", async () => {
+  it("stages files first and posts their ids with the message", async () => {
+    mockStageFile.mockResolvedValueOnce({
+      ok: true,
+      staged: {
+        uploadId: "u-1",
+        fileName: "snapshot.tar",
+        size: 42,
+        mimeType: "application/x-tar",
+      },
+    });
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m1" } }));
-    const file = new File(["x"], "x.png", { type: "image/png" });
+    const file = sizedFile("snapshot.tar", "application/x-tar", 42);
 
     await sendChatMessage("sess-1", "look", [file]);
 
-    const [, init] = mockFetch.mock.calls[0]!;
-    expect(init.body).toBeInstanceOf(FormData);
-    expect((init.body as FormData).get("content")).toBe("look");
-    expect((init.body as FormData).getAll("files")).toHaveLength(1);
-    // No content-type header  the browser sets the multipart boundary.
-    expect(init.headers).toBeUndefined();
+    // The bytes went up in chunks, each named after the same staged upload.
+    expect(mockStageFile).toHaveBeenCalledWith(
+      file,
+      expect.objectContaining({ target: "user", batch: { index: 1, count: 1 } }),
+    );
+
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toBe("/api/chat/sessions/sess-1/messages");
+    expect(JSON.parse(init.body as string)).toEqual({
+      content: "look",
+      attachments: [
+        { uploadId: "u-1", fileName: "snapshot.tar", size: 42, mimeType: "application/x-tar" },
+      ],
+    });
+  });
+
+  it("refuses a batch over the attachment cap before staging anything", async () => {
+    const files = Array.from({ length: 21 }, (_, index) =>
+      sizedFile(`part-${index}.bin`, "application/octet-stream", 4),
+    );
+
+    const result = await sendChatMessage("sess-1", "look", files);
+
+    expect(result).toEqual({ kind: "error", message: "Attach at most 20 files at a time" });
+    expect(mockStageFile).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("drops the staged bytes when the message is refused", async () => {
+    mockStageFile.mockResolvedValueOnce({
+      ok: true,
+      staged: { uploadId: "u-1", fileName: "snapshot.tar", size: 4, mimeType: "application/x-tar" },
+    });
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "Content is required" }, 400));
+
+    const result = await sendChatMessage("sess-1", "  ", [
+      sizedFile("snapshot.tar", "application/x-tar", 4),
+    ]);
+
+    expect(result).toEqual({ kind: "error", message: "Content is required" });
+    expect(mockDiscardStagedUpload).toHaveBeenCalledWith("user", "u-1");
+  });
+
+  it("refuses a file over the ceiling before staging it", async () => {
+    const result = await sendChatMessage("sess-1", "look", [
+      sizedFile("snapshot.tar", "application/x-tar", 251 * 1024 * 1024),
+    ]);
+
+    expect(result.kind).toBe("error");
+    expect(result.kind === "error" && result.message).toMatch(/snapshot.tar is 251.0 MB/);
+    expect(mockStageFile).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("reports why a staged upload was refused", async () => {
+    mockStageFile.mockResolvedValueOnce({
+      ok: false,
+      name: "snapshot.tar",
+      reason: "too-large",
+      message: "File is larger than 2.0 GB",
+    });
+
+    const result = await sendChatMessage("sess-1", "look", [new File(["x"], "snapshot.tar")]);
+
+    expect(result).toEqual({ kind: "error", message: "File is larger than 2.0 GB" });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("maps 409 to conflict", async () => {
@@ -110,7 +199,7 @@ describe("sendChatMessage", () => {
   it("forwards the abort signal", async () => {
     const controller = new AbortController();
     mockFetch.mockResolvedValueOnce(jsonResponse({ message: { id: "m1" } }));
-    await sendChatMessage("s", "hi", undefined, controller.signal);
+    await sendChatMessage("s", "hi", undefined, { signal: controller.signal });
     const [, init] = mockFetch.mock.calls[0]!;
     expect(init.signal).toBe(controller.signal);
   });

@@ -24,6 +24,7 @@ import {
   FileModifiedError,
   FileNotFoundError,
   FilePathEscapeError,
+  FileUploadError,
   WorkspaceUnavailableError,
 } from "./errors";
 import { isSafeEntryName, requireWithinRoot } from "./paths";
@@ -96,6 +97,9 @@ export function fileErrorResponse(err: unknown, context: string): NextResponse {
   }
   if (err instanceof FileLimitError) {
     return NextResponse.json({ error: err.message }, { status: 413 });
+  }
+  if (err instanceof FileUploadError) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
   }
   if (err instanceof WorkspaceUnavailableError) {
     return NextResponse.json({ error: err.message }, { status: 409 });

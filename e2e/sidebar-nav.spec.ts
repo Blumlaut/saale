@@ -36,6 +36,11 @@ const MOBILE = { width: 375, height: 667 };
  * filter uses, so a visible Council item cannot slip past these assertions
  * unnoticed.
  */
+/** Items that start hidden: their switch is off after a reset. */
+const OPT_IN_LABELS = new Set(
+  SIDEBAR_NAV_ITEMS.filter((item) => item.defaultHidden === true).map((item) => item.label),
+);
+
 const NAV_LABELS = [
   "Chat",
   "Mail",
@@ -249,7 +254,7 @@ test.describe("sidebar customization", () => {
     for (const item of await switches.all()) {
       // The opt-in items start hidden, so only the everyday ones are on.
       const optIn = (await item.getAttribute("aria-label"))?.match(/^Show (\w+) in the sidebar$/);
-      if (optIn && (optIn[1] === "Coder" || optIn[1] === "Council")) continue;
+      if (optIn?.[1] && OPT_IN_LABELS.has(optIn[1])) continue;
       await expect(item).toBeChecked();
     }
     await expect(page.getByRole("button", { name: "Reset" })).toBeDisabled();

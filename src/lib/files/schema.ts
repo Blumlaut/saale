@@ -12,7 +12,8 @@
 import { z } from "zod";
 import { isSafeEntryName } from "./paths";
 
-const path = z.string().min(1).max(4096);
+/** A directory, relative or absolute. Empty is the workspace root. */
+const path = z.string().max(4096);
 const name = z
   .string()
   .min(1)
@@ -32,3 +33,27 @@ export const writeFileSchema = z.object({
   /** Save over a file that changed, after the caller has seen it changed. */
   force: z.boolean().optional(),
 });
+
+/**
+ * Chunked upload bodies.
+ *
+ * `size` is what the client says the whole file is, and every step checks
+ * against it: the last chunk has to land exactly on it. A file that disagrees is
+ * refused rather than written short.
+ */
+export const beginUploadSchema = z.object({
+  path,
+  name,
+  size: z.number().int().nonnegative(),
+  /** Stage only. no destination: whoever adopts the upload picks the paths. */
+  inbox: z.boolean().optional(),
+});
+
+export const completeUploadSchema = z.object({
+  path,
+  name,
+  size: z.number().int().nonnegative(),
+  uploadId: z.string().min(1),
+});
+
+export const abortUploadSchema = z.object({ uploadId: z.string().min(1) });

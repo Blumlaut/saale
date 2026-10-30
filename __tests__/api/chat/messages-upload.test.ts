@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -101,19 +102,28 @@ function params() {
   return { params: Promise.resolve({ sessionId: SESSION_ID }) };
 }
 
-/** Build a multipart request the same way the chat client does. */
-function multipartRequest(
+/** Leave bytes where the chunked upload endpoints would have, and name them. */
+async function stageUpload(
+  name: string,
+  data: Uint8Array,
+  type: string,
+): Promise<{ uploadId: string; fileName: string; mimeType: string; size: number }> {
+  const uploadId = randomUUID();
+  const staging = path.join(userRoot, ".tmp");
+  await fs.mkdir(staging, { recursive: true });
+  await fs.writeFile(path.join(staging, `upload-${uploadId}`), data);
+  return { uploadId, fileName: name, mimeType: type, size: data.length };
+}
+
+/** A message carrying staged attachments, the way the composer sends one. */
+function attachmentRequest(
   content: string,
-  files: Array<[name: string, data: Uint8Array<ArrayBuffer>, type: string]>,
+  attachments: Array<{ uploadId: string; fileName: string; mimeType: string; size: number }>,
 ) {
-  const formData = new FormData();
-  formData.append("content", content);
-  for (const [name, data, type] of files) {
-    formData.append("files", new File([data], name, { type }));
-  }
   return new NextRequest(`http://localhost/api/chat/sessions/${SESSION_ID}/messages`, {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, attachments }),
   });
 }
 
@@ -163,15 +173,13 @@ beforeEach(async () => {
 
 // ─── Happy paths ─────────────────────────────────────────────────────────────
 
-describe("POST multipart with file attachments", () => {
+describe("POST with staged attachments", () => {
   it("stores a non-image file and appends its agent-workspace path to the message", async () => {
     const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"
     stubDbMessage("msg-1");
+    const staged = await stageUpload("report.pdf", pdfBytes, "application/pdf");
 
-    const res = await POST(
-      multipartRequest("check this out", [["report.pdf", pdfBytes, "application/pdf"]]),
-      params(),
-    );
+    const res = await POST(attachmentRequest("check this out", [staged]), params());
 
     expect(res.status).toBe(200);
 
@@ -200,11 +208,9 @@ describe("POST multipart with file attachments", () => {
 
   it("stores a file-only message (empty text) and titles the session after the file", async () => {
     stubDbMessage("msg-2", [{ id: "att-1" }]);
+    const staged = await stageUpload("photo.png", new Uint8Array([1]), "image/png");
 
-    const res = await POST(
-      multipartRequest("", [["photo.png", new Uint8Array([1]), "image/png"]]),
-      params(),
-    );
+    const res = await POST(attachmentRequest("", [staged]), params());
 
     expect(res.status).toBe(200);
 
@@ -227,10 +233,10 @@ describe("POST multipart with file attachments", () => {
     stubDbMessage("msg-3");
 
     const res = await POST(
-      multipartRequest("files", [
-        ["archive.zip", new Uint8Array([0x50, 0x4b]), "application/zip"],
-        ["data.csv", new Uint8Array([0x61, 0x2c, 0x62]), "text/csv"],
-        ["blob.bin", new Uint8Array([0x00, 0x01]), ""],
+      attachmentRequest("files", [
+        await stageUpload("archive.zip", new Uint8Array([0x50, 0x4b]), "application/zip"),
+        await stageUpload("data.csv", new Uint8Array([0x61, 0x2c, 0x62]), "text/csv"),
+        await stageUpload("blob.bin", new Uint8Array([0x00, 0x01]), "application/octet-stream"),
       ]),
       params(),
     );
@@ -248,22 +254,20 @@ describe("POST multipart with file attachments", () => {
 
 describe("workspace delivery", () => {
   it("fails the request when the workspace cannot be written", async () => {
-    // A file where the workspace directory should be: the delivery copy fails.
-    await fs.writeFile(userRoot, "not a directory");
+    const staged = await stageUpload("report.pdf", new Uint8Array([1]), "application/pdf");
+    // A file where uploads/ should be: the copy the agent reads fails.
+    await fs.writeFile(path.join(userRoot, "uploads"), "not a directory");
     stubDbMessage("msg-4");
 
-    const res = await POST(
-      multipartRequest("hi", [["report.pdf", new Uint8Array([1]), "application/pdf"]]),
-      params(),
-    );
+    const res = await POST(attachmentRequest("hi", [staged]), params());
 
     expect(res.status).toBe(500);
     expect(mockPrisma.chatMessage.create).not.toHaveBeenCalled();
 
     const body = await res.json();
-    expect(body.error).toMatch(/not a directory/);
+    expect(body.error).toMatch(/uploads/);
 
-    await fs.rm(userRoot, { force: true });
+    await fs.rm(path.join(userRoot, "uploads"), { force: true });
   });
 });
 
@@ -271,28 +275,45 @@ describe("workspace delivery", () => {
 
 describe("upload validation", () => {
   it("rejects empty files with 400", async () => {
-    const res = await POST(
-      multipartRequest("hi", [["empty.txt", new Uint8Array([]), "text/plain"]]),
-      params(),
-    );
+    const staged = await stageUpload("empty.txt", new Uint8Array([]), "text/plain");
+    const res = await POST(attachmentRequest("hi", [staged]), params());
+
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("File is empty");
+    expect((await res.json()).error).toBe("File is empty");
   });
 
   it("rejects oversized files with 400", async () => {
-    const oversized = new Uint8Array(15 * 1024 * 1024 + 1);
+    // No bytes on disk: the size check runs before anything is read.
     const res = await POST(
-      multipartRequest("hi", [["big.bin", oversized, "application/octet-stream"]]),
+      attachmentRequest("hi", [
+        {
+          uploadId: randomUUID(),
+          fileName: "big.png",
+          mimeType: "image/png",
+          size: 16 * 1024 * 1024,
+        },
+      ]),
       params(),
     );
+
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/File too large/);
+    expect((await res.json()).error).toMatch(/File too large/);
   });
 
-  it("rejects a multipart with neither text nor files", async () => {
-    const res = await POST(multipartRequest("   ", []), params());
+  it("rejects an attachment that was never staged", async () => {
+    const res = await POST(
+      attachmentRequest("hi", [
+        { uploadId: randomUUID(), fileName: "gone.pdf", mimeType: "application/pdf", size: 4 },
+      ]),
+      params(),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/gone.pdf/);
+  });
+
+  it("rejects a message with neither text nor files", async () => {
+    const res = await POST(attachmentRequest("   ", []), params());
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("Content is required");
