@@ -130,7 +130,7 @@ export function ProjectChats({
       {onNewChat && (
         <div className="border-border/30 border-b p-2 md:hidden">
           <Button
-            className="liquid-glass-accent h-9 w-full justify-center gap-2 rounded-lg"
+            className="h-9 w-full justify-center gap-2 rounded-lg"
             onClick={onNewChat}
             disabled={!project}
           >

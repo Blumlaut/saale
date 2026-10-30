@@ -150,7 +150,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
             <div className="flex-1 overflow-y-auto px-6 py-5">
               {/* Read-only notice */}
               {isReadOnly && (
-                <div className="liquid-glass-inner mb-5 flex items-start gap-3 rounded-2xl px-4 py-3.5">
+                <div className="bg-muted border-border mb-5 flex items-start gap-3 rounded-2xl border px-4 py-3.5">
                   <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
                   <p className="text-muted-foreground text-xs leading-relaxed">
                     This event comes from an ICS subscription and cannot be edited directly.
@@ -159,10 +159,10 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
               )}
 
               {/* Date & time block */}
-              <div className="liquid-glass-inner rounded-2xl px-4 py-4">
+              <div className="bg-muted border-border rounded-2xl border px-4 py-4">
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                    <div className="bg-secondary flex h-8 w-8 items-center justify-center rounded-full">
                       <CalendarIcon className="h-3.5 w-3.5" />
                     </div>
                     <div>
@@ -176,7 +176,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                   </div>
                   {event.dtEnd && (
                     <div className="flex items-center gap-3">
-                      <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                      <div className="bg-secondary flex h-8 w-8 items-center justify-center rounded-full">
                         <Clock className="h-3.5 w-3.5" />
                       </div>
                       <div>
@@ -195,9 +195,9 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
 
               {/* Location */}
               {event.location && (
-                <div className="liquid-glass-inner mt-4 rounded-2xl px-4 py-3.5">
+                <div className="bg-muted border-border mt-4 rounded-2xl border px-4 py-3.5">
                   <div className="flex items-start gap-3">
-                    <div className="liquid-glass-pill flex h-8 w-8 items-center justify-center rounded-full">
+                    <div className="bg-secondary flex h-8 w-8 items-center justify-center rounded-full">
                       <MapPin className="h-3.5 w-3.5" />
                     </div>
                     <div>
@@ -210,7 +210,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
 
               {/* Description */}
               {event.description && (
-                <div className="liquid-glass-inner mt-4 rounded-2xl px-4 py-3.5">
+                <div className="bg-muted border-border mt-4 rounded-2xl border px-4 py-3.5">
                   <p className="text-muted-foreground text-xs">Description</p>
                   <p className="mt-1.5 text-sm leading-relaxed whitespace-pre-wrap">
                     {event.description}
@@ -225,10 +225,10 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                 {!isReadOnly && (
                   <>
                     <Button
-                      className="liquid-glass-destructive h-9 flex-1 rounded-full text-xs font-medium"
+                      className="h-9 flex-1 text-xs font-medium"
                       onClick={handleDelete}
                       disabled={deleting}
-                      variant="ghost"
+                      variant="destructive"
                     >
                       {deleting ? (
                         <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
@@ -238,7 +238,7 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                       Delete
                     </Button>
                     <Button
-                      className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                      className="h-9 flex-1 text-xs font-medium"
                       onClick={() => setMode("edit")}
                     >
                       <Pencil className="mr-1.5 h-3.5 w-3.5" />
@@ -248,9 +248,9 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                 )}
                 {isReadOnly && (
                   <Button
-                    className="liquid-glass-pill h-9 w-full rounded-full text-xs font-medium"
+                    className="h-9 w-full text-xs font-medium"
                     onClick={() => onOpenChange(false)}
-                    variant="ghost"
+                    variant="secondary"
                   >
                     Close
                   </Button>
@@ -267,10 +267,10 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                   Edit Event
                 </SheetTitle>
                 <Button
-                  className="liquid-glass-pill h-8 w-8 rounded-full p-0"
+                  className="h-8 w-8 p-0"
                   onClick={() => setMode("view")}
                   size="icon"
-                  variant="ghost"
+                  variant="secondary"
                 >
                   <span className="text-sm">Done</span>
                 </Button>
@@ -292,14 +292,14 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
             <div className="border-border/30 border-t px-6 py-4">
               <div className="flex items-center gap-2">
                 <Button
-                  className="liquid-glass-pill h-9 flex-1 rounded-full text-xs font-medium"
+                  className="h-9 flex-1 text-xs font-medium"
                   onClick={() => setMode("view")}
-                  variant="ghost"
+                  variant="secondary"
                 >
                   Cancel
                 </Button>
                 <Button
-                  className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                  className="h-9 flex-1 text-xs font-medium"
                   disabled={saving || !draft.summary || !draft.dtStart}
                   onClick={handleSave}
                 >

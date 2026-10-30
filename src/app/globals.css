@@ -297,8 +297,7 @@ Flat, bordered surfaces. no blur, no gradients, no specular highlights.
 Depth comes from the 1px border + elevation shadow on overlays only.
 
 These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
-`rounded-xl`, `border-0`, `bg-transparent`) can override them. Class names are
-kept from the old glass system so components don't need changes. */
+`rounded-xl`, `border-0`, `bg-transparent`) can override them. */
 @layer components {
   .glass-panel {
     @apply border-border bg-card relative flex flex-col overflow-hidden rounded-2xl border;
@@ -310,82 +309,6 @@ kept from the old glass system so components don't need changes. */
 
   .glass-panel-deep {
     @apply border-border bg-card rounded-3xl border;
-  }
-
-  /* Primary surface for overlays (dialogs, sheets, popovers) */
-  .liquid-glass {
-    background: var(--popover);
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  }
-
-  .dark .liquid-glass {
-    background: var(--popover);
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  }
-
-  /* Nested card. for content areas inside panels */
-  .liquid-glass-inner {
-    background: var(--muted);
-    border: 1px solid var(--border);
-  }
-
-  .dark .liquid-glass-inner {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  /* Pill. for buttons, badges, toggles */
-  .liquid-glass-pill {
-    background: var(--secondary);
-    border: 1px solid var(--border);
-    transition: background-color 0.15s ease;
-  }
-
-  .liquid-glass-pill:hover {
-    background: var(--muted);
-  }
-
-  .dark .liquid-glass-pill {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .dark .liquid-glass-pill:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  /* Accent. primary action surfaces (single-accent rule: orange only) */
-  .liquid-glass-accent {
-    background: var(--primary);
-    border: 1px solid var(--primary);
-    color: var(--primary-foreground);
-    transition: opacity 0.15s ease;
-  }
-
-  .liquid-glass-accent:hover {
-    opacity: 0.9;
-  }
-
-  /* Destructive surface */
-  .liquid-glass-destructive {
-    background: color-mix(in srgb, var(--destructive) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--destructive) 35%, transparent);
-    color: var(--destructive);
-    transition: background-color 0.15s ease;
-  }
-
-  .liquid-glass-destructive:hover {
-    background: color-mix(in srgb, var(--destructive) 18%, transparent);
-  }
-
-  .dark .liquid-glass-destructive {
-    color: #f87171;
-  }
-
-  .dark .liquid-glass-destructive:hover {
-    background: color-mix(in srgb, var(--destructive) 22%, transparent);
   }
 }
 

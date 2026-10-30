@@ -308,7 +308,7 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
                   <Label className="text-xs">Name</Label>
                   <Input
                     autoFocus
-                    className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+                    className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
                     placeholder="Calendar name"
                     value={newCalendarName}
                     onChange={(e) => setNewCalendarName(e.target.value)}
@@ -343,14 +343,14 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
             <div className="border-border/30 border-t px-6 py-4">
               <div className="flex items-center gap-2">
                 <Button
-                  className="liquid-glass-pill h-9 flex-1 rounded-full text-xs font-medium"
+                  className="h-9 flex-1 text-xs font-medium"
                   onClick={closeAddSheet}
-                  variant="ghost"
+                  variant="secondary"
                 >
                   Cancel
                 </Button>
                 <Button
-                  className="liquid-glass-accent h-9 flex-1 rounded-full text-xs font-medium"
+                  className="h-9 flex-1 text-xs font-medium"
                   disabled={!newCalendarName.trim()}
                   onClick={handleAddCalendar}
                 >

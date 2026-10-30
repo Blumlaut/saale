@@ -94,7 +94,7 @@ function LiveActivity({ state }: { state: CouncilMemberLive }) {
   if (!state.busy && !hasThinking && !hasTools) return null;
 
   return (
-    <div className="liquid-glass-inner rounded-xl border-0 px-3 py-2">
+    <div className="bg-muted rounded-xl border-0 px-3 py-2">
       <div className="flex items-center gap-1.5">
         {state.busy ? (
           <Loader2 className="text-primary h-3 w-3 animate-spin" />
@@ -206,7 +206,7 @@ export function MessageTimeline({
           if (message.authorKind === "system") {
             return (
               <div key={message.seq} className="flex justify-center">
-                <div className="liquid-glass-inner max-w-full rounded-full border-0 px-3 py-1">
+                <div className="bg-muted max-w-full rounded-full border-0 px-3 py-1">
                   <span className="text-muted-foreground text-[11px] whitespace-pre-wrap">
                     {message.content}
                   </span>
@@ -232,7 +232,7 @@ export function MessageTimeline({
               </div>
               <div
                 className={cn(
-                  "liquid-glass-inner w-fit max-w-full min-w-0 rounded-xl border-0 px-3 py-2",
+                  "bg-muted w-fit max-w-full min-w-0 rounded-xl border-0 px-3 py-2",
                   isUser && "bg-accent/40",
                 )}
               >

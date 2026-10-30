@@ -368,7 +368,7 @@ export function McpServerSheet({
                     Waiting for you to finish signing in…
                   </p>
                   {oauthUrl && (
-                    <div className="liquid-glass-inner flex items-start gap-2 rounded-lg px-3 py-2">
+                    <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
                       <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
                       <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
                     </div>

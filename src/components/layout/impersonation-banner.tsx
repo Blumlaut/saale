@@ -61,14 +61,14 @@ export function ImpersonationBanner() {
   const displayName = session.user.name || session.user.email || "Unknown user";
 
   return (
-    <div className="liquid-glass shrink-0 border-b border-amber-500/20 bg-amber-500/5 px-4 py-2">
+    <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/5 px-4 py-2">
       <div className="flex items-center gap-3">
         <Badge className="shrink-0 bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">
           <User className="mr-1.5 h-3 w-3" />
           Impersonating
         </Badge>
         <UserAvatar
-          className="liquid-glass-pill hidden h-7 w-7 shrink-0 sm:flex"
+          className="bg-secondary hidden h-7 w-7 shrink-0 sm:flex"
           iconClassName="h-3.5 w-3.5"
         />
         <span className="min-w-0 flex-1 truncate text-sm">

@@ -168,7 +168,7 @@ export function EmailListPanel({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 rounded-full px-2 text-[10px]"
+              className="h-7 gap-1 px-2 text-[10px]"
               onClick={onMarkAllRead}
               title="Mark all as read"
             >
@@ -179,7 +179,7 @@ export function EmailListPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8"
             onClick={onSyncAll}
             disabled={syncing}
             title={activeAccount ? "Sync account" : "Sync all accounts"}
@@ -193,18 +193,13 @@ export function EmailListPanel({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8"
             onClick={onAddAccount}
             title="Add account"
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            size="icon"
-            className="liquid-glass-accent h-8 w-8 rounded-full"
-            onClick={onCompose}
-            title="Compose"
-          >
+          <Button size="icon" className="h-8 w-8" onClick={onCompose} title="Compose">
             <MailPlus className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -218,14 +213,14 @@ export function EmailListPanel({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search emails..."
-            className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-9 shadow-none"
+            className="h-8 rounded-full border-0 bg-transparent pl-9 shadow-none"
           />
           {search && (
             <Button
               variant="ghost"
               size="icon"
               onClick={() => onSearchChange("")}
-              className="absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 rounded-full p-0 opacity-60 hover:opacity-100"
+              className="absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 p-0 opacity-60 hover:opacity-100"
             >
               <X className="h-3 w-3" />
             </Button>
@@ -240,7 +235,7 @@ export function EmailListPanel({
             onClick={() => onFolderChange(null)}
             className={cn(
               "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-              !folder ? "liquid-glass-pill" : "text-muted-foreground hover:text-foreground",
+              !folder ? "bg-secondary" : "text-muted-foreground hover:text-foreground",
             )}
           >
             All
@@ -251,7 +246,7 @@ export function EmailListPanel({
               onClick={() => onFolderChange(f)}
               className={cn(
                 "shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                folder === f ? "liquid-glass-pill" : "text-muted-foreground hover:text-foreground",
+                folder === f ? "bg-secondary" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {f === "INBOX" ? "Inbox" : f}
@@ -408,7 +403,7 @@ export function EmailListPanel({
                     variant="ghost"
                     size="sm"
                     onClick={onLoadMore}
-                    className="rounded-full px-3 py-1 text-xs"
+                    className="px-3 py-1 text-xs"
                   >
                     Load more
                   </Button>

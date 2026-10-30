@@ -64,7 +64,7 @@ function BackupCodesList({ codes }: { codes: string[] }) {
   };
 
   return (
-    <div className="liquid-glass-inner space-y-2 rounded-2xl p-4">
+    <div className="bg-muted border-border space-y-2 rounded-2xl border p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-muted-foreground text-xs">
           Each code works once if you lose access to your authenticator.
@@ -162,7 +162,7 @@ function EnableFlow({ onFinished, onCancel }: { onFinished: () => void; onCancel
   if (step === "verify" && enableData) {
     return (
       <div className="space-y-4">
-        <div className="liquid-glass-inner flex flex-col items-center gap-3 rounded-2xl p-4">
+        <div className="bg-muted border-border flex flex-col items-center gap-3 rounded-2xl border p-4">
           <div className="rounded-lg border bg-white p-3">
             <QRCodeSVG value={enableData.totpURI} size={160} />
           </div>

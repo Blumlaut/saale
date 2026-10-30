@@ -99,7 +99,7 @@ function TelegramLoginBlock({ login }: { login: TelegramLoginStatus }) {
         fragment, where the app never sees it.
       </p>
 
-      <div className="liquid-glass-inner flex items-center justify-between gap-3 rounded-2xl border-0 px-3 py-1.5">
+      <div className="bg-muted flex items-center justify-between gap-3 rounded-2xl border-0 px-3 py-1.5">
         <code className="font-mono text-xs break-all">{login.redirectUri}</code>
         <Button
           variant="ghost"
@@ -256,14 +256,14 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="123456:aBcDeF_gHiJkLmNoP-q"
-                className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+                className="h-9 rounded-full border-0 bg-transparent shadow-none"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") saveToken();
                 }}
               />
               <Button
                 size="sm"
-                className="h-9 shrink-0 rounded-full"
+                className="h-9 shrink-0"
                 onClick={saveToken}
                 disabled={saving || !token.trim()}
               >
@@ -278,7 +278,7 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
           <Button
             variant="destructive"
             size="sm"
-            className="h-8 rounded-full text-xs"
+            className="h-8 text-xs"
             onClick={() => setRemoveOpen(true)}
           >
             Remove bot
@@ -310,14 +310,14 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="123456:aBcDeF_gHiJkLmNoP-q"
-              className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+              className="h-9 rounded-full border-0 bg-transparent shadow-none"
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveToken();
               }}
             />
             <Button
               size="sm"
-              className="h-9 shrink-0 rounded-full"
+              className="h-9 shrink-0"
               onClick={saveToken}
               disabled={saving || !token.trim()}
             >

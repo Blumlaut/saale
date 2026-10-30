@@ -70,8 +70,8 @@ async function measureActionRow(page: Page): Promise<ActionRow | null> {
     if (!first) return null;
 
     const row = first.element.parentElement;
-    const panel = first.element.closest(".liquid-glass");
-    const firstPanel = main.querySelector(".liquid-glass");
+    const panel = first.element.closest(".glass-panel");
+    const firstPanel = main.querySelector(".glass-panel");
 
     return {
       label: (first.element.textContent ?? "").trim() || "an unnamed button",

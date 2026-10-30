@@ -487,7 +487,7 @@ export function InputBar({
           <Button
             variant="secondary"
             size="icon"
-            className="h-9 w-9 shrink-0 rounded-full"
+            className="h-9 w-9 shrink-0"
             onClick={onStop}
             aria-label="Stop generating"
           >
@@ -495,7 +495,7 @@ export function InputBar({
           </Button>
         )}
         <Button
-          className="liquid-glass-accent h-9 w-9 shrink-0 rounded-full transition-opacity disabled:opacity-50"
+          className="h-9 w-9 shrink-0 transition-opacity disabled:opacity-50"
           size="icon"
           onClick={handleSubmit}
           disabled={!canSend}

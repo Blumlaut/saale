@@ -307,7 +307,7 @@ export function DashboardNav() {
             searchPosition &&
             createPortal(
               <div
-                className="liquid-glass fixed z-50 mt-1 w-72 rounded-xl shadow-2xl"
+                className="bg-popover border-border fixed z-50 mt-1 w-72 rounded-xl border shadow-2xl"
                 style={{
                   top: searchPosition.top,
                   left: searchPosition.left,

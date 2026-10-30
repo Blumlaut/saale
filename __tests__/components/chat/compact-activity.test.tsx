@@ -127,7 +127,7 @@ function reasoningRow(): HTMLElement {
 
 /** Prose bubbles: the rounded cards the markdown goes in. Empty ones are the bug. */
 function hollowBubbles(): NodeListOf<Element> {
-  return document.querySelectorAll(".liquid-glass-inner.rounded-2xl");
+  return document.querySelectorAll("[data-quoteable]");
 }
 
 /** The card a summary row sits in: rows of one run share it. */
@@ -452,7 +452,7 @@ describe("compact activity", () => {
     expect(column).toHaveClass("flex-1", "min-w-0");
 
     // The prose bubble hugs its own text rather than filling that width.
-    const bubble = screen.getByText("Both machines are healthy.").closest(".liquid-glass-inner")!;
+    const bubble = screen.getByText("Both machines are healthy.").closest("[data-quoteable]")!;
     expect(bubble).toHaveClass("w-fit", "max-w-full");
 
     // Reasoning that arrives mid-stream changes the text, never the width.
@@ -484,7 +484,7 @@ describe("compact activity", () => {
     const stepByStep = screen.getByRole("button", { name: /Thought process/ });
     const column = stepByStep.closest("[data-transcript-column]")!;
     expect(column).not.toHaveClass("flex-1");
-    const bubble = screen.getByText("Both machines are healthy.").closest(".liquid-glass-inner")!;
+    const bubble = screen.getByText("Both machines are healthy.").closest("[data-quoteable]")!;
     expect(bubble).not.toHaveClass("w-fit");
   });
 

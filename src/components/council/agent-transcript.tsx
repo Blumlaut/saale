@@ -93,7 +93,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
                 : "bg-green-500/10 text-green-600 dark:text-green-400";
 
         return (
-          <article key={turn.id} className="liquid-glass-inner rounded-xl border-0 p-3 md:p-4">
+          <article key={turn.id} className="bg-muted rounded-xl border-0 p-3 md:p-4">
             <header className="flex flex-wrap items-center gap-2">
               <span className="console-label">Turn {turns.length - index}</span>
               <Badge variant="secondary" className={cn(statusTone)}>

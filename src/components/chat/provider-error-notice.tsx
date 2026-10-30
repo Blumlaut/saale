@@ -16,7 +16,7 @@ export function ProviderErrorNotice({ error }: { error: string }) {
   const { status, message, shortened } = formatProviderError(error);
 
   return (
-    <div className="liquid-glass-inner border-destructive/30 bg-destructive/5 rounded-2xl px-4 py-3">
+    <div className="border-destructive/30 bg-destructive/5 rounded-2xl border px-4 py-3">
       <div className="text-destructive flex items-center gap-2 text-xs font-medium">
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
         <span>Provider error</span>

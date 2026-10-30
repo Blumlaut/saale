@@ -80,7 +80,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   // Resolved state. compact single line
   if (status === "done") {
     return (
-      <div className="liquid-glass-inner rounded-xl px-3 py-2">
+      <div className="bg-muted border-border rounded-xl border px-3 py-2">
         <div className="flex items-center gap-2 text-xs">
           <Shield className="text-muted-foreground h-3 w-3" />
           <span className="font-medium">{action.label}</span>
@@ -101,7 +101,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
   }
 
   return (
-    <div className="liquid-glass-inner rounded-xl">
+    <div className="bg-muted border-border rounded-xl border">
       {/* Header. toggle expand/collapse */}
       <button
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
@@ -166,7 +166,7 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
             <div className="flex gap-2">
               <Button
                 size="sm"
-                className="liquid-glass-accent flex-1 gap-1.5"
+                className="flex-1 gap-1.5"
                 onClick={() => handleAction(true)}
                 disabled={status !== "pending"}
               >

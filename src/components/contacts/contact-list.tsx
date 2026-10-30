@@ -53,7 +53,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search contacts"
                 aria-label="Search contacts"
-                className="liquid-glass-inner h-8 rounded-full border-0 bg-transparent pl-8 shadow-none"
+                className="h-8 rounded-full border-0 bg-transparent pl-8 shadow-none"
               />
             </div>
             <span className="text-muted-foreground console-label hidden shrink-0 sm:block">
@@ -103,7 +103,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
                 onClick={() => onEdit(contact)}
               >
                 <Avatar className="h-9 w-9 shrink-0 rounded-full">
-                  <AvatarFallback className="liquid-glass-pill text-xs font-medium">
+                  <AvatarFallback className="bg-secondary text-xs font-medium">
                     {contact.name.trim().charAt(0).toUpperCase() || "?"}
                   </AvatarFallback>
                 </Avatar>

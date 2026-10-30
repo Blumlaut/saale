@@ -40,7 +40,7 @@ function AlertDialogContent({ className, children, ...props }: AlertDialogPrimit
         className={cn(
           // `*:min-w-0` keeps the auto-width grid track from being widened by a
           // child's min-content (long unbreakable keys/URLs). see dialog.tsx.
-          "liquid-glass text-popover-foreground data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-4 rounded-xl p-4 text-sm shadow-2xl duration-100 outline-none *:min-w-0 sm:max-w-md",
+          "bg-popover border-border text-popover-foreground data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-4 rounded-xl border p-4 text-sm shadow-2xl duration-100 outline-none *:min-w-0 sm:max-w-md",
           className,
         )}
         {...props}

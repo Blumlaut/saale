@@ -142,9 +142,8 @@ export function EmailSection() {
             <div className="flex items-center gap-2">
               {emailAccounts.length > 0 && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
-                  className="liquid-glass-pill rounded-full"
                   onClick={handleSyncAll}
                   disabled={actionLoading === "sync-all"}
                 >
@@ -158,7 +157,6 @@ export function EmailSection() {
               )}
               <Button
                 size="sm"
-                className="liquid-glass-accent rounded-full"
                 onClick={() => {
                   setEditingAccount(null);
                   setAccountDialogOpen(true);
@@ -173,7 +171,7 @@ export function EmailSection() {
           {emailLoading ? (
             <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
           ) : emailAccounts.length === 0 ? (
-            <div className="liquid-glass-inner border-border/30 flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
+            <div className="bg-muted border-border/30 flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
               <Mail className="text-muted-foreground/50 mx-auto h-8 w-8" />
               <p className="text-muted-foreground mt-3 text-sm">
                 No email accounts connected. Add one to get started.
@@ -190,7 +188,7 @@ export function EmailSection() {
                 return (
                   <div
                     key={account.id}
-                    className="liquid-glass-inner flex items-center justify-between rounded-2xl border-0 p-4"
+                    className="bg-muted flex items-center justify-between rounded-2xl border-0 p-4"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">

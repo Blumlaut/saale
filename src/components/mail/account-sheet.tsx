@@ -298,7 +298,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                       value={email}
                       onChange={handleEmailChange}
                       placeholder="you@example.com"
-                      className="liquid-glass-inner rounded-full border-0 bg-transparent pr-10 shadow-none"
+                      className="rounded-full border-0 bg-transparent pr-10 shadow-none"
                     />
                     {discovering && (
                       <Loader2 className="text-muted-foreground absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin" />
@@ -343,7 +343,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                    className="rounded-full border-0 bg-transparent shadow-none"
                   />
                   {isEdit && (
                     <p className="text-muted-foreground text-xs">
@@ -387,7 +387,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                             setImapHost(e.target.value);
                           }}
                           placeholder="imap.example.com"
-                          className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
@@ -400,7 +400,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                           inputMode="numeric"
                           value={imapPort}
                           onChange={(e) => setImapPort(e.target.value)}
-                          className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="flex items-end gap-2 pb-1">
@@ -436,7 +436,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                             setSmtpHost(e.target.value);
                           }}
                           placeholder="smtp.example.com"
-                          className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
@@ -449,7 +449,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                           inputMode="numeric"
                           value={smtpPort}
                           onChange={(e) => setSmtpPort(e.target.value)}
-                          className="liquid-glass-inner rounded-full border-0 bg-transparent shadow-none"
+                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="flex items-end gap-2 pb-1">
@@ -519,8 +519,8 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
           <div className="border-border/30 border-t px-6 py-4">
             <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
-                variant="outline"
-                className="liquid-glass-pill h-9 rounded-full text-xs font-medium"
+                variant="secondary"
+                className="h-9 text-xs font-medium"
                 onClick={handleTest}
                 disabled={testing || !canTest}
               >
@@ -534,7 +534,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                 )}
               </Button>
               <Button
-                className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
+                className="h-9 text-xs font-medium"
                 onClick={handleSave}
                 disabled={saving || !canSave}
               >

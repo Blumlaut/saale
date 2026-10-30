@@ -483,7 +483,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                               </div>
                             ))}
 
-                            <div className="liquid-glass-inner space-y-3 rounded-lg p-3 text-xs">
+                            <div className="bg-muted border-border space-y-3 rounded-lg border p-3 text-xs">
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="min-w-0">
                                   <p className="console-label">Changed</p>

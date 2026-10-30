@@ -32,7 +32,7 @@ export function EventFormFields({
       <div className="space-y-2">
         <Label className="text-xs">Title</Label>
         <Input
-          className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+          className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
           placeholder="Meeting title"
           value={draft.summary}
           onChange={(e) => onFieldChange("summary", e.target.value)}
@@ -45,7 +45,7 @@ export function EventFormFields({
         <div className="space-y-2">
           <Label className="text-xs">Start</Label>
           <Input
-            className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+            className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
             type={draft.allDay ? "date" : "datetime-local"}
             value={draft.dtStart}
             onChange={(e) => onFieldChange("dtStart", e.target.value)}
@@ -54,7 +54,7 @@ export function EventFormFields({
         <div className="space-y-2">
           <Label className="text-xs">End</Label>
           <Input
-            className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+            className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
             type={draft.allDay ? "date" : "datetime-local"}
             value={draft.dtEnd}
             onChange={(e) => onFieldChange("dtEnd", e.target.value)}
@@ -62,7 +62,7 @@ export function EventFormFields({
         </div>
       </div>
 
-      <div className="liquid-glass-inner flex items-center justify-between rounded-2xl px-4 py-3">
+      <div className="bg-muted border-border flex items-center justify-between rounded-2xl border px-4 py-3">
         <Label htmlFor={allDayId} className="text-sm">
           All day
         </Label>
@@ -79,7 +79,7 @@ export function EventFormFields({
           Location
         </Label>
         <Input
-          className="liquid-glass-inner h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
+          className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
           placeholder="Room, address, or video link"
           value={draft.location}
           onChange={(e) => onFieldChange("location", e.target.value)}
@@ -89,7 +89,7 @@ export function EventFormFields({
       <div className="space-y-2">
         <Label className="text-xs">Description</Label>
         <Textarea
-          className="liquid-glass-inner min-h-[80px] rounded-2xl border-0 bg-transparent px-4 pt-3 shadow-none"
+          className="min-h-[80px] rounded-2xl border-0 bg-transparent px-4 pt-3 shadow-none"
           placeholder="Notes, agenda, etc."
           rows={3}
           value={draft.description}
@@ -98,7 +98,7 @@ export function EventFormFields({
       </div>
 
       {error && (
-        <div className="liquid-glass-destructive flex items-center gap-2 rounded-2xl px-4 py-3">
+        <div className="bg-destructive/10 border-destructive/35 text-destructive flex items-center gap-2 rounded-2xl border px-4 py-3">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span className="text-xs">{error}</span>
         </div>

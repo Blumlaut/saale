@@ -36,7 +36,7 @@ export function SlashCommandMenu({
     <div
       role="listbox"
       aria-label="Slash commands"
-      className="liquid-glass absolute inset-x-3 bottom-full z-20 mb-2 overflow-hidden rounded-xl p-1 shadow-lg"
+      className="bg-popover border-border absolute inset-x-3 bottom-full z-20 mb-2 overflow-hidden rounded-xl border p-1 shadow-lg"
     >
       {items.map((item, index) => {
         const Icon = item.icon;

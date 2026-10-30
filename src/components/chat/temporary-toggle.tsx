@@ -39,7 +39,7 @@ export function TemporaryToggle({ checked, onChange }: TemporaryToggleProps) {
         variant="ghost"
         size="icon"
         className={
-          "h-8 w-8 shrink-0 rounded-full sm:hidden " +
+          "h-8 w-8 shrink-0 sm:hidden " +
           (checked ? "bg-accent/70 text-foreground" : "text-muted-foreground")
         }
         onClick={() => onChange(!checked)}

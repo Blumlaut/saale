@@ -153,7 +153,7 @@ export function SelectionQuoteButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={quote}
       className={cn(
-        "liquid-glass absolute z-10 -translate-x-1/2 whitespace-nowrap transition-opacity",
+        "bg-popover border-border absolute z-10 -translate-x-1/2 border whitespace-nowrap transition-opacity",
         selection ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
       style={

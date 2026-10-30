@@ -84,7 +84,7 @@ export function CompactionMessage({
       {/* Expandable summary */}
       {expanded && !isCompacting && (
         <div className="mx-auto max-w-2xl">
-          <div className="liquid-glass-inner rounded-xl p-4">
+          <div className="bg-muted border-border rounded-xl border p-4">
             <MarkdownRenderer content={message.content} />
           </div>
         </div>

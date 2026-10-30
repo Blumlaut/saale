@@ -90,7 +90,7 @@ export function EmailComposeForm({
           <div className="space-y-1.5">
             <Label className="text-xs">From</Label>
             <Select value={accountId} onValueChange={(v) => v && onAccountIdChange(v)}>
-              <SelectTrigger className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none">
+              <SelectTrigger className="h-9 rounded-full border-0 bg-transparent shadow-none">
                 {accounts.find((a) => a.id === accountId)?.email ?? (
                   <SelectValue placeholder="Select account" />
                 )}
@@ -115,7 +115,7 @@ export function EmailComposeForm({
               onChange={onToChange}
               label="To"
               placeholder="Name or email"
-              className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+              className="h-9 rounded-full border-0 bg-transparent shadow-none"
             />
           </div>
 
@@ -144,7 +144,7 @@ export function EmailComposeForm({
                   onChange={onCcChange}
                   label="Cc"
                   placeholder="Name or email"
-                  className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+                  className="h-9 rounded-full border-0 bg-transparent shadow-none"
                 />
               </div>
 
@@ -156,7 +156,7 @@ export function EmailComposeForm({
                   onChange={onBccChange}
                   label="Bcc"
                   placeholder="Name or email"
-                  className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+                  className="h-9 rounded-full border-0 bg-transparent shadow-none"
                 />
               </div>
               <Separator className="border-border/30" />
@@ -170,7 +170,7 @@ export function EmailComposeForm({
               value={subject}
               onChange={(e) => onSubjectChange(e.target.value)}
               placeholder="Email subject"
-              className="liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none"
+              className="h-9 rounded-full border-0 bg-transparent shadow-none"
             />
           </div>
 
@@ -199,15 +199,11 @@ export function EmailComposeForm({
       {/* Footer */}
       <div className="border-border/30 border-t px-6 py-4">
         <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            className="liquid-glass-pill h-9 rounded-full text-xs font-medium"
-            onClick={onDiscard}
-          >
+          <Button variant="secondary" className="h-9 text-xs font-medium" onClick={onDiscard}>
             Discard
           </Button>
           <Button
-            className="liquid-glass-accent h-9 gap-2 rounded-full text-xs font-medium"
+            className="h-9 gap-2 text-xs font-medium"
             onClick={onSend}
             disabled={sending || !to.trim() || !accountId}
           >

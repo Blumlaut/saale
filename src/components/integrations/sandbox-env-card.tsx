@@ -46,7 +46,7 @@ export function SandboxEnvCard() {
   };
 
   return (
-    <div className="liquid-glass-inner flex min-w-0 flex-col rounded-2xl border-0 p-5">
+    <div className="bg-muted flex min-w-0 flex-col rounded-2xl border-0 p-5">
       <div className="flex items-start gap-3">
         <div className="bg-muted shrink-0 rounded-xl p-2.5">
           <KeyRound className="h-5 w-5 text-amber-500" />

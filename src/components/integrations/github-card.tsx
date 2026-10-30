@@ -110,7 +110,7 @@ export function GithubCard() {
           </div>
         ) : (
           <div className="space-y-2">
-            <Button size="sm" className="liquid-glass-accent rounded-full" onClick={connect}>
+            <Button size="sm" onClick={connect}>
               <GitBranch className="mr-2 h-4 w-4" />
               Connect GitHub
             </Button>
@@ -143,7 +143,7 @@ export function GithubCard() {
           <DialogFooter>
             <Button
               variant="outline"
-              className="h-9 rounded-full text-xs font-medium"
+              className="h-9 text-xs font-medium"
               onClick={() => close(false)}
             >
               {credential ? "Done" : "Cancel"}
@@ -228,7 +228,7 @@ function SignInBody({
         asks you to approve it once, and this window notices on its own.
       </p>
 
-      <div className="liquid-glass-inner rounded-2xl border-0 px-4 py-3">
+      <div className="bg-muted rounded-2xl border-0 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <code className="font-mono text-lg font-medium tracking-widest break-all">{code}</code>
           <Button
@@ -244,7 +244,7 @@ function SignInBody({
       </div>
 
       {url && (
-        <Button asChild className="liquid-glass-accent h-9 w-full rounded-full text-xs font-medium">
+        <Button asChild className="h-9 w-full text-xs font-medium">
           <a href={url} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="mr-2 h-3.5 w-3.5" />
             Open GitHub

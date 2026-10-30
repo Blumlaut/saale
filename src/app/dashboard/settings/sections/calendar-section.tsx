@@ -318,7 +318,7 @@ export function CalendarSection() {
             <div className="space-y-3">
               {/* Local account */}
               {localAccount && (
-                <div className="liquid-glass-inner overflow-hidden rounded-2xl border-0">
+                <div className="bg-muted overflow-hidden rounded-2xl border-0">
                   <div className="flex items-center justify-between p-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
@@ -352,10 +352,7 @@ export function CalendarSection() {
                 const isExpanded = expandedAccounts.has(account.id);
 
                 return (
-                  <div
-                    key={account.id}
-                    className="liquid-glass-inner overflow-hidden rounded-2xl border-0"
-                  >
+                  <div key={account.id} className="bg-muted overflow-hidden rounded-2xl border-0">
                     <div className="flex items-center justify-between p-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
@@ -488,7 +485,7 @@ export function CalendarSection() {
 
                 return (
                   <Fragment key={sub.id}>
-                    <div className="liquid-glass-inner flex items-center justify-between rounded-2xl border-0 p-4">
+                    <div className="bg-muted flex items-center justify-between rounded-2xl border-0 p-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{sub.name}</p>

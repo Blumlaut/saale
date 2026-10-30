@@ -120,7 +120,7 @@ export function ChatHeader({
             variant="ghost"
             size="icon"
             className={cn(
-              "relative h-8 w-8 shrink-0 rounded-full md:h-9",
+              "relative h-8 w-8 shrink-0 md:h-9",
               linksOpen && "bg-accent/70 text-foreground",
             )}
             onClick={onToggleLinks}
@@ -145,7 +145,7 @@ export function ChatHeader({
         {settings && <ChatSettingsSheet settings={settings} />}
         {extraActions}
         <Button
-          className="liquid-glass-accent flex h-8 w-8 shrink-0 items-center gap-1.5 rounded-full md:h-9 md:w-auto md:px-3"
+          className="flex h-8 w-8 shrink-0 items-center gap-1.5 md:h-9 md:w-auto md:px-3"
           size="icon"
           onClick={onNewChat}
         >

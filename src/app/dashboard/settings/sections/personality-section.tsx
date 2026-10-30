@@ -172,7 +172,7 @@ function PromptSection({
             {examples.map((example) => {
               const text = fieldKey === "instruction" ? example.instruction : example.prompt;
               return (
-                <div key={example.title} className="liquid-glass-inner rounded-xl border-0 p-2.5">
+                <div key={example.title} className="bg-muted rounded-xl border-0 p-2.5">
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="text-xs font-medium">{example.title}</span>
                     <Button

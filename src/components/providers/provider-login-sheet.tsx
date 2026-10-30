@@ -188,7 +188,7 @@ export function ProviderLoginSheet({
                 <div key={`${event.kind}-${index}`} className="space-y-2">
                   {event.kind === "auth_url" && event.url && (
                     <div className="space-y-2">
-                      <div className="liquid-glass-inner flex items-start gap-2 rounded-lg px-3 py-2">
+                      <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
                         <code className="min-w-0 flex-1 text-[11px] break-all">{event.url}</code>
                         <CopyButton text={event.url} label="Copy the sign-in URL" />
                       </div>
@@ -202,7 +202,7 @@ export function ProviderLoginSheet({
                   )}
 
                   {event.kind === "device_code" && (
-                    <div className="liquid-glass-inner space-y-2 rounded-lg px-3 py-3">
+                    <div className="bg-muted border-border space-y-2 rounded-lg border px-3 py-3">
                       <p className="text-muted-foreground text-xs">
                         Enter this code in the browser:
                       </p>

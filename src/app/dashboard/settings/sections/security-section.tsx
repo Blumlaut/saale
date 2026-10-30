@@ -111,7 +111,7 @@ export function SecuritySection() {
         </div>
 
         {/* Password section */}
-        <div className="liquid-glass-inner space-y-5 rounded-2xl border-0 p-5">
+        <div className="bg-muted space-y-5 rounded-2xl border-0 p-5">
           <div>
             <h4 className="text-sm font-medium">Change Password</h4>
             <p className="text-muted-foreground mt-0.5 text-xs">
@@ -198,7 +198,7 @@ export function SecuritySection() {
         </div>
 
         {/* Two-factor section */}
-        <div className="liquid-glass-inner space-y-5 rounded-2xl border-0 p-5">
+        <div className="bg-muted space-y-5 rounded-2xl border-0 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <h4 className="text-sm font-medium">Two-Factor Authentication</h4>

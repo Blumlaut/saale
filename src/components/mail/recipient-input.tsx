@@ -247,7 +247,7 @@ export function RecipientInput({
           ref={listRef}
           role="listbox"
           aria-label={label}
-          className="liquid-glass absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg p-1 shadow-2xl"
+          className="bg-popover border-border absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border p-1 shadow-2xl"
         >
           {filtered.map((s, i) => (
             <button

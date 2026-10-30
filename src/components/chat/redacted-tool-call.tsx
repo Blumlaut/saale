@@ -25,7 +25,7 @@ export const RedactedToolCall = memo(function RedactedToolCall({
   const Icon = toolIcon(toolCall.name);
 
   return (
-    <div className="liquid-glass-inner rounded-xl">
+    <div className="bg-muted border-border rounded-xl border">
       <div className="flex items-center gap-2 px-3 py-2">
         <Icon className="text-muted-foreground h-3 w-3 shrink-0" />
         <span className="shrink-0 text-xs font-medium">{label}</span>

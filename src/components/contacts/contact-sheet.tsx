@@ -24,7 +24,7 @@ interface ContactSheetProps {
   onSaved: (contact: Contact) => void;
 }
 
-const INPUT_CLASS = "liquid-glass-inner h-9 rounded-full border-0 bg-transparent shadow-none";
+const INPUT_CLASS = "h-9 rounded-full border-0 bg-transparent shadow-none";
 
 export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSheetProps) {
   const isEdit = contact !== null;
@@ -161,7 +161,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   onChange={(e) => update({ notes: e.target.value })}
                   placeholder="How you met, context, preferences…"
                   rows={4}
-                  className="liquid-glass-inner min-h-24 rounded-xl border-0 bg-transparent shadow-none"
+                  className="min-h-24 rounded-xl border-0 bg-transparent shadow-none"
                 />
               </div>
 

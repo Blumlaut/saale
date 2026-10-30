@@ -103,7 +103,7 @@ function ReasoningRow({
   const snippet = truncate(reasoning[stepCount - 1]!.replace(/\s+/g, " ").trim(), SNIPPET_CHARS);
 
   return (
-    <div className="liquid-glass-inner rounded-xl">
+    <div className="bg-muted border-border rounded-xl border">
       <Button
         variant="ghost"
         size="xs"
@@ -157,7 +157,7 @@ function ToolsRow({
   const marks = toolCalls.slice(-VISIBLE_MARKS);
 
   return (
-    <div className="liquid-glass-inner rounded-xl">
+    <div className="bg-muted border-border rounded-xl border">
       <Button
         variant="ghost"
         size="xs"

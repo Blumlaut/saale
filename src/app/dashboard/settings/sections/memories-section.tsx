@@ -278,11 +278,7 @@ export function MemoriesSection() {
                   : ""}
               </p>
             </div>
-            <Button
-              size="sm"
-              className="liquid-glass-accent rounded-full"
-              onClick={() => setCreateOpen(true)}
-            >
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Memory
             </Button>
@@ -290,7 +286,7 @@ export function MemoriesSection() {
 
           {/* Collections overview */}
           {collections.length > 0 && (
-            <div className="liquid-glass-inner rounded-2xl border-0 p-4">
+            <div className="bg-muted rounded-2xl border-0 p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                 <Layers className="text-muted-foreground h-4 w-4" />
                 Collections
@@ -299,7 +295,7 @@ export function MemoriesSection() {
                 {collections.map((col) => (
                   <div
                     key={col.name}
-                    className="group/col liquid-glass-inner relative flex flex-col items-start justify-between rounded-xl border-0 p-3"
+                    className="group/col bg-muted relative flex flex-col items-start justify-between rounded-xl border-0 p-3"
                   >
                     <div className="flex w-full items-start justify-between">
                       <div className="flex items-center gap-1.5">
@@ -402,7 +398,7 @@ export function MemoriesSection() {
               <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
             </div>
           ) : memories.length === 0 ? (
-            <div className="liquid-glass-inner flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
+            <div className="bg-muted border-border flex flex-col items-center rounded-2xl border border-dashed p-8 text-center">
               <Brain className="text-muted-foreground/50 mx-auto h-8 w-8" />
               <p className="text-muted-foreground mt-3 text-sm">
                 {searchQuery || filterCollection !== "all"
@@ -415,7 +411,7 @@ export function MemoriesSection() {
               {memories.map((memory) => (
                 <div
                   key={memory.id}
-                  className="group liquid-glass-inner flex items-start justify-between gap-3 rounded-2xl border-0 p-4"
+                  className="group bg-muted flex items-start justify-between gap-3 rounded-2xl border-0 p-4"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

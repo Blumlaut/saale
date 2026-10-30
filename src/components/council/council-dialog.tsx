@@ -444,7 +444,7 @@ export function CouncilDialog({ open, onOpenChange, council, onSaved }: CouncilD
 
             <div className="flex flex-col gap-3">
               {members.map((draft) => (
-                <div key={draft.key} className="liquid-glass-inner rounded-xl border-0 p-3">
+                <div key={draft.key} className="bg-muted rounded-xl border-0 p-3">
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <Label htmlFor={`member-name-${draft.key}`} className="text-xs">

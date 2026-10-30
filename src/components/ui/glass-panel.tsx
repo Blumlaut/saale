@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 function GlassPanel({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("glass-panel liquid-glass", className)} {...props}>
+    <div className={cn("glass-panel", className)} {...props}>
       {children}
     </div>
   );

@@ -75,7 +75,7 @@ export function MessageToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
+        className="h-8 gap-1.5 text-xs"
         onClick={() => openReply("reply")}
         title="Reply"
       >
@@ -85,7 +85,7 @@ export function MessageToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
+        className="h-8 gap-1.5 text-xs"
         onClick={() => openReply("reply_all")}
         title="Reply All"
       >
@@ -95,7 +95,7 @@ export function MessageToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
+        className="h-8 gap-1.5 text-xs"
         onClick={() => openReply("forward")}
         title="Forward"
       >
@@ -105,7 +105,7 @@ export function MessageToolbar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-8 gap-1.5 rounded-full text-xs"
+        className="h-8 gap-1.5 text-xs"
         onClick={handleTrash}
         title="Move to Trash"
       >

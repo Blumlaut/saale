@@ -83,7 +83,7 @@ export function ChatEmptyState({
                     Temporary mode. chat will be deleted on close
                   </span>
                 )}
-                <Button className="liquid-glass-accent mt-6" onClick={handleNewChat}>
+                <Button className="mt-6" onClick={handleNewChat}>
                   <MessageSquarePlus className="mr-2 h-4 w-4" />
                   New Chat
                 </Button>

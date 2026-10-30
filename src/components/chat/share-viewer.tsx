@@ -71,7 +71,7 @@ export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: 
         </div>
         {isAuthenticated ? (
           <Button
-            className="liquid-glass-accent ml-4 shrink-0"
+            className="ml-4 shrink-0"
             size="sm"
             onClick={handleCopy}
             disabled={isCopying || isCopied}
@@ -80,7 +80,7 @@ export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: 
           </Button>
         ) : (
           <Button
-            className="liquid-glass-accent ml-4 shrink-0"
+            className="ml-4 shrink-0"
             size="sm"
             onClick={() => router.push(`/auth/login?redirect=/share/${token}`)}
           >
@@ -175,12 +175,12 @@ function ShareUserMessage({ message }: { message: Message }) {
 
   return (
     <div className="flex flex-row-reverse gap-3">
-      <div className="liquid-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+      <div className="bg-secondary flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
         <User className="h-4 w-4" />
       </div>
       <div className="max-w-[85%] min-w-0">
         {displayContent && (
-          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+          <div className="bg-muted border-border rounded-2xl border px-4 py-3">
             <MarkdownRenderer content={displayContent} hardBreaks />
           </div>
         )}
@@ -211,10 +211,7 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
 
   return (
     <div className="flex gap-3">
-      <AgentAvatar
-        className="liquid-glass-pill h-8 w-8 shrink-0 rounded-full"
-        markClassName="h-4 w-4"
-      />
+      <AgentAvatar className="bg-secondary h-8 w-8 shrink-0 rounded-full" markClassName="h-4 w-4" />
       {/* Stretched, not shrink-to-fit: the summary cards below are as wide as
           this column, and a shrinking column would resize them per token. */}
       <div className="max-w-[85%] min-w-0 flex-1 space-y-2">
@@ -274,7 +271,7 @@ function ShareMessageBody({ message }: { message: Message }) {
   return (
     <>
       {message.content && (
-        <div className="liquid-glass-inner w-fit max-w-full rounded-2xl px-4 py-3">
+        <div className="bg-muted border-border w-fit max-w-full rounded-2xl border px-4 py-3">
           <MarkdownRenderer content={message.content} />
         </div>
       )}

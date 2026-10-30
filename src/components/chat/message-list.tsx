@@ -704,7 +704,7 @@ function UserMessageItem({
     return (
       <div className="flex flex-row-reverse gap-3">
         {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
-        <UserAvatar className="liquid-glass-pill hidden h-8 w-8 shrink-0 md:flex" />
+        <UserAvatar className="bg-secondary hidden h-8 w-8 shrink-0 md:flex" />
         <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
           {/* Attachments (read-only during edit) */}
           {attachmentViews && attachmentViews.length > 0 && (
@@ -735,7 +735,7 @@ function UserMessageItem({
           )}
 
           {/* Edit textarea */}
-          <div className="liquid-glass-inner rounded-2xl px-4 py-3">
+          <div className="bg-muted border-border rounded-2xl border px-4 py-3">
             <Textarea
               ref={textareaRef}
               value={editDraft}
@@ -764,7 +764,7 @@ function UserMessageItem({
             </Button>
             <Button
               size="sm"
-              className="liquid-glass-accent h-7 px-2 text-xs"
+              className="h-7 px-2 text-xs"
               onClick={saveEditing}
               disabled={!editDraft.trim() || isSaving}
             >
@@ -784,7 +784,7 @@ function UserMessageItem({
   return (
     <div className="group/message flex flex-row-reverse gap-3">
       {/* Avatar is desktop-only. alignment (right = user) already identifies the speaker on mobile */}
-      <UserAvatar className="liquid-glass-pill hidden h-8 w-8 shrink-0 md:flex" />
+      <UserAvatar className="bg-secondary hidden h-8 w-8 shrink-0 md:flex" />
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {/* Attachments */}
         {attachmentViews && attachmentViews.length > 0 && (
@@ -816,7 +816,7 @@ function UserMessageItem({
 
         {/* Text content (only when there's text) */}
         {displayContent && (
-          <div className="liquid-glass-inner rounded-2xl px-4 py-3" data-quoteable>
+          <div className="bg-muted border-border rounded-2xl border px-4 py-3" data-quoteable>
             <MarkdownRenderer content={displayContent} hardBreaks />
           </div>
         )}
@@ -920,7 +920,10 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
     <>
       {/* Message bubble (only when there's text) */}
       {message.content && (
-        <div className={`liquid-glass-inner rounded-2xl px-4 py-3 ${bubble}`} data-quoteable>
+        <div
+          className={`bg-muted border-border rounded-2xl border px-4 py-3 ${bubble}`}
+          data-quoteable
+        >
           {isStreaming ? (
             <StreamingMarkdown content={message.content} />
           ) : (
@@ -935,7 +938,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       {/* Streaming indicator for empty current turn */}
       {!message.content && !message.errorMessage && isStreaming && (
         <div
-          className={`liquid-glass-inner flex items-center gap-1 rounded-2xl px-4 py-3 ${bubble}`}
+          className={`bg-muted border-border flex items-center gap-1 rounded-2xl border px-4 py-3 ${bubble}`}
         >
           <span className="animate-pulse">...</span>
         </div>
@@ -1027,7 +1030,7 @@ function AssistantGroupImpl({
     <div className="group/message flex gap-3">
       {/* Single avatar for the entire group. desktop-only, saves ~44px per group on mobile */}
       <AgentAvatar
-        className="liquid-glass-pill hidden h-8 w-8 shrink-0 rounded-full md:flex"
+        className="bg-secondary hidden h-8 w-8 shrink-0 rounded-full md:flex"
         markClassName="h-4 w-4"
       />
 
@@ -1081,7 +1084,7 @@ function AssistantGroupImpl({
               <div key={messageKey(message)}>
                 {/* Thinking block */}
                 {message.thinking && (
-                  <div className="liquid-glass-inner rounded-xl">
+                  <div className="bg-muted border-border rounded-xl border">
                     <button
                       className="flex w-full items-center gap-2 px-3 py-2 text-left"
                       onClick={() => toggleThinking(messageKey(message))}

@@ -116,7 +116,7 @@ export function ToolsSection() {
               Configure which tools are enabled, how they reach the model, and how they are
               approved.
             </p>
-            <div className="liquid-glass-inner mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
+            <div className="bg-muted mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
               <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
               <p className="text-muted-foreground text-xs">
                 Toggle categories on or off, expand one to set how its tools reach the model, and

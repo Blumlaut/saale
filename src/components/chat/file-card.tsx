@@ -83,7 +83,7 @@ function FileTypeIcon({ file }: { file: SharedFile }) {
 /** A shared file that could not be produced. the reason is the whole card. */
 function SharedFileError({ file }: { file: SharedFile }) {
   return (
-    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-3 py-2">
+    <div className="bg-muted border-border flex min-w-0 items-center gap-3 rounded-xl border px-3 py-2">
       <AlertCircle className="text-destructive h-4 w-4 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs font-medium">{file.fileName}</p>
@@ -98,7 +98,7 @@ function SharedFileError({ file }: { file: SharedFile }) {
 /** A non-image attachment: one compact row, with its download. */
 function SharedFileRow({ file }: { file: SharedFile }) {
   return (
-    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-2.5 py-2">
+    <div className="bg-muted border-border flex min-w-0 items-center gap-3 rounded-xl border px-2.5 py-2">
       <div className="bg-muted/50 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
         <FileTypeIcon file={file} />
       </div>
@@ -120,7 +120,7 @@ function SharedImageTile({ file }: { file: SharedFile }) {
   const { url, failure } = useFilePreview(file.filePath, true);
 
   return (
-    <div className="liquid-glass-inner min-w-0 overflow-hidden rounded-xl">
+    <div className="bg-muted border-border min-w-0 overflow-hidden rounded-xl border">
       {url && !failure ? (
         <LightboxImage
           src={url}
@@ -159,7 +159,7 @@ function SharedImageTile({ file }: { file: SharedFile }) {
 /** A `show_file` call whose arguments are still being written: no file yet. */
 function SharedFilePending() {
   return (
-    <div className="liquid-glass-inner flex min-w-0 items-center gap-3 rounded-xl px-4 py-3">
+    <div className="bg-muted border-border flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3">
       <Loader2 className="text-muted-foreground h-4 w-4 shrink-0 animate-spin" />
       <p className="text-muted-foreground text-xs">Preparing file…</p>
     </div>
@@ -185,7 +185,7 @@ export function ShowFileCard({ toolCall }: { toolCall: ToolCallData }) {
   if (file.isError) return <SharedFileError file={file} />;
 
   return (
-    <div className="liquid-glass-inner overflow-hidden rounded-xl">
+    <div className="bg-muted border-border overflow-hidden rounded-xl border">
       {file.isImage && url && !failure && (
         <div className="border-border/30 border-b">
           <LightboxImage

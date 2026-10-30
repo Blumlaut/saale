@@ -93,7 +93,7 @@ function ToolCardFrame({
   body?: ReactNode;
 }) {
   return (
-    <div className="liquid-glass-inner rounded-xl">
+    <div className="bg-muted border-border rounded-xl border">
       <div className="flex items-center">
         {head}
         <ToolCardActions model={model} />

@@ -115,7 +115,7 @@ export function TelegramBox({
           </DropdownMenu>
         </div>
       ) : (
-        <Button size="sm" className="liquid-glass-accent rounded-full" onClick={onLink}>
+        <Button size="sm" onClick={onLink}>
           <Link2 className="mr-2 h-4 w-4" />
           Link Telegram
         </Button>
@@ -164,7 +164,7 @@ export function TelegramBox({
 /** An explanatory line where the panel cannot offer a code. */
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="liquid-glass-inner text-muted-foreground rounded-2xl border-0 px-4 py-3 text-sm">
+    <div className="bg-muted text-muted-foreground rounded-2xl border-0 px-4 py-3 text-sm">
       {children}
     </div>
   );
@@ -243,11 +243,7 @@ export function TelegramLinkPanel({
               ? "Get a link code to connect a different Telegram account. It replaces the one currently linked."
               : `Saale talks to you through a shared Telegram bot${bot.username ? ` (@${bot.username})` : ""}. Get a link code and send it to the bot, and your Telegram account is connected.${bot.loginEnabled ? " That link is also how Telegram signs you in." : ""}`}
           </p>
-          <Button
-            className="liquid-glass-accent h-9 rounded-full text-xs font-medium"
-            onClick={onCreateCode}
-            disabled={linking}
-          >
+          <Button className="h-9 text-xs font-medium" onClick={onCreateCode} disabled={linking}>
             {linking ? (
               <>
                 <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -272,17 +268,14 @@ export function TelegramLinkPanel({
             its own when you open the chat. Tapping the button below does it for you.
           </p>
 
-          <Button
-            asChild
-            className="liquid-glass-accent h-9 w-full rounded-full text-xs font-medium"
-          >
+          <Button asChild className="h-9 w-full text-xs font-medium">
             <a href={linkCode.deepLink} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-3.5 w-3.5" />
               Open Telegram
             </a>
           </Button>
 
-          <div className="liquid-glass-inner rounded-2xl border-0 px-4 py-3">
+          <div className="bg-muted rounded-2xl border-0 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <code className="font-mono text-sm break-all">{linkCode.code}</code>
               <Button
@@ -365,8 +358,8 @@ export function TelegramLinkDialog({
 
         <DialogFooter>
           <Button
-            variant="outline"
-            className="liquid-glass-pill h-9 rounded-full text-xs font-medium"
+            variant="secondary"
+            className="h-9 text-xs font-medium"
             onClick={() => onOpenChange(false)}
           >
             Close

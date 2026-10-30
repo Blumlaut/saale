@@ -93,8 +93,8 @@ export function NotificationBell() {
           <span className="text-sm font-medium">Notifications</span>
           {unreadCount > 0 && (
             <Button
-              variant="ghost"
-              className="liquid-glass-pill h-7 rounded-full px-2.5 text-xs font-medium"
+              variant="secondary"
+              className="h-7 px-2.5 text-xs font-medium"
               onClick={markAllAsRead}
             >
               Mark all read
@@ -137,7 +137,7 @@ export function NotificationBell() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 shrink-0 rounded-full"
+                    className="h-6 w-6 shrink-0"
                     onClick={() => markAsRead(notification.id)}
                   >
                     <X className="h-3 w-3" />

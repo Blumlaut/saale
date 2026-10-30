@@ -92,7 +92,7 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
               calendarField={
                 <div className="space-y-2">
                   <Label className="text-xs">Calendar</Label>
-                  <div className="liquid-glass-inner rounded-2xl border-0 bg-transparent px-2 py-1 shadow-none">
+                  <div className="rounded-2xl border-0 bg-transparent px-2 py-1 shadow-none">
                     <select
                       className="border-border w-full rounded-full border bg-transparent px-3 py-2 text-sm focus-visible:outline-none"
                       value={calendarId}
@@ -114,7 +114,7 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
           {/* Footer */}
           <div className="border-border/30 border-t px-6 py-4">
             <Button
-              className="liquid-glass-accent h-9 w-full rounded-full text-xs font-medium"
+              className="h-9 w-full text-xs font-medium"
               disabled={saving || !draft.summary || !draft.dtStart}
               onClick={handleSave}
             >

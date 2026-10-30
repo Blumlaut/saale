@@ -312,10 +312,7 @@ export function SessionSidebar({
       {/* New chat. mobile sheet only (the desktop header owns its own action) */}
       {onNewChat && (
         <div className="border-border/30 border-b p-2">
-          <Button
-            className="liquid-glass-accent h-9 w-full justify-center gap-2 rounded-lg"
-            onClick={onNewChat}
-          >
+          <Button className="h-9 w-full justify-center gap-2 rounded-lg" onClick={onNewChat}>
             <MessageSquarePlus className="h-4 w-4" />
             New Chat
           </Button>
