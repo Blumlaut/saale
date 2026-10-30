@@ -15,7 +15,7 @@ import { ChatWelcome } from "./chat-empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { downloadFile } from "@/lib/download";
 import { isSendKey } from "@/lib/chat/enter-to-send";
-import { MarkdownRenderer } from "./markdown-renderer";
+import { MarkdownRenderer, StreamingMarkdown } from "./markdown-renderer";
 import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
@@ -921,7 +921,11 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
       {/* Message bubble (only when there's text) */}
       {message.content && (
         <div className={`liquid-glass-inner rounded-2xl px-4 py-3 ${bubble}`} data-quoteable>
-          <MarkdownRenderer content={message.content} />
+          {isStreaming ? (
+            <StreamingMarkdown content={message.content} />
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
         </div>
       )}
 

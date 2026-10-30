@@ -99,6 +99,71 @@ test.describe("streamed text chunks", () => {
     }
   });
 
+  test("renders markdown across the blocks of a live answer", async ({ browser }) => {
+    // The live bubble renders block by block (the finished ones are parsed
+    // once), so a heading, a loose list and a fenced block all have to come out
+    // of a run that never sends the whole answer at once.
+    const answer = [
+      "## Plan",
+      "",
+      "First, the steps:",
+      "",
+      "1. one",
+      "",
+      "2. two",
+      "",
+      "Then the code:",
+      "",
+      "```ts",
+      "const a = 1;",
+      "",
+      "const b = 2;",
+      "```",
+      "",
+      "And a closing **bold** line.",
+      "",
+    ].join("\n");
+
+    const context = await sessionContext(browser, { viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    try {
+      await page.route(/\/api\/chat\/sessions\/[^/]+\/messages$/, (route) =>
+        route.fulfill({
+          json: { messages: [], queuedMessages: [], session: { title: "stream deltas" } },
+        }),
+      );
+      const frames = [
+        sse(1, "turn_start", { turnId: "t-md", startedAt: new Date().toISOString() }),
+      ];
+      let offset = 0;
+      for (let id = 2; offset < answer.length; id++) {
+        const delta = answer.slice(offset, offset + 7);
+        frames.push(sse(id, "token_delta", { turnId: "t-md", delta, offset }));
+        offset += delta.length;
+      }
+      await page.route(/\/api\/chat\/sessions\/[^/]+\/stream/, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "text/event-stream",
+          body: frames.join(""),
+        }),
+      );
+
+      await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
+
+      await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
+      // A loose list is one list: both items belong to it, and neither arrives
+      // twice.
+      await expect(page.getByRole("listitem").filter({ hasText: "one" })).toHaveCount(1);
+      await expect(page.getByRole("listitem").filter({ hasText: "two" })).toHaveCount(1);
+      await expect(page.locator("pre").filter({ hasText: "const b = 2;" })).toBeVisible();
+      await expect(page.locator("strong").filter({ hasText: "bold" })).toBeVisible();
+      await expect(page.getByText("Plan", { exact: true })).toHaveCount(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   test("does not splice a chunk the transcript cannot continue from", async ({ browser }) => {
     // A page load mid-run replays whatever the buffer still holds. A chunk
     // whose offset is ahead of the empty bubble would garble the text if it

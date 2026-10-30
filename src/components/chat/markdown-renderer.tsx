@@ -7,6 +7,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import type { PluggableList } from "unified";
+import { streamBlocks } from "@/lib/chat/stream-blocks";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -41,16 +42,50 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 }: MarkdownRendererProps) {
   return (
     <div className={cn("markdown-body text-sm leading-relaxed", className)}>
-      <ReactMarkdown
-        remarkPlugins={hardBreaks ? REMARK_PLUGINS_HARD_BREAKS : REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
-        components={COMPONENTS}
-      >
-        {content}
-      </ReactMarkdown>
+      <MarkdownDocument content={content} hardBreaks={hardBreaks} />
     </div>
   );
 });
+
+/** One markdown document, without the wrapper around it. */
+const MarkdownDocument = memo(function MarkdownDocument({
+  content,
+  hardBreaks = false,
+}: MarkdownRendererProps) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={hardBreaks ? REMARK_PLUGINS_HARD_BREAKS : REMARK_PLUGINS}
+      rehypePlugins={REHYPE_PLUGINS}
+      components={COMPONENTS}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+/** A block that has stopped changing, so it parses once and stays put. */
+const StreamBlock = memo(function StreamBlock({ content }: { content: string }) {
+  return <MarkdownDocument content={content} />;
+});
+
+/**
+ * Markdown whose text is still arriving.
+ *
+ * Renders one document per block with everything but the last memoized, so a
+ * message growing into thousands of characters only pays for the block being
+ * written (see `lib/chat/stream-blocks`).
+ */
+export function StreamingMarkdown({ content, className }: MarkdownRendererProps) {
+  const blocks = streamBlocks(content);
+
+  return (
+    <div className={cn("markdown-body text-sm leading-relaxed", className)}>
+      {blocks.map((block, index) => (
+        <StreamBlock key={index} content={block} />
+      ))}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Code block with copy button                                       */
