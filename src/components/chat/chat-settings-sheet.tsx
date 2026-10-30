@@ -87,9 +87,7 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
           <Separator className="my-5" />
 
           <div>
-            <p className="text-muted-foreground font-mono text-[11px] tracking-wider uppercase">
-              Tools
-            </p>
+            <p className="console-label text-muted-foreground">Tools</p>
             <div className="mt-1">
               {TOOL_CATEGORIES.map((category, index) => (
                 <div key={category.key}>
