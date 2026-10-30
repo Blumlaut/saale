@@ -91,16 +91,14 @@ function reportUpload(
   // reports the conflicts and this offers the one way to force it.
   const conflicts = outcome.skipped.filter((skip) => skip.reason === "exists");
   if (conflicts.length > 0) {
-    toast.warning(
-      `${conflicts.length} file${conflicts.length === 1 ? "" : "s"} already exist here`,
-      {
-        description: "Nothing was replaced.",
-        action: {
-          label: "Overwrite",
-          onClick: () => void retry(files).then((next) => reportUpload(files, next, retry, report)),
-        },
+    const what = conflicts.length === 1 ? "1 file" : `${conflicts.length} files`;
+    toast.warning(`${what} already ${conflicts.length === 1 ? "exists" : "exist"} here`, {
+      description: "Nothing was replaced.",
+      action: {
+        label: "Overwrite",
+        onClick: () => void retry(files).then((next) => reportUpload(files, next, retry, report)),
       },
-    );
+    });
   } else if (outcome.uploaded.length > 0) {
     toast.success(
       `Uploaded ${outcome.uploaded.length} file${outcome.uploaded.length === 1 ? "" : "s"}`,
