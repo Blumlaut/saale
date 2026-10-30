@@ -1,7 +1,10 @@
 /**
- * Voice input. `VOICE_URL` points at a faster-whisper server (Speaches), and
- * leaving it unset is how a deployment turns voice off: no mic in the
- * composer, no container, no model on disk.
+ * Voice input, decoded by a faster-whisper server (Speaches). The compose file
+ * points the app at that server by default, and `VOICE_ENABLED=0` turns the
+ * feature off: no mic in the composer, and the routes answer 404.
+ *
+ * `VOICE_URL` names a different server, and empty means "no server here", which
+ * is what a bare `npm run dev` on a host without the container gets.
  *
  * The server loads a model on the first request and unloads it again after a
  * stretch of idle time, so the memory it costs follows its use.
@@ -18,6 +21,9 @@ export const MAX_VOICE_BYTES = 10 * 1024 * 1024;
 /** A cold model load plus a minute of audio stays under this. */
 export const VOICE_TIMEOUT_MS = 90_000;
 
+/** The server fetches a few hundred MB on the first recording. */
+export const VOICE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
 export interface VoiceConfig {
   /** Base URL of the transcription server, without a trailing slash. */
   url: string;
@@ -27,8 +33,10 @@ export interface VoiceConfig {
   language: string | null;
 }
 
-/** Null when this deployment has no transcription server. */
+/** Null when this deployment has no transcription server, or voice is off. */
 export function voiceConfig(): VoiceConfig | null {
+  if (process.env.VOICE_ENABLED === "0") return null;
+
   const url = process.env.VOICE_URL?.trim();
   if (!url) return null;
 

@@ -47,9 +47,11 @@ services:
       - PREVIEW_DOMAIN=${PREVIEW_DOMAIN:-}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
-      # Empty until VOICE_ENABLED is set: unset VOICE_URL is what turns the
-      # composer's mic off, so the two never disagree.
-      - VOICE_URL=${VOICE_ENABLED:+http://voice:8000}
+      # On by default: the voice container ships with the stack. VOICE_ENABLED=0
+      # takes the mic away, and VOICE_URL points at a server elsewhere. An empty
+      # VOICE_URL (an operator's own override) also turns it off.
+      - VOICE_ENABLED=${VOICE_ENABLED:-1}
+      - VOICE_URL=${VOICE_URL-http://voice:8000}
       - VOICE_MODEL=${VOICE_MODEL:-}
       - VOICE_LANGUAGE=${VOICE_LANGUAGE:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
@@ -162,14 +164,17 @@ services:
   # need a flag on every `up`, and a deploy that passes it is easy to forget.
   # Nothing is loaded until a recording arrives, and the model is unloaded again
   # minutes after the last one, so an unused service sits at its idle footprint.
-  # VOICE_ENABLED=1 in .env is what points web at it and shows the mic.
+  # The mic is on by default; VOICE_ENABLED=0 in .env takes it away.
   voice:
     image: ghcr.io/speaches-ai/speaches:latest-cpu
     container_name: saale-voice
     restart: unless-stopped
+    # The cache path is pinned rather than left to the image's own user, so a
+    # redeploy finds the model it downloaded last time.
     volumes:
-      - voice_models:/home/ubuntu/.cache/huggingface/hub
+      - voice_models:/data
     environment:
+      - HF_HOME=/data
       - WHISPER__COMPUTE_TYPE=int8
       - ENABLE_UI=False
       - STT_MODEL_TTL=600

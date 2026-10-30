@@ -92,6 +92,47 @@ describe("voice routes", () => {
     expect(await response.json()).toEqual({ text: "hello there" });
   });
 
+  it("installs the model the server lacks, then transcribes", async () => {
+    process.env.VOICE_URL = "http://voice:8000";
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url.endsWith("/v1/models/Systran/faster-whisper-small")) {
+          return new Response("Model downloaded", { status: 200 });
+        }
+        return calls.length === 1
+          ? Response.json({ detail: "Model is not installed locally" }, { status: 404 })
+          : Response.json({ text: "installed and heard" });
+      }),
+    );
+
+    const response = await POST(recordingRequest(audio()));
+
+    expect(calls).toEqual([
+      "http://voice:8000/v1/audio/transcriptions",
+      "http://voice:8000/v1/models/Systran/faster-whisper-small",
+      "http://voice:8000/v1/audio/transcriptions",
+    ]);
+    expect(await response.json()).toEqual({ text: "installed and heard" });
+  });
+
+  it("gives up when the model still is not there after installing it", async () => {
+    process.env.VOICE_URL = "http://voice:8000";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/v1/models/")
+          ? new Response("Model downloaded", { status: 200 })
+          : Response.json({ detail: "Model is not installed locally" }, { status: 404 }),
+      ),
+    );
+
+    const response = await POST(recordingRequest(audio()));
+    expect(response.status).toBe(502);
+  });
+
   it("answers 502 when the transcription server fails", async () => {
     process.env.VOICE_URL = "http://voice:8000";
     vi.stubGlobal(

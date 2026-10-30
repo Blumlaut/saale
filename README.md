@@ -252,12 +252,12 @@ Everything with a default is optional. The compose file sets the database and Re
 | `VAPID_PRIVATE_KEY`          | The other half of the pair. Rotating it drops every subscription.         | No       |
 | `VAPID_SUBJECT`              | Contact URI for push services. Defaults to a `mailto:` on the app's host. | No       |
 | `COUNCIL_ENABLED`            | `0` removes the council module entirely.                                  | No       |
-| `VOICE_ENABLED`              | `1` adds voice input, decoded by the `voice` container.                   | No       |
+| `VOICE_ENABLED`              | `0` removes voice input. The `voice` container decodes it.                | No       |
 | `VOICE_MODEL`                | faster-whisper model to transcribe with. Defaults to `…-small`.           | No       |
 
 `.env.example` lists the rest, with comments.
 
-Voice input needs the `voice` container up alongside the app: `docker compose ps`
+Voice input is on by default and needs the `voice` container up alongside the app: `docker compose ps`
 lists it, and its first start downloads the model into `saale_voice_models`
 (a few hundred MB, once). A 502 from the composer means the app reached its
 `VOICE_URL` and nothing answered there, so check that container's logs before

@@ -5,12 +5,25 @@ const env = process.env;
 
 afterEach(() => {
   process.env = { ...env };
+  delete process.env.VOICE_ENABLED;
   delete process.env.VOICE_URL;
   delete process.env.VOICE_MODEL;
   delete process.env.VOICE_LANGUAGE;
 });
 
 describe("voiceConfig", () => {
+  it("is off when the deployment turns it off", () => {
+    process.env.VOICE_ENABLED = "0";
+    process.env.VOICE_URL = "http://voice:8000";
+    expect(voiceConfig()).toBeNull();
+  });
+
+  it("stays on for any other value of the switch", () => {
+    process.env.VOICE_ENABLED = "1";
+    process.env.VOICE_URL = "http://voice:8000";
+    expect(voiceConfig()?.url).toBe("http://voice:8000");
+  });
+
   it("is off until a transcription server is configured", () => {
     delete process.env.VOICE_URL;
     expect(voiceConfig()).toBeNull();
