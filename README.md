@@ -32,7 +32,7 @@ A Saale prompt with the basic productivity tools uses **less than 6,000 tokens**
 The Agent can pretty much do anything a Linux machine can, install programs, execute code, do web searches, if you can think of it, it probably can do it.
 
 Saale itself brings a normal set of productivity tools: mail over SMTP and IMAP, a calendar, a
-to-do list, agents, schedules and watchers.
+to-do list, infrastructure management (SSH connections, notes), memories, agents, schedules and watchers.
 
 - **Agents** are prompts that run on a schedule and do the work on their own.
 - **Schedules** are jobs Saale runs on its own: mail and calendar sync, chat titles, tags,
