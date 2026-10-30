@@ -600,6 +600,14 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultExposure: "codemode",
   },
   {
+    name: "watcher_get",
+    label: "Read Watcher",
+    description: "Read one watcher in full, script included",
+    category: "watchers",
+    defaultPolicy: "allow",
+    defaultExposure: "codemode",
+  },
+  {
     name: "watcher_ticks",
     label: "Watcher Ticks",
     description: "Read a watcher's recent ticks",
