@@ -105,6 +105,18 @@ describe("ChangesView: what is staged", () => {
   });
 });
 
+describe("ChangesView: reading a diff", () => {
+  it("reads no diff until a file is unfolded, then only that file's", async () => {
+    renderView({ changes: [change("src/loose.ts"), change("src/other.ts")] });
+    expect(http.fetchJson).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTitle("src/loose.ts"));
+
+    await waitFor(() => expect(http.fetchJson).toHaveBeenCalledTimes(1));
+    expect(http.fetchJson).toHaveBeenCalledWith("/api/coder/sessions/s-1/diff?path=src%2Floose.ts");
+  });
+});
+
 describe("ChangesView: committing", () => {
   it("keeps the message box behind a button, and hides the button on a clean tree", () => {
     const { unmount } = renderView({ changes: [] });
