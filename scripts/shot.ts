@@ -13,6 +13,7 @@
  * Flags:
  *   --viewport 375,1280   widths to shoot (default 375,1280)
  *   --height 800          viewport height (default 800)
+ *   --theme dark          light, dark or system (default system)
  *   --click "<target>"    button label, visible text, or a CSS selector
  *   --wait 600            extra settle time after the last click, in ms
  *   --full-page           screenshot the whole document instead of the window
@@ -37,6 +38,7 @@ const { values, tokens, positionals } = parseArgs({
   options: {
     viewport: { type: "string", default: "375,1280" },
     height: { type: "string", default: "800" },
+    theme: { type: "string", default: "system" },
     click: { type: "string", multiple: true },
     wait: { type: "string", default: "600" },
     "full-page": { type: "boolean", default: false },
@@ -59,6 +61,16 @@ for (const token of tokens.filter((t) => t.kind === "option")) {
 const viewports = values.viewport.split(",").map((width) => Number(width.trim()));
 const height = Number(values.height);
 const settleMs = Number(values.wait);
+
+const THEMES = ["light", "dark", "system"] as const;
+type Theme = (typeof THEMES)[number];
+
+if (!THEMES.includes(values.theme as Theme)) {
+  console.error(`--theme takes ${THEMES.join(", ")}, not "${values.theme}"`);
+  process.exit(1);
+}
+
+const theme = values.theme as Theme;
 
 /**
  * Click the first visible thing that answers to `target`.
@@ -169,7 +181,13 @@ async function main(): Promise<void> {
         viewport: { width, height },
         deviceScaleFactor: 2,
         storageState,
+        ...(theme === "system" ? {} : { colorScheme: theme }),
       });
+      // next-themes reads its stored choice before the first paint, so this has
+      // to land before the document does.
+      if (theme !== "system") {
+        await context.addInitScript(`localStorage.setItem("theme", ${JSON.stringify(theme)})`);
+      }
       const page = await context.newPage();
 
       const errors: string[] = [];
@@ -186,6 +204,10 @@ async function main(): Promise<void> {
         if (settleMs > 0) await page.waitForTimeout(settleMs);
 
         const file = path.join(outDir, `${slug(pathname)}-${width}.png`);
+        // The dev overlay is a badge pinned over the page, not part of the app.
+        await page.evaluate(
+          "document.querySelectorAll('nextjs-portal').forEach((el) => el.remove())",
+        );
         await page.screenshot({ path: file, fullPage: values["full-page"] });
 
         const layout = await measure(page);
