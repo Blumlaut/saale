@@ -45,6 +45,14 @@ worktrees and a full set of repository tools. Connect GitHub once in Settings, u
 Integrations, and your private repositories, pushes and pull requests work from the
 workspace.
 
+## Multi-User?
+
+Yes, Saale supports global and "local" providers, local providers are configured by users themselves, so a user is not locked into the global models.
+
+## Infrastructure Management?
+
+You can use Saale to connect to and manage servers via SSH, this requires a reachable SSH Port and for an SSH Key to be configured (or Password authentication to be enabled).
+
 ## Screenshots
 
 **Chat.** A conversation with the agent. Answers stream in as markdown, and each turn
