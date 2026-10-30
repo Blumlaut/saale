@@ -250,8 +250,8 @@ export function ModelPicker({
             ) : (
               Object.entries(filteredGroups).map(([providerKey, providerModels]) => (
                 <div key={providerKey}>
-                  {/* Provider label */}
-                  <div className="px-2.5 py-1.5">
+                  {/* stays in view while the provider's own models scroll */}
+                  <div className="bg-popover sticky top-0 z-10 px-2.5 py-1.5">
                     <span className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
                       {providerModels[0]?.providerName ?? providerKey}
                     </span>
