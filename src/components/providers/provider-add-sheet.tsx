@@ -31,6 +31,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { ProviderCatalogView } from "@/lib/providers/catalog";
+import { CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
 import type { ProviderAuthType } from "@/lib/providers/login";
 import { cn, ROW_ACTION } from "@/lib/utils";
@@ -59,6 +60,25 @@ export interface EndpointDefaults extends EndpointDraft {
   exists: boolean;
 }
 
+/**
+ * The sheet's offer to add an endpoint. There is no row behind it until one is
+ * saved, so it never comes from the provider list.
+ */
+const NEW_ENDPOINT_ENTRY: ProviderCatalogView = {
+  id: CUSTOM_PROVIDER_ID,
+  name: CUSTOM_PROVIDER_LABEL,
+  baseUrl: null,
+  methods: [
+    { type: "api_key", label: "API key (optional for a local server)", subscription: false },
+  ],
+  modelCount: 0,
+  modelsConfigurable: true,
+  custom: true,
+  configured: false,
+  source: null,
+  isGlobal: false,
+};
+
 export const EMPTY_ENDPOINT_DEFAULTS: EndpointDefaults = {
   exists: false,
   apiKey: "",
@@ -82,6 +102,10 @@ export interface ProviderAddSheetProps {
   endpoint: EndpointDefaults;
   saving: boolean;
   onConnect: (entry: ProviderCatalogView, authType: ProviderAuthType) => void;
+  /** Add another OpenAI-compatible endpoint. */
+  onAddEndpoint: () => void;
+  /** Edit an endpoint this scope already has. */
+  onConfigureEndpoint: (entry: ProviderCatalogView) => void;
   onSaveEndpoint: (draft: EndpointDraft) => void;
   onSaveLimits: (draft: EndpointDraft) => void;
   /** Unlink a provider the caller no longer wants; inherited credentials can't be. */
@@ -98,6 +122,8 @@ export function ProviderAddSheet({
   endpoint,
   saving,
   onConnect,
+  onAddEndpoint,
+  onConfigureEndpoint,
   onSaveEndpoint,
   onSaveLimits,
   scope,
@@ -121,7 +147,8 @@ export function ProviderAddSheet({
 
   const linked = providers.filter((entry) => entry.configured).filter(matches);
   const unlinked = providers.filter((entry) => !entry.configured).filter(matches);
-  const noMatches = !loading && linked.length === 0 && unlinked.length === 0;
+  const showAdd = matches(NEW_ENDPOINT_ENTRY);
+  const noMatches = !loading && !showAdd && linked.length === 0 && unlinked.length === 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -140,7 +167,11 @@ export function ProviderAddSheet({
                   <span className="sr-only">Back to providers</span>
                 </Button>
               )}
-              {step === "endpoint" ? "OpenAI-compatible endpoint" : "Manage providers"}
+              {step === "endpoint"
+                ? endpoint.exists
+                  ? "Endpoint settings"
+                  : "Add endpoint"
+                : "Manage providers"}
             </SheetTitle>
             <SheetDescription className="text-muted-foreground text-xs">
               {step === "endpoint"
@@ -178,6 +209,13 @@ export function ProviderAddSheet({
                   </p>
                 )}
 
+                {showAdd && (
+                  <section>
+                    <div className="console-label px-4 pt-3 pb-1">Add</div>
+                    <CandidateRow entry={NEW_ENDPOINT_ENTRY} onConfigureEndpoint={onAddEndpoint} />
+                  </section>
+                )}
+
                 {linked.length > 0 && (
                   <section>
                     <div className="console-label px-4 pt-3 pb-1">Linked. {linked.length}</div>
@@ -186,7 +224,7 @@ export function ProviderAddSheet({
                         <CandidateRow
                           entry={entry}
                           canManage={!(scope === "user" && entry.isGlobal)}
-                          onConfigureEndpoint={() => setStep("endpoint")}
+                          onConfigureEndpoint={() => onConfigureEndpoint(entry)}
                           onDisconnect={() => onDisconnect(entry)}
                         />
                         {index < linked.length - 1 && <Separator className="px-4" />}
@@ -203,7 +241,7 @@ export function ProviderAddSheet({
                         <CandidateRow
                           entry={entry}
                           onConnect={onConnect}
-                          onConfigureEndpoint={() => setStep("endpoint")}
+                          onConfigureEndpoint={() => onConfigureEndpoint(entry)}
                         />
                         {index < unlinked.length - 1 && <Separator className="px-4" />}
                       </div>
@@ -351,8 +389,11 @@ function CandidateRow({
           )}
         </div>
         <span className="text-muted-foreground block truncate text-xs">
-          {entry.modelCount} {entry.modelCount === 1 ? "model" : "models"}
-          {entry.baseUrl ? `. ${entry.baseUrl}` : ""}
+          {entry.custom && !entry.configured
+            ? "Any server that speaks the OpenAI API"
+            : `${entry.modelCount} ${entry.modelCount === 1 ? "model" : "models"}${
+                entry.baseUrl ? `. ${entry.baseUrl}` : ""
+              }`}
         </span>
       </div>
 

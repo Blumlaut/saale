@@ -56,7 +56,6 @@ const CATALOG: ProviderCatalogView[] = [
       { type: "oauth", label: "Two Ways subscription", subscription: true },
     ],
   }),
-  provider("custom", "OpenAI-compatible", { custom: true, modelsConfigurable: true }),
 ];
 
 function renderSheet(overrides: Partial<ProviderAddSheetProps> = {}) {
@@ -69,6 +68,8 @@ function renderSheet(overrides: Partial<ProviderAddSheetProps> = {}) {
     endpoint: EMPTY_ENDPOINT_DEFAULTS,
     saving: false,
     onConnect: vi.fn(),
+    onAddEndpoint: vi.fn(),
+    onConfigureEndpoint: vi.fn(),
     onSaveEndpoint: vi.fn(),
     onSaveLimits: vi.fn(),
     scope: "user",
@@ -123,19 +124,29 @@ describe("ProviderAddSheet", () => {
   });
 
   it("offers endpoint settings from a linked custom provider's row menu", () => {
-    renderSheet({
+    const onConfigureEndpoint = renderSheet({
       providers: [
-        provider("custom", "OpenAI-compatible", {
+        provider("custom-llamacpp", "llama.cpp", {
           custom: true,
           modelsConfigurable: true,
           configured: true,
         }),
       ],
-    });
+    }).onConfigureEndpoint as unknown as Mock;
 
-    fireEvent.click(screen.getByRole("button", { name: "Actions for OpenAI-compatible" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions for llama.cpp" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Endpoint settings/ }));
-    expect(screen.getByPlaceholderText("http://localhost:11434/v1")).toBeInTheDocument();
+    expect(onConfigureEndpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "custom-llamacpp" }),
+    );
+  });
+
+  it("adds another endpoint from the sheet's own row", () => {
+    const onAddEndpoint = renderSheet().onAddEndpoint as unknown as Mock;
+
+    search("openai");
+    fireEvent.click(screen.getByRole("button", { name: "Configure" }));
+    expect(onAddEndpoint).toHaveBeenCalled();
   });
 
   it("filters on the provider name and on its id", () => {
@@ -185,15 +196,6 @@ describe("ProviderAddSheet", () => {
     search("opencode");
     fireEvent.click(screen.getByRole("button", { name: /Sign in/ }));
     expect(onConnect).toHaveBeenCalledWith(expect.objectContaining({ id: "opencode" }), "oauth");
-  });
-
-  it("swaps to the endpoint form for the OpenAI-compatible entry", () => {
-    renderSheet();
-    search("openai");
-    fireEvent.click(screen.getByRole("button", { name: "Configure" }));
-
-    expect(screen.getByPlaceholderText("http://localhost:11434/v1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
   it("prefills the endpoint form from an existing endpoint", () => {

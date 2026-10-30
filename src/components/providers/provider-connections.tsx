@@ -37,7 +37,6 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { deleteJson, patchJson, postJson } from "@/lib/http";
 import type { ProviderCatalogView } from "@/lib/providers/catalog";
-import { CUSTOM_PROVIDER_ID } from "@/lib/providers/config";
 import type { ProviderAuthType } from "@/lib/providers/login";
 import { cn, ROW_ACTION } from "@/lib/utils";
 
@@ -110,6 +109,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<AddSheetMode>("browse");
+  /** The endpoint the form edits, or null while it adds a new one. */
+  const [endpointTarget, setEndpointTarget] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [loginTarget, setLoginTarget] = useState<ProviderLoginTarget | null>(null);
@@ -158,11 +159,12 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   }, [discoveryInfo]);
 
   /**
-   * The caller's own endpoint row. A globally configured endpoint is an admin's
-   *. the form never prefills from it, so saving cannot copy it into a row of
-   * the caller's own by accident.
+   * The endpoint row the form is editing. A globally configured endpoint is an
+   * admin's. the form never prefills from it, so saving cannot copy it into a
+   * row of the caller's own by accident.
    */
-  const endpointRow = rows.find((row) => row.provider === CUSTOM_PROVIDER_ID) ?? null;
+  const endpointRow =
+    endpointTarget === null ? null : (rows.find((row) => row.provider === endpointTarget) ?? null);
 
   const endpointDefaults = useMemo<EndpointDefaults>(() => {
     if (!endpointRow) return EMPTY_ENDPOINT_DEFAULTS;
@@ -183,7 +185,9 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
     setAddOpen(true);
   };
 
-  const openEndpointForm = () => {
+  /** Open the endpoint form, on an existing endpoint or on a new one (`null`). */
+  const openEndpointForm = (provider: string | null) => {
+    setEndpointTarget(provider);
     setAddMode("endpoint");
     setAddOpen(true);
   };
@@ -221,7 +225,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         modelError?: string;
         visionModels?: number;
       }>(endpoints.providers, {
-        provider: CUSTOM_PROVIDER_ID,
+        provider: endpointTarget ?? undefined,
         apiKey: draft.apiKey,
         label: draft.label,
         baseUrl: draft.baseUrl,
@@ -230,6 +234,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
       });
       setStatus("success");
       setAddOpen(false);
+      setEndpointTarget(null);
       if (data.modelCount !== undefined) {
         setDiscoveryInfo({
           kind: "import",
@@ -247,10 +252,11 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   };
 
   const handleSaveLimits = async (draft: EndpointDraft) => {
+    if (!endpointTarget) return;
     setSaving(true);
     try {
       await patchJson(endpoints.providers, {
-        provider: CUSTOM_PROVIDER_ID,
+        provider: endpointTarget,
         contextWindow: draft.contextWindow || undefined,
         maxOutputTokens: draft.maxOutputTokens || undefined,
       });
@@ -273,8 +279,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
    * call, and a failed probe must not be mistaken for "no model here sees
    * images".
    */
-  const handleDetectCapabilities = async () => {
-    setDetecting(CUSTOM_PROVIDER_ID);
+  const handleDetectCapabilities = async (provider: string) => {
+    setDetecting(provider);
     try {
       const data = await postJson<{
         modelCount: number;
@@ -282,7 +288,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         visionModels: number;
         contextWindows: number;
         unprobed: number;
-      }>(endpoints.capabilities, { provider: CUSTOM_PROVIDER_ID });
+      }>(endpoints.capabilities, { provider });
       setDiscoveryInfo({
         kind: "detect",
         modelCount: data.modelCount,
@@ -344,9 +350,9 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
                 <ProviderRow
                   entry={entry}
                   readOnly={scope === "user" && entry.isGlobal}
-                  onConfigureEndpoint={openEndpointForm}
+                  onConfigureEndpoint={() => openEndpointForm(entry.id)}
                   onDisconnect={handleDisconnect}
-                  onDetect={handleDetectCapabilities}
+                  onDetect={() => void handleDetectCapabilities(entry.id)}
                   detecting={detecting === entry.id}
                 />
                 {index < linked.length - 1 && <Separator className="px-4" />}
@@ -406,6 +412,8 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         endpoint={endpointDefaults}
         saving={saving}
         onConnect={handleConnect}
+        onAddEndpoint={() => openEndpointForm(null)}
+        onConfigureEndpoint={(entry) => openEndpointForm(entry.id)}
         onSaveEndpoint={(draft) => void handleSaveEndpoint(draft)}
         onSaveLimits={(draft) => void handleSaveLimits(draft)}
         scope={scope}
