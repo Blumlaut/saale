@@ -32,7 +32,7 @@ RUN npx prisma generate
 RUN node node_modules/prisma/build/index.js migrate diff \
       --from-empty --to-schema prisma/schema.prisma --script > /dev/null
 
-# ─── Build stage (shared by web and worker) ──────────────────────────────────
+# ─── Build stage: web ────────────────────────────────────────────────────────
 
 FROM base AS build
 WORKDIR /app
@@ -53,6 +53,22 @@ ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 # `.next/cache` holds Turbopack's build cache and the incremental typecheck info
 # — mounted so rebuilds start warm instead of retyping and recompiling everything
 RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
+
+# ─── Build stage: worker and sandbox bundles ─────────────────────────────────
+#
+# Apart from the web build on purpose: the worker image takes the two esbuild
+# bundles and none of `.next`, so a release should not pay for a Next build on
+# both of its two legs.
+
+FROM base AS build-worker
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
+ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
+COPY prisma ./prisma
+COPY prisma.config.mjs ./prisma.config.mjs
+RUN npx prisma generate
+COPY . .
 RUN npm run build:worker
 RUN npm run build:sandbox
 
@@ -93,10 +109,10 @@ ENV NODE_ENV=production
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/package.json ./package.json
 # Pre-compiled worker binary, sandbox service + prisma schema
-COPY --from=build /app/dist/worker.mjs ./worker.mjs
-COPY --from=build /app/dist/sandbox.mjs ./sandbox.mjs
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/prisma.config.mjs ./prisma.config.mjs
+COPY --from=build-worker /app/dist/worker.mjs ./worker.mjs
+COPY --from=build-worker /app/dist/sandbox.mjs ./sandbox.mjs
+COPY --from=build-worker /app/prisma ./prisma
+COPY --from=build-worker /app/prisma.config.mjs ./prisma.config.mjs
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "worker.mjs"]

@@ -29,6 +29,7 @@ env:
 jobs:
   plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
       release: ${{ steps.changed.outputs.release }}
@@ -73,6 +74,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       # `prisma generate` runs on install and wants a parseable URL. Nothing
       # connects.
@@ -101,6 +103,8 @@ jobs:
     needs: [plan, checks]
     if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
+    # A hung build would otherwise hold a runner for six hours.
+    timeout-minutes: 45
     strategy:
       # A broken image must not leave the other three half-pushed.
       fail-fast: true
@@ -109,13 +113,20 @@ jobs:
           - name: saale
             file: Dockerfile
             target: production
+            cache-from: type=gha,scope=saale
           - name: saale-worker
             file: Dockerfile
             target: production-worker
+            # The base image and the installed dependencies are the same layer
+            # in both, so the worker reads the web image's cache as well.
+            cache-from: |
+              type=gha,scope=saale-worker
+              type=gha,scope=saale
           - name: saale-sandbox
             file: Dockerfile.sandbox
             # No target: the sandbox image is a single stage.
             target: ""
+            cache-from: type=gha,scope=saale-sandbox
     steps:
       - uses: actions/checkout@v7
         with:
@@ -151,13 +162,14 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:${{ needs.plan.outputs.version }}
             ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:latest
-          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-from: ${{ matrix.cache-from }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           push: true
 
   release:
     needs: [plan, images]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
