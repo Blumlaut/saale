@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Writes the changelog section for a release out of the commits since the last
- * tag. The release workflow runs it twice: once before the images are built,
- * so the app ships with its own entry, and once before the release commit.
+ * tag. The release workflow runs it before the image build and again before the
+ * release commit.
  *
  *   node scripts/changelog.mjs --version 2026.10.0            # print it
  *   node scripts/changelog.mjs --version 2026.10.0 --write    # into CHANGELOG.md

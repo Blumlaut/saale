@@ -3,10 +3,7 @@ import { join } from "node:path";
 
 import { parseChangelog, type ChangelogRelease } from "./parse";
 
-/**
- * `CHANGELOG.md` ships inside the image next to the app, so the console can
- * show what the running release changed without asking anyone.
- */
+/** `CHANGELOG.md` ships inside the image, so this reads the running release offline. */
 let cached: Promise<ChangelogRelease[]> | undefined;
 
 export function getChangelog(): Promise<ChangelogRelease[]> {

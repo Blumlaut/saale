@@ -3,13 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { commitUrl, type ChangelogRelease } from "@/lib/changelog/parse";
 import { fetchJson } from "@/lib/http";
 import { APP_VERSION } from "@/lib/version";
@@ -19,10 +13,7 @@ interface ChangelogResponse {
   releases: ChangelogRelease[];
 }
 
-/**
- * The changelog behind the version in the console footer. Fetched when it is
- * opened, so the console never pays for it on a page it is not shown on.
- */
+/** The changelog behind the version in the console footer. Fetched on open. */
 export function ChangelogSheet({
   open,
   onOpenChange,
@@ -56,7 +47,6 @@ export function ChangelogSheet({
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[440px] sm:max-w-none">
         <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
           <SheetTitle>Changelog</SheetTitle>
-          <SheetDescription>What changed in each release, newest first.</SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
