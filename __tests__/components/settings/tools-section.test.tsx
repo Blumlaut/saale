@@ -8,9 +8,9 @@ import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 
 // The section reads the settings load from the settings shell; the cases below
 // only care about what it tells that shell to store.
-const { settingsState, onSettingsChange } = vi.hoisted(() => ({
+const { settingsState, update } = vi.hoisted(() => ({
   settingsState: { current: null as UserSettings | null },
-  onSettingsChange: vi.fn(),
+  update: vi.fn(),
 }));
 
 vi.mock("@/app/dashboard/settings/components/user-settings-provider", () => ({
@@ -18,10 +18,9 @@ vi.mock("@/app/dashboard/settings/components/user-settings-provider", () => ({
     settings: settingsState.current,
     loading: false,
     saving: false,
-    saveStatus: "idle",
-    updateSettings: onSettingsChange,
+    saveState: "idle",
+    update,
     save: vi.fn(),
-    patch: vi.fn(),
   }),
 }));
 
@@ -66,10 +65,10 @@ function categorySwitches(): HTMLElement[] {
 
 function renderTab(settings: UserSettings) {
   settingsState.current = settings;
-  onSettingsChange.mockClear();
+  update.mockClear();
   render(<ToolsSection />);
   const switches = categorySwitches();
-  return { onSettingsChange, switches, lastSwitch: switches[switches.length - 1]! };
+  return { update, switches, lastSwitch: switches[switches.length - 1]! };
 }
 
 describe("Tools category toggles", () => {
@@ -90,7 +89,7 @@ describe("Tools category toggles", () => {
       agentJobs: true,
       infra: false,
     };
-    const { switches, lastSwitch, onSettingsChange } = renderTab({
+    const { switches, lastSwitch, update } = renderTab({
       ...baseSettings,
       defaultToolConfig: legacy,
     });
@@ -100,15 +99,13 @@ describe("Tools category toggles", () => {
 
     // Turning it off must store an explicit `false`, not flip `undefined`.
     fireEvent.click(lastSwitch);
-    expect(onSettingsChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        defaultToolConfig: expect.objectContaining({ settings: false, infra: false }),
-      }),
-    );
+    expect(update).toHaveBeenCalledWith({
+      defaultToolConfig: expect.objectContaining({ settings: false, infra: false }),
+    });
   });
 
   it("honours an explicit false and turns it back on", () => {
-    const { lastSwitch, onSettingsChange } = renderTab({
+    const { lastSwitch, update } = renderTab({
       ...baseSettings,
       defaultToolConfig: { settings: false },
     });
@@ -116,11 +113,9 @@ describe("Tools category toggles", () => {
     expect(lastSwitch).not.toBeChecked();
 
     fireEvent.click(lastSwitch);
-    expect(onSettingsChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        defaultToolConfig: expect.objectContaining({ settings: true }),
-      }),
-    );
+    expect(update).toHaveBeenCalledWith({
+      defaultToolConfig: expect.objectContaining({ settings: true }),
+    });
   });
 });
 
@@ -151,14 +146,14 @@ describe("Tools coder defaults", () => {
   });
 
   it("writes a flipped category as a full coderToolConfig column", () => {
-    const { onSettingsChange } = renderTab({ ...baseSettings });
+    const { update } = renderTab({ ...baseSettings });
 
     fireEvent.click(screen.getByRole("switch", { name: "Email in coder chats" }));
 
-    const patch = onSettingsChange.mock.calls[0]![0] as UserSettings;
-    expect(patch.coderToolConfig).toMatchObject({ email: true, terminal: true, memory: true });
+    const change = update.mock.calls[0]![0] as Partial<UserSettings>;
+    expect(change.coderToolConfig).toMatchObject({ email: true, terminal: true, memory: true });
     // Every category is named, so a category the row does not hold is explicit.
-    expect(Object.keys(patch.coderToolConfig ?? {})).toHaveLength(TOOL_CATEGORIES.length);
+    expect(Object.keys(change.coderToolConfig ?? {})).toHaveLength(TOOL_CATEGORIES.length);
   });
 });
 

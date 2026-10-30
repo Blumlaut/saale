@@ -35,6 +35,9 @@ const DASHBOARD_PAGES = [
   "/dashboard/jobs/watchers",
   "/dashboard/infra",
   "/dashboard/settings",
+  "/dashboard/settings/models",
+  "/dashboard/settings/tools",
+  "/dashboard/settings/personality",
   "/dashboard/settings/prompts",
 ];
 

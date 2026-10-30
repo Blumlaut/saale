@@ -11,7 +11,7 @@ import { SidebarNavEditor } from "../components/sidebar-nav-editor";
 import { useUserSettings } from "../components/user-settings-provider";
 
 export function AppearanceSection() {
-  const { settings, patch: onPatch, saving } = useUserSettings();
+  const { settings, update, saveState } = useUserSettings();
   const { theme, setTheme } = useTheme();
   const { entries, saving: savingNav, error, save, reset } = useSidebarNav();
   const compactActivity = settings?.compactActivity ?? true;
@@ -58,12 +58,14 @@ export function AppearanceSection() {
                 </p>
               </div>
               <span className="flex shrink-0 items-center gap-2 pt-1">
-                {saving && <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />}
+                {saveState === "saving" && (
+                  <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                )}
                 <Switch
                   id="compact-activity"
                   checked={compactActivity}
-                  disabled={!settings || saving}
-                  onCheckedChange={(checked) => onPatch({ compactActivity: checked })}
+                  disabled={!settings}
+                  onCheckedChange={(checked) => update({ compactActivity: checked })}
                 />
               </span>
             </div>

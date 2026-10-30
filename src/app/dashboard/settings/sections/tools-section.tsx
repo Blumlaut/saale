@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Wrench, Info, ChevronDown, ChevronRight, Code2, GitBranch } from "lucide-react";
-import { SaveFooter } from "../components/save-footer";
+import { AutosavedPage } from "../components/save-state";
 import { useUserSettings } from "../components/user-settings-provider";
 import type { ToolConfig, ToolExposureConfig } from "../types";
 import type { ToolInfo, ToolPolicy } from "@/lib/pi/tool-infos";
@@ -34,13 +34,7 @@ const exposureDescriptions = Object.fromEntries(
 ) as Record<ToolExposure, string>;
 
 export function ToolsSection() {
-  const {
-    settings,
-    updateSettings: onSettingsChange,
-    saving,
-    saveStatus,
-    save: onSave,
-  } = useUserSettings();
+  const { settings, update, saveState } = useUserSettings();
   const toolConfig = (settings?.defaultToolConfig ?? DEFAULT_TOOL_CONFIG) as Required<ToolConfig>;
   const coderToolConfig = resolveCoderToolConfig(settings?.coderToolConfig);
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
@@ -57,18 +51,14 @@ export function ToolsSection() {
     // The stored config is sparse and can predate a category, so an absent key
     // means "at the registry default". flip that, not `undefined`.
     const updated = { ...toolConfig, [key]: !isCategoryEnabled(toolConfig, key) };
-    onSettingsChange({
-      ...settings,
-      defaultToolConfig: updated,
-    });
+    update({ defaultToolConfig: updated });
   };
 
   /** A coder toggle, written to the same column shape as `defaultToolConfig`. */
   const handleCoderToggle = (key: string) => {
     if (!settings) return;
     const categoryKey = key as (typeof TOOL_CATEGORIES)[number]["key"];
-    onSettingsChange({
-      ...settings,
+    update({
       coderToolConfig: {
         ...coderToolConfig,
         [categoryKey]: !coderToolConfig[categoryKey],
@@ -78,11 +68,7 @@ export function ToolsSection() {
 
   const handlePolicyChange = (toolName: string, policy: ToolPolicy) => {
     if (!settings) return;
-    const updated = { ...toolPolicies, [toolName]: policy };
-    onSettingsChange({
-      ...settings,
-      toolPolicies: updated,
-    });
+    update({ toolPolicies: { ...toolPolicies, [toolName]: policy } });
   };
 
   const handleExposureChange = (categoryKey: string, level: ToolExposure) => {
@@ -96,14 +82,11 @@ export function ToolsSection() {
     } else {
       next[key] = level;
     }
-    onSettingsChange({
-      ...settings,
-      toolExposure: Object.keys(next).length > 0 ? next : null,
-    });
+    update({ toolExposure: Object.keys(next).length > 0 ? next : null });
   };
 
   return (
-    <div className="space-y-6">
+    <AutosavedPage state={saveState}>
       <GlassPanel>
         <GlassPanelContent className="p-0">
           {/* Header */}
@@ -286,9 +269,7 @@ export function ToolsSection() {
           </div>
         </GlassPanelContent>
       </GlassPanel>
-
-      <SaveFooter saving={saving} saveStatus={saveStatus} onSave={onSave} />
-    </div>
+    </AutosavedPage>
   );
 }
 

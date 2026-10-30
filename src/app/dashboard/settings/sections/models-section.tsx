@@ -27,10 +27,10 @@ import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Brain, ChevronDown, Eye, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
-import { SaveFooter } from "../components/save-footer";
+import { AutosavedPage } from "../components/save-state";
 import { ProviderManagement } from "../components/provider-management";
 import { useUserSettings } from "../components/user-settings-provider";
-import type { AvailableModel, AvailableProvider, UserSettings } from "../types";
+import type { AvailableModel, AvailableProvider } from "../types";
 
 interface FullModelInfo extends AvailableModel {
   provider: string;
@@ -77,7 +77,7 @@ function formatContextWindow(tokens: number): string {
  * concern, so it sits folded away at the bottom.
  */
 export function ModelsSection() {
-  const { settings, updateSettings, saving, saveStatus, save } = useUserSettings();
+  const { settings, update, saveState } = useUserSettings();
   const purposes = useMemo(() => getAllPurposes(), []);
 
   // The inventory lives below, and is only fetched once someone opens it.
@@ -137,10 +137,6 @@ export function ModelsSection() {
     currentLevel,
   );
   const thinkingOptions = thinkingLevelOptionsFor(thinking.levels);
-
-  const update = (patch: Partial<UserSettings>) => {
-    if (settings) updateSettings({ ...settings, ...patch });
-  };
 
   const setDefaultModel = (value: string) => {
     const next = splitModelValue(value);
@@ -234,344 +230,350 @@ export function ModelsSection() {
     : null;
 
   return (
-    <GlassPanel>
-      <GlassPanelContent className="space-y-6">
-        {/* The fallback everything else inherits */}
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-medium">Default model</h3>
-            <p className="text-muted-foreground mt-0.5 text-sm">
-              Used wherever you have not picked something else.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="default-model">Model</Label>
-              <div id="default-model">
-                <ModelPicker
-                  key={`default-${pickerKey}`}
-                  value={defaultModel}
-                  onChange={setDefaultModel}
-                  placeholder="Choose a model"
-                  triggerClassName="w-full"
-                  className={CONTROL_TRIGGER}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="thinking-level">Thinking</Label>
-              <Select
-                value={currentLevel}
-                onValueChange={(value) => {
-                  if (value) update({ defaultThinkingLevel: value });
-                }}
-              >
-                <SelectTrigger id="thinking-level" className={CONTROL_TRIGGER}>
-                  <Brain className="text-muted-foreground h-3.5 w-3.5" />
-                  <SelectValue>
-                    {thinkingOptions.find((option) => option.id === currentLevel)?.label ??
-                      currentLevel}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {thinkingOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">
-                {thinking.reasoning === false
-                  ? "This model always answers straight away."
-                  : thinking.unsupported
-                    ? "Not offered by this model; it falls back to its own default."
-                    : "How long the model may think before answering."}
+    <AutosavedPage state={saveState}>
+      <GlassPanel>
+        <GlassPanelContent className="space-y-6">
+          {/* The fallback everything else inherits */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-medium">Default model</h3>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                Used wherever you have not picked something else.
               </p>
             </div>
-          </div>
-        </div>
 
-        <Separator />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="default-model">Model</Label>
+                <div id="default-model">
+                  <ModelPicker
+                    key={`default-${pickerKey}`}
+                    value={defaultModel}
+                    onChange={setDefaultModel}
+                    placeholder="Choose a model"
+                    triggerClassName="w-full"
+                    className={CONTROL_TRIGGER}
+                  />
+                </div>
+              </div>
 
-        {/* One picker per kind of work */}
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-medium">Per task</h3>
-          </div>
-
-          <div className="divide-y">
-            {purposes.map((purpose) => {
-              const override = settings.purposeModelOverrides?.[purpose.id];
-              const value = modelValue(override);
-              const Icon = purpose.icon;
-
-              return (
-                <div
-                  key={purpose.id}
-                  className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+              <div className="space-y-2">
+                <Label htmlFor="thinking-level">Thinking</Label>
+                <Select
+                  value={currentLevel}
+                  onValueChange={(value) => {
+                    if (value) update({ defaultThinkingLevel: value });
+                  }}
                 >
-                  <div className="flex min-w-0 items-start gap-2.5">
-                    <Icon className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{purpose.label}</p>
-                      {value === "" && defaultLabel ? (
-                        <p className="text-muted-foreground truncate text-xs">
-                          Uses {defaultLabel}
-                        </p>
-                      ) : null}
+                  <SelectTrigger id="thinking-level" className={CONTROL_TRIGGER}>
+                    <Brain className="text-muted-foreground h-3.5 w-3.5" />
+                    <SelectValue>
+                      {thinkingOptions.find((option) => option.id === currentLevel)?.label ??
+                        currentLevel}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {thinkingOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  {thinking.reasoning === false
+                    ? "This model always answers straight away."
+                    : thinking.unsupported
+                      ? "Not offered by this model; it falls back to its own default."
+                      : "How long the model may think before answering."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* One picker per kind of work */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-medium">Per task</h3>
+            </div>
+
+            <div className="divide-y">
+              {purposes.map((purpose) => {
+                const override = settings.purposeModelOverrides?.[purpose.id];
+                const value = modelValue(override);
+                const Icon = purpose.icon;
+
+                return (
+                  <div
+                    key={purpose.id}
+                    className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <Icon className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{purpose.label}</p>
+                        {value === "" && defaultLabel ? (
+                          <p className="text-muted-foreground truncate text-xs">
+                            Uses {defaultLabel}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
+                      <ModelPicker
+                        key={`${purpose.id}-${pickerKey}`}
+                        value={value}
+                        onChange={(next) => setPurposeModel(purpose, next)}
+                        placeholder="Same as default"
+                        className={cn(CONTROL_TRIGGER, "sm:w-56")}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn("size-8 shrink-0", !value && "invisible")}
+                        aria-label={`Use the default model for ${purpose.label}`}
+                        tabIndex={value ? 0 : -1}
+                        onClick={() => setPurposeModel(purpose, "")}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-
-                  <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
-                    <ModelPicker
-                      key={`${purpose.id}-${pickerKey}`}
-                      value={value}
-                      onChange={(next) => setPurposeModel(purpose, next)}
-                      placeholder="Same as default"
-                      className={cn(CONTROL_TRIGGER, "sm:w-56")}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("size-8 shrink-0", !value && "invisible")}
-                      aria-label={`Use the default model for ${purpose.label}`}
-                      tabIndex={value ? 0 : -1}
-                      onClick={() => setPurposeModel(purpose, "")}
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <Separator />
+          <Separator />
 
-        {/* Your own endpoints. the reason a per-model list exists at all */}
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-medium">Your providers</h3>
-            <p className="text-muted-foreground mt-0.5 text-sm">
-              Connect your own API keys to reach models the instance does not offer.
-            </p>
-          </div>
-          <ProviderManagement
-            onModelsChanged={() => {
-              setPickerKey((key) => key + 1);
-              setInventoryLoaded(false);
-              if (advancedOpen) void loadInventory();
-            }}
-          />
-        </div>
-
-        <Separator />
-
-        {/* Everything else: the inventory, folded away */}
-        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-          <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-lg text-left">
-            <span className="min-w-0">
-              <span className="block text-base font-medium">Models</span>
-              <span className="text-muted-foreground block text-sm">
-                Hide the models you never pick.
-              </span>
-            </span>
-            <ChevronDown
-              className={cn(
-                "text-muted-foreground h-4 w-4 shrink-0 transition-transform",
-                advancedOpen && "rotate-180",
-              )}
-            />
-          </CollapsibleTrigger>
-
-          <CollapsibleContent className="space-y-4 pt-4">
-            {!inventoryLoaded ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-              </div>
-            ) : allModels.length === 0 ? (
-              <p className="text-muted-foreground py-4 text-sm">
-                No models yet. Connect a provider above.
+          {/* Your own endpoints. the reason a per-model list exists at all */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-medium">Your providers</h3>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                Connect your own API keys to reach models the instance does not offer.
               </p>
-            ) : (
-              <>
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search models…"
-                  className="h-8 max-w-xs"
-                />
+            </div>
+            <ProviderManagement
+              onModelsChanged={() => {
+                setPickerKey((key) => key + 1);
+                setInventoryLoaded(false);
+                if (advancedOpen) void loadInventory();
+              }}
+            />
+          </div>
 
-                {groups.length === 0 ? (
-                  <p className="text-muted-foreground py-4 text-sm">No models match that search.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {groups.map(([providerKey, group]) => {
-                      const shownIds = group.models.map((model) => model.id);
-                      const hidden = settings.disabledModels ?? [];
-                      const shownCount = shownIds.filter(
-                        (id) => !hidden.includes(`${providerKey}:${id}`),
-                      ).length;
-                      const allShown = shownCount === group.models.length;
-                      const filtered = search.trim().length > 0;
+          <Separator />
 
-                      return (
-                        <div key={providerKey}>
-                          <div className="flex items-center justify-between gap-2 pb-1">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="text-muted-foreground truncate text-xs font-medium">
-                                {group.name}
-                              </span>
-                              <span className="text-muted-foreground/60 text-[10px]">
-                                {shownCount}/{group.models.length} shown
-                              </span>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-muted-foreground text-[10px]">
-                                {filtered ? "Shown" : "All"}
-                              </span>
-                              <Switch
-                                checked={allShown}
-                                aria-label={
-                                  filtered
-                                    ? `Show or hide the ${group.models.length} listed models of ${group.name}`
-                                    : `Show or hide every model of ${group.name}`
-                                }
-                                onCheckedChange={(next) =>
-                                  toggleProviderShown(providerKey, shownIds, next)
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          <div className="divide-y">
-                            {group.models.map((model) => {
-                              const isHidden = hidden.includes(`${providerKey}:${model.id}`);
-
-                              return (
-                                <div
-                                  key={model.id}
-                                  className={cn(
-                                    "flex items-center gap-3 py-2",
-                                    isHidden && "opacity-50",
-                                  )}
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      <span className="truncate text-sm">{model.name}</span>
-                                      {model.reasoning ? (
-                                        <Badge
-                                          variant="secondary"
-                                          className="rounded-full px-1.5 text-[10px]"
-                                        >
-                                          reasoning
-                                        </Badge>
-                                      ) : null}
-                                      {model.vision ? (
-                                        <Badge
-                                          variant="outline"
-                                          className="gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
-                                        >
-                                          <Eye className="h-3 w-3" />
-                                          vision
-                                        </Badge>
-                                      ) : null}
-                                    </div>
-                                    <span className="text-muted-foreground text-xs">
-                                      {model.contextWindow
-                                        ? `${formatContextWindow(model.contextWindow)} context`
-                                        : model.id}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex shrink-0 items-center gap-1">
-                                    {configurableProviders.has(providerKey) ? (
-                                      <>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon-xs"
-                                          className="text-muted-foreground/60"
-                                          title="Set this model's context window and output cap"
-                                          onClick={() =>
-                                            setLimitsTarget({
-                                              provider: providerKey,
-                                              providerName: group.name,
-                                              modelId: model.id,
-                                              modelName: model.name,
-                                              contextWindow: model.contextWindow,
-                                              maxOutputTokens: model.maxOutputTokens,
-                                              overrides: model.overrides,
-                                              endpointLimits: endpointLimits[providerKey] ?? null,
-                                            })
-                                          }
-                                        >
-                                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon-xs"
-                                          className={cn(
-                                            model.vision
-                                              ? "text-emerald-600 dark:text-emerald-400"
-                                              : "text-muted-foreground/60",
-                                          )}
-                                          title={
-                                            model.vision
-                                              ? "This model can see images"
-                                              : "Mark this model as able to see images"
-                                          }
-                                          disabled={savingVision === `${providerKey}:${model.id}`}
-                                          onClick={() =>
-                                            void toggleVision(providerKey, model.id, !model.vision)
-                                          }
-                                        >
-                                          {savingVision === `${providerKey}:${model.id}` ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                          ) : (
-                                            <Eye className="h-3.5 w-3.5" />
-                                          )}
-                                        </Button>
-                                      </>
-                                    ) : null}
-                                    <Switch
-                                      checked={!isHidden}
-                                      aria-label={`Show ${model.name}`}
-                                      onCheckedChange={() =>
-                                        toggleModelShown(providerKey, model.id)
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+          {/* Everything else: the inventory, folded away */}
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-lg text-left">
+              <span className="min-w-0">
+                <span className="block text-base font-medium">Models</span>
+                <span className="text-muted-foreground block text-sm">
+                  Hide the models you never pick.
+                </span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  "text-muted-foreground h-4 w-4 shrink-0 transition-transform",
+                  advancedOpen && "rotate-180",
                 )}
-              </>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-      </GlassPanelContent>
+              />
+            </CollapsibleTrigger>
 
-      <ModelLimitsSheet
-        target={limitsTarget}
-        onOpenChange={(open) => {
-          if (!open) setLimitsTarget(null);
-        }}
-        capabilitiesEndpoint="/api/providers/capabilities"
-        onSaved={() => {
-          void loadInventory();
-        }}
-      />
+            <CollapsibleContent className="space-y-4 pt-4">
+              {!inventoryLoaded ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+                </div>
+              ) : allModels.length === 0 ? (
+                <p className="text-muted-foreground py-4 text-sm">
+                  No models yet. Connect a provider above.
+                </p>
+              ) : (
+                <>
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search models…"
+                    className="h-8 max-w-xs"
+                  />
 
-      <SaveFooter saving={saving} saveStatus={saveStatus} onSave={save} />
-    </GlassPanel>
+                  {groups.length === 0 ? (
+                    <p className="text-muted-foreground py-4 text-sm">
+                      No models match that search.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {groups.map(([providerKey, group]) => {
+                        const shownIds = group.models.map((model) => model.id);
+                        const hidden = settings.disabledModels ?? [];
+                        const shownCount = shownIds.filter(
+                          (id) => !hidden.includes(`${providerKey}:${id}`),
+                        ).length;
+                        const allShown = shownCount === group.models.length;
+                        const filtered = search.trim().length > 0;
+
+                        return (
+                          <div key={providerKey}>
+                            <div className="flex items-center justify-between gap-2 pb-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="text-muted-foreground truncate text-xs font-medium">
+                                  {group.name}
+                                </span>
+                                <span className="text-muted-foreground/60 text-[10px]">
+                                  {shownCount}/{group.models.length} shown
+                                </span>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="text-muted-foreground text-[10px]">
+                                  {filtered ? "Shown" : "All"}
+                                </span>
+                                <Switch
+                                  checked={allShown}
+                                  aria-label={
+                                    filtered
+                                      ? `Show or hide the ${group.models.length} listed models of ${group.name}`
+                                      : `Show or hide every model of ${group.name}`
+                                  }
+                                  onCheckedChange={(next) =>
+                                    toggleProviderShown(providerKey, shownIds, next)
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            <div className="divide-y">
+                              {group.models.map((model) => {
+                                const isHidden = hidden.includes(`${providerKey}:${model.id}`);
+
+                                return (
+                                  <div
+                                    key={model.id}
+                                    className={cn(
+                                      "flex items-center gap-3 py-2",
+                                      isHidden && "opacity-50",
+                                    )}
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="truncate text-sm">{model.name}</span>
+                                        {model.reasoning ? (
+                                          <Badge
+                                            variant="secondary"
+                                            className="rounded-full px-1.5 text-[10px]"
+                                          >
+                                            reasoning
+                                          </Badge>
+                                        ) : null}
+                                        {model.vision ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="gap-1 rounded-full px-1.5 text-[10px] font-normal text-emerald-600 dark:text-emerald-400"
+                                          >
+                                            <Eye className="h-3 w-3" />
+                                            vision
+                                          </Badge>
+                                        ) : null}
+                                      </div>
+                                      <span className="text-muted-foreground text-xs">
+                                        {model.contextWindow
+                                          ? `${formatContextWindow(model.contextWindow)} context`
+                                          : model.id}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex shrink-0 items-center gap-1">
+                                      {configurableProviders.has(providerKey) ? (
+                                        <>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="text-muted-foreground/60"
+                                            title="Set this model's context window and output cap"
+                                            onClick={() =>
+                                              setLimitsTarget({
+                                                provider: providerKey,
+                                                providerName: group.name,
+                                                modelId: model.id,
+                                                modelName: model.name,
+                                                contextWindow: model.contextWindow,
+                                                maxOutputTokens: model.maxOutputTokens,
+                                                overrides: model.overrides,
+                                                endpointLimits: endpointLimits[providerKey] ?? null,
+                                              })
+                                            }
+                                          >
+                                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className={cn(
+                                              model.vision
+                                                ? "text-emerald-600 dark:text-emerald-400"
+                                                : "text-muted-foreground/60",
+                                            )}
+                                            title={
+                                              model.vision
+                                                ? "This model can see images"
+                                                : "Mark this model as able to see images"
+                                            }
+                                            disabled={savingVision === `${providerKey}:${model.id}`}
+                                            onClick={() =>
+                                              void toggleVision(
+                                                providerKey,
+                                                model.id,
+                                                !model.vision,
+                                              )
+                                            }
+                                          >
+                                            {savingVision === `${providerKey}:${model.id}` ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Eye className="h-3.5 w-3.5" />
+                                            )}
+                                          </Button>
+                                        </>
+                                      ) : null}
+                                      <Switch
+                                        checked={!isHidden}
+                                        aria-label={`Show ${model.name}`}
+                                        onCheckedChange={() =>
+                                          toggleModelShown(providerKey, model.id)
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </GlassPanelContent>
+
+        <ModelLimitsSheet
+          target={limitsTarget}
+          onOpenChange={(open) => {
+            if (!open) setLimitsTarget(null);
+          }}
+          capabilitiesEndpoint="/api/providers/capabilities"
+          onSaved={() => {
+            void loadInventory();
+          }}
+        />
+      </GlassPanel>
+    </AutosavedPage>
   );
 }

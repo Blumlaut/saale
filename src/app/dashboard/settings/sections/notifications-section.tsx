@@ -32,7 +32,7 @@ interface PushConfig {
 type DeviceState = "checking" | "unsupported" | "unconfigured" | "denied" | "off" | "on";
 
 export function NotificationsSection() {
-  const { settings, patch: onPatch, saving } = useUserSettings();
+  const { settings, update, saveState } = useUserSettings();
   const [config, setConfig] = useState<PushConfig | null>(null);
   const [device, setDevice] = useState<DeviceState>("checking");
   const [busy, setBusy] = useState(false);
@@ -135,7 +135,7 @@ export function NotificationsSection() {
 
   const setCategory = (category: NotificationCategory, enabled: boolean) => {
     const next: NotificationPreferences = { ...preferences, [category]: enabled };
-    void onPatch({ pushNotifications: next });
+    update({ pushNotifications: next });
   };
 
   return (
@@ -216,11 +216,13 @@ export function NotificationsSection() {
                     <p className="text-muted-foreground mt-1 text-sm">{category.description}</p>
                   </div>
                   <span className="flex shrink-0 items-center gap-2 pt-1">
-                    {saving && <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />}
+                    {saveState === "saving" && (
+                      <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                    )}
                     <Switch
                       id={`notify-${category.key}`}
                       checked={preferences[category.key]}
-                      disabled={!settings || saving}
+                      disabled={!settings}
                       onCheckedChange={(checked) => setCategory(category.key, checked)}
                     />
                   </span>
