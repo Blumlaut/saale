@@ -1599,4 +1599,34 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await visible(page, "#role-name").waitFor({ state: "visible", timeout: 10_000 });
     },
   },
+  {
+    name: "console · changelog",
+    path: "/dashboard/chat",
+    sources: ["src/components/layout/changelog-sheet.tsx"],
+    // A long entry is the case that would push the sheet sideways at 320px.
+    mock: async (page) => {
+      await page.route(/\/api\/changelog$/, (route) =>
+        route.fulfill({
+          json: {
+            version: "2026.10.0",
+            releases: [
+              {
+                version: "2026.10.0",
+                date: "2026-10-31",
+                items: [
+                  {
+                    text: "add a changelog the console can read, from the commits since the last tag",
+                    commit: "62a50fda",
+                  },
+                  { text: "pull the install files from main", commit: "a07e9227" },
+                ],
+              },
+              { version: "2026.9.0", date: "2026-09-30", items: [] },
+            ],
+          },
+        }),
+      );
+    },
+    open: (page) => click(page, 'button[title="Changelog"]'),
+  },
 ];

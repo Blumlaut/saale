@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
@@ -8,6 +8,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ChangelogSheet } from "@/components/layout/changelog-sheet";
 import { ChevronDown, ChevronRight, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useColorMode } from "@/hooks/use-color-mode";
@@ -265,16 +266,23 @@ export function useRowFlip(order: readonly string[]) {
 export function SidebarFooter() {
   const { setTheme } = useTheme();
   const mode = useColorMode();
+  const [changelogOpen, setChangelogOpen] = useState(false);
 
   return (
     <div className="border-border/60 mt-4 border-t px-3 pt-3">
       <div className="flex items-center justify-between">
-        <p className="console-label">
+        <Button
+          variant="ghost"
+          className="console-label hover:text-foreground -ml-1.5 h-6 px-1.5 font-semibold"
+          onClick={() => setChangelogOpen(true)}
+          title="Changelog"
+          aria-label={`Saale ${APP_VERSION}, changelog`}
+        >
           Saale{" "}
           <span className="text-muted-foreground/70 tracking-normal normal-case">
             {APP_VERSION}
           </span>
-        </p>
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -287,6 +295,7 @@ export function SidebarFooter() {
         </Button>
       </div>
       <div className="bg-primary mt-2 h-0.5 w-8 rounded-full" />
+      <ChangelogSheet open={changelogOpen} onOpenChange={setChangelogOpen} />
     </div>
   );
 }
