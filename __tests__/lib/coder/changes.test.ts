@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   readLog: vi.fn(),
   readFileDiff: vi.fn(),
   readWorktreeFile: vi.fn(),
+  readRemotes: vi.fn(),
+  readStashCount: vi.fn(),
+  readUnpushedShas: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -27,6 +30,9 @@ vi.mock("@/lib/coder/git", () => ({
   readLog: mocks.readLog,
   readFileDiff: mocks.readFileDiff,
   readWorktreeFile: mocks.readWorktreeFile,
+  readRemotes: mocks.readRemotes,
+  readStashCount: mocks.readStashCount,
+  readUnpushedShas: mocks.readUnpushedShas,
 }));
 
 import { assertRepoRelativePath, loadSessionDiff, loadSessionState } from "@/lib/coder/changes";
@@ -73,9 +79,19 @@ beforeEach(() => {
     { path: "renamed.txt", added: 0, deleted: 0, originalPath: "old.txt" },
   ]);
   mocks.readLog.mockResolvedValue([
-    { sha: "abc", shortSha: "abc", subject: "add a thing", date: "2026-01-01", author: "Ada" },
+    {
+      sha: "abc",
+      shortSha: "abc",
+      subject: "add a thing",
+      date: "2026-01-01",
+      author: "Ada",
+      refs: [],
+    },
   ]);
   mocks.readWorktreeFile.mockResolvedValue(null);
+  mocks.readRemotes.mockResolvedValue([{ name: "origin", url: "git@github.com:acme/saale.git" }]);
+  mocks.readStashCount.mockResolvedValue(0);
+  mocks.readUnpushedShas.mockResolvedValue(new Set<string>());
 });
 
 describe("loadSessionState", () => {
@@ -92,6 +108,7 @@ describe("loadSessionState", () => {
         staged: true,
         unstaged: false,
         untracked: false,
+        conflicted: false,
       },
       {
         path: "notes.md",
@@ -101,6 +118,7 @@ describe("loadSessionState", () => {
         staged: false,
         unstaged: true,
         untracked: false,
+        conflicted: false,
       },
       {
         path: "new.txt",
@@ -110,6 +128,7 @@ describe("loadSessionState", () => {
         staged: false,
         unstaged: false,
         untracked: true,
+        conflicted: false,
       },
       {
         path: "renamed.txt",
@@ -119,9 +138,78 @@ describe("loadSessionState", () => {
         staged: true,
         unstaged: false,
         untracked: false,
+        conflicted: false,
       },
     ]);
     expect(state?.commits).toHaveLength(1);
+    expect(state?.remotes).toEqual([{ name: "origin", url: "git@github.com:acme/saale.git" }]);
+  });
+
+  it("reads one commit more than asked, to know whether there is older history", async () => {
+    mocks.readLog.mockImplementation((_user: string, _dir: string, limit: number) =>
+      Promise.resolve(
+        Array.from({ length: limit }, (_, index) => ({
+          sha: `sha-${index}`,
+          shortSha: `sha-${index}`.slice(0, 7),
+          subject: `commit ${index}`,
+          date: "2026-01-01",
+          author: "Ada",
+          refs: [],
+        })),
+      ),
+    );
+
+    const state = await loadSessionState(USER, SESSION, { commitLimit: 3 });
+
+    expect(mocks.readLog).toHaveBeenCalledWith(USER, "worktrees/saale/c-1a2b3c4d", 4);
+    expect(state?.commits).toHaveLength(3);
+    expect(state?.commitsTruncated).toBe(true);
+  });
+
+  it("marks the commits the upstream does not have as local", async () => {
+    mocks.readStatus.mockResolvedValue({
+      branch: "wt/c-1a2b3c4d",
+      upstream: "origin/main",
+      ahead: 1,
+      behind: 0,
+      head: "abc",
+      files: [],
+    });
+    mocks.readLog.mockResolvedValue([
+      {
+        sha: "local-1",
+        shortSha: "local-1",
+        subject: "not pushed",
+        date: "2026-01-02",
+        author: "Ada",
+        refs: [],
+      },
+      {
+        sha: "abc",
+        shortSha: "abc",
+        subject: "on the remote",
+        date: "2026-01-01",
+        author: "Ada",
+        refs: [],
+      },
+    ]);
+    mocks.readUnpushedShas.mockResolvedValue(new Set(["local-1"]));
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(mocks.readUnpushedShas).toHaveBeenCalledWith(
+      USER,
+      "worktrees/saale/c-1a2b3c4d",
+      "origin/main",
+    );
+    expect(state?.commits.map((commit) => commit.pushed)).toEqual([false, true]);
+  });
+
+  it("leaves the push state unknown for a branch with no upstream", async () => {
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(mocks.readUnpushedShas).not.toHaveBeenCalled();
+    expect(state?.commits[0]?.pushed).toBeNull();
   });
 
   it("is an empty panel for a chat whose worktree is not built yet", async () => {

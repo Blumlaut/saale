@@ -52,6 +52,69 @@ export interface GitCommit {
   /** Author date, ISO 8601. */
   date: string;
   author: string;
+  /** What points at this commit, e.g. `HEAD -> wt/x`, `origin/main`, `tag: v1`. */
+  refs: string[];
+}
+
+/** A remote, from `git remote -v`. */
+export interface GitRemote {
+  name: string;
+  /** The fetch URL. */
+  url: string;
+}
+
+/** A local branch, from `git branch --format`. */
+export interface GitBranchEntry {
+  name: string;
+  /** The remote-tracking ref it follows, "" when it follows nothing. */
+  upstream: string;
+  current: boolean;
+}
+
+/**
+ * `git branch --format='%(refname:short)\t%(upstream:short)\t%(HEAD)'`.
+ *
+ * A tab cannot appear in a ref name, and `HEAD` prints a star on the branch this
+ * checkout is on and a space on the rest.
+ */
+export function parseBranches(stdout: string): GitBranchEntry[] {
+  const branches: GitBranchEntry[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    const [name, upstream, head] = line.split("\t");
+    if (!name) continue;
+    branches.push({ name, upstream: upstream ?? "", current: (head ?? "").trim() === "*" });
+  }
+  return branches;
+}
+
+/**
+ * `git remote -v` as one entry per remote.
+ *
+ * Each remote prints twice, once for fetch and once for push, so only the fetch
+ * line is read: the push URL is the same unless someone made it different, and
+ * one entry per name is what the panel lists.
+ */
+export function parseRemotes(stdout: string): GitRemote[] {
+  const remotes: GitRemote[] = [];
+  const seen = new Set<string>();
+  for (const line of stdout.split("\n")) {
+    const match = /^(\S+)\t(.+) \(fetch\)$/.exec(line.trim());
+    if (!match) continue;
+    const [, name, url] = match;
+    if (!name || !url || seen.has(name)) continue;
+    seen.add(name);
+    remotes.push({ name, url });
+  }
+  return remotes;
+}
+
+/** The unmerged codes a porcelain status prints for a path. */
+const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+
+/** Whether a status code pair means a path git could not merge. */
+export function isConflict(index: string, worktree: string): boolean {
+  return CONFLICT_CODES.has(`${index}${worktree}`);
 }
 
 /** Separators inside one log record, none of which can appear in a subject. */
@@ -173,7 +236,7 @@ export function parseLog(stdout: string): GitCommit[] {
   for (const record of stdout.split(LOG_RECORD)) {
     const line = record.trim();
     if (!line) continue;
-    const [sha, shortSha, date, author, subject] = line.split(LOG_FIELD);
+    const [sha, shortSha, date, author, subject, decoration] = line.split(LOG_FIELD);
     if (!sha) continue;
     commits.push({
       sha,
@@ -181,6 +244,10 @@ export function parseLog(stdout: string): GitCommit[] {
       date: date ?? "",
       author: author ?? "",
       subject: subject ?? "",
+      refs: (decoration ?? "")
+        .split(", ")
+        .map((ref) => ref.trim())
+        .filter(Boolean),
     });
   }
   return commits;
