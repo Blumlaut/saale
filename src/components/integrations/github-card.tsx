@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import { useGithub } from "@/hooks/use-github";
-import { ROW_ACTION } from "@/lib/utils";
 
 /** GitHub is a workspace sign-in rather than a registry integration, so it carries its own metadata. */
 const GITHUB_BOX: IntegrationBoxInfo = {
@@ -96,17 +95,17 @@ export function GithubCard() {
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              aria-label="Sign out of GitHub"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs"
               disabled={disconnecting}
               onClick={() => void disconnect()}
-              className={`${ROW_ACTION} h-8 w-8 shrink-0`}
             >
               {disconnecting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <LogOut className="h-4 w-4" />
+                <LogOut className="mr-1.5 h-3.5 w-3.5" />
               )}
+              Sign out
             </Button>
           </div>
         ) : (
