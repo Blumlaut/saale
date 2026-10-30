@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { IntegrationManifest } from "@/lib/integrations/types";
 
+/** What a box shows about its integration. A manifest carries it, and so does a sign-in that is not one. */
+export type IntegrationBoxInfo = Pick<
+  IntegrationManifest,
+  "name" | "description" | "icon" | "color"
+>;
+
 /**
  * Shared shell for the integration boxes on the Integrations tab.
  *
@@ -15,7 +21,7 @@ export function IntegrationBox({
   badges,
   children,
 }: {
-  manifest: IntegrationManifest;
+  manifest: IntegrationBoxInfo;
   connected: boolean;
   /** Optional badges next to the name (e.g. the linked @username). */
   badges?: ReactNode;

@@ -278,6 +278,24 @@ async function mockTelegramLinked(page: Page) {
 }
 
 /**
+ * A sign-in waiting on GitHub, so the dialog opens with a code that wraps the
+ * box at a phone width and never needs a live device flow to render.
+ */
+async function mockGithubSignIn(page: Page) {
+  const pending = {
+    credential: null,
+    pending: { code: "1B47-ABE8", url: "https://github.com/login/device" },
+    error: null,
+  };
+  await page.route(/\/api\/integrations\/github$/, async (route) => {
+    if (route.request().method() === "GET" || route.request().method() === "POST") {
+      return route.fulfill({ json: pending });
+    }
+    return route.fulfill({ json: { credential: null, pending: null, error: null } });
+  });
+}
+
+/**
  * The provider list and a sign-in in its most demanding state: a device code, an
  * authorization URL long enough to wrap, and a prompt waiting to be answered.
  */
@@ -1085,6 +1103,16 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsSection(page, "integrations");
       await click(page, 'button:has-text("Link Telegram")');
+    },
+  },
+  {
+    name: "settings · connect github",
+    path: SETTINGS,
+    sources: ["src/components/integrations/github-card.tsx"],
+    mock: mockGithubSignIn,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, 'button:has-text("Connect GitHub")');
     },
   },
   {

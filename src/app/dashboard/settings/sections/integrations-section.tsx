@@ -18,6 +18,7 @@ import { INTEGRATIONS } from "@/lib/integrations/registry";
 import type { IntegrationId } from "@/lib/integrations/types";
 import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
 import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/telegram-card";
+import { GithubCard } from "@/components/integrations/github-card";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
 import { McpPanel } from "../components/mcp-panel";
 
@@ -103,6 +104,7 @@ export function IntegrationsSection() {
               }}
             />
             <SandboxEnvCard />
+            <GithubCard />
           </div>
         </GlassPanelContent>
       </GlassPanel>

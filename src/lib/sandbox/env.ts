@@ -89,6 +89,28 @@ export async function resolveSandboxEnv(userId: string): Promise<Record<string, 
   return env;
 }
 
+/**
+ * One variable's value, for a command that needs a single credential.
+ *
+ * A row that will not decrypt is null, like a value that was never set.
+ */
+export async function resolveSandboxEnvVar(userId: string, name: string): Promise<string | null> {
+  const row = await prisma.sandboxEnvVar
+    .findUnique({ where: { userId_name: { userId, name } }, select: { encryptedValue: true } })
+    .catch((err: unknown) => {
+      console.error(`Failed to read sandbox variable ${name} for ${userId}:`, err);
+      return null;
+    });
+  if (!row) return null;
+
+  try {
+    return decrypt(row.encryptedValue);
+  } catch (err) {
+    console.error(`Failed to decrypt sandbox variable ${name} for ${userId}:`, err);
+    return null;
+  }
+}
+
 async function assertBudget(userId: string, extra: Record<string, string>): Promise<void> {
   const rows = await prisma.sandboxEnvVar.findMany({
     where: { userId },
