@@ -116,11 +116,13 @@ function Meter({
         <span className="truncate">{label}</span>
       </div>
       <div className="mt-1 flex items-baseline gap-1.5">
-        <span className="font-mono text-xs">{format(used)}</span>
+        <span className="text-xs tabular-nums">{format(used)}</span>
         {unlimited ? (
-          <span className="text-muted-foreground font-mono text-[10px]">/ unlimited</span>
+          <span className="text-muted-foreground text-[10px]">/ unlimited</span>
         ) : (
-          <span className="text-muted-foreground font-mono text-[10px]">/ {format(ceiling)}</span>
+          <span className="text-muted-foreground text-[10px] tabular-nums">
+            / {format(ceiling)}
+          </span>
         )}
       </div>
       <div className="bg-muted mt-1 h-1 w-full overflow-hidden rounded-full">
@@ -199,11 +201,11 @@ export function RunStatus({
         {run?.error && (
           <span className="text-destructive max-w-full min-w-0 truncate text-xs">{run.error}</span>
         )}
-        <span className="text-muted-foreground font-mono text-xs">
+        <span className="text-muted-foreground text-xs tabular-nums">
           {turnCount} turn{turnCount === 1 ? "" : "s"}
         </span>
         {running && run?.startedAt && (
-          <span className="text-muted-foreground inline-flex items-center gap-1 font-mono text-xs">
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs tabular-nums">
             <Clock className="h-3 w-3" />
             {formatDuration(elapsed)}
           </span>

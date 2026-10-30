@@ -168,7 +168,7 @@ export function ModelLimitsSheet({
               empty field inherits the endpoint&apos;s default.
             </p>
 
-            <p className="text-muted-foreground font-mono text-[11px]">
+            <p className="text-muted-foreground text-[11px] tabular-nums">
               Now sending {target.contextWindow?.toLocaleString() ?? ""} context /{" "}
               {target.maxOutputTokens?.toLocaleString() ?? ""} output
             </p>

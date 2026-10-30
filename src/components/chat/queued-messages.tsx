@@ -104,7 +104,7 @@ export function QueuedMessages({
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground w-3 shrink-0 text-center font-mono text-[11px] tabular-nums">
+                <span className="text-muted-foreground w-3 shrink-0 text-center text-[11px] tabular-nums">
                   {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">

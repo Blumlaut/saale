@@ -368,7 +368,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                       <div className="px-4 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <TickBadge status={tick.status} />
-                          <span className="text-muted-foreground font-mono text-xs">
+                          <span className="text-muted-foreground text-xs tabular-nums">
                             {formatRelativeDate(tick.createdAt)} · {tick.durationMs}ms
                             {tick.callCount > 0 && ` · ${tick.callCount} call(s)`}
                           </span>

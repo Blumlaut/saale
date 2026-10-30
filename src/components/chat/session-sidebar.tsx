@@ -353,7 +353,7 @@ export function SessionSidebar({
                   >
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-90" />
                     <span className="min-w-0 flex-1 truncate font-medium">Older chats</span>
-                    <Badge variant="secondary" className="font-mono">
+                    <Badge variant="secondary" className="tabular-nums">
                       {older.length}
                     </Badge>
                   </CollapsibleTrigger>

@@ -21,7 +21,7 @@ export function ProviderErrorNotice({ error }: { error: string }) {
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
         <span>Provider error</span>
         {status !== undefined && (
-          <span className="border-destructive/30 rounded px-1.5 py-0.5 font-mono text-[10px]">
+          <span className="border-destructive/30 rounded px-1.5 py-0.5 text-[10px] tabular-nums">
             {status}
           </span>
         )}

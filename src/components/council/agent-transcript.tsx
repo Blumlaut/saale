@@ -109,7 +109,7 @@ export function AgentTranscript({ turns, messages = [], loading }: AgentTranscri
                   {formatRelativeDate(turn.startedAt)}
                 </span>
               )}
-              <span className="text-muted-foreground ml-auto font-mono text-[11px]">
+              <span className="text-muted-foreground ml-auto text-[11px] tabular-nums">
                 {turn.inputTokens + turn.outputTokens} tok · ${turn.cost.toFixed(4)}
               </span>
             </header>

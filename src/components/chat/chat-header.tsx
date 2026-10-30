@@ -128,7 +128,7 @@ export function ChatHeader({
             aria-pressed={linksOpen}
           >
             <Radar className="h-4 w-4" />
-            <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[10px] leading-none">
+            <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none tabular-nums">
               {linksCount}
             </span>
           </Button>

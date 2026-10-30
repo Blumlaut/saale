@@ -505,7 +505,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
                   Test run · {testResult.status}
                   {testResult.callCount > 0 && ` · ${testResult.callCount} tool call(s)`}
                 </span>
-                <span className="text-muted-foreground font-mono text-xs">
+                <span className="text-muted-foreground text-xs tabular-nums">
                   {testResult.durationMs}ms
                 </span>
               </div>

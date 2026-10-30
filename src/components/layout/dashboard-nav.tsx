@@ -353,7 +353,7 @@ export function DashboardNav() {
                       >
                         <Badge
                           variant="secondary"
-                          className="shrink-0 rounded px-1.5 py-0 font-mono text-[10px] tracking-wide uppercase"
+                          className="shrink-0 rounded px-1.5 py-0 text-[10px] tracking-wide uppercase"
                         >
                           {result.type}
                         </Badge>

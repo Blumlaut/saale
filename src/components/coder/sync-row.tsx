@@ -56,7 +56,7 @@ function PullRequestBadge({ pullRequest }: { pullRequest: CoderPullRequest }) {
       rel="noreferrer"
       title={`${pullRequest.title} · ${pullRequest.state.toLowerCase()}`}
       className={cn(
-        "hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 font-mono text-[10px] transition-colors",
+        "hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] tabular-nums transition-colors",
         checksTone(pullRequest.checks),
       )}
     >

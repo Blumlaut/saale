@@ -428,7 +428,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="truncate text-sm font-medium">{plugin.name}</span>
                               {plugin.version && (
-                                <span className="text-muted-foreground shrink-0 font-mono text-[11px]">
+                                <span className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
                                   v{plugin.version}
                                 </span>
                               )}
@@ -487,7 +487,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="min-w-0">
                                   <p className="console-label">Changed</p>
-                                  <p className="font-mono">
+                                  <p className="tabular-nums">
                                     {formatDate(plugin.updatedAt) ?? "unknown"} · {plugin.revision}
                                   </p>
                                 </div>
@@ -783,7 +783,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                       {index > 0 && <Separator />}
                       <div className="flex flex-col gap-1 px-4 py-2 sm:flex-row sm:items-start sm:gap-2">
                         <div className="flex shrink-0 items-center gap-2">
-                          <span className="text-muted-foreground font-mono text-[11px]">
+                          <span className="text-muted-foreground text-[11px] tabular-nums">
                             {formatTime(entry.at)}
                           </span>
                           <Badge
