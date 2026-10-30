@@ -50,6 +50,7 @@ model User {
   mcpOAuthCredentials McpOAuthCredential[]
   councils           Council[]
   coderProjects      CoderProject[]
+  prompts            Prompt[]
   pushSubscriptions  PushSubscription[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -319,6 +320,29 @@ model Memory {
   @@index([userId, collection])
   @@index([userId, tags])
   @@map("Memory")
+}
+
+// ─── Prompts ────────────────────────────────────────────────────
+
+/// A reusable prompt template, typed as `/name` in a chat.
+model Prompt {
+  id           String   @id @default(cuid())
+  userId       String
+  /// The `/name` the user types. Lowercase, the slash parser's charset.
+  name         String   @db.VarChar(40)
+  description  String   @db.VarChar(100)
+  /// Shown after the name: Pi's convention, `<required>` and `[optional]`.
+  argumentHint String?  @db.VarChar(100)
+  /// "any" | "chat" | "coder"
+  scope        String   @default("any")
+  content      String   @db.Text
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("Prompt")
 }
 
 // ─── Email ─────────────────────────────────────────────────────
