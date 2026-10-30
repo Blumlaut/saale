@@ -40,6 +40,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createAgentIdleTimeout, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
 import { buildFinalAssistantMessage, extractThinking } from "@/lib/pi/stream-logic";
+import { nextTextStep } from "@/lib/pi/streamed-text";
 import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
 import {
   ABORT_POLL_MS,
@@ -195,8 +196,12 @@ export interface CouncilRunOutcome {
   cost: number;
 }
 
-/** How often a member's live thinking is published, per turn. */
-const THINKING_PUBLISH_INTERVAL_MS = 250;
+/**
+ * How often a member's live thinking goes out whole. Between the snapshots the
+ * room receives the chunk the block grew by (see `nextTextStep`), so a long
+ * reasoning trace costs its own length instead of its square.
+ */
+const THINKING_SNAPSHOT_INTERVAL_MS = 1_000;
 
 /**
  * The inbox marker the opening wake uses.
@@ -1046,7 +1051,7 @@ function collectTurn(
     string,
     { name: string; args: Record<string, unknown>; result?: string; isError?: boolean }
   >();
-  let lastThinkingPublish = 0;
+  let lastThinkingSnapshotAt: number | null = null;
 
   const unsubscribe = session.subscribe((event) => {
     switch (event.type) {
@@ -1055,16 +1060,28 @@ function collectTurn(
         content = (event.message as { content: unknown[] }).content;
         const live = extractThinking(content);
         if (live) {
-          thinking = live;
-          // Throttled: a full reasoning trace arrives a token at a time, and the
-          // room only needs the newest state.
           const now = deps.now();
-          if (now - lastThinkingPublish >= THINKING_PUBLISH_INTERVAL_MS) {
-            lastThinkingPublish = now;
+          const step = nextTextStep({
+            previous: thinking ?? "",
+            next: live,
+            lastSnapshotAt: lastThinkingSnapshotAt,
+            now,
+            snapshotIntervalMs: THINKING_SNAPSHOT_INTERVAL_MS,
+          });
+          thinking = live;
+          if (step?.kind === "snapshot") {
+            lastThinkingSnapshotAt = now;
             void deps.publish("thinking", {
               memberId: state.plan.id,
               memberName: state.plan.name,
-              thinking: live,
+              thinking: step.text,
+            });
+          } else if (step) {
+            void deps.publish("thinking_delta", {
+              memberId: state.plan.id,
+              memberName: state.plan.name,
+              delta: step.delta,
+              offset: step.offset,
             });
           }
         }

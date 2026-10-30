@@ -20,6 +20,7 @@ export type CouncilEventName =
   | "run_started"
   | "turn_started"
   | "thinking"
+  | "thinking_delta"
   | "tool_call"
   | "turn_ended"
   | "message"

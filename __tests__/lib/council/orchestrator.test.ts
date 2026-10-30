@@ -1266,6 +1266,35 @@ describe("runCouncilLoop  the record it keeps", () => {
     expect(thinking.at(-1)!.data.thinking).toBe("weighing options");
   });
 
+  it("streams a member's reasoning as chunks after the opening snapshot", async () => {
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      behaviours: {
+        a: async (turn) => {
+          const session = h.sessions.get("a")!;
+          for (const thinking of ["weigh", "weighing", "weighing options"]) {
+            session.emit({
+              type: "message_update",
+              message: { role: "assistant", content: [{ type: "thinking", thinking }] },
+            });
+          }
+          await turn.post("acorn: decided");
+        },
+      },
+    });
+
+    await h.run();
+
+    // The block's own length per token is what a long trace cannot afford: the
+    // room gets the chunk, and the whole block again once a second.
+    expect(eventsOf(h.events, "thinking")[0]!.data.thinking).toBe("weigh");
+    expect(eventsOf(h.events, "thinking_delta").map((entry) => entry.data)).toEqual([
+      expect.objectContaining({ memberId: "a", delta: "ing", offset: 5 }),
+      expect.objectContaining({ memberId: "a", delta: " options", offset: 8 }),
+    ]);
+  });
+
   it("disposes every member session when the run ends", async () => {
     const h = harness({
       members: [MEMBER("a", "acorn"), MEMBER("b", "blade")],

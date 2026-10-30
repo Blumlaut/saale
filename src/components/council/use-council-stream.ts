@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RunBudget } from "@/lib/council/config";
+import { appendTextChunk } from "@/lib/pi/streamed-text";
 
 /** A tool call as it streams in. partial until its `end` event. */
 export interface CouncilLiveToolCall {
@@ -258,10 +259,32 @@ export function useCouncilStream(options: CouncilStreamOptions): CouncilStreamSt
         [payload.memberId]: {
           ...(prev[payload.memberId] ?? emptyMember(payload.memberId, payload.memberName)),
           memberName: payload.memberName,
-          // Cumulative per turn, so the newest payload replaces, never appends.
+          // The whole block, sent at least once a second: it replaces whatever
+          // this client assembled from the chunks in between.
           thinking: payload.thinking,
         },
       }));
+    });
+
+    source.addEventListener("thinking_delta", (event) => {
+      const payload = parseEvent<{
+        memberId: string;
+        memberName: string;
+        delta: string;
+        offset: number;
+      }>((event as MessageEvent).data);
+      if (!payload) return;
+      setMembers((prev) => {
+        const base = prev[payload.memberId] ?? emptyMember(payload.memberId, payload.memberName);
+        const thinking = appendTextChunk(base.thinking ?? "", payload.delta, payload.offset);
+        // Not where this client is (a gap, a re-delivered chunk): the next
+        // snapshot lands the block.
+        if (thinking === null) return prev;
+        return {
+          ...prev,
+          [payload.memberId]: { ...base, memberName: payload.memberName, thinking },
+        };
+      });
     });
 
     source.addEventListener("tool_call", (event) => {
