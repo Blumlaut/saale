@@ -17,16 +17,20 @@ import { exec as sandboxExec } from "@/lib/sandbox/client";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { userIdentity } from "@/lib/sandbox/identity";
 import {
+  parseBranches,
   parseDiffTreeNameStatus,
   parseLog,
   parseNumstat,
   parsePorcelainZ,
+  parseRemotes,
   parseStatusHeader,
   parseSymrefHead,
   parseWorktreeList,
   type CommitDiffFile,
+  type GitBranchEntry,
   type GitCommit,
   type GitNumstat,
+  type GitRemote,
   type GitStatus,
   type GitWorktreeEntry,
 } from "./git-status";
@@ -594,13 +598,64 @@ export async function blobSizeAt(
 
 /** Recent commits on the current branch. */
 export async function readLog(userId: string, dir: string, limit = 20): Promise<GitCommit[]> {
-  const format = ["%H", "%h", "%aI", "%an", "%s"].join("%x1f") + "%x1e";
+  const format = ["%H", "%h", "%aI", "%an", "%s", "%D"].join("%x1f") + "%x1e";
   const { stdout } = await runGit(userId, {
     cwd: dir,
     args: ["log", `-n${limit}`, `--format=${format}`],
     allowFailure: true,
   });
   return parseLog(stdout);
+}
+
+/**
+ * The commits on HEAD that a remote-tracking ref does not have.
+ *
+ * Asked of one ref at a time, because a chat's branch has its own upstream and
+ * a sibling worktree's commits are not this panel's business.
+ */
+export async function readUnpushedShas(
+  userId: string,
+  dir: string,
+  upstream: string,
+): Promise<Set<string>> {
+  if (!upstream) return new Set();
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["rev-list", `${upstream}..HEAD`],
+    allowFailure: true,
+  });
+  return new Set(result.stdout.split("\n").filter(Boolean));
+}
+
+/** The repo's local branches, most recently committed first. */
+export async function readBranches(userId: string, dir: string): Promise<GitBranchEntry[]> {
+  const { stdout } = await runGit(userId, {
+    cwd: dir,
+    args: [
+      "branch",
+      "--list",
+      "--sort=-committerdate",
+      "--format=%(refname:short)%09%(upstream:short)%09%(HEAD)",
+    ],
+    allowFailure: true,
+  });
+  return parseBranches(stdout);
+}
+
+/** How many stashes the repo holds. */
+export async function readStashCount(userId: string, dir: string): Promise<number> {
+  const result = await runGit(userId, {
+    cwd: dir,
+    args: ["stash", "list", "--format=%gd"],
+    allowFailure: true,
+  });
+  return result.stdout.split("\n").filter(Boolean).length;
+}
+
+/** A repo's remotes, as `git remote -v` lists them. */
+export async function readRemotes(userId: string, dir: string): Promise<GitRemote[]> {
+  const result = await runGit(userId, { cwd: dir, args: ["remote", "-v"], allowFailure: true });
+  return parseRemotes(result.stdout);
 }
 
 /**

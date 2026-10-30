@@ -64,6 +64,8 @@ export interface CoderChange {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+  /** git could not merge this path. */
+  conflicted: boolean;
 }
 
 export interface CoderCommit {
@@ -72,6 +74,16 @@ export interface CoderCommit {
   subject: string;
   date: string;
   author: string;
+  /** What points at this commit: branches, remotes, tags. */
+  refs: string[];
+  /** False when only this checkout has the commit, null without an upstream. */
+  pushed: boolean | null;
+}
+
+/** A remote the checkout pushes to and pulls from. */
+export interface CoderRemote {
+  name: string;
+  url: string;
 }
 
 /** One path a commit touched, as the commit-diff endpoint reports it. */
@@ -112,6 +124,11 @@ export interface CoderSessionState {
   behind: number;
   changes: CoderChange[];
   commits: CoderCommit[];
+  /** True when the branch has older history than this read carries. */
+  commitsTruncated: boolean;
+  remotes: CoderRemote[];
+  /** How many stashes the repo holds. */
+  stashes: number;
   scripts: { name: string; command: string; runCommand: string }[];
   /** Set while the chat is building its workspace (first message). */
   provisioning: CoderProvisioning | null;
@@ -274,9 +291,10 @@ export function useCoderChatStarter() {
  *
  * `refreshKey` is the caller's signal that something may have changed (a run
  * finished, the user pressed refresh), so the panel follows the agent instead
- * of only loading once.
+ * of only loading once. `commitLimit` is how far back the history goes, which
+ * the panel raises when the user asks for older commits.
  */
-export function useSessionState(sessionId: string | null, refreshKey: number) {
+export function useSessionState(sessionId: string | null, refreshKey: number, commitLimit = 20) {
   const [state, setState] = useState<CoderSessionState | null>(null);
   const [loading, setLoading] = useState(sessionId !== null);
   const [error, setError] = useState<string | null>(null);
@@ -290,7 +308,10 @@ export function useSessionState(sessionId: string | null, refreshKey: number) {
     }
     const ticket = ++latest.current;
     setLoading(true);
-    fetchJson<CoderSessionState>(`/api/coder/sessions/${encodeURIComponent(sessionId)}/status`)
+    const query = new URLSearchParams({ commits: String(commitLimit) });
+    fetchJson<CoderSessionState>(
+      `/api/coder/sessions/${encodeURIComponent(sessionId)}/status?${query.toString()}`,
+    )
       .then((body) => {
         if (ticket !== latest.current) return;
         setState(body);
@@ -304,7 +325,7 @@ export function useSessionState(sessionId: string | null, refreshKey: number) {
       .finally(() => {
         if (ticket === latest.current) setLoading(false);
       });
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, commitLimit]);
 
   return { state, loading, error };
 }
@@ -368,4 +389,94 @@ export function useProvisioning(sessionId: string | null, waiting: boolean) {
   }, [sessionId, waiting]);
 
   return state;
+}
+
+/** One local branch the checkout can switch to. */
+export interface CoderBranch {
+  name: string;
+  upstream: string;
+  current: boolean;
+}
+
+/**
+ * The branches a chat's checkout could switch to.
+ *
+ * Fetched when a menu opens (`enabled`), not with the panel: the list is a git
+ * call, and a menu nobody opened does not need one.
+ */
+export function useBranches(sessionId: string | null, enabled: boolean) {
+  const [branches, setBranches] = useState<CoderBranch[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId || !enabled) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchJson<{ branches: CoderBranch[] }>(
+      `/api/coder/sessions/${encodeURIComponent(sessionId)}/branches`,
+    )
+      .then((body) => {
+        if (cancelled) return;
+        setBranches(body.branches);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error(`Failed to list the branches of ${sessionId}:`, err);
+        setError(err instanceof Error ? err.message : "Could not list the branches");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, enabled]);
+
+  return { branches, loading, error };
+}
+
+/** The pull request on a branch, when the forge can answer at all. */
+export interface CoderPullRequest {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  draft: boolean;
+  reviewDecision: string | null;
+  checks: { passed: number; failed: number; pending: number } | null;
+}
+
+/**
+ * The pull request the chat's branch is on.
+ *
+ * Asked once per `refreshKey`, which the panel raises after a push: a branch
+ * that has just been pushed is the one case where the answer changes.
+ */
+export function usePullRequest(sessionId: string | null, refreshKey: number) {
+  const [pullRequest, setPullRequest] = useState<CoderPullRequest | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setPullRequest(null);
+      return;
+    }
+    let cancelled = false;
+    fetchJson<{ pullRequest: CoderPullRequest | null }>(
+      `/api/coder/sessions/${encodeURIComponent(sessionId)}/pull-request`,
+    )
+      .then((body) => {
+        if (!cancelled) setPullRequest(body.pullRequest);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error(`Failed to read the pull request of ${sessionId}:`, err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, refreshKey]);
+
+  return { pullRequest, setPullRequest };
 }
