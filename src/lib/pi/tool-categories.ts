@@ -224,14 +224,16 @@ export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Obje
 /**
  * How many tokens of the codemode catalog the model is given.
  *
- * Pi's default is 3000, and it fills cheapest-first by description length, so it
- * spent the budget on whichever tools happened to be worded shortest and dropped
- * the longest ones. which were the entry points (`mail_search`, `watcher_list`).
- * Only the read-only tools are listed now (see `ToolInfo.defaultExposure`), and
- * this covers all of them with room to spare; `tool-catalog-drift.test.ts` fails
- * if a newly listed tool no longer fits.
+ * Pi's default is 3000, and it fills cheapest-first by cost, so a catalog left
+ * to grow spends the budget on whichever tools happened to be worded shortest
+ * and drops the longest ones. which were the entry points (`mail_search`,
+ * `watcher_list`). One list tool per area is listed now (see
+ * `ToolInfo.defaultExposure`) and costs about 2400 tokens; the rest of the
+ * budget is headroom for the tools an MCP server connects with, which a script
+ * finds with `searchTools` when they do not fit.
+ * `tool-catalog-drift.test.ts` fails if a newly listed tool no longer fits.
  */
-export const CODEMODE_INLINE_BUDGET = 6000;
+export const CODEMODE_INLINE_BUDGET = 4000;
 
 /** Display metadata for the exposure selector, in preference order. */ export const TOOL_EXPOSURES: Array<{
   value: ToolExposure;

@@ -267,6 +267,12 @@ which means **nested calls still go through Saale's approval gate** — they are
 `tool_call` events like any other, tagged with the id of the call that started
 the script.
 
+- One tool per category is listed in the catalog the model reads: its list tool
+  when it has one. The catalog is the model's map of what exists, not a
+  reference. setters, updaters and the narrower reads behind a list are
+  reachable but unlisted, found with `searchTools` (`ToolInfo.defaultExposure`,
+  enforced by `__tests__/lib/pi/tool-catalog-drift.test.ts`).
+
 - The extension comes from `createAgentResourceLoader()`; the tool is registered
   inactive and `startSessionExtensions()` activates it.
 - Do **not** activate it through `defaultTools` in `createSessionSettings()`:
@@ -297,7 +303,8 @@ their own**, and one click that stands in for all of them.
   `infra_exec`) keeps its per-call gate: its decision is made from the command,
   which only exists at the call, where a card can show it. A tool the script
   reaches by a computed name is covered by nothing and asks for itself — the
-  card says so (`dynamic`).
+  card says so (`dynamic`). A script that only searches the catalog names no
+  tools, so it costs no card either.
 - **The grant** is recorded by `grantApprovalScope()`
   (`src/lib/pi/approval-scope.ts`) against the call the user approved, and the
   gate consults `isApprovalScopeGranted()` before asking about a nested call

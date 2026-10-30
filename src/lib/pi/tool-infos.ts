@@ -52,12 +52,17 @@ export interface ToolInfo {
    *
    * Inside a `codemode` category this is the listing decision: `"codemode"` puts
    * the tool in the catalog the model reads, `"deferred"` keeps it callable from
-   * a script but out of that catalog, so it has to be found with `searchTools`.
-   * Only the read-only tools are listed. the model surveys what it can look at
-   * before it does anything, and reaching for an action is a deliberate step.
+   * a script but out of that catalog, so it has to be found with `searchTools`
+   * (or named by the system prompt, which a few tools are).
+   *
+   * One tool per category is listed. its list tool when it has one, which is
+   * enough for the model to see that the area exists and what is in it. Setters,
+   * updaters and the narrower reads behind a list are found by searching, so the
+   * catalog stays small enough to read in one glance.
    *
    * `__tests__/lib/pi/tool-catalog-drift.test.ts` requires every tool in a
-   * `codemode` category to say which it is, so the split cannot rot silently.
+   * `codemode` category to say which it is, and holds a category to one listed
+   * tool, so neither the split nor the size can rot silently.
    */
   defaultExposure?: ToolExposure;
   /**
@@ -187,7 +192,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List connected email accounts",
     category: "email",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_folders",
@@ -195,7 +200,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List folders for an email account",
     category: "email",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_sync",
@@ -220,7 +225,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read email content by ID",
     category: "email",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "mail_search",
@@ -228,7 +233,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search emails by query",
     category: "email",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: 'Searching emails for "{query}"',
   },
   {
@@ -279,7 +284,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search the contact book by name, email, or company",
     category: "contacts",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: 'Searching contacts for "{query}"',
   },
   {
@@ -323,7 +328,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List available job types and their schemas",
     category: "jobs",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "job_logs",
@@ -331,7 +336,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View recent run history for a job",
     category: "jobs",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "model_list",
@@ -339,7 +344,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List available AI models",
     category: "jobs",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "job_create",
@@ -397,7 +402,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List upcoming calendar events",
     category: "calendar",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "calendar_search",
@@ -405,7 +410,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search calendar events by query",
     category: "calendar",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: 'Searching calendar for "{query}"',
   },
   {
@@ -521,7 +526,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Search tasks by query",
     category: "tasks",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "task_delete",
@@ -547,7 +552,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View recent agent job runs",
     category: "agentJobs",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "agent_job_run_messages",
@@ -555,7 +560,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "View conversation for a specific agent run",
     category: "agentJobs",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "agent_job_create",
@@ -605,7 +610,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read one watcher in full, script included",
     category: "watchers",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "watcher_ticks",
@@ -613,7 +618,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read a watcher's recent ticks",
     category: "watchers",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "watcher_test",
@@ -668,7 +673,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "List notes for a machine",
     category: "infra",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: "Listing notes for {machineName}",
   },
   {
@@ -677,7 +682,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Get the full content of a note",
     category: "infra",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "infra_add_machine",
@@ -712,7 +717,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Read a file from a remote machine",
     category: "infra",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: "Reading {path} on {machineName}",
   },
   {
@@ -739,7 +744,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     description: "Download a file from a remote machine into the workspace",
     category: "infra",
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
     summaryTemplate: "Downloading {path} from {machineName}",
   },
   {
@@ -805,7 +810,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     category: "settings",
     // Reading is safe to do unprompted. Changing it is not.
     defaultPolicy: "allow",
-    defaultExposure: "codemode",
+    defaultExposure: "deferred",
   },
   {
     name: "project_settings_set",

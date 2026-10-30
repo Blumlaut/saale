@@ -527,11 +527,14 @@ describe("resolveTools", () => {
     it("applies each category's default when the user configured nothing", async () => {
       vi.mocked(sandboxClient.canExec).mockReturnValue(true);
       const tools = await resolveTools(userId, sessionId, ALL_ON, options);
-      // The read-only tools of a niche catalog are the ones codemode lists, so
-      // the model can survey the area before it acts.
-      expect(exposureOf(tools, "mail_read")).toBe("codemode");
+      // One list tool per area is what codemode lists, so the model can survey
+      // what exists without paying for the rest of the catalog.
+      expect(exposureOf(tools, "mail_list")).toBe("codemode");
+      expect(exposureOf(tools, "mail_read")).toBe("deferred");
       expect(exposureOf(tools, "job_list")).toBe("codemode");
+      expect(exposureOf(tools, "job_run")).toBe("deferred");
       expect(exposureOf(tools, "settings_list")).toBe("codemode");
+      expect(exposureOf(tools, "settings_set")).toBe("deferred");
       // A watcher is a thing the model must know it can look at  its list is
       // listed  while creating one is an action it has to go and find.
       expect(exposureOf(tools, "watcher_list")).toBe("codemode");

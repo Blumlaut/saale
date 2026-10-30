@@ -9,6 +9,7 @@ import { ALL_TOOL_INFOS, CODEMODE_TOOL_NAME, findToolInfo } from "@/lib/pi/tool-
 import {
   CODEMODE_INLINE_BUDGET,
   DEFAULT_TOOL_EXPOSURE,
+  TOOL_CATEGORIES,
   type ToolExposure,
 } from "@/lib/pi/tool-categories";
 import { createChatTools, createShowFileTool } from "@/lib/pi/tools/chat-tools";
@@ -151,44 +152,46 @@ describe("tool catalog ↔ implementation drift", () => {
     expect(listed).not.toContain("calendar_create");
   });
 
-  it("lists the read-only entry points of every area", async () => {
+  it("lists one read-only entry point per area", async () => {
     const listed = await listedToolNames();
     // The regression this guards: the codemode budget filled with whichever
     // tools had the shortest descriptions, which dropped the entry points and
     // left `watcher_delete` advertised with no sign of what a watcher is.
     expect([...listed].sort()).toEqual([
       "agent_job_list",
-      "agent_job_logs",
-      "agent_job_run_messages",
       "calendar_list",
-      "calendar_search",
-      "calendar_upcoming",
       "chat_search",
       "contacts_list",
-      "contacts_search",
-      "infra_download_file",
       "infra_list_machines",
-      "infra_notes_get",
-      "infra_notes_list",
-      "infra_read_file",
       "job_list",
-      "job_logs",
-      "job_types",
-      "mail_accounts",
-      "mail_folders",
       "mail_list",
-      "mail_read",
-      "mail_search",
-      "model_list",
       "project_list",
-      "project_settings_get",
       "settings_list",
       "task_list_pending",
-      "task_search",
-      "watcher_get",
       "watcher_list",
-      "watcher_ticks",
     ]);
+  });
+
+  it("lists a list tool per category, never a setter", () => {
+    // The catalog is the model's map of what exists. One entry point per area is
+    // what it needs to walk in; everything else is reachable once it searches.
+    const listed = ALL_TOOL_INFOS.filter((info) => info.defaultExposure === "codemode");
+    const notAList = listed.filter(
+      (info) => !info.name.includes("list") && info.name !== "chat_search",
+    );
+    expect(notAList.map((info) => info.name)).toEqual([]);
+
+    const perCategory = TOOL_CATEGORIES.filter(
+      (category) => category.defaultExposure === "codemode",
+    ).map((category) => [
+      category.key,
+      listed.filter((info) => info.category === category.key).length,
+    ]);
+    expect(perCategory, "Every codemode category lists exactly one tool").toEqual(
+      TOOL_CATEGORIES.filter((category) => category.defaultExposure === "codemode").map(
+        (category) => [category.key, 1],
+      ),
+    );
   });
 });
 
