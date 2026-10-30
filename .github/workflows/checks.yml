@@ -80,9 +80,9 @@ jobs:
           }
 
           list lint   '\.(ts|tsx|js|mjs|cjs|mts)$'
-          # Same scope as `npm run format:check`. Loose markdown in plans/ and
-          # docs/ is deliberately not held to prettier, and src TS is already
-          # formatted by eslint's prettier plugin above.
+          # Same scope as `npm run format:check`. Loose markdown in docs/ is
+          # deliberately not held to prettier, and src TS is already formatted by
+          # eslint's prettier plugin above.
           list format '^src/.*\.md$|^e2e/.*\.(ts|tsx)$'
           list code   '\.(ts|tsx|mts|cts)$'
           # vitest only includes __tests__; e2e specs are Playwright, not vitest.
