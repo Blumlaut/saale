@@ -18,12 +18,6 @@ export const PROMPT_SCOPE_LABELS: Record<PromptScope, string> = {
   coder: "Coder chats",
 };
 
-export const PROMPT_SCOPE_DESCRIPTIONS: Record<PromptScope, string> = {
-  any: "Offered in every chat",
-  chat: "Offered in ordinary chats",
-  coder: "Offered in coder chats, whatever the project",
-};
-
 export const PROMPT_NAME_MAX = 40;
 export const PROMPT_DESCRIPTION_MAX = 100;
 export const PROMPT_ARGUMENT_HINT_MAX = 100;
