@@ -1,7 +1,15 @@
 import type { NextConfig } from "next";
 
+/** Hosts a dev server accepts requests from, from `ALLOWED_DEV_ORIGINS`. */
+function allowedDevOrigins(): string[] {
+  return (process.env.ALLOWED_DEV_ORIGINS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+}
+
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.178.109", "**.chat.blumlaut.me"],
+  allowedDevOrigins: allowedDevOrigins(),
   output: "standalone",
   serverExternalPackages: [
     "@better-auth/kysely-adapter",

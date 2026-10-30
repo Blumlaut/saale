@@ -36,7 +36,7 @@ const RUN_ID = "e2e-run-1";
 const NOW = "2026-10-13T14:00:00.000Z";
 const COUNCIL_NAME = "Launch review board with a very long name that must truncate";
 const DIGEST = "9f2c4a1e7b3d5086a4c1e9f2b7d3a5086c4e1a9f2b7d3c5086a4e1b9f2c7d3a5";
-const ARTIFACT = `/home/u3bd99582/artifacts/2026-10/launch-readiness/findings/${DIGEST}/report.md`;
+const ARTIFACT = `/home/agent/artifacts/2026-10/launch-readiness/findings/${DIGEST}/report.md`;
 
 export const COUNCIL_SUMMARY: CouncilSummary = {
   id: COUNCIL_E2E_ID,
