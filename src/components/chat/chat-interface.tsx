@@ -69,6 +69,7 @@ export function ChatInterface({
   headerActions,
   hideTemporaryToggle,
   renderWaitingNotice,
+  goneHref = "/dashboard/chat",
 }: {
   sessionId: string;
   temporaryMode?: boolean;
@@ -80,6 +81,11 @@ export function ChatInterface({
   headerActions?: React.ReactNode;
   /** Hide temporary mode; a coder chat is bound to its worktree. */
   hideTemporaryToggle?: boolean;
+  /**
+   * Where a chat the server no longer knows sends the user. A deleted coder
+   * chat belongs back on its project's list, not in the chat view.
+   */
+  goneHref?: string;
   /**
    * Coder only: chrome above the composer while the first message is on its
    * way to being answered, which is when the workspace is being built.
@@ -227,10 +233,10 @@ export function ChatInterface({
       applySession(data.session);
     } catch (err) {
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
-        router.push("/dashboard/chat");
+        router.push(goneHref);
       }
     }
-  }, [sessionId, router, applySession]);
+  }, [sessionId, router, applySession, goneHref]);
 
   // Latest queue for the stream callback below, which is captured once per
   // connection and must not close over stale state.
@@ -499,7 +505,7 @@ export function ChatInterface({
 
         switch (result.kind) {
           case "not-found":
-            router.push("/dashboard/chat");
+            router.push(goneHref);
             return;
           case "conflict":
             // Unexpected: the server queues while a generation runs. Nothing
@@ -593,7 +599,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, router, connect, disconnect, setDraft, runCommand, applySession],
+    [sessionId, router, goneHref, connect, disconnect, setDraft, runCommand, applySession],
   );
 
   // ─── Send queue actions ──────────────────────────────────────────────────

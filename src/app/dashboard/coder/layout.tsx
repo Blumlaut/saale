@@ -162,6 +162,7 @@ export default function CoderLayout() {
             sessionId={sessionId}
             onNewChat={newChat}
             hideTemporaryToggle
+            goneHref={`/dashboard/coder/${projectId}`}
             renderWaitingNotice={(waiting) => (
               <ProvisioningNotice sessionId={sessionId} waiting={waiting} />
             )}
