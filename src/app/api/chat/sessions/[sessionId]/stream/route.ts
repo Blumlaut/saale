@@ -21,6 +21,7 @@ import {
 } from "@/lib/pi/stream-logic";
 import { getLastBufferedEvent, isTerminalBufferedEvent } from "@/lib/pi/sse-buffer";
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
+import { isClosedControllerError } from "@/lib/pi/sse-controller";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import {
   beginChatRun,
@@ -258,7 +259,10 @@ export async function GET(
       try {
         streamController.close();
       } catch (err) {
-        console.error("Failed to close controller (may already be closed):", err);
+        // The runtime closed the stream first (client gone). nothing left to do.
+        if (!isClosedControllerError(err)) {
+          console.error("Failed to close controller:", err);
+        }
       }
     }
   };

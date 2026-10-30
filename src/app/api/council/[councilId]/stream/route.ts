@@ -3,6 +3,7 @@ import { councilCaller } from "@/lib/council/http";
 import { getCouncil } from "@/lib/council/store";
 import { SseDispatcher } from "@/lib/pi/sse-dispatcher";
 import { createSseHeartbeat } from "@/lib/pi/sse-heartbeat";
+import { isClosedControllerError } from "@/lib/pi/sse-controller";
 import { formatSseEvent } from "@/lib/pi/stream-logic";
 
 const SSE_HEADERS = {
@@ -72,7 +73,10 @@ export async function GET(
           ),
         );
       } catch (err) {
-        console.error(`Failed to send the council stream's ready event for ${councilId}:`, err);
+        // A client that left before its first event needs no log.
+        if (!isClosedControllerError(err)) {
+          console.error(`Failed to send the council stream's ready event for ${councilId}:`, err);
+        }
       }
     },
     cancel() {

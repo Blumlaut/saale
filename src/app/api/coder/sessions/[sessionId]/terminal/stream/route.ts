@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { attachTerminalRun, type TerminalRunEvent } from "@/lib/coder/terminal-runs";
 import { createSseHeartbeat } from "@/lib/pi/sse-heartbeat";
+import { isClosedControllerError } from "@/lib/pi/sse-controller";
 import { formatSseEvent } from "@/lib/pi/stream-logic";
 
 /**
@@ -47,7 +48,10 @@ export async function GET(
         try {
           controller.close();
         } catch (err) {
-          console.warn(`Terminal stream for chat ${sessionId} was already closed:`, err);
+          // Already closed by the runtime.
+          if (!isClosedControllerError(err)) {
+            console.warn(`Terminal stream for chat ${sessionId} failed to close:`, err);
+          }
         }
       };
 
@@ -56,10 +60,12 @@ export async function GET(
         try {
           controller.enqueue(encoder.encode(formatSseEvent(event, payload)));
         } catch (err) {
-          // The client left; the run carries on without it.
-          console.warn(`Terminal stream for chat ${sessionId} closed early:`, err);
           detach?.();
           finish();
+          // The client left; the run carries on without it.
+          if (!isClosedControllerError(err)) {
+            console.warn(`Terminal stream for chat ${sessionId} failed to send ${event}:`, err);
+          }
         }
       };
 

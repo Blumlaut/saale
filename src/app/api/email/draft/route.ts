@@ -9,6 +9,7 @@ import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
+import { isClosedControllerError } from "@/lib/pi/sse-controller";
 
 /**
  * POST /api/email/draft. Generate an AI email draft reply
@@ -141,9 +142,18 @@ Rules:
     controller: ReadableStreamDefaultController,
     event: string,
     data: unknown,
-  ): void {
+  ): boolean {
     const json = JSON.stringify(data).replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${json}\n\n`));
+    try {
+      controller.enqueue(encoder.encode(`event: ${event}\ndata: ${json}\n\n`));
+      return true;
+    } catch (err) {
+      // A closed controller means the client left.
+      if (!isClosedControllerError(err)) {
+        console.error(`[email:${messageId}] Failed to send ${event} event:`, err);
+      }
+      return false;
+    }
   }
 
   /** Text blocks of an assistant message's content array. */
@@ -174,7 +184,8 @@ Rules:
         idleTimeout.clear();
         unsubscribe();
         piSession.dispose();
-        sendEvent(controller, event, data);
+        // Failed enqueue means the client is gone: nothing to close.
+        if (!sendEvent(controller, event, data)) return;
         controller.close();
       };
 
@@ -215,7 +226,10 @@ Rules:
           const now = Date.now();
           if (text && now - lastTokenSentAt >= TOKEN_PUBLISH_INTERVAL_MS) {
             lastTokenSentAt = now;
-            sendEvent(controller, "token", { text });
+            if (!sendEvent(controller, "token", { text })) {
+              clientGone();
+              return;
+            }
           }
         }
 
@@ -252,8 +266,9 @@ Rules:
         fail(err.message);
       });
 
-      // Handle client disconnect
-      request.signal.addEventListener("abort", () => {
+      /** The stream's client left: stop the draft and release the session. */
+      const clientGone = () => {
+        if (aborted || finished) return;
         aborted = true;
         idleTimeout.clear();
         unsubscribe();
@@ -264,10 +279,13 @@ Rules:
         try {
           controller.close();
         } catch (err) {
-          // The client is already gone; a closed controller is expected.
-          console.error(`[email:${messageId}] Failed to close aborted stream:`, err);
+          if (!isClosedControllerError(err)) {
+            console.error(`[email:${messageId}] Failed to close the stream:`, err);
+          }
         }
-      });
+      };
+
+      request.signal.addEventListener("abort", clientGone);
     },
   });
 
