@@ -22,11 +22,13 @@ import {
   X,
   FileText,
   File as FileIcon,
+  FolderGit2,
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 import { searchCommands } from "@/lib/commands/catalog";
-import { SlashCommandMenu } from "./slash-command-menu";
+import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
+import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
 
@@ -52,6 +54,10 @@ interface InputBarProps {
   onSend: (message: string, files?: File[]) => void;
   /** Runs a slash command picked from the `/` menu. */
   onCommand?: (name: string) => void;
+  /** The chat's prompts, listed alongside the commands under `/`. */
+  prompts?: readonly PromptPickerItem[];
+  /** Called when the `/` menu opens, so the prompts can be read again. */
+  onPromptsRequested?: () => void;
   /** Current composer text. owned by the parent so drafts survive navigation. */
   value: string;
   onValueChange: (value: string) => void;
@@ -71,6 +77,8 @@ export function InputBar({
   ref,
   onSend,
   onCommand,
+  prompts,
+  onPromptsRequested,
   value,
   onValueChange,
   isLoading,
@@ -90,20 +98,39 @@ export function InputBar({
   // once the user types a space the menu closes and the text is just a message
   // (or `/name args`, which the chat interface parses on send).
   const commandQuery = COMMAND_QUERY_PATTERN.exec(value)?.[1] ?? null;
-  const commandMatches = useMemo(
-    () => (commandQuery === null ? [] : searchCommands("web", commandQuery)),
-    [commandQuery],
-  );
+  const menuItems = useMemo<SlashMenuItem[]>(() => {
+    if (commandQuery === null) return [];
+    const commands = searchCommands("web", commandQuery).map<SlashMenuItem>((meta) => ({
+      kind: "command",
+      name: meta.name,
+      description: meta.description,
+      icon: meta.icon,
+    }));
+    const promptItems = searchPrompts(prompts ?? [], commandQuery).map<SlashMenuItem>((prompt) => ({
+      kind: "prompt",
+      name: prompt.name,
+      description: prompt.description,
+      icon: prompt.source === "project" ? FolderGit2 : FileText,
+      hint: prompt.argumentHint,
+    }));
+    return [...commands, ...promptItems];
+  }, [commandQuery, prompts]);
   const [commandIndex, setCommandIndex] = useState(0);
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
-  const commandMenuOpen =
-    commandQuery !== null && !commandMenuDismissed && commandMatches.length > 0;
+  const commandMenuOpen = commandQuery !== null && !commandMenuDismissed && menuItems.length > 0;
 
   // A new query starts a fresh highlight, and re-arms a dismissed menu.
   useEffect(() => {
     setCommandIndex(0);
     setCommandMenuDismissed(false);
   }, [commandQuery]);
+
+  // Opening the menu re-reads the prompts, whose sources can change while the
+  // chat is open (a project template the agent committed, a prompt added in
+  // another tab).
+  useEffect(() => {
+    if (commandMenuOpen) onPromptsRequested?.();
+  }, [commandMenuOpen, onPromptsRequested]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -157,11 +184,35 @@ export function InputBar({
     [onCommand, onValueChange],
   );
 
+  /** Drop a prompt's `/name ` in the composer, ready for its arguments. */
+  const selectPrompt = useCallback(
+    (name: string) => {
+      const next = `/${name} `;
+      onValueChange(next);
+      setCommandMenuDismissed(true);
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(next.length, next.length);
+        autoResize();
+      }
+    },
+    [onValueChange, autoResize],
+  );
+
+  const selectMenuItem = useCallback(
+    (item: SlashMenuItem) => {
+      if (item.kind === "prompt") selectPrompt(item.name);
+      else selectCommand(item.name);
+    },
+    [selectPrompt, selectCommand],
+  );
+
   const handleSubmit = useCallback(() => {
     if (commandMenuOpen) {
-      const highlighted = commandMatches[commandIndex];
+      const highlighted = menuItems[commandIndex];
       if (highlighted) {
-        selectCommand(highlighted.name);
+        selectMenuItem(highlighted);
         return;
       }
     }
@@ -175,9 +226,9 @@ export function InputBar({
     }
   }, [
     commandMenuOpen,
-    commandMatches,
+    menuItems,
     commandIndex,
-    selectCommand,
+    selectMenuItem,
     value,
     pendingFiles,
     canSend,
@@ -189,12 +240,12 @@ export function InputBar({
     if (commandMenuOpen) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setCommandIndex((index) => (index + 1) % commandMatches.length);
+        setCommandIndex((index) => (index + 1) % menuItems.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setCommandIndex((index) => (index - 1 + commandMatches.length) % commandMatches.length);
+        setCommandIndex((index) => (index - 1 + menuItems.length) % menuItems.length);
         return;
       }
       if (e.key === "Escape") {
@@ -306,9 +357,9 @@ export function InputBar({
     <div className="border-border relative border-t pt-2">
       {commandMenuOpen && (
         <SlashCommandMenu
-          commands={commandMatches}
+          items={menuItems}
           activeIndex={commandIndex}
-          onSelect={selectCommand}
+          onSelect={selectMenuItem}
           onHighlight={setCommandIndex}
         />
       )}
