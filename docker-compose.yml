@@ -47,6 +47,11 @@ services:
       - PREVIEW_DOMAIN=${PREVIEW_DOMAIN:-}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
       - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
+      # Empty until VOICE_ENABLED is set: unset VOICE_URL is what turns the
+      # composer's mic off, so the two never disagree.
+      - VOICE_URL=${VOICE_ENABLED:+http://voice:8000}
+      - VOICE_MODEL=${VOICE_MODEL:-}
+      - VOICE_LANGUAGE=${VOICE_LANGUAGE:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
@@ -153,6 +158,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # Speech to text for the composer. Off unless asked for: VOICE_ENABLED=1 in
+  # .env points web at it, and `docker compose --profile voice up -d` starts it.
+  # The model is downloaded once into its volume and unloaded again a few
+  # minutes after the last recording, so it costs RAM only while in use.
+  voice:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: saale-voice
+    restart: unless-stopped
+    profiles: ["voice"]
+    volumes:
+      - voice_models:/home/ubuntu/.cache/huggingface/hub
+    environment:
+      - WHISPER__COMPUTE_TYPE=int8
+      - ENABLE_UI=False
+      - STT_MODEL_TTL=600
+      # Pulled at startup so the first recording is not a download.
+      - PRELOAD_MODELS=["${VOICE_MODEL:-Systran/faster-whisper-small}"]
+
   searxng:
     image: searxng/searxng:latest
     container_name: saale-searxng
@@ -229,6 +252,8 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+  # Speech models. keeping them means a redeploy does not download again.
+  voice_models:
   # User data: one directory per user and council. Compose creates it on the
   # first deploy, so a fresh checkout needs no manual step. `down -v` deletes it,
   # so never pass -v.

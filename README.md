@@ -252,6 +252,8 @@ Everything with a default is optional. The compose file sets the database and Re
 | `VAPID_PRIVATE_KEY`          | The other half of the pair. Rotating it drops every subscription.         | No       |
 | `VAPID_SUBJECT`              | Contact URI for push services. Defaults to a `mailto:` on the app's host. | No       |
 | `COUNCIL_ENABLED`            | `0` removes the council module entirely.                                  | No       |
+| `VOICE_ENABLED`              | `1` adds voice input; start the container with `--profile voice`.         | No       |
+| `VOICE_MODEL`                | faster-whisper model to transcribe with. Defaults to `…-small`.           | No       |
 
 `.env.example` lists the rest, with comments.
 
