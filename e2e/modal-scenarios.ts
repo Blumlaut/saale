@@ -170,7 +170,7 @@ async function mockConfigurableModels(page: Page) {
         },
         totalModels: 1,
         disabledModels: [],
-        endpointLimits: { contextWindow: null, maxOutputTokens: null },
+        endpointLimits: { custom: { contextWindow: null, maxOutputTokens: null } },
       },
     }),
   );
