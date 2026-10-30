@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  isConflict,
+  parseBranches,
   parseDiffTreeNameStatus,
   parseLog,
   parseNumstat,
   parsePorcelainZ,
+  parseRemotes,
   parseStatusHeader,
   parseSymrefHead,
   parseWorktreeList,
@@ -158,7 +161,7 @@ describe("parseDiffTreeNameStatus", () => {
 
 describe("parseLog", () => {
   it("keeps the subject even when it holds a separator-like string", () => {
-    const stdout = ["abc123\x1fabc123\x1f2026-10-23T10:51:21Z\x1fAda\x1fadd: a file", ""].join(
+    const stdout = ["abc123\x1fabc123\x1f2026-10-23T10:51:21Z\x1fAda\x1fadd: a file\x1f", ""].join(
       "\x1e",
     );
     expect(parseLog(stdout)).toEqual([
@@ -168,12 +171,65 @@ describe("parseLog", () => {
         date: "2026-10-23T10:51:21Z",
         author: "Ada",
         subject: "add: a file",
+        refs: [],
       },
     ]);
   });
 
+  it("reads what points at a commit, which is where a branch or a tag shows up", () => {
+    const stdout = [
+      "abc123\x1fabc123\x1f2026-10-23T10:51:21Z\x1fAda\x1frelease\x1fHEAD -> main, origin/main, tag: v1.2.0",
+      "",
+    ].join("\x1e");
+    expect(parseLog(stdout)[0]?.refs).toEqual(["HEAD -> main", "origin/main", "tag: v1.2.0"]);
+  });
+
   it("returns nothing for an empty repo", () => {
     expect(parseLog("")).toEqual([]);
+  });
+});
+
+describe("isConflict", () => {
+  it("reads the unmerged codes a merge leaves behind", () => {
+    expect(isConflict("U", "U")).toBe(true);
+    expect(isConflict("A", "A")).toBe(true);
+    expect(isConflict("D", "U")).toBe(true);
+  });
+
+  it("leaves an ordinary staged or unstaged change alone", () => {
+    expect(isConflict("M", " ")).toBe(false);
+    expect(isConflict(" ", "M")).toBe(false);
+    expect(isConflict("A", " ")).toBe(false);
+  });
+});
+
+describe("parseRemotes", () => {
+  it("keeps one entry per remote, from its fetch line", () => {
+    const stdout = [
+      "origin\tgit@github.com:acme/saale.git (fetch)",
+      "origin\tgit@github.com:acme/saale.git (push)",
+      "upstream\thttps://github.com/other/saale.git (fetch)",
+      "upstream\thttps://github.com/other/saale.git (push)",
+    ].join("\n");
+    expect(parseRemotes(stdout)).toEqual([
+      { name: "origin", url: "git@github.com:acme/saale.git" },
+      { name: "upstream", url: "https://github.com/other/saale.git" },
+    ]);
+  });
+
+  it("returns nothing for a repo with no remote", () => {
+    expect(parseRemotes("")).toEqual([]);
+  });
+});
+
+describe("parseBranches", () => {
+  it("reads the branch list with its upstream and which one is checked out", () => {
+    const stdout = ["main\torigin/main\t*", "wt/abc\torigin/main\t ", "wt/old\t\t "].join("\n");
+    expect(parseBranches(stdout)).toEqual([
+      { name: "main", upstream: "origin/main", current: true },
+      { name: "wt/abc", upstream: "origin/main", current: false },
+      { name: "wt/old", upstream: "", current: false },
+    ]);
   });
 });
 

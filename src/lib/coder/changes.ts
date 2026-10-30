@@ -9,8 +9,23 @@
 
 import { prisma } from "@/lib/db";
 import { checkoutOf, type ChatMode } from "./checkout";
-import { readFileDiff, readLog, readNumstat, readStatus, readWorktreeFile } from "./git";
-import type { GitCommit, GitStatus } from "./git-status";
+import {
+  readFileDiff,
+  readLog,
+  readNumstat,
+  readRemotes,
+  readStashCount,
+  readStatus,
+  readUnpushedShas,
+  readWorktreeFile,
+} from "./git";
+import { isConflict, type GitCommit, type GitRemote, type GitStatus } from "./git-status";
+
+/** How many commits the panel reads when the caller does not say. */
+export const DEFAULT_COMMIT_LIMIT = 20;
+
+/** The most one status read will carry, so a huge history cannot stall a poll. */
+export const MAX_COMMIT_LIMIT = 200;
 
 /** One changed path as the panel lists it. */
 export interface CoderChange {
@@ -22,6 +37,14 @@ export interface CoderChange {
   staged: boolean;
   unstaged: boolean;
   untracked: boolean;
+  /** git could not merge this path: the worktree needs a decision. */
+  conflicted: boolean;
+}
+
+/** One commit as the history lists it. */
+export interface CoderCommit extends GitCommit {
+  /** False when the branch's upstream does not have it, null when there is no upstream. */
+  pushed: boolean | null;
 }
 
 /** A runnable script found in the worktree's package.json. */
@@ -41,7 +64,13 @@ export interface CoderSessionState {
   ahead: number;
   behind: number;
   changes: CoderChange[];
-  commits: GitCommit[];
+  commits: CoderCommit[];
+  /** True when the branch has more history than this read carries. */
+  commitsTruncated: boolean;
+  /** Where the branch pushes to and pulls from, empty for a project with no remote. */
+  remotes: GitRemote[];
+  /** How many stashes the repo holds. */
+  stashes: number;
   scripts: CoderScript[];
 }
 
@@ -56,6 +85,9 @@ const NOT_READY: CoderSessionState = {
   behind: 0,
   changes: [],
   commits: [],
+  commitsTruncated: false,
+  remotes: [],
+  stashes: 0,
   scripts: [],
 };
 
@@ -103,6 +135,7 @@ export function assertRepoRelativePath(path: string): string {
 export async function loadSessionState(
   userId: string,
   sessionId: string,
+  options: { commitLimit?: number } = {},
 ): Promise<CoderSessionState | null> {
   const session = await loadCoderSession(userId, sessionId);
   if (!session) return null;
@@ -110,16 +143,32 @@ export async function loadSessionState(
   if (!checkout) return { ...NOT_READY, project: session.project };
 
   const dir = checkout.path;
-  const [status, numstat, commits, packageJson, makefile, pyproject, composerJson] =
+  const limit = Math.min(
+    Math.max(options.commitLimit ?? DEFAULT_COMMIT_LIMIT, 1),
+    MAX_COMMIT_LIMIT,
+  );
+  const [status, numstat, log, remotes, stashes, packageJson, makefile, pyproject, composerJson] =
     await Promise.all([
       readStatus(userId, dir),
       readNumstat(userId, dir),
-      readLog(userId, dir),
+      // One extra, so the panel can say whether there is more history.
+      readLog(userId, dir, limit + 1),
+      readRemotes(userId, dir),
+      readStashCount(userId, dir),
       readWorktreeFile(userId, dir, "package.json"),
       readWorktreeFile(userId, dir, "Makefile"),
       readWorktreeFile(userId, dir, "pyproject.toml"),
       readWorktreeFile(userId, dir, "composer.json"),
     ]);
+
+  const sampled = log.slice(0, limit);
+  const unpushed = status.upstream
+    ? await readUnpushedShas(userId, dir, status.upstream).catch((err: unknown) => {
+        // A missing or stale upstream ref costs the badge, not the panel.
+        console.error(`Failed to read unpushed commits for ${dir}:`, err);
+        return null;
+      })
+    : null;
 
   return {
     // The branch git reports is the live one: a shared checkout can have been
@@ -132,7 +181,13 @@ export async function loadSessionState(
     ahead: status.ahead,
     behind: status.behind,
     changes: mergeChanges(status, numstat),
-    commits,
+    commits: sampled.map((commit) => ({
+      ...commit,
+      pushed: unpushed === null ? null : !unpushed.has(commit.sha),
+    })),
+    commitsTruncated: log.length > limit,
+    remotes,
+    stashes,
     scripts: [
       ...parsePackageScripts(packageJson),
       ...parseMakefile(makefile),
@@ -155,6 +210,7 @@ function mergeChanges(status: GitStatus, numstat: Awaited<ReturnType<typeof read
       staged: file.index !== " " && file.index !== "?",
       unstaged: file.worktree !== " " && file.worktree !== "?",
       untracked: file.index === "?" || file.worktree === "?",
+      conflicted: isConflict(file.index, file.worktree),
     };
   });
 }

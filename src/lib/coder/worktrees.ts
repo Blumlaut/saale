@@ -40,6 +40,7 @@ import {
   writeEnvFiles,
   type EnvFile,
 } from "./project-config";
+import { withLockRetry, withRepoLock } from "./lock";
 import { clearProvisioning, setProvisioningStep } from "./provisioning";
 import { clearSetupFailure, recordSetupFailure } from "./setup-failure";
 import { coderBranchName, coderChatSlug, isWorktreeBranch } from "./slug";
@@ -74,43 +75,6 @@ const lastFetched = new Map<string, number>();
 
 /** git says the branch is already there, so there is nothing to create. */
 const BRANCH_EXISTS_PATTERN = /branch named .* already exists|already exists/i;
-
-/** A concurrent git process holds the index or a ref. */
-const LOCK_ERROR_PATTERN = /index\.lock|cannot lock ref/i;
-
-/**
- * One promise chain per project, so worktree bookkeeping in one repo never
- * overlaps. Keyed by project id, not by path: the row is the shared thing.
- */
-const projectLocks = new Map<string, Promise<unknown>>();
-
-async function withProjectLock<T>(projectId: string, task: () => Promise<T>): Promise<T> {
-  const previous = projectLocks.get(projectId) ?? Promise.resolve();
-  const run = previous.then(task, task);
-  const settled = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  projectLocks.set(projectId, settled);
-  try {
-    return await run;
-  } finally {
-    // Only the last task drops the entry; an earlier one leaving it would let
-    // the next task start beside the one still queued.
-    if (projectLocks.get(projectId) === settled) projectLocks.delete(projectId);
-  }
-}
-
-/** Run a git step again once when another process held a lock. */
-async function withLockRetry<T>(task: () => Promise<T>): Promise<T> {
-  try {
-    return await task();
-  } catch (err) {
-    if (!(err instanceof GitError) || !LOCK_ERROR_PATTERN.test(err.message)) throw err;
-    console.warn(`[coder] git was locked, retrying: ${err.message}`);
-    return task();
-  }
-}
 
 /**
  * Drop a checkout that holds `branch` at some other path.
@@ -295,7 +259,7 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
       return await ensureRepoCheckout(userId, sessionId, project);
     }
 
-    const result = await withProjectLock(project.id, () =>
+    const result = await withRepoLock(project.id, () =>
       withLockRetry(() => resolveWorktree(userId, sessionId, project, chat.worktreeBranch)),
     );
     if (result.changed) await evictPooledAgent(userId, sessionId);

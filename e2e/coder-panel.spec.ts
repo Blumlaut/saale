@@ -78,6 +78,7 @@ const STATUS = {
       staged: true,
       unstaged: false,
       untracked: false,
+      conflicted: false,
     },
     {
       path: "notes.md",
@@ -87,10 +88,14 @@ const STATUS = {
       staged: false,
       unstaged: true,
       untracked: false,
+      conflicted: false,
     },
   ],
   // The panel renders a run button per script; the field is required.
   scripts: [{ name: "test", command: "npm test", runCommand: "npm test" }],
+  remotes: [{ name: "origin", url: "git@github.com:acme/e2e-project.git" }],
+  stashes: 0,
+  commitsTruncated: false,
   commits: [
     {
       sha: "abcdef1234567890",
@@ -98,6 +103,8 @@ const STATUS = {
       subject: "add the coder panel with a subject long enough to need two lines here",
       date: NOW,
       author: "e2e",
+      refs: [],
+      pushed: false,
     },
   ],
 };
@@ -139,8 +146,15 @@ const DIFF = [
   "",
 ].join("\n");
 
+/** What one test wants the panel to read differently from the shared fixtures. */
+interface CoderMockOptions {
+  deleteStatus?: number;
+  /** Fields to replace on the worktree status, e.g. an empty change list. */
+  status?: Partial<typeof STATUS>;
+}
+
 /** Every coder route the panel reads, stubbed. */
-async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
+async function mockCoder(page: Page, options: CoderMockOptions = {}) {
   // The folded chat is a stub, so its conversation has to answer too.
   await page.route(new RegExp(`/api/chat/sessions/${FOLDED_CHAT.id}/messages$`), (route) =>
     route.fulfill({ json: { messages: [], session: { title: FOLDED_CHAT.title } } }),
@@ -183,8 +197,8 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
     return route.fulfill({ json: { project: PROJECT, chats: [CHAT] } });
   });
 
-  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status$`), (route) =>
-    route.fulfill({ json: STATUS }),
+  await page.route(new RegExp(`/api/coder/sessions/[^/]+/status(\\?|$)`), (route) =>
+    route.fulfill({ json: { ...STATUS, ...options.status } }),
   );
 
   await page.route(new RegExp(`/api/coder/sessions/[^/]+/diff\\?`), (route) =>
@@ -272,10 +286,10 @@ async function mockCoder(page: Page, options: { deleteStatus?: number } = {}) {
 }
 
 /** A coder page with the API stubbed, on the route this test measures. */
-async function openCoder(browser: Browser, path: string) {
+async function openCoder(browser: Browser, path: string, options: CoderMockOptions = {}) {
   const context = await sessionContext(browser);
   const page = await context.newPage();
-  await mockCoder(page);
+  await mockCoder(page, options);
   await gotoAndSettle(page, path);
   return { context, page };
 }
@@ -365,6 +379,130 @@ test.describe("coder panel", () => {
     await expect
       .poll(async () => (await handleAfterReload.boundingBox())?.x ?? 0)
       .toBeLessThan(handleX + 4);
+
+    await context.close();
+  });
+
+  test("commits what is staged, saying so first", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, 'button:has-text("Commit…")').click();
+    await shown(page, 'textarea[aria-label="Commit message"]').fill("add the panel's git actions");
+    await page.locator('[role="dialog"]:visible button:has-text("Commit")').last().click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({
+      action: "commit",
+      message: "add the panel's git actions",
+      amend: false,
+      push: false,
+    });
+
+    await context.close();
+  });
+
+  test("marks a commit only this checkout has and pushes the branch", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    // The branch is two ahead, and the commit above the upstream says why.
+    await expect(shown(page, '[aria-label="Not pushed"]')).toBeVisible();
+
+    await shown(page, '[aria-label="Push"]').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "push" });
+
+    await context.close();
+  });
+
+  test("switches branch from the branch menu", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/branches$`), (route) =>
+      route.fulfill({
+        json: {
+          branches: [
+            { name: BRANCH, upstream: "", current: true },
+            { name: "main", upstream: "origin/main", current: false },
+          ],
+        },
+      }),
+    );
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="Branches"]').click();
+    await shown(page, '[role="menuitem"]:has-text("main")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "branch", name: "main" });
+
+    await context.close();
+  });
+
+  test("stashes the worktree from the panel menu", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="More git actions"]').click();
+    await shown(page, '[role="menuitem"]:has-text("Stash changes")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "stash" });
+
+    await context.close();
+  });
+
+  test("keeps the commit dialog away from a clean tree", async ({ browser }) => {
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {
+        status: { changes: [] },
+      },
+    );
+
+    await expect(shownText(page, "Worktree clean. All changes are committed.")).toBeVisible();
+    await expect(page.locator('button:has-text("Commit…")')).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test("discards a file only after asking", async ({ browser }) => {
+    const sent: unknown[] = [];
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    await page.route(new RegExp(`/api/coder/sessions/[^/]+/git$`), async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true, output: "" } });
+    });
+
+    await shown(page, '[aria-label="Actions for notes.md"]').click();
+    await shown(page, '[role="menuitem"]:has-text("Discard changes")').click();
+
+    await expect(page.locator('[role="alertdialog"]:visible')).toContainText("notes.md");
+    await expect(page.locator('[role="alertdialog"]:visible')).toContainText("cannot be undone");
+    expect(sent).toHaveLength(0);
+
+    await page.locator('[role="alertdialog"]:visible button:has-text("Discard")').click();
+
+    await expect.poll(() => sent.length).toBe(1);
+    expect(sent[0]).toEqual({ action: "discard", paths: ["notes.md"] });
 
     await context.close();
   });

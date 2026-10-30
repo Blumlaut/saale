@@ -29,7 +29,12 @@ import { PortsView } from "./ports-view";
 import { PROVISIONING_STEP_COPY } from "./provisioning-copy";
 import { SetupFailureNotice } from "./setup-failure-notice";
 import { TerminalView } from "./terminal-view";
-import type { CoderCommit, CoderProvisioning, CoderSessionState } from "./use-coder-data";
+import type {
+  CoderCommit,
+  CoderProvisioning,
+  CoderPullRequest,
+  CoderSessionState,
+} from "./use-coder-data";
 import { usePorts } from "./use-ports";
 
 function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }) {
@@ -109,6 +114,9 @@ export function WorktreePanel({
   error,
   onRefresh,
   refreshing,
+  pullRequest,
+  onLoadMoreCommits,
+  loadingMoreCommits,
 }: {
   sessionId: string;
   state: CoderSessionState | null;
@@ -116,6 +124,9 @@ export function WorktreePanel({
   error: string | null;
   onRefresh: () => void;
   refreshing: boolean;
+  pullRequest: CoderPullRequest | null;
+  onLoadMoreCommits: () => void;
+  loadingMoreCommits: boolean;
 }) {
   // Diff and File hold a target, so only a plain tab is remembered here.
   const [tab, setTab] = usePersistedState<string>("coder:panelTab", "changes", {
@@ -244,6 +255,9 @@ export function WorktreePanel({
                 setDiffTarget({ commit, path });
                 openTab("diff");
               }}
+              pullRequest={pullRequest}
+              onLoadMoreCommits={onLoadMoreCommits}
+              loadingMoreCommits={loadingMoreCommits}
             />
           )}
         </TabsContent>

@@ -12,7 +12,11 @@ import { ProjectChats } from "@/components/coder/project-chats";
 import { ProjectList } from "@/components/coder/project-list";
 import { ProvisioningNotice } from "@/components/coder/provisioning-notice";
 import { WorktreePanel } from "@/components/coder/worktree-panel";
-import { useSessionState, useCoderChatStarter } from "@/components/coder/use-coder-data";
+import {
+  usePullRequest,
+  useSessionState,
+  useCoderChatStarter,
+} from "@/components/coder/use-coder-data";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
 
 /** How often an open coder chat re-reads its worktree while visible. */
@@ -20,6 +24,12 @@ const WORKTREE_POLL_MS = 20_000;
 
 /** How often it re-reads while the workspace is still being built. */
 const PROVISIONING_POLL_MS = 2_000;
+
+/** How much history the panel reads at a time, and how much one "load more" adds. */
+const COMMITS_PAGE = 20;
+
+/** The ceiling the server enforces on one history read. */
+const MAX_COMMITS = 200;
 
 /** The worktree panel's width, remembered per browser. */
 const WORKTREE_PANEL = {
@@ -43,8 +53,27 @@ export default function CoderLayout() {
   // without waiting for the next tick.
   const [refreshKey, setRefreshKey] = useState(0);
   const reload = useCallback(() => setRefreshKey((value) => value + 1), []);
-  const { state, loading, error } = useSessionState(sessionId, refreshKey);
+  // How far back the history goes, and whether the last raise is still loading.
+  const [commitLimit, setCommitLimit] = useState(COMMITS_PAGE);
+  const [loadingMoreCommits, setLoadingMoreCommits] = useState(false);
+  const { state, loading, error } = useSessionState(sessionId, refreshKey, commitLimit);
+  const { pullRequest } = usePullRequest(sessionId, refreshKey);
   const panel = useResizableWidth(WORKTREE_PANEL);
+
+  // Another chat has its own history, so the next one opens at the top again.
+  useEffect(() => {
+    setCommitLimit(COMMITS_PAGE);
+    setLoadingMoreCommits(false);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!loading) setLoadingMoreCommits(false);
+  }, [loading]);
+
+  const loadMoreCommits = useCallback(() => {
+    setLoadingMoreCommits(true);
+    setCommitLimit((value) => Math.min(value + COMMITS_PAGE, MAX_COMMITS));
+  }, []);
 
   // The step, not the record: every poll re-fetches, so depending on the
   // object would restart the timer on each answer and never keep a cadence.
@@ -189,6 +218,9 @@ export default function CoderLayout() {
                         error={error}
                         onRefresh={reload}
                         refreshing={loading}
+                        pullRequest={pullRequest}
+                        onLoadMoreCommits={loadMoreCommits}
+                        loadingMoreCommits={loadingMoreCommits}
                       />
                     </div>
                   </SheetContent>
@@ -216,6 +248,9 @@ export default function CoderLayout() {
             error={error}
             onRefresh={reload}
             refreshing={loading}
+            pullRequest={pullRequest}
+            onLoadMoreCommits={loadMoreCommits}
+            loadingMoreCommits={loadingMoreCommits}
           />
         </div>
       </div>
