@@ -1,4 +1,7 @@
-# Saale
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
+  <img src="docs/assets/wordmark.svg" alt="Saale" width="260">
+</picture>
 
 A self-hosted chat UI that doesn't waste your tokens.
 
