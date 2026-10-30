@@ -1,4 +1,5 @@
 import type { Message, ToolCallData } from "@/components/chat/types";
+import { appendTextChunk } from "@/lib/pi/streamed-text";
 import { isStreamingMessage, makeStreamingMessage } from "./message-factories";
 
 /**
@@ -121,10 +122,9 @@ function ensureTurnMessage(
 /**
  * Append a streamed chunk to a turn's text or thinking.
  *
- * `offset` is where the chunk starts, so a chunk this client cannot continue
- * from. a gap from a trimmed buffer, a re-delivered event. is dropped rather
- * than spliced in at the wrong place. The next cumulative snapshot lands the
- * field where it should be.
+ * A chunk this client cannot continue from (a gap from a trimmed buffer, a
+ * re-delivered event) is dropped rather than spliced in at the wrong place. The
+ * next cumulative snapshot lands the field where it should be.
  */
 function appendStreamedChunk(
   state: StreamState,
@@ -132,11 +132,9 @@ function appendStreamedChunk(
   field: "content" | "thinking",
 ): Message[] {
   const existing = findTurnMessage(state.messages, action.turnId);
-  const current = existing?.[field] ?? "";
-  if (current.length !== action.offset) return state.messages;
-  return ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
-    [field]: current + action.delta,
-  });
+  const next = appendTextChunk(existing?.[field] ?? "", action.delta, action.offset);
+  if (next === null) return state.messages;
+  return ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, { [field]: next });
 }
 
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {

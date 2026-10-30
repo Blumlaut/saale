@@ -61,7 +61,8 @@ import { readContextUsage } from "./context-usage";
 import { normalizeToolResult } from "./message-replay";
 import { extractProviderError, type ProviderErrorSource } from "./provider-error";
 import { publishSessionEvent, resetSessionEvents } from "./session-events";
-import { appendedText, buildFinalAssistantMessage } from "./stream-logic";
+import { buildFinalAssistantMessage } from "./stream-logic";
+import { nextTextStep } from "./streamed-text";
 import { saveAssistantMessage } from "./stream-helpers";
 
 export interface SessionEventTrackerOptions {
@@ -284,21 +285,24 @@ export function createSessionEventTracker(
     previous: string,
     next: string,
   ): void => {
-    if (!next || next === previous) return;
-
-    const delta = appendedText(previous, next);
     const now = Date.now();
-    const snapshot =
-      delta === null || now - (textSnapshotAt.get(kind) ?? 0) >= TEXT_SNAPSHOT_INTERVAL_MS;
+    const step = nextTextStep({
+      previous,
+      next,
+      lastSnapshotAt: textSnapshotAt.get(kind) ?? null,
+      now,
+      snapshotIntervalMs: TEXT_SNAPSHOT_INTERVAL_MS,
+    });
+    if (!step) return;
 
-    let payload: Record<string, unknown>;
     let event: string = kind;
-    if (snapshot) {
+    let payload: Record<string, unknown>;
+    if (step.kind === "snapshot") {
       textSnapshotAt.set(kind, now);
-      payload = kind === "token" ? { turnId, text: next } : { turnId, thinking: next };
+      payload = kind === "token" ? { turnId, text: step.text } : { turnId, thinking: step.text };
     } else {
       event = `${kind}_delta`;
-      payload = { turnId, delta, offset: previous.length };
+      payload = { turnId, delta: step.delta, offset: step.offset };
     }
 
     publishSessionEvent(sessionId, event, payload).catch((err) => {
