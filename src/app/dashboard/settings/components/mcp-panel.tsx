@@ -135,7 +135,7 @@ export function McpPanel() {
                   <div className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm">{server.name}</span>
+                        <span className="text-sm font-medium">{server.name}</span>
                         <Badge variant="secondary" className="shrink-0">
                           {POLICY_LABELS[server.toolPolicy] ?? "Ask"}
                         </Badge>

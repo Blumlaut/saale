@@ -198,7 +198,7 @@ export function ReplyForwardSheet({
           onDiscard={close}
           bodyRef={bodyRef}
           bodyHeader={bodyHeader}
-          bodyClassName="min-h-[250px] resize-y rounded-2xl border-0 bg-muted/50 font-mono text-sm shadow-none"
+          bodyClassName="min-h-[250px] resize-y rounded-2xl border-0 bg-muted/50 text-sm shadow-none"
           headerContent={
             <>
               <Send className="h-4 w-4" />

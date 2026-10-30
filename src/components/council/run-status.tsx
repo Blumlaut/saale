@@ -239,7 +239,7 @@ export function RunStatus({
           />
           <div className="hidden min-w-0 flex-1 md:block">
             <div className="console-label">Members</div>
-            <div className="mt-1 font-mono text-xs">{enabledMemberCount} enabled</div>
+            <div className="mt-1 text-xs">{enabledMemberCount} enabled</div>
           </div>
         </div>
       )}

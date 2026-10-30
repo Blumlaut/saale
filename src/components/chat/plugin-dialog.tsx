@@ -157,7 +157,7 @@ export function PluginDialog({
                 rows={6}
                 value={text}
                 placeholder={dialog.placeholder ?? ""}
-                className="font-mono text-xs"
+                className="text-sm"
                 onChange={(event) => setText(event.target.value)}
               />
             )}

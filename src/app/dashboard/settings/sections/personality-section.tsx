@@ -136,7 +136,7 @@ function PromptSection({
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value || null)}
-          className="min-h-[120px] font-mono text-sm leading-relaxed"
+          className="min-h-[120px] text-sm leading-relaxed"
         />
 
         <div className="flex items-center justify-between">

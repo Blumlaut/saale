@@ -346,7 +346,7 @@ export function PromptsSection() {
                 id="prompt-content"
                 value={draft?.content ?? ""}
                 placeholder="Review the staged changes. Focus on ${1:-correctness and security}."
-                className="min-h-40 font-mono text-sm"
+                className="min-h-40 text-sm"
                 onChange={(e) =>
                   setDraft((current) =>
                     current ? { ...current, content: e.target.value } : current,

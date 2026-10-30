@@ -31,7 +31,7 @@ export function PluginInteractionBar({ count, onReview }: { count: number; onRev
 export function PluginStatusStrip({ statuses }: { statuses: PluginStatusData[] }) {
   if (statuses.length === 0) return null;
   return (
-    <div className="border-border text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-4 py-1.5 font-mono text-[11px] md:px-6">
+    <div className="border-border text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-4 py-1.5 text-[11px] md:px-6">
       <Activity className="h-3 w-3 shrink-0" />
       {statuses.map((status) => (
         <span key={status.key} className="min-w-0 truncate">

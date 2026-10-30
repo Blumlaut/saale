@@ -92,7 +92,7 @@ export function CommitDialog({
             rows={5}
             placeholder={amend ? (head?.subject ?? "Amend the last commit") : "What changed"}
             aria-label="Commit message"
-            className="min-h-28 resize-none font-mono text-xs"
+            className="min-h-28 resize-none text-sm"
             disabled={actions.busy}
           />
 

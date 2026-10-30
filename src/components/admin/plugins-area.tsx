@@ -663,7 +663,7 @@ export function PluginsArea({ section }: { section: PluginsSection }) {
                   className="font-mono"
                 />
                 {dirDirty && (
-                  <p className="text-muted-foreground truncate font-mono text-[11px]">
+                  <p className="text-muted-foreground truncate text-[11px]">
                     Reading {data?.config.dir}
                   </p>
                 )}

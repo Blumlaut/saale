@@ -119,10 +119,10 @@ function LiveActivity({ state }: { state: CouncilMemberLive }) {
           {state.toolCalls.map((call) => (
             <li
               key={call.toolCallId}
-              className="text-muted-foreground flex items-center gap-1.5 font-mono text-[11px]"
+              className="text-muted-foreground flex items-center gap-1.5 text-[11px]"
             >
               <Wrench className="h-3 w-3 shrink-0" />
-              <span className="min-w-0 truncate">{call.tool}</span>
+              <span className="min-w-0 truncate font-mono">{call.tool}</span>
               <span className={cn("shrink-0", call.done && call.isError && "text-destructive")}>
                 {call.done ? (call.isError ? "failed" : "done") : "…"}
               </span>
