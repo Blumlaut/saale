@@ -1,7 +1,15 @@
 import path from "path";
 import { randomUUID } from "crypto";
 import { processAndStoreImage } from "@/lib/image-attachment";
-import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
+import { FileNotFoundError, FileUploadError } from "@/lib/files/errors";
+import { openUserFileTarget } from "@/lib/files/targets";
+import { stagedUploadPath } from "@/lib/files/upload";
+import { formatFileSize } from "@/lib/utils";
+import {
+  MAX_CHAT_FILE_BYTES,
+  MAX_CHAT_IMAGE_BYTES,
+  isImageMime,
+} from "@/lib/chat/attachment-limits";
 
 /**
  * Workspace-relative directory where files uploaded in chat are placed so the
@@ -9,15 +17,7 @@ import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
  */
 export const CHAT_UPLOADS_DIR = "uploads";
 
-/** Max upload size for chat attachments: 15MB */
-export const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
-
-/**
- * Check if a MIME type is an image.
- */
-export function isImageMime(mimeType: string): boolean {
-  return mimeType.startsWith("image/");
-}
+export { MAX_CHAT_FILE_BYTES, MAX_CHAT_IMAGE_BYTES, isImageMime };
 
 /**
  * Sanitize a user-supplied file name so it cannot escape the destination
@@ -32,22 +32,27 @@ export function sanitizeFileName(name: string): string {
   return base || "file";
 }
 
+/** A file the composer staged in the workspace, waiting to become an attachment. */
+export interface ChatAttachmentRef {
+  uploadId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
 /**
- * Validate an uploaded chat file.
+ * Turn a chunked upload into a chat attachment.
  *
- * Any MIME type is accepted. files are stored per-user and only ever served
- * back to the same user. Only size and emptiness are enforced.
+ * Non-images are renamed into `files/` (the bytes the user sent, untouched) and
+ * copied to `uploads/` under the name they gave. Images go through the sharp
+ * pipeline instead, so vision token costs stay sane.
  */
-export function validateChatFile(file: File): string | null {
-  if (file.size === 0) {
-    return "File is empty";
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Max: ${(
-      MAX_UPLOAD_BYTES /
-      1024 /
-      1024
-    ).toFixed(0)}MB`;
+export function validateChatAttachment(ref: ChatAttachmentRef): string | null {
+  if (ref.size <= 0) return "File is empty";
+
+  const ceiling = isImageMime(ref.mimeType) ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_FILE_BYTES;
+  if (ref.size > ceiling) {
+    return `File too large: ${formatFileSize(ref.size)}. Max: ${formatFileSize(ceiling)}`;
   }
   return null;
 }
@@ -57,67 +62,64 @@ export interface StoredChatFile {
   storageId: string;
   /** Path relative to the user workspace (e.g. "files/<uuid>-report.pdf"). */
   storagePath: string;
-  /** Sanitized original file name. used for the agent workspace copy. */
+  /** Sanitized original file name, used for the agent workspace copy. */
   safeName: string;
   width?: number;
   height?: number;
 }
 
-/**
- * Store a chat attachment in the user's workspace.
- *
- * - Images: re-encoded to PNG (keeps vision token costs reasonable) under
- *   `images/<uuid>.png`. the existing flow, unchanged.
- * - Other files: original bytes under `files/<uuid>-<safeName>` (the UUID
- *   prefix means re-uploading the same name never overwrites an earlier
- *   message's copy).
- */
-export async function storeChatFile(
-  userId: string,
-  fileBuffer: Buffer,
-  originalName: string,
-  mimeType: string,
-): Promise<StoredChatFile> {
-  const safeName = sanitizeFileName(originalName);
+export interface AdoptedChatFile {
+  stored: StoredChatFile;
+  /** Absolute path of the copy the agent works with. */
+  agentPath: string;
+}
 
-  if (isImageMime(mimeType)) {
-    const result = await processAndStoreImage(
-      userId,
-      fileBuffer,
-      originalName,
-      mimeType,
-      fileBuffer.length,
-    );
+/**
+ * Adopt a staged upload as a chat attachment.
+ *
+ * The staged bytes are consumed: renamed into place for a file, deleted after
+ * re-encoding for an image.
+ */
+export async function adoptChatUpload(
+  userId: string,
+  ref: ChatAttachmentRef,
+): Promise<AdoptedChatFile> {
+  const safeName = sanitizeFileName(ref.fileName);
+  const { provider } = await openUserFileTarget(userId);
+  const root = provider.root;
+  const staged = stagedUploadPath(root, ref.uploadId);
+  const agentPath = `${root}/${CHAT_UPLOADS_DIR}/${safeName}`;
+
+  const stats = await provider.stat(staged);
+  if (!stats || stats.kind !== "file") throw new FileNotFoundError(staged);
+  if (stats.size !== ref.size) {
+    throw new FileUploadError(`Upload incomplete: ${stats.size} of ${ref.size} bytes`);
+  }
+
+  if (isImageMime(ref.mimeType)) {
+    const { buffer } = await provider.read(staged);
+    const source = Buffer.from(buffer);
+    const result = await processAndStoreImage(userId, source, ref.fileName, ref.mimeType, ref.size);
+    await provider.remove(staged);
+    await provider.write(agentPath, source);
     return {
-      storageId: result.storageId,
-      storagePath: result.storagePath,
-      safeName,
-      width: result.width,
-      height: result.height,
+      stored: {
+        storageId: result.storageId,
+        storagePath: result.storagePath,
+        safeName,
+        width: result.width,
+        height: result.height,
+      },
+      agentPath,
     };
   }
 
   const storageId = randomUUID();
   const storagePath = `files/${storageId}-${safeName}`;
-  await writeWorkspaceFile(userId, storagePath, fileBuffer);
+  await provider.rename(staged, `${root}/${storagePath}`);
+  await provider.copy(`${root}/${storagePath}`, agentPath);
 
-  return { storageId, storagePath, safeName };
-}
-
-/**
- * Put an uploaded file where the agent expects to find it: `uploads/`, under
- * the name the user gave it.
- *
- * The file already lives in the workspace (`files/` or `images/`), so this is
- * a second copy under a stable, human name rather than a transfer. Returns the
- * absolute path inside the workspace.
- */
-export async function deliverChatFileToAgent(
-  userId: string,
-  fileBuffer: Buffer,
-  fileName: string,
-): Promise<string> {
-  return writeWorkspaceFile(userId, `${CHAT_UPLOADS_DIR}/${fileName}`, fileBuffer);
+  return { stored: { storageId, storagePath, safeName }, agentPath };
 }
 
 export interface AttachmentPromptEntry {

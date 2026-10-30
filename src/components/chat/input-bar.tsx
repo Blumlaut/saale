@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useImperativeHandle, useMemo 
 import { insertQuote as insertQuoteAtCaret } from "@/lib/chat/quote-insert";
 import { isSendKey } from "@/lib/chat/enter-to-send";
 import { Button } from "@/components/ui/button";
+import { UploadProgressBar } from "@/components/ui/upload-progress";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
@@ -28,6 +29,7 @@ import { cn, formatFileSize } from "@/lib/utils";
 import { TOOL_CATEGORIES, type ToolConfig } from "@/lib/pi/tool-categories";
 import { searchCommands } from "@/lib/commands/catalog";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
+import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
@@ -68,6 +70,8 @@ interface InputBarProps {
   tokenUsage?: TokenUsage | null;
   isCompacting?: boolean;
   onCompact?: () => void;
+  /** Bytes of the batch being sent, while they are still going up. */
+  uploadProgress?: UploadProgress | null;
 }
 
 /** The composer's value while it is still just a command name: `/`, `/mo`, … */
@@ -88,6 +92,7 @@ export function InputBar({
   tokenUsage,
   isCompacting,
   onCompact,
+  uploadProgress,
 }: InputBarProps) {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -364,6 +369,13 @@ export function InputBar({
           onSelect={selectMenuItem}
           onHighlight={setCommandIndex}
         />
+      )}
+
+      {/* A send in flight. the files leave the strip here and report bytes instead */}
+      {uploadProgress && (
+        <div className="px-3 pt-2">
+          <UploadProgressBar progress={uploadProgress} />
+        </div>
       )}
 
       {/* Attachment preview strip */}

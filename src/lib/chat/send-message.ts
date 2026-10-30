@@ -1,9 +1,19 @@
 import type { Message } from "@/components/chat/types";
+import {
+  MAX_CHAT_FILE_BYTES,
+  MAX_CHAT_IMAGE_BYTES,
+  isImageMime,
+} from "@/lib/chat/attachment-limits";
+import { stageFile, type StagedFile, type UploadProgress } from "@/lib/files/upload-client";
+import { formatFileSize } from "@/lib/utils";
 
 /**
  * POST a chat message to the session, returning a discriminated union instead
- * of throwing HTTP details at the caller. Handles both plain-text (JSON) and
- * image-attachment (multipart) payloads.
+ * of throwing HTTP details at the caller.
+ *
+ * Files are staged first, one chunk at a time, and the message carries their
+ * ids: a large attachment reaches the agent without this request growing to the
+ * size of the file.
  */
 
 export type SendMessageResult =
@@ -20,30 +30,73 @@ export type SendMessageResult =
   /** Any other failure, with a human-readable message. */
   | { kind: "error"; message: string };
 
+export interface SendMessageOptions {
+  signal?: AbortSignal;
+  /** Bytes on their way up, or null when the staging is done. */
+  onProgress?: (progress: UploadProgress | null) => void;
+}
+
+/** The ceiling for one attachment: images are re-encoded, everything else moves. */
+function tooLarge(file: File): string | null {
+  const ceiling = isImageMime(file.type) ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_FILE_BYTES;
+  if (file.size === 0) return `${file.name} is empty`;
+  if (file.size > ceiling) {
+    return `${file.name} is ${formatFileSize(file.size)}. Max: ${formatFileSize(ceiling)}`;
+  }
+  return null;
+}
+
+/** Stage every file in the user's workspace, reporting bytes as they land. */
+async function stageAttachments(
+  files: File[],
+  options: SendMessageOptions,
+): Promise<{ ok: true; staged: StagedFile[] } | { ok: false; message: string }> {
+  const staged: StagedFile[] = [];
+
+  try {
+    for (const [position, file] of files.entries()) {
+      const refusal = tooLarge(file);
+      if (refusal) return { ok: false, message: refusal };
+
+      const result = await stageFile(file, {
+        target: "user",
+        // The id is all a message needs; there is no destination folder.
+        dir: "",
+        batch: { index: position + 1, count: files.length },
+        onProgress: options.onProgress ?? undefined,
+        signal: options.signal,
+      });
+      if (!result.ok) return { ok: false, message: result.message };
+      staged.push(result.staged);
+    }
+  } finally {
+    options.onProgress?.(null);
+  }
+
+  return { ok: true, staged };
+}
+
 export async function sendChatMessage(
   sessionId: string,
   content: string,
   files?: File[],
-  signal?: AbortSignal,
+  options: SendMessageOptions = {},
 ): Promise<SendMessageResult> {
   const url = `/api/chat/sessions/${sessionId}/messages`;
 
-  let res: Response;
+  let attachments: StagedFile[] = [];
   if (files && files.length > 0) {
-    const formData = new FormData();
-    formData.append("content", content);
-    for (const file of files) {
-      formData.append("files", file);
-    }
-    res = await fetch(url, { method: "POST", body: formData, signal: signal ?? null });
-  } else {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-      signal: signal ?? null,
-    });
+    const staging = await stageAttachments(files, options);
+    if (!staging.ok) return { kind: "error", message: staging.message };
+    attachments = staging.staged;
   }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(attachments.length > 0 ? { content, attachments } : { content }),
+    signal: options.signal ?? null,
+  });
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
