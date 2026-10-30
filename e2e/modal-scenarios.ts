@@ -82,6 +82,7 @@ async function seedPendingPluginDialog(page: Page): Promise<string> {
 const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/sections/memories-section.tsx";
+const PROMPTS_TAB = "src/app/dashboard/settings/sections/prompts-section.tsx";
 const MCP_TAB = "src/app/dashboard/settings/components/mcp-panel.tsx";
 const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
@@ -107,6 +108,8 @@ const MEMORY_TITLE =
   "A very long memory title that must wrap instead of widening the dialog on small screens";
 const MEMORY_CONTENT =
   "Long-form memory content used to exercise the memories dialogs at phone widths. ".repeat(6);
+const PROMPT_CONTENT =
+  "Review the staged changes. Focus on ${1:-correctness, security and error handling}.";
 const NOTE_TITLE = "Deploy runbook with a very long descriptive title for the operator";
 const NOTE_CONTENT =
   "1. Build the image\n2. Push to the registry\n3. Roll the deployment and watch the logs ".repeat(
@@ -390,6 +393,29 @@ async function mockMemories(page: Page) {
       },
     }),
   );
+}
+
+/** One prompt to edit and delete; its hint and description are the long parts. */
+async function mockPrompts(page: Page) {
+  await page.route(/\/api\/prompts(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        prompts: [
+          {
+            id: "e2e-prompt",
+            name: "review",
+            description:
+              "Review the staged changes and name every behaviour the diff breaks before proposing a fix",
+            argumentHint: "<path> [correctness, security and error handling]",
+            scope: "coder",
+            content: PROMPT_CONTENT,
+            updatedAt: NOW,
+          },
+        ],
+      },
+    });
+  });
 }
 
 async function mockContacts(page: Page) {
@@ -956,6 +982,37 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsSection(page, "memories");
       await openRowMenu(page, "very long memory title");
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
+  },
+  {
+    name: "settings · new prompt",
+    path: SETTINGS,
+    sources: [PROMPTS_TAB],
+    open: async (page) => {
+      await openSettingsSection(page, "prompts");
+      await click(page, 'button:has-text("New prompt")');
+    },
+  },
+  {
+    name: "settings · edit prompt",
+    path: SETTINGS,
+    sources: [PROMPTS_TAB],
+    mock: mockPrompts,
+    open: async (page) => {
+      await openSettingsSection(page, "prompts");
+      await openRowMenu(page, "/review");
+      await click(page, '[role="menuitem"]:has-text("Edit")');
+    },
+  },
+  {
+    name: "settings · delete prompt confirmation",
+    path: SETTINGS,
+    sources: [PROMPTS_TAB],
+    mock: mockPrompts,
+    open: async (page) => {
+      await openSettingsSection(page, "prompts");
+      await openRowMenu(page, "/review");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
   },

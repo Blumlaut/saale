@@ -165,22 +165,22 @@ export function PromptsSection() {
     <div className="space-y-6">
       <GlassPanel>
         <GlassPanelContent className="p-0">
-          <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-5 pb-4 md:px-6">
-            <div>
+          <div className="px-4 pt-5 pb-4 md:px-6">
+            <div className="flex items-start justify-between gap-3">
               <h3 className="flex items-center gap-2 text-lg font-medium">
                 <FileText className="h-5 w-5" />
                 Prompts
               </h3>
-              <p className="text-muted-foreground mt-1 text-sm">
-                Reusable prompts you send as <span className="font-mono">/name</span> in a chat. A
-                coder chat also offers the templates in its checkout&apos;s{" "}
-                <span className="font-mono">.pi/prompts</span>.
-              </p>
+              <Button size="sm" onClick={() => openDraft()}>
+                <Plus className="mr-2 h-4 w-4" />
+                New prompt
+              </Button>
             </div>
-            <Button size="sm" onClick={() => openDraft()}>
-              <Plus className="mr-2 h-4 w-4" />
-              New prompt
-            </Button>
+            <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
+              Prompts you send as <span className="font-mono">/name</span> in a chat. A coder chat
+              also offers the templates in its checkout&apos;s{" "}
+              <span className="font-mono">.pi/prompts</span>.
+            </p>
           </div>
 
           {loading ? (
@@ -301,7 +301,7 @@ export function PromptsSection() {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="prompt-hint">Argument hint</Label>
                 <Input
@@ -329,21 +329,19 @@ export function PromptsSection() {
                   }
                 >
                   <SelectTrigger id="prompt-scope" className="w-full">
-                    <SelectValue />
+                    <SelectValue>{PROMPT_SCOPE_LABELS[draft?.scope ?? "any"]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {PROMPT_SCOPES.map((scope) => (
                       <SelectItem key={scope} value={scope}>
-                        <span className="flex flex-col items-start">
-                          <span>{PROMPT_SCOPE_LABELS[scope]}</span>
-                          <span className="text-muted-foreground text-xs">
-                            {PROMPT_SCOPE_DESCRIPTIONS[scope]}
-                          </span>
-                        </span>
+                        {PROMPT_SCOPE_LABELS[scope]}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-muted-foreground text-xs">
+                  {PROMPT_SCOPE_DESCRIPTIONS[draft?.scope ?? "any"]}
+                </p>
               </div>
             </div>
 
