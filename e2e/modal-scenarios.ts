@@ -947,14 +947,28 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
         route.fulfill({ status: 200, contentType: "text/event-stream", body: "" }),
       );
 
-      const form = new FormData();
-      form.append("content", "e2e lightbox fixture");
-      form.append(
-        "files",
-        new File([Buffer.from(PNG_1X1, "base64")], "e2e-lightbox.png", { type: "image/png" }),
-      );
+      // Stage the image the way the composer does, then send its id.
+      const fixture = Buffer.from(PNG_1X1, "base64");
+      const init = await page.request.post("/api/files/upload/init", {
+        data: { path: "", name: "e2e-lightbox.png", size: fixture.length, inbox: true },
+      });
+      const { uploadId } = (await init.json()) as { uploadId: string };
+      await page.request.put(`/api/files/upload/chunk?index=0&id=${uploadId}`, {
+        data: fixture,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
       const sent = await page.request.post(`/api/chat/sessions/${sessionId}/messages`, {
-        multipart: form,
+        data: {
+          content: "e2e lightbox fixture",
+          attachments: [
+            {
+              uploadId,
+              fileName: "e2e-lightbox.png",
+              mimeType: "image/png",
+              size: fixture.length,
+            },
+          ],
+        },
       });
       if (!sent.ok())
         throw new Error(`failed to seed lightbox message: ${sent.status()} ${await sent.text()}`);

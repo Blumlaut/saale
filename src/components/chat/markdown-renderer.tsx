@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import type { PluggableList } from "unified";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -23,19 +24,26 @@ interface MarkdownRendererProps {
   hardBreaks?: boolean;
 }
 
+/**
+ * Built once: `react-markdown` creates its processor on every render, so an
+ * array assembled in the component would be a new pipeline each time.
+ */
+const REMARK_PLUGINS: PluggableList = [remarkGfm];
+const REMARK_PLUGINS_HARD_BREAKS: PluggableList = [remarkBreaks, remarkGfm];
+const REHYPE_PLUGINS: PluggableList = [
+  [rehypeHighlight, { detect: true, ignoreMissing: true, placeholderLanguage: "text" }],
+];
+
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className,
   hardBreaks = false,
 }: MarkdownRendererProps) {
-  const remarkPlugins = hardBreaks ? [remarkBreaks, remarkGfm] : [remarkGfm];
   return (
     <div className={cn("markdown-body text-sm leading-relaxed", className)}>
       <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={[
-          [rehypeHighlight, { detect: true, ignoreMissing: true, placeholderLanguage: "text" }],
-        ]}
+        remarkPlugins={hardBreaks ? REMARK_PLUGINS_HARD_BREAKS : REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={COMPONENTS}
       >
         {content}

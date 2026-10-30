@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readJsonBody } from "@/lib/api-body";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
@@ -24,15 +25,17 @@ import {
   serializeQueuedMessages,
 } from "@/lib/chat/queue";
 import { promptTitleFields } from "@/lib/chat/derive-title";
+import { sendMessageSchema } from "@/lib/chat/schema";
 import { expandPromptInChat } from "@/lib/prompts/chat";
 import { serializeChatMessage } from "@/lib/chat/serialize-message";
 import {
+  adoptChatUpload,
   buildAttachmentPromptText,
-  deliverChatFileToAgent,
-  storeChatFile,
-  validateChatFile,
+  validateChatAttachment,
+  type AdoptedChatFile,
   type StoredChatFile,
 } from "@/lib/file-attachment";
+import { FileNotFoundError, FileUploadError } from "@/lib/files/errors";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages. Get messages for a session
@@ -109,9 +112,10 @@ export async function GET(
 /**
  * POST /api/chat/sessions/:sessionId/messages. Add a message (triggers streaming via SSE)
  *
- * Accepts either:
- * - application/json: { content: string }
- * - multipart/form-data: { content: string, files: File[] }
+ * Takes JSON: { content: string, attachments?: ChatAttachmentRef[] }. An
+ * attachment names a chunked upload the composer already staged in the
+ * workspace (see `/api/files/upload`), so a large file reaches the agent
+ * without ever passing through this route's memory.
  *
  * When the session is busy. a generation running, or a manual compaction
  * holding it. the message is queued instead of rejected: the row is saved with
@@ -144,7 +148,10 @@ export async function POST(
   }
 
   try {
-    let content: string;
+    const body = await readJsonBody(request, sendMessageSchema);
+    if (!body.ok) return body.response;
+
+    const content = body.data.content ?? "";
     const attachments: Array<{
       stored: StoredChatFile;
       fileName: string;
@@ -154,43 +161,33 @@ export async function POST(
       agentPath: string | null;
     }> = [];
 
-    const contentType = request.headers.get("content-type") || "";
+    // Adopt every staged upload before the message exists: a file the agent
+    // cannot reach is worse than a send that failed and can be retried.
+    for (const ref of body.data.attachments ?? []) {
+      const error = validateChatAttachment(ref);
+      if (error) return NextResponse.json({ error }, { status: 400 });
 
-    if (contentType.includes("multipart/form-data")) {
-      // Multipart: extract text content + files
-      const formData = await request.formData();
-      content = (formData.get("content") as string) || "";
-
-      // Store each file in the user's workspace, then again under uploads/ so
-      // the agent's file tools find it by the name the user gave it.
-      const files = formData.getAll("files");
-      for (const file of files) {
-        if (!(file instanceof File)) continue;
-
-        const error = validateChatFile(file);
-        if (error) {
-          return NextResponse.json({ error }, { status: 400 });
+      let adopted: AdoptedChatFile;
+      try {
+        adopted = await adoptChatUpload(authResult.userId, ref);
+      } catch (err) {
+        // A staged upload that is gone or short is the composer's mistake to
+        // fix by sending the file again, not a server fault.
+        if (err instanceof FileNotFoundError || err instanceof FileUploadError) {
+          return NextResponse.json({ error: `${ref.fileName}: ${err.message}` }, { status: 400 });
         }
-
-        const mimeType = file.type || "application/octet-stream";
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const stored = await storeChatFile(authResult.userId, buffer, file.name, mimeType);
-
-        // Throws when the workspace volume is not mounted: a file the agent
-        // cannot reach is worse than a failed upload the user can retry.
-        const agentPath = await deliverChatFileToAgent(authResult.userId, buffer, stored.safeName);
-
-        attachments.push({ stored, fileName: file.name, mimeType, size: file.size, agentPath });
+        throw err;
       }
-    } else {
-      // JSON: plain text message
-      const body = await request.json();
-      content = body.content as string;
+
+      attachments.push({
+        stored: adopted.stored,
+        fileName: ref.fileName,
+        mimeType: ref.mimeType,
+        size: ref.size,
+        agentPath: adopted.agentPath,
+      });
     }
 
-    if (typeof content !== "string") {
-      return NextResponse.json({ error: "Content is required" }, { status: 400 });
-    }
     if (!content.trim() && attachments.length === 0) {
       return NextResponse.json({ error: "Content is required" }, { status: 400 });
     }

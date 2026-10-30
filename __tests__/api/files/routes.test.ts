@@ -13,9 +13,9 @@ vi.mock("@/lib/files/config", async (importOriginal) => ({
   MAX_LISTING_ENTRIES: 3,
   MAX_PREVIEW_BYTES: 32,
   MAX_DOWNLOAD_BYTES: 64,
-  MAX_UPLOAD_BYTES_PER_FILE: 16,
+  MAX_UPLOAD_BYTES_PER_FILE: 32,
+  MAX_UPLOAD_CHUNK_BYTES: 8,
   MAX_UPLOAD_FILES: 2,
-  MAX_UPLOAD_TOTAL_BYTES: 128,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -44,7 +44,10 @@ import { FULL_CAPABILITIES } from "@/lib/files/types";
 import { GET as listRoute } from "@/app/api/files/list/route";
 import { GET as rawRoute } from "@/app/api/files/raw/route";
 import { GET as zipRoute } from "@/app/api/files/zip/route";
-import { POST as uploadRoute } from "@/app/api/files/upload/route";
+import { POST as uploadInitRoute } from "@/app/api/files/upload/init/route";
+import { PUT as uploadChunkRoute } from "@/app/api/files/upload/chunk/route";
+import { POST as uploadCompleteRoute } from "@/app/api/files/upload/complete/route";
+import { POST as uploadAbortRoute } from "@/app/api/files/upload/abort/route";
 import { POST as mkdirRoute } from "@/app/api/files/mkdir/route";
 import { POST as renameRoute } from "@/app/api/files/rename/route";
 import { POST as deleteRoute } from "@/app/api/files/delete/route";
@@ -99,12 +102,50 @@ function post(
   );
 }
 
-function upload(query: string, files: File[]) {
-  const form = new FormData();
-  for (const file of files) form.append("files", file);
-  return uploadRoute(
-    new NextRequest(`http://localhost/api/files/upload${query}`, { method: "POST", body: form }),
+function initUpload(body: Record<string, unknown>, query = "") {
+  return uploadInitRoute(
+    new NextRequest(`http://localhost/api/files/upload/init${query}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   );
+}
+
+function putChunk(uploadId: string, index: number, chunk: string) {
+  return uploadChunkRoute(
+    new NextRequest(`http://localhost/api/files/upload/chunk?id=${uploadId}&index=${index}`, {
+      method: "PUT",
+      body: chunk,
+    }),
+  );
+}
+
+function completeUpload(body: Record<string, unknown>, query = "") {
+  return uploadCompleteRoute(
+    new NextRequest(`http://localhost/api/files/upload/complete${query}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+/**
+ * One file through the three calls the browser makes, split at the shrunken
+ * chunk ceiling.
+ */
+async function upload(query: string, name: string, content: string) {
+  const init = await initUpload({ path: "/", name, size: content.length }, query);
+  if (init.status >= 400) return init;
+
+  const { uploadId } = (await init.json()) as { uploadId: string };
+  for (let index = 0, offset = 0; offset < content.length; index += 1) {
+    const chunk = content.slice(offset, offset + 8);
+    offset += chunk.length;
+    const put = await putChunk(uploadId, index, chunk);
+    if (put.status >= 400) return put;
+  }
+
+  return completeUpload({ path: "/", name, size: content.length, uploadId }, query);
 }
 
 beforeEach(() => {
@@ -341,69 +382,96 @@ describe("GET /api/files/zip", () => {
   });
 });
 
-describe("POST /api/files/upload", () => {
-  it("writes new files and reports them", async () => {
+describe("chunked upload", () => {
+  it("assembles chunks and writes the file", async () => {
     const provider = useTree();
 
-    const response = await upload("?dir=/", [new File(["hello"], "greeting.txt")]);
+    const response = await upload("", "greeting.txt", "hello there");
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({ uploaded: ["greeting.txt"], skipped: [] });
+    expect(body).toMatchObject({ uploaded: "greeting.txt" });
     await expect(provider.read(`${ROOT}/greeting.txt`)).resolves.toMatchObject({
-      buffer: new Uint8Array(Buffer.from("hello")),
+      buffer: new Uint8Array(Buffer.from("hello there")),
     });
   });
 
   it("refuses to replace an existing file unless overwrite is asked for", async () => {
     const provider = useTree();
 
-    const blocked = await upload("?dir=/", [new File(["new"], "notes.md")]);
-    expect(await blocked.json()).toMatchObject({
-      uploaded: [],
-      skipped: [{ name: "notes.md", reason: "exists" }],
-    });
-    await expect(provider.read(`${ROOT}/notes.md`)).resolves.toMatchObject({
-      buffer: new Uint8Array(Buffer.from("# notes")),
-    });
+    const blocked = await upload("", "notes.md", "new");
+    expect(blocked.status).toBe(409);
 
-    const replaced = await upload("?dir=/&overwrite=1", [new File(["new"], "notes.md")]);
-    expect(await replaced.json()).toMatchObject({ uploaded: ["notes.md"], skipped: [] });
+    const replaced = await upload("?overwrite=1", "notes.md", "new");
+    expect(replaced.status).toBe(200);
     await expect(provider.read(`${ROOT}/notes.md`)).resolves.toMatchObject({
       buffer: new Uint8Array(Buffer.from("new")),
     });
   });
 
-  it("skips a name that is a path and a file over the size ceiling", async () => {
+  it("refuses a name that is a path and a file over the size ceiling", async () => {
     useTree();
 
-    const response = await upload("?dir=/", [
-      new File(["x"], "../evil.txt"),
-      new File(["x".repeat(32)], "huge.bin"),
-    ]);
-
-    expect(await response.json()).toMatchObject({
-      uploaded: [],
-      skipped: [
-        { name: "../evil.txt", reason: "invalid-name" },
-        { name: "huge.bin", reason: "too-large" },
-      ],
-    });
+    expect((await initUpload({ path: "/", name: "../evil.txt", size: 1 })).status).toBe(400);
+    expect((await initUpload({ path: "/", name: "huge.bin", size: 64 })).status).toBe(413);
   });
 
-  it("refuses an empty request and a batch over the file-count ceiling", async () => {
+  it("refuses a chunk that does not continue the upload", async () => {
+    const provider = useTree();
+    const init = await initUpload({ path: "/", name: "notes.txt", size: 16 });
+    const { uploadId } = (await init.json()) as { uploadId: string };
+
+    expect((await putChunk(uploadId, 0, "12345678")).status).toBe(200);
+    // Same index again: the staged file has moved on.
+    expect((await putChunk(uploadId, 0, "12345678")).status).toBe(409);
+    // Skipping ahead leaves a hole.
+    expect((await putChunk(uploadId, 2, "12345678")).status).toBe(409);
+
+    await expect(provider.stat(`${ROOT}/notes.txt`)).resolves.toBeNull();
+  });
+
+  it("refuses to finish a file that arrived short", async () => {
+    useTree();
+    const init = await initUpload({ path: "/", name: "short.txt", size: 16 });
+    const { uploadId } = (await init.json()) as { uploadId: string };
+    await putChunk(uploadId, 0, "12345678");
+
+    const done = await completeUpload({ path: "/", name: "short.txt", size: 16, uploadId });
+
+    expect(done.status).toBe(409);
+    expect((await done.json()).error).toMatch(/Upload incomplete/);
+  });
+
+  it("drops the staged bytes on abort", async () => {
+    const provider = useTree();
+    const init = await initUpload({ path: "/", name: "gone.txt", size: 16 });
+    const { uploadId } = (await init.json()) as { uploadId: string };
+    await putChunk(uploadId, 0, "12345678");
+
+    const aborted = await uploadAbortRoute(
+      new NextRequest("http://localhost/api/files/upload/abort", {
+        method: "POST",
+        body: JSON.stringify({ uploadId }),
+      }),
+    );
+
+    expect(aborted.status).toBe(200);
+    expect((await provider.list(`${ROOT}/.tmp`)).entries).toHaveLength(0);
+    expect((await putChunk(uploadId, 1, "12345678")).status).toBe(409);
+  });
+
+  it("refuses a chunk larger than the ceiling", async () => {
+    useTree();
+    const init = await initUpload({ path: "/", name: "big.bin", size: 16 });
+    const { uploadId } = (await init.json()) as { uploadId: string };
+
+    expect((await putChunk(uploadId, 0, "x".repeat(9))).status).toBe(413);
+  });
+
+  it("refuses an upload id that was never issued", async () => {
     useTree();
 
-    expect((await upload("?dir=/", [])).status).toBe(400);
-    expect(
-      (
-        await upload("?dir=/", [
-          new File(["a"], "a.txt"),
-          new File(["b"], "b.txt"),
-          new File(["c"], "c.txt"),
-        ])
-      ).status,
-    ).toBe(413);
+    expect((await putChunk("../../etc", 0, "x")).status).toBe(404);
   });
 });
 

@@ -1,11 +1,13 @@
 /**
  * File browser limits.
  *
- * Every one of these exists because the browser reads through an interface that
- * hands back whole payloads rather than streams: Open Terminal returns a file as
- * one buffer, and a multipart upload is parsed into memory before a single byte
- * is written. Without ceilings, one large folder or one careless "upload the
- * toolchain" would be an out-of-memory kill rather than a clear refusal.
+ * Reads are the ceiling here: the browser reads through an interface that hands
+ * back whole payloads rather than streams (Open Terminal returns a file as one
+ * buffer), so one large folder or one careless "download the toolchain" would
+ * be an out-of-memory kill rather than a clear refusal.
+ *
+ * Uploads go the other way and are chunked, one small request at a time, so a
+ * file's size bounds the volume it lands on rather than the heap.
  *
  * Pure data. no Node or database imports. so the client can show the same
  * numbers the server enforces.
@@ -17,20 +19,20 @@ export const MAX_LISTING_ENTRIES = 2000;
 /** Dotfiles are noise in an agent's workspace (`.git`, caches) until asked for. */
 export const HIDE_DOTFILES_DEFAULT = true;
 
-/** Largest single uploaded file. */
-export const MAX_UPLOAD_BYTES_PER_FILE = 25 * 1024 * 1024;
-
-/** Files accepted in one upload request. */
-export const MAX_UPLOAD_FILES = 20;
+/** Largest single uploaded file. Bounds the volume, not memory. */
+export const MAX_UPLOAD_BYTES_PER_FILE = 2 * 1024 * 1024 * 1024;
 
 /**
- * Largest total upload request.
+ * Bytes per chunk request.
  *
- * Multipart parsing buffers the whole request, so this is the real memory
- * ceiling. `MAX_UPLOAD_BYTES_PER_FILE × MAX_UPLOAD_FILES` would allow a
- * half-gigabyte body.
+ * A chunk is the only part of an upload that is ever in memory, so it stays
+ * small enough to be cheap and well under the request body ceiling next.config
+ * sets for the proxy.
  */
-export const MAX_UPLOAD_TOTAL_BYTES = 64 * 1024 * 1024;
+export const MAX_UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+
+/** Files accepted in one upload batch. */
+export const MAX_UPLOAD_FILES = 20;
 
 /** Entries a single zip download may contain, counting into folders. */
 export const MAX_ZIP_ENTRIES = 500;

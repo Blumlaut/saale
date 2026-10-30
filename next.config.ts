@@ -27,6 +27,11 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
+    // A request body the middleware sees is buffered up to this and silently
+    // truncated past it, which a multipart parser reports as a parse failure.
+    // Uploads are chunked (8MB slices) so nothing legitimate comes near this;
+    // raise it only alongside MAX_UPLOAD_CHUNK_BYTES.
+    proxyClientMaxBodySize: "16mb",
   },
   images: {
     remotePatterns: [],
