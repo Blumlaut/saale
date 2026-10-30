@@ -1,0 +1,143 @@
+name: release
+
+# One release a day, if main moved since the last one. The version names the
+# month and counts up inside it: 2026.10.0, 2026.10.1, then 2026.11.0. Images go
+# to GHCR under the same version, and `latest` follows the newest one.
+#
+# A run with nothing new stops before it builds anything, so the daily schedule
+# costs a checkout on a quiet day.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+# One release at a time: two runs would work out the same version and one of
+# them would fail on the tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.changed.outputs.release }}
+      images: ${{ steps.image.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Every tag: the version is computed from them, and "is there anything
+          # new" is asked of the last one.
+          fetch-depth: 0
+
+      # `ghcr.io/Blumlaut/saale` is not a valid image reference; the path has to
+      # be lowercase.
+      - name: Work out the image prefix
+        id: image
+        shell: bash
+        run: echo "prefix=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Anything new since the last release?
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          last="$(git describe --tags --abbrev=0 --match '[0-9]*' 2>/dev/null || true)"
+          if [ -n "$last" ] && [ "$(git rev-list --count "$last"..HEAD)" -eq 0 ]; then
+            echo "$last is already the tip, so there is nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Work out the version
+        id: version
+        if: steps.changed.outputs.release == 'true'
+        shell: bash
+        run: echo "version=$(sh scripts/release-version.sh)" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      # A broken image must not leave the other three half-pushed.
+      fail-fast: true
+      matrix:
+        include:
+          - name: saale
+            file: Dockerfile
+            target: production
+          - name: saale-worker
+            file: Dockerfile
+            target: production-worker
+          - name: saale-sandbox
+            file: Dockerfile.sandbox
+            # No target: the sandbox image is a single stage.
+            target: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          # The app reads this at build time, so the console can say which
+          # release a running instance is.
+          build-args: |
+            NEXT_PUBLIC_APP_VERSION=${{ needs.plan.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:${{ needs.plan.outputs.version }}
+            ${{ env.REGISTRY }}/${{ needs.plan.outputs.images }}-${{ matrix.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          push: true
+
+  release:
+    needs: [plan, images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Bump, commit and tag
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version > /dev/null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "release $VERSION"
+          git tag "$VERSION"
+          # The images are already built; a push that landed meanwhile is worth
+          # one rebase, and a version clash is worth failing over.
+          git pull --rebase origin main
+          git push origin HEAD:main
+          git push origin "$VERSION"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh release create "$VERSION" --title "$VERSION" --generate-notes --verify-tag

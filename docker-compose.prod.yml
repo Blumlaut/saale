@@ -1,0 +1,259 @@
+# The compose file to run Saale from: images pulled from GHCR, nothing built.
+#
+#   cp .env.example .env          # fill in the four secrets
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# `docker-compose.yml` is the source build, for changing the code in a checkout.
+# The two files describe the same stack: a service's environment, volumes and
+# healthcheck belong in both, and `__tests__/compose-prod-parity.test.ts` fails
+# when they drift apart.
+#
+# Pin a release in `.env` with SAALE_VERSION=2026.10.1. Left unset, this follows
+# `latest`, which moves with every release.
+
+services:
+  # One-shot `prisma migrate deploy`, gating web and worker. Reuses the worker
+  # image, so the CLI comes from a real `npm ci` tree rather than a hand-built
+  # closure of its dependencies.
+  migrate:
+    image: ghcr.io/blumlaut/saale-worker:${SAALE_VERSION:-latest}
+    container_name: saale-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+    # `docker compose run --rm migrate migrate resolve --rolled-back <name>` etc.
+    entrypoint: ["node", "node_modules/prisma/build/index.js"]
+    command: ["migrate", "deploy"]
+
+  web:
+    image: ghcr.io/blumlaut/saale:${SAALE_VERSION:-latest}
+    container_name: saale-web
+    restart: unless-stopped
+    ports:
+      - "3630:3000"
+    volumes:
+      - uploads_data:/app/uploads
+      - saale_workspaces:/w
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - REDIS_URL=redis://redis:6379
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
+      - UPLOADS_DIR=/app/uploads
+      - SEARXNG_URL=http://searxng:8080
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/w
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+      - PREVIEW_DOMAIN=${PREVIEW_DOMAIN:-}
+      - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
+      - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
+      # On by default: the voice container ships with the stack. VOICE_ENABLED=0
+      # takes the mic away, and VOICE_URL points at a server elsewhere. An empty
+      # VOICE_URL (an operator's own override) also turns it off.
+      - VOICE_ENABLED=${VOICE_ENABLED:-1}
+      - VOICE_URL=${VOICE_URL-http://voice:8000}
+      - VOICE_MODEL=${VOICE_MODEL:-}
+      - VOICE_LANGUAGE=${VOICE_LANGUAGE:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - TELEGRAM_OIDC_CLIENT_ID=${TELEGRAM_OIDC_CLIENT_ID:-}
+      - TELEGRAM_OIDC_CLIENT_SECRET=${TELEGRAM_OIDC_CLIENT_SECRET:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+    command: ${WEB_COMMAND:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    image: ghcr.io/blumlaut/saale-worker:${SAALE_VERSION:-latest}
+    container_name: saale-worker
+    restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
+      - saale_workspaces:/w
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - DATABASE_URL=postgresql://saale:saale@postgres:5432/saale
+      - REDIS_URL=redis://redis:6379
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3630}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (64-char hex)}
+      - UPLOADS_DIR=/app/uploads
+      - SEARXNG_URL=http://searxng:8080
+      - SANDBOX_URL=http://sandbox-exec:8100
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_WORKSPACES_DIR=/w
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+      - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
+      - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - WORKER_APP_URL=http://web:3000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      searxng:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: saale-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=saale
+      - POSTGRES_USER=saale
+      - POSTGRES_PASSWORD=saale
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saale"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+    container_name: saale-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Speech to text for the composer. Nothing is loaded until a recording
+  # arrives, and the model is unloaded again minutes after the last one, so an
+  # unused service sits at its idle footprint.
+  voice:
+    image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu
+    container_name: saale-voice
+    restart: unless-stopped
+    volumes:
+      - voice_cache:/home/ubuntu/.cache/huggingface
+    environment:
+      - WHISPER__COMPUTE_TYPE=int8
+      - ENABLE_UI=False
+      - STT_MODEL_TTL=600
+      # Pulled at startup so the first recording is not a download.
+      - PRELOAD_MODELS=["${VOICE_MODEL:-Systran/faster-whisper-small}"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 300s
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: saale-searxng
+    restart: unless-stopped
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_HOST=http://0.0.0.0:8080
+      - SEARXNG_PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Owns every tenant container through the Docker socket. The socket is the
+  # reason this is a separate service: web and worker never hold it.
+  sandbox-exec:
+    image: ghcr.io/blumlaut/saale-worker:${SAALE_VERSION:-latest}
+    container_name: saale-sandbox-exec
+    restart: unless-stopped
+    command: ["node", "sandbox.mjs"]
+    # The preview listener, reachable only from this host: nginx proxies the
+    # wildcard vhost here and nothing else can reach it.
+    ports:
+      - "${SANDBOX_PREVIEW_PORT:-8101}:${SANDBOX_PREVIEW_PORT:-8101}"
+    networks:
+      - default
+      - sandbox
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - saale_workspaces:/w
+    environment:
+      - SANDBOX_API_KEY=${SANDBOX_API_KEY:?Set SANDBOX_API_KEY}
+      - SANDBOX_PREVIEW_PORT=${SANDBOX_PREVIEW_PORT:-8101}
+      - SANDBOX_WORKSPACES_DIR=/w
+      - SANDBOX_VOLUME=saale_workspaces
+      - SANDBOX_NETWORK=saale-sandbox
+      # The containers this service starts run the pulled image, not a local
+      # build's name.
+      - SANDBOX_CONTAINER_IMAGE=ghcr.io/blumlaut/saale-sandbox:${SAALE_VERSION:-latest}
+      - SANDBOX_USER=${SANDBOX_USER:-root}
+      - SANDBOX_UID=${SANDBOX_UID:-1000}
+      - SANDBOX_GID=${SANDBOX_GID:-1000}
+      - SANDBOX_MEMORY=${SANDBOX_MEMORY:-4g}
+      - SANDBOX_IDLE_MINUTES=${SANDBOX_IDLE_MINUTES:-240}
+      - SANDBOX_CONTAINER_TTL_DAYS=${SANDBOX_CONTAINER_TTL_DAYS:-7}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8100/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Pulls the image tenant containers run and exits. They are made from it by
+  # the service above, outside this compose project.
+  sandbox-image:
+    image: ghcr.io/blumlaut/saale-sandbox:${SAALE_VERSION:-latest}
+    restart: "no"
+    command: ["true"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  voice_cache:
+    name: saale_voice_cache
+  saale_workspaces:
+    name: saale_workspaces
+
+networks:
+  default:
+  sandbox:
+    name: saale-sandbox
