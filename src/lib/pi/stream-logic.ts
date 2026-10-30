@@ -153,6 +153,20 @@ export function formatSseEvent(event: string, data: unknown, id?: number): strin
 }
 
 /**
+ * The part of `next` that `previous` does not have yet, or null when `next`
+ * does not extend it (a retried turn, a rewritten block).
+ *
+ * Streamed text is cumulative: re-sending all of it on every delta costs the
+ * block's own length per token, so a long reasoning trace spends its bandwidth
+ * on the same characters again and again. The appended part alone is linear;
+ * the periodic snapshot repairs a client that joined mid-run.
+ */
+export function appendedText(previous: string, next: string): string | null {
+  if (next.length <= previous.length || !next.startsWith(previous)) return null;
+  return next.slice(previous.length);
+}
+
+/**
  * Accumulate text from assistant message_update events.
  *
  * Pi agent emits cumulative text (the full text so far, not deltas).

@@ -199,4 +199,34 @@ describe("wireStreamListeners coalescing", () => {
     expect(messages[0]?.id).toBe("row-1");
     expect(messages[0]?.content).toBe("more");
   });
+
+  it("applies a burst of streamed chunks in order, as one update", async () => {
+    const { eventSource, setMessages } = wire();
+
+    eventSource.emit("thinking", { turnId: "turn-1", thinking: "" });
+    eventSource.emit("thinking_delta", { turnId: "turn-1", delta: "hm", offset: 0 });
+    eventSource.emit("thinking_delta", { turnId: "turn-1", delta: "m", offset: 2 });
+    eventSource.emit("token_delta", { turnId: "turn-1", delta: "hi", offset: 0 });
+    eventSource.emit("token_delta", { turnId: "turn-1", delta: " there", offset: 2 });
+
+    await nextFrame();
+
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    const [message] = applyUpdaters(setMessages);
+    expect(message?.thinking).toBe("hmm");
+    expect(message?.content).toBe("hi there");
+  });
+
+  it("keeps a chunk the browser cannot continue from out of the text", async () => {
+    const { eventSource, setMessages } = wire();
+
+    eventSource.emit("token_delta", { turnId: "turn-1", delta: "one", offset: 0 });
+    // A reconnect that lost the middle of the block: the chunk starts past what
+    // this client has, so appending it would splice the text together wrong.
+    eventSource.emit("token_delta", { turnId: "turn-1", delta: "three", offset: 8 });
+    await nextFrame();
+
+    const [message] = applyUpdaters(setMessages);
+    expect(message?.content).toBe("one");
+  });
 });

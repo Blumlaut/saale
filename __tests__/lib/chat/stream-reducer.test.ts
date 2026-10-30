@@ -74,6 +74,54 @@ describe("streamReducer", () => {
     expect(s.messages).toHaveLength(1);
   });
 
+  it("token_delta appends the chunk the stream sent", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "hel", offset: 0 });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "lo", offset: 3 });
+    expect(s.messages[0]!.content).toBe("hello");
+    expect(s.messages).toHaveLength(1);
+  });
+
+  it("thinking_delta appends to the reasoning block", () => {
+    let s = streamReducer(empty, { type: "thinking", turnId: "t1", thinking: "" });
+    s = streamReducer(s, { type: "thinking_delta", turnId: "t1", delta: "hmm", offset: 0 });
+    s = streamReducer(s, { type: "thinking_delta", turnId: "t1", delta: " ok", offset: 3 });
+    expect(s.messages[0]!.thinking).toBe("hmm ok");
+  });
+
+  it("a chunk that does not continue what is on screen is dropped", () => {
+    // The client missed one (trimmed buffer, a re-delivered event, a page load
+    // mid-run): splicing it in would garble the text. The next cumulative
+    // snapshot is what repairs the block.
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "abc", offset: 0 });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "ghij", offset: 5 });
+    expect(s.messages[0]!.content).toBe("abc");
+
+    s = streamReducer(s, { type: "token", turnId: "t1", text: "abcdefghij" });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "!", offset: 10 });
+    expect(s.messages[0]!.content).toBe("abcdefghij!");
+  });
+
+  it("a re-delivered chunk lands once", () => {
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    const chunk: StreamAction = { type: "token_delta", turnId: "t1", delta: "hey", offset: 0 };
+    s = streamReducer(s, chunk);
+    s = streamReducer(s, chunk);
+    expect(s.messages[0]!.content).toBe("hey");
+  });
+
+  it("offsets count each field's own length", () => {
+    // Text and thinking stream independently: text growing must not break the
+    // reasoning block's chain.
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "token_delta", turnId: "t1", delta: "answer", offset: 0 });
+    s = streamReducer(s, { type: "thinking_delta", turnId: "t1", delta: "why", offset: 0 });
+    s = streamReducer(s, { type: "thinking_delta", turnId: "t1", delta: " not", offset: 3 });
+    expect(s.messages[0]!.content).toBe("answer");
+    expect(s.messages[0]!.thinking).toBe("why not");
+  });
+
   it("empty thinking opens the block without clearing reasoning", () => {
     let s = streamReducer(empty, { type: "thinking", turnId: "t1", thinking: "" });
     // The bubble still appears: an empty event is the block opening.

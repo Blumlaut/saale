@@ -27,6 +27,10 @@
  *  - `turn_start { turnId, startedAt }`. a new assistant turn begins, at the
  *    server's timestamp for it (what the turn's DB row is stamped with too)
  *  - `token { turnId, text }` / `thinking { turnId, thinking }`. cumulative
+ *  - `token_delta { turnId, delta, offset }` / `thinking_delta { ... }`. the
+ *    appended chunk only (offset = the field's length before it). These are the
+ *    bulk of the stream; a cumulative snapshot follows at least once a second
+ *    so a client that joined mid-run, or missed a chunk, is repaired
  *  - `tool_start { turnId, toolCallId, toolName, args }`
  *  - `tool_pending { turnId, toolCallId, toolName, args }`. the model announced
  *    a call and is still writing its arguments (cumulative, like `token`). Pi
@@ -57,7 +61,7 @@ import { readContextUsage } from "./context-usage";
 import { normalizeToolResult } from "./message-replay";
 import { extractProviderError, type ProviderErrorSource } from "./provider-error";
 import { publishSessionEvent, resetSessionEvents } from "./session-events";
-import { buildFinalAssistantMessage } from "./stream-logic";
+import { appendedText, buildFinalAssistantMessage } from "./stream-logic";
 import { saveAssistantMessage } from "./stream-helpers";
 
 export interface SessionEventTrackerOptions {
@@ -133,6 +137,11 @@ export function createSessionEventTracker(
   const toolPendingAnnouncedAt = new Map<string, number>();
   const TOOL_PENDING_THROTTLE_MS = 200;
 
+  // When each streamed text field last went out as a full snapshot (see
+  // `publishStreamedStep`). Cleared per turn so a new turn starts with one.
+  const textSnapshotAt = new Map<"token" | "thinking", number>();
+  const TEXT_SNAPSHOT_INTERVAL_MS = 1000;
+
   // Token usage tracking (billed totals, cumulative over the run)
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -158,6 +167,7 @@ export function createSessionEventTracker(
     currentTurnStartedAt ??= new Date();
     if (!currentTurnId) {
       currentTurnId = crypto.randomUUID();
+      textSnapshotAt.clear();
       publishSessionEvent(sessionId, "turn_start", {
         turnId: currentTurnId,
         // Clients order the live turn by this, so a message delivered into
@@ -258,6 +268,42 @@ export function createSessionEventTracker(
       clearInterval(activityTimer);
       activityTimer = null;
     }
+  };
+
+  /**
+   * Publish one step of a streamed text field (the turn's text or thinking).
+   *
+   * The field is cumulative, so it goes out as the appended chunk whenever the
+   * client can apply one, and as the whole field at least once per
+   * TEXT_SNAPSHOT_INTERVAL_MS: that snapshot is what lands a client that
+   * joined mid-run, and what repairs one whose chunk went missing.
+   */
+  const publishStreamedStep = (
+    kind: "token" | "thinking",
+    turnId: string,
+    previous: string,
+    next: string,
+  ): void => {
+    if (!next || next === previous) return;
+
+    const delta = appendedText(previous, next);
+    const now = Date.now();
+    const snapshot =
+      delta === null || now - (textSnapshotAt.get(kind) ?? 0) >= TEXT_SNAPSHOT_INTERVAL_MS;
+
+    let payload: Record<string, unknown>;
+    let event: string = kind;
+    if (snapshot) {
+      textSnapshotAt.set(kind, now);
+      payload = kind === "token" ? { turnId, text: next } : { turnId, thinking: next };
+    } else {
+      event = `${kind}_delta`;
+      payload = { turnId, delta, offset: previous.length };
+    }
+
+    publishSessionEvent(sessionId, event, payload).catch((err) => {
+      console.error(`Failed to publish ${event}:`, err);
+    });
   };
 
   /**
@@ -391,13 +437,9 @@ export function createSessionEventTracker(
             (c as Record<string, unknown>).type === "thinking",
         );
         if (thinkingBlock && typeof thinkingBlock === "object" && "thinking" in thinkingBlock) {
-          currentTurnThinking = (thinkingBlock as Record<string, unknown>).thinking as string;
-          publishSessionEvent(sessionId, "thinking", {
-            turnId,
-            thinking: currentTurnThinking,
-          }).catch((err) => {
-            console.error("Failed to publish thinking:", err);
-          });
+          const nextThinking = (thinkingBlock as Record<string, unknown>).thinking as string;
+          publishStreamedStep("thinking", turnId, currentTurnThinking, nextThinking);
+          currentTurnThinking = nextThinking;
         }
 
         // Cumulative text
@@ -405,16 +447,11 @@ export function createSessionEventTracker(
           (c) =>
             typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
         );
-        currentTurnText = textBlocks
+        const nextText = textBlocks
           .map((c) => ((c as Record<string, unknown>).text as string) || "")
           .join("");
-        if (currentTurnText) {
-          publishSessionEvent(sessionId, "token", { turnId, text: currentTurnText }).catch(
-            (err) => {
-              console.error("Failed to publish token:", err);
-            },
-          );
-        }
+        publishStreamedStep("token", turnId, currentTurnText, nextText);
+        currentTurnText = nextText;
 
         // Calls the model has announced but not started: it is writing their
         // arguments right now. Announced ahead of execution so the transcript

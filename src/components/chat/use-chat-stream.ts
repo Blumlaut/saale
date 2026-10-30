@@ -53,7 +53,10 @@ const FRAME_FALLBACK_MS = 16;
  * Server events:
  * - `turn_start { turnId, startedAt }`. create a streaming message for the
  *   turn, positioned by the server's turn start
- * - `token` / `thinking` / `tool_pending` / `tool_start` / `tool_update` /
+ * - `token` / `thinking`. cumulative snapshot of the turn's text or reasoning
+ * - `token_delta` / `thinking_delta`. the chunk it grew by (the bulk of the
+ *   stream: a cumulative payload per token costs the block's length again)
+ * - `tool_pending` / `tool_start` / `tool_update` /
  *   `tool_end`. update the turn (`tool_pending` is a call whose arguments the
  *   model is still writing, `tool_update` carries live partial output from a
  *   running tool; tool_end carries toolName so the UI can react to specific
@@ -347,6 +350,33 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
     if (parsed) {
       dispatch(
         { type: "thinking", turnId: parsed.turnId, thinking: parsed.thinking },
+        { coalesce: true },
+      );
+    }
+  });
+
+  eventSource.addEventListener("token_delta", (event: MessageEvent) => {
+    markLoading();
+    const parsed = parseEvent<{ turnId: string; delta: string; offset: number }>(event.data);
+    if (parsed) {
+      dispatch(
+        { type: "token_delta", turnId: parsed.turnId, delta: parsed.delta, offset: parsed.offset },
+        { coalesce: true },
+      );
+    }
+  });
+
+  eventSource.addEventListener("thinking_delta", (event: MessageEvent) => {
+    markLoading();
+    const parsed = parseEvent<{ turnId: string; delta: string; offset: number }>(event.data);
+    if (parsed) {
+      dispatch(
+        {
+          type: "thinking_delta",
+          turnId: parsed.turnId,
+          delta: parsed.delta,
+          offset: parsed.offset,
+        },
         { coalesce: true },
       );
     }

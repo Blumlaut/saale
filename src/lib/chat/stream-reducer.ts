@@ -32,6 +32,14 @@ export type StreamAction =
   | { type: "token"; turnId: string; text: string }
   | { type: "thinking"; turnId: string; thinking: string }
   /**
+   * The chunk a streamed field grew by. `offset` is the field's length before
+   * it (see `publishStreamedStep` in the tracker): a chunk that does not
+   * continue what this client already has is ignored, and the next cumulative
+   * `token`/`thinking` snapshot repairs it.
+   */
+  | { type: "token_delta"; turnId: string; delta: string; offset: number }
+  | { type: "thinking_delta"; turnId: string; delta: string; offset: number }
+  /**
    * The model announced a call and is still writing its arguments. Pi emits the
    * call in the assistant message it streams (`toolcall_start` / `toolcall_delta`)
    * long before execution (`tool_start`), so without this the transcript shows
@@ -110,6 +118,27 @@ function ensureTurnMessage(
   return [...messages, makeStreamingMessage(turnId, rootMessageId ?? undefined, patch)];
 }
 
+/**
+ * Append a streamed chunk to a turn's text or thinking.
+ *
+ * `offset` is where the chunk starts, so a chunk this client cannot continue
+ * from. a gap from a trimmed buffer, a re-delivered event. is dropped rather
+ * than spliced in at the wrong place. The next cumulative snapshot lands the
+ * field where it should be.
+ */
+function appendStreamedChunk(
+  state: StreamState,
+  action: { turnId: string; delta: string; offset: number },
+  field: "content" | "thinking",
+): Message[] {
+  const existing = findTurnMessage(state.messages, action.turnId);
+  const current = existing?.[field] ?? "";
+  if (current.length !== action.offset) return state.messages;
+  return ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
+    [field]: current + action.delta,
+  });
+}
+
 export function streamReducer(state: StreamState, action: StreamAction): StreamState {
   switch (action.type) {
     case "turn_start":
@@ -131,6 +160,12 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
           content: action.text,
         }),
       };
+
+    case "token_delta":
+      return { ...state, messages: appendStreamedChunk(state, action, "content") };
+
+    case "thinking_delta":
+      return { ...state, messages: appendStreamedChunk(state, action, "thinking") };
 
     case "thinking":
       return {

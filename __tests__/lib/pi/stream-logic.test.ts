@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  appendedText,
   decideStaleGenerationAction,
   decideStreamAction,
   formatSseEvent,
@@ -251,6 +252,23 @@ describe("formatSseEvent", () => {
 
   it("omits the id line when no id is given (unbuffered events)", () => {
     expect(formatSseEvent("done", {})).not.toContain("id:");
+  });
+});
+
+describe("appendedText", () => {
+  it("returns what a growing field gained", () => {
+    expect(appendedText("", "thinking")).toBe("thinking");
+    expect(appendedText("think", "thinking")).toBe("ing");
+  });
+
+  it("returns null when the field did not grow", () => {
+    expect(appendedText("same", "same")).toBe(null);
+    expect(appendedText("longer", "long")).toBe(null);
+  });
+
+  it("returns null when the field was rewritten", () => {
+    // A retried or edited turn: there is no chunk, the whole field goes out.
+    expect(appendedText("the first try", "a better second try")).toBe(null);
   });
 });
 

@@ -48,8 +48,9 @@ interface SseClient {
  * means stale history from before a Redis restart / counter reset is
  * forgotten quickly, so post-reset events (which reuse low IDs) still flow.
  * A cleared set can at worst re-deliver an event, and every client handler is
- * idempotent (cumulative token text, tool_start deduped by toolCallId,
- * message_saved mapped by ID). harmless.
+ * idempotent (cumulative token text, text deltas keyed by the offset they
+ * continue from, tool_start deduped by toolCallId, message_saved mapped by ID).
+ * harmless.
  */
 const MAX_SEEN_IDS = 200;
 
@@ -156,9 +157,9 @@ export class SseDispatcher {
   /**
    * Bound the seen-ID set. When it overflows we clear it: a re-delivered
    * event would at worst double-fire a client handler, and every handler is
-   * idempotent (cumulative token text, tool_start deduped by toolCallId,
-   * message_saved mapped by ID). harmless. This keeps long sessions from
-   * growing the set forever.
+   * idempotent (cumulative token text, text deltas keyed by the offset they
+   * continue from, tool_start deduped by toolCallId). harmless. This keeps
+   * long sessions from growing the set forever.
    */
   private pruneSeenIds(client: SseClient): void {
     if (client.seenIds.size > MAX_SEEN_IDS) {

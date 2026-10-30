@@ -425,6 +425,117 @@ describe("createSessionEventTracker", () => {
     expect(toolEnd.data.isError).toBe(false);
   });
 
+  it("streams text as deltas after the turn's first snapshot", async () => {
+    // Re-sending the whole text per token costs the block's length again on
+    // every token: a long reasoning trace spends its bandwidth on the same
+    // characters. The stream carries the chunk, and a full snapshot every
+    // second keeps a client that joined mid-run or missed one repairable.
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    for (const text of ["He", "Hello", "Hello world"]) {
+      session.emit({
+        type: "message_update",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      });
+    }
+
+    const steps = published.filter((p) => p.event === "token" || p.event === "token_delta");
+    expect(steps.map((p) => p.event)).toEqual(["token", "token_delta", "token_delta"]);
+    expect(steps[0]!.data).toMatchObject({ text: "He" });
+    expect(steps[1]!.data).toMatchObject({ delta: "llo", offset: 2 });
+    expect(steps[2]!.data).toMatchObject({ delta: " world", offset: 5 });
+  });
+
+  it("streams reasoning as deltas, offset by the block's own length", async () => {
+    const { published } = setup();
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    for (const thinking of ["hm", "hmm", "hmm, let me"]) {
+      session.emit({
+        type: "message_update",
+        message: { role: "assistant", content: [{ type: "thinking", thinking }] },
+      });
+    }
+
+    const steps = published.filter((p) => p.event === "thinking" || p.event === "thinking_delta");
+    expect(steps.map((p) => p.event)).toEqual(["thinking", "thinking_delta", "thinking_delta"]);
+    expect(steps[0]!.data).toMatchObject({ thinking: "hm" });
+    expect(steps[1]!.data).toMatchObject({ delta: "m", offset: 2 });
+    expect(steps[2]!.data).toMatchObject({ delta: ", let me", offset: 3 });
+  });
+
+  it("re-sends the whole field once a second", async () => {
+    const { published } = setup();
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    vi.useFakeTimers();
+    try {
+      for (const text of ["a", "ab", "abc"]) {
+        session.emit({
+          type: "message_update",
+          message: { role: "assistant", content: [{ type: "text", text }] },
+        });
+        vi.advanceTimersByTime(600);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const steps = published.filter((p) => p.event === "token" || p.event === "token_delta");
+    // Two seconds of stream: a snapshot at the start, a chunk, a snapshot, ...
+    expect(steps.map((p) => p.event)).toEqual(["token", "token_delta", "token"]);
+    expect(steps[2]!.data).toMatchObject({ text: "abc" });
+  });
+
+  it("sends the whole field when it no longer extends what was sent", async () => {
+    // A retried turn rewrites its message: there is no chunk to append, so the
+    // client is corrected immediately instead of waiting for the next tick.
+    const { published } = setup();
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "first try" }] },
+    });
+    session.emit({
+      type: "message_update",
+      message: { role: "assistant", content: [{ type: "text", text: "a better try" }] },
+    });
+
+    const steps = published.filter((p) => p.event === "token" || p.event === "token_delta");
+    expect(steps.map((p) => p.event)).toEqual(["token", "token"]);
+    expect(steps[1]!.data).toMatchObject({ text: "a better try" });
+  });
+
+  it("starts the next turn with a snapshot, not a chunk", async () => {
+    const { published } = setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    for (const text of ["First", "Second"]) {
+      session.emit({
+        type: "message_update",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      });
+      session.emit({
+        type: "turn_end",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+        toolResults: [],
+      });
+    }
+
+    const steps = published.filter((p) => p.event === "token_delta");
+    expect(steps).toHaveLength(0);
+  });
+
   it("assigns distinct turnIds across turns (no collisions)", async () => {
     const { published } = setup();
     mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
