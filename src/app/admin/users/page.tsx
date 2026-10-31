@@ -29,6 +29,7 @@ import {
 } from "@/lib/permissions/roles";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
+import { PASSWORD_RULES, passwordProblem } from "@/lib/auth/password";
 import { Users, Loader2, Plus, Trash2, Pencil, UserCog } from "lucide-react";
 
 interface AdminUser {
@@ -50,7 +51,9 @@ interface UserFeatures {
 
 export default function AdminUsersPage() {
   const access = useSessionPermissions();
+  const { data: session } = authClient.useSession();
   const can = (action: string) => access !== null && hasGrant(access.permissions, "user", action);
+  const canRevokeSessions = access !== null && hasGrant(access.permissions, "session", "revoke");
 
   const [roles, setRoles] = useState<RoleDefinition[]>([...BUILTIN_ROLES]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -72,6 +75,8 @@ export default function AdminUsersPage() {
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
   const [editUsername, setEditUsername] = useState("");
   const [editRole, setEditRole] = useState<string>("user");
+  const [editPassword, setEditPassword] = useState("");
+  const [editPasswordConfirm, setEditPasswordConfirm] = useState("");
   const [editFeatures, setEditFeatures] = useState<Record<string, boolean>>({});
   const [featuresState, setFeaturesState] = useState<"loading" | "ready" | "error">("loading");
   const [featuresReadOnly, setFeaturesReadOnly] = useState(false);
@@ -79,6 +84,12 @@ export default function AdminUsersPage() {
 
   const createUsernameValid = isValidUsername(createUsername);
   const editUsernameValid = isValidUsername(editUsername);
+  // Empty means "leave the password alone".
+  const editPasswordProblem =
+    editPassword === ""
+      ? null
+      : (passwordProblem(editPassword) ??
+        (editPasswordConfirm !== editPassword ? "Passwords do not match" : null));
 
   // Delete confirm
   const [showDelete, setShowDelete] = useState(false);
@@ -125,7 +136,7 @@ export default function AdminUsersPage() {
   }, [saveStatus]);
 
   const handleCreate = async () => {
-    if (!createUsernameValid || !createEmail || !createPassword) return;
+    if (!createUsernameValid || !createEmail || passwordProblem(createPassword) !== null) return;
     setCreating(true);
     try {
       await postJson("/api/auth/admin/create-user", {
@@ -153,6 +164,8 @@ export default function AdminUsersPage() {
     setEditUser(user);
     setEditUsername(user.username ?? "");
     setEditRole(user.role ?? "user");
+    setEditPassword("");
+    setEditPasswordConfirm("");
     setEditFeatures({});
     setFeaturesState("loading");
     setFeaturesReadOnly(isAdminRole(user.role ?? "user"));
@@ -170,7 +183,7 @@ export default function AdminUsersPage() {
   };
 
   const handleEdit = async () => {
-    if (!editUser || !editUsernameValid) return;
+    if (!editUser || !editUsernameValid || editPasswordProblem !== null) return;
     setEditing(true);
     try {
       const username = normalizeUsername(editUsername);
@@ -192,6 +205,17 @@ export default function AdminUsersPage() {
         await patchJson(`/api/admin/users/${editUser.id}/features`, {
           features: editFeatures,
         });
+      }
+      if (editPassword) {
+        await postJson("/api/auth/admin/set-user-password", {
+          userId: editUser.id,
+          newPassword: editPassword,
+        });
+        // Sessions opened with the old password must not outlive the reset. An
+        // admin editing their own record keeps the session they are working in.
+        if (canRevokeSessions && editUser.id !== session?.user.id) {
+          await postJson("/api/auth/admin/revoke-user-sessions", { userId: editUser.id });
+        }
       }
       setShowEdit(false);
       setEditUser(null);
@@ -423,8 +447,9 @@ export default function AdminUsersPage() {
                 value={createPassword}
                 onChange={(e) => setCreatePassword(e.target.value)}
                 type="password"
-                placeholder="Minimum 8 characters"
+                placeholder={PASSWORD_RULES}
               />
+              <p className="text-muted-foreground text-xs">{PASSWORD_RULES}</p>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
@@ -448,7 +473,12 @@ export default function AdminUsersPage() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={creating || !createUsernameValid || !createEmail || !createPassword}
+              disabled={
+                creating ||
+                !createUsernameValid ||
+                !createEmail ||
+                passwordProblem(createPassword) !== null
+              }
             >
               {creating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               Create
@@ -484,6 +514,40 @@ export default function AdminUsersPage() {
                 }
               >
                 {USERNAME_RULES}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-password">New password</Label>
+              <Input
+                id="edit-password"
+                type="password"
+                autoComplete="new-password"
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder={PASSWORD_RULES}
+                aria-invalid={editPasswordProblem !== null}
+                disabled={!can("set-password")}
+              />
+              <Input
+                id="edit-password-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={editPasswordConfirm}
+                onChange={(e) => setEditPasswordConfirm(e.target.value)}
+                placeholder="Repeat the new password"
+                aria-label="Repeat the new password"
+                aria-invalid={editPasswordProblem !== null}
+                disabled={!can("set-password")}
+              />
+              <p
+                className={
+                  editPasswordProblem ? "text-destructive text-xs" : "text-muted-foreground text-xs"
+                }
+              >
+                {!can("set-password")
+                  ? "Your role cannot reset passwords."
+                  : (editPasswordProblem ??
+                    "Leave both fields empty to keep the current password.")}
               </p>
             </div>
             <div className="space-y-2">
@@ -549,7 +613,10 @@ export default function AdminUsersPage() {
             <Button variant="ghost" onClick={() => setShowEdit(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEdit} disabled={editing || !editUsernameValid}>
+            <Button
+              onClick={handleEdit}
+              disabled={editing || !editUsernameValid || editPasswordProblem !== null}
+            >
               {editing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
               Save
             </Button>
