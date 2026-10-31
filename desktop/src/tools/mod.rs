@@ -2,7 +2,7 @@
 
 mod files;
 mod group;
-mod png;
+mod input;
 mod screen;
 mod shell;
 
@@ -11,6 +11,8 @@ pub use group::{parse_list, Group};
 use std::collections::BTreeSet;
 
 use serde_json::{json, Value};
+
+use crate::backends::Desktop;
 
 /// One tool, as MCP lists it.
 pub struct ToolSpec {
@@ -66,11 +68,21 @@ impl ToolResult {
 }
 
 /// Every tool the enabled groups contribute.
-pub fn list(groups: &BTreeSet<Group>) -> Vec<ToolSpec> {
+///
+/// A machine without a display has no screen and no pointer to offer, so those
+/// groups contribute nothing even when they are switched on. The model never
+/// sees a tool that could only fail.
+pub fn list(groups: &BTreeSet<Group>, display: bool) -> Vec<ToolSpec> {
     let mut tools = Vec::new();
 
-    if groups.contains(&Group::Screen) {
-        tools.push(screen::screenshot_spec());
+    if display && groups.contains(&Group::Screen) {
+        tools.extend(screen::specs());
+    }
+    if display && groups.contains(&Group::Mouse) {
+        tools.extend(input::mouse_specs());
+    }
+    if display && groups.contains(&Group::Keyboard) {
+        tools.extend(input::keyboard_specs());
     }
     if groups.contains(&Group::Files) {
         tools.extend(files::specs());
@@ -84,6 +96,7 @@ pub fn list(groups: &BTreeSet<Group>) -> Vec<ToolSpec> {
 
 /// Run one tool, refusing a group that is switched off.
 pub async fn call(
+    desktop: &Desktop,
     groups: &BTreeSet<Group>,
     name: &str,
     args: &Value,
@@ -97,7 +110,10 @@ pub async fn call(
     }
 
     match name {
-        "screenshot" => screen::screenshot(args).await,
+        "screenshot" => screen::screenshot(desktop, args),
+        "list_windows" => screen::list_windows(desktop),
+        "click" | "double_click" | "move" | "drag" | "scroll" => input::mouse(desktop, name, args),
+        "type_text" | "press_key" => input::keyboard(desktop, name, args),
         "read_file" => files::read_file(args).await,
         "write_file" => files::write_file(args).await,
         "list_dir" => files::list_dir(args).await,
@@ -110,7 +126,9 @@ pub async fn call(
 
 fn group_of(name: &str) -> Option<Group> {
     match name {
-        "screenshot" => Some(Group::Screen),
+        "screenshot" | "list_windows" => Some(Group::Screen),
+        "click" | "double_click" | "move" | "drag" | "scroll" => Some(Group::Mouse),
+        "type_text" | "press_key" => Some(Group::Keyboard),
         "read_file" | "write_file" | "list_dir" | "grep" | "find" => Some(Group::Files),
         "run_command" => Some(Group::Terminal),
         _ => None,

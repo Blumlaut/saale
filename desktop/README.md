@@ -56,9 +56,12 @@ saale-agent groups --disable files
 ## What this build does and does not do
 
 - The channel, pairing, the tool list and the group switches are done.
-- `screenshot` returns a placeholder image with the metadata contract a click
-  will map through. Real capture (ScreenCast and PipeWire on Wayland, X11
-  otherwise) is next, and the mouse and keyboard groups land with it.
+- Screen, pointer and keyboard work on X11. A capture is downscaled to 1568px,
+  and a click is mapped from that image back onto the display, so the model
+  never has to think in desktop pixels.
+- Wayland capture goes through `xcap`'s Screenshot portal, which asks once per
+  grab. Wayland input is not in this build: `enigo`'s libei backend panics when
+  no portal is running.
 - `saale-agent run` is the whole UI for now: no tray, no window, no autostart.
 
 ## Development

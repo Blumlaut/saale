@@ -10,6 +10,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
+use crate::backends::Desktop;
 use crate::mcp;
 use crate::tools;
 
@@ -102,17 +103,17 @@ impl Relay {
     }
 
     /// Stay connected, answering until the process is stopped.
-    pub async fn run(&self, groups: BTreeSet<tools::Group>) -> ! {
+    pub async fn run(&self, groups: BTreeSet<tools::Group>, desktop: Desktop) -> ! {
         let mut backoff = RETRY_MIN;
 
         loop {
             println!(
                 "Connecting to {} with {} tools...",
                 self.base,
-                tools::list(&groups).len()
+                tools::list(&groups, desktop.available()).len()
             );
 
-            match self.session(&groups).await {
+            match self.session(&groups, &desktop).await {
                 Ok(()) => println!("The channel closed. Reconnecting."),
                 Err(err) => println!("{err}"),
             }
@@ -123,7 +124,11 @@ impl Relay {
     }
 
     /// One connection's worth of stream.
-    async fn session(&self, groups: &BTreeSet<tools::Group>) -> Result<(), String> {
+    async fn session(
+        &self,
+        groups: &BTreeSet<tools::Group>,
+        desktop: &Desktop,
+    ) -> Result<(), String> {
         let response = self
             .client
             .get(format!("{}{CHANNEL}", self.base))
@@ -141,7 +146,7 @@ impl Relay {
         }
 
         // What this machine offers, so the instance can show it.
-        self.post(mcp::hello(groups)).await?;
+        self.post(mcp::hello(groups, desktop.available())).await?;
 
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
@@ -152,7 +157,7 @@ impl Relay {
 
             while let Some(end) = buffer.find("\n\n") {
                 let event: String = buffer.drain(..end + 2).collect();
-                self.handle_event(event.trim_end(), groups).await?;
+                self.handle_event(event.trim_end(), groups, desktop).await?;
             }
         }
 
@@ -164,6 +169,7 @@ impl Relay {
         &self,
         event: &str,
         groups: &BTreeSet<tools::Group>,
+        desktop: &Desktop,
     ) -> Result<(), String> {
         let mut kind = "message";
         let mut data = String::new();
@@ -191,7 +197,7 @@ impl Relay {
             }
         };
 
-        if let Some(answer) = mcp::handle(groups, &message).await {
+        if let Some(answer) = mcp::handle(groups, desktop, &message).await {
             self.post(json!({ "messages": [answer] })).await?;
         }
 

@@ -1,63 +1,60 @@
-//! Screen capture.
+//! Looking at the screen.
 //!
-//! Wayland needs the ScreenCast portal and PipeWire, X11 needs the X server;
-//! neither backend is in this build yet. What is here is the contract the rest
-//! of the feature is built against: an image plus the metadata a click needs to
-//! turn a pixel into a pointer position.
+//! A capture comes back with the display it is of and the factor it was scaled
+//! by, because the pointer tools take coordinates in that image's space. The
+//! model never has to think in desktop pixels.
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde_json::{json, Value};
 
-use super::png;
-use super::{Content, ToolResult};
+use super::{Content, ToolResult, ToolSpec};
+use crate::backends::Desktop;
 
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 360;
-
-pub fn screenshot_spec() -> super::ToolSpec {
-    super::ToolSpec {
-        name: "screenshot",
-        description:
-            "Capture the display. Returns the image plus the monitor's id, its origin and size in \
-             the coordinate space a click uses, and the factors between the image and that space.",
-        schema: json!({
-            "type": "object",
-            "properties": {
-                "monitor": {
-                    "type": "string",
-                    "description": "Monitor id from a previous capture. The primary display when omitted."
+pub fn specs() -> Vec<ToolSpec> {
+    vec![
+        ToolSpec {
+            name: "screenshot",
+            description:
+                "Capture a display. Returns the image and the metadata a click maps through: the \
+                 display's id, its origin and size on the desktop, and the image's own size.",
+            schema: json!({
+                "type": "object",
+                "properties": {
+                    "monitor": {
+                        "type": "string",
+                        "description": "Display id from a previous capture, or its name. The primary display when omitted."
+                    }
                 }
-            }
-        }),
-    }
+            }),
+        },
+        ToolSpec {
+            name: "list_windows",
+            description:
+                "List the windows on this desktop, with their titles, applications and bounds.",
+            schema: json!({ "type": "object", "properties": {} }),
+        },
+    ]
 }
 
-pub async fn screenshot(args: &Value) -> Result<ToolResult, String> {
-    let monitor = args
-        .get("monitor")
-        .and_then(Value::as_str)
-        .unwrap_or("display-1");
+pub fn screenshot(desktop: &Desktop, args: &Value) -> Result<ToolResult, String> {
+    let monitor = args.get("monitor").and_then(Value::as_str);
+    let shot = desktop.capture(monitor)?;
 
-    let pixels = placeholder_pixels(WIDTH, HEIGHT);
-    let encoded = STANDARD.encode(png::encode_rgb(WIDTH, HEIGHT, &pixels));
-
-    // The metadata a click maps through. A real capture fills the same fields
-    // from the compositor's output layout.
     let metadata = json!({
-        "capture": "placeholder",
-        "monitor": monitor,
-        "origin": { "x": 0, "y": 0 },
-        "size": { "width": WIDTH, "height": HEIGHT },
-        "scale": 1.0,
-        "image": { "width": WIDTH, "height": HEIGHT, "scale": 1.0 },
+        "monitor": shot.display.id,
+        "name": shot.display.name,
+        "origin": { "x": shot.display.x, "y": shot.display.y },
+        "size": { "width": shot.display.width, "height": shot.display.height },
+        "scale": shot.display.scale,
+        "image": { "width": shot.image_width, "height": shot.image_height },
     });
 
     Ok(ToolResult {
         content: vec![
             Content::Image {
                 mime: "image/png".to_string(),
-                base64: encoded,
+                base64: STANDARD.encode(&shot.png),
             },
             Content::Text(metadata.to_string()),
         ],
@@ -65,20 +62,31 @@ pub async fn screenshot(args: &Value) -> Result<ToolResult, String> {
     })
 }
 
-/// A grid, so the image is visibly an image and its edges are findable.
-fn placeholder_pixels(width: u32, height: u32) -> Vec<u8> {
-    let mut pixels = Vec::with_capacity((width * height * 3) as usize);
-    for y in 0..height {
-        for x in 0..width {
-            let cell = ((x / 40) + (y / 40)) % 2 == 0;
-            let base: u8 = if cell { 32 } else { 48 };
-            let edge = x < 2 || y < 2 || x + 2 >= width || y + 2 >= height;
-            if edge {
-                pixels.extend_from_slice(&[214, 108, 39]);
-            } else {
-                pixels.extend_from_slice(&[base, base, base + 8]);
-            }
-        }
+pub fn list_windows(desktop: &Desktop) -> Result<ToolResult, String> {
+    let windows = desktop.windows()?;
+    if windows.is_empty() {
+        return Ok(ToolResult::text("This desktop has no windows open."));
     }
-    pixels
+
+    let rows: Vec<Value> = windows
+        .into_iter()
+        .map(|window| {
+            json!({
+                "id": window.id,
+                "title": window.title,
+                "app": window.app,
+                "bounds": {
+                    "x": window.x,
+                    "y": window.y,
+                    "width": window.width,
+                    "height": window.height,
+                },
+                "focused": window.focused,
+            })
+        })
+        .collect();
+
+    Ok(ToolResult::text(
+        serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()),
+    ))
 }

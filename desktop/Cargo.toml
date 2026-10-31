@@ -11,7 +11,12 @@ path = "src/main.rs"
 
 [dependencies]
 base64 = "0.22"
+# x11rb only: the libei backend unwraps its portal connection, so a machine
+# without xdg-desktop-portal panics instead of falling back. Wayland input comes
+# back through a guarded path, not this feature.
+enigo = { version = "0.6.1", default-features = false, features = ["x11rb"] }
 futures-util = "0.3"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
@@ -28,6 +33,7 @@ tokio = { version = "1", features = [
   "time",
   "sync",
 ] }
+xcap = { version = "0.9.8", default-features = false }
 
 [profile.release]
 lto = true

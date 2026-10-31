@@ -5,6 +5,7 @@
 //! switched on, and answers the instance's calls. Nothing listens on this
 //! machine.
 
+mod backends;
 mod config;
 mod mcp;
 mod relay;
@@ -13,6 +14,7 @@ mod tools;
 use std::collections::BTreeSet;
 use std::process::ExitCode;
 
+use backends::Desktop;
 use config::Config;
 use relay::Relay;
 
@@ -134,7 +136,7 @@ async fn run(args: &[String]) -> Result<(), String> {
     }
 
     let relay = Relay::new(&config.url, &config.token);
-    relay.run(config.group_set()).await
+    relay.run(config.group_set(), Desktop::new()).await
 }
 
 fn groups(args: &[String]) -> Result<(), String> {

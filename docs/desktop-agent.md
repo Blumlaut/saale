@@ -102,30 +102,30 @@ wlroots needs the uinput fallback for input.
 
 ### Capture
 
-One session for both screen and input: create it on the RemoteDesktop portal,
-call `Screencast::select_sources` on that same session, then start it. The user
-sees one consent dialog. `persist_mode = 2` plus the restore token keeps it from
-reappearing; the token is stored in `~/.config/saale-agent/` and refreshed on
-each start.
+`xcap` already speaks Wayland: on a wlroots compositor it reads through
+libwayshot, and elsewhere it calls the `Screenshot` portal over D-Bus and takes
+the file it returns. That is a working capture on GNOME and KDE today, at the
+price of one consent dialog per grab, which is why the ScreenCast session is
+still the goal:
 
-`Screencast::start` returns streams with a PipeWire node id, a logical `size` and
-a `position`, which is the monitor layout the coordinate mapping needs. Frames
-come from a PipeWire consumer holding the latest buffer, so a `screenshot` call
-costs one frame copy instead of a new capture session.
-
-The `Screenshot` portal is the fallback for a single grab. Its prompting
-behaviour differs per backend, so it is not the loop path.
+- Create one session on the RemoteDesktop portal, call
+  `Screencast::select_sources` on it, start it once.
+- `persist_mode = 2` plus the restore token keeps the dialog from returning.
+- Frames come from a PipeWire consumer holding the latest buffer, so a
+  `screenshot` costs a frame copy rather than a capture session.
 
 ### Input
 
-`RemoteDesktop::notify_pointer_motion_absolute` takes the stream id and
-coordinates in that stream's space, so the portal does the layout mapping for
-us. `notify_keyboard_keysym` types by X11 keysym, including `0x01000000 +
-codepoint` for arbitrary Unicode. Clicks, drags, scrolls and typing all work over
-D-Bus with no native dependency.
+`enigo` has the portal path built in: with its `libei_tokio` feature it opens the
+RemoteDesktop portal, asks for `ConnectToEIS`, and injects through libei. That is
+the same mechanism the plan had hand-rolled with `ashpd` and `reis`, and it
+handles keysyms and absolute motion for us.
 
-`ConnectToEIS` plus `reis` is the lower-latency path for smooth drags. `reis` is
-incomplete, so D-Bus first, EIS behind a flag.
+It is not enabled yet. `enigo` unwraps the portal connection, so a machine
+without `xdg-desktop-portal` panics inside `Enigo::new` instead of returning an
+error, and that panic is not containable from the caller. Wayland input lands
+once that path is guarded, either by pinning the backend per session type or by
+calling the portal directly.
 
 The uinput fallback for wlroots creates a real virtual device through
 `/dev/uinput`. It needs a udev rule, installed by the deb and printed by the
@@ -182,8 +182,11 @@ consent dialog returns.
   A message from anywhere else takes the machine away at once: the approval gate
   re-reads the newest message on every device tool call, and a run prompted by
   another client rebuilds the session without the device.
-- Screen capture is a placeholder with the real metadata contract. Mouse,
-  keyboard, the portal session and the tray are still open.
+- Screen capture, the pointer and the keyboard work on X11: a real capture, a
+  click mapped from the image, typing and key combinations. Verified under Xvfb
+  against the live instance.
+- Wayland capture rides on `xcap`'s Screenshot portal path. Wayland input, the
+  ScreenCast session, `focus_window` and the tray are still open.
 
 ## Milestones
 

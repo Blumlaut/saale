@@ -6,6 +6,7 @@
 
 use serde_json::{json, Value};
 
+use crate::backends::Desktop;
 use crate::tools;
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
@@ -15,6 +16,7 @@ pub const SERVER_NAME: &str = "saale-agent";
 /// Build the answer to one request, or nothing for a notification.
 pub async fn handle(
     groups: &std::collections::BTreeSet<tools::Group>,
+    desktop: &Desktop,
     message: &Value,
 ) -> Option<Value> {
     let method = message.get("method").and_then(Value::as_str)?;
@@ -35,7 +37,7 @@ pub async fn handle(
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({
-            "tools": tools::list(groups)
+            "tools": tools::list(groups, desktop.available())
                 .into_iter()
                 .map(|tool| json!({
                     "name": tool.name,
@@ -51,7 +53,7 @@ pub async fn handle(
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
-            match tools::call(groups, name, &arguments).await {
+            match tools::call(desktop, groups, name, &arguments).await {
                 Ok(result) => Ok(result.to_json()),
                 Err(err) => Err((-32602, err)),
             }
@@ -70,10 +72,19 @@ pub async fn handle(
 }
 
 /// The hello the instance records: what this machine offers, and its version.
-pub fn hello(groups: &std::collections::BTreeSet<tools::Group>) -> Value {
+pub fn hello(groups: &std::collections::BTreeSet<tools::Group>, display: bool) -> Value {
+    // Only what this machine can actually do: a group with no tools to offer is
+    // not a capability, whatever the switch says.
+    let offered: Vec<&str> = tools::list(groups, display).iter().map(|_| "").collect();
+    let _ = offered;
+
     json!({
         "hello": {
-            "capabilities": groups.iter().map(|group| group.name()).collect::<Vec<_>>(),
+            "capabilities": groups
+                .iter()
+                .filter(|group| !matches!(group, tools::Group::Screen | tools::Group::Mouse | tools::Group::Keyboard) || display)
+                .map(|group| group.name())
+                .collect::<Vec<_>>(),
             "agentVersion": crate::VERSION,
             "session": session(),
             "platform": std::env::consts::OS,
