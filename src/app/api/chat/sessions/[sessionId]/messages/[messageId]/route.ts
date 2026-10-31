@@ -10,6 +10,7 @@ import {
   setPendingPrompt,
 } from "@/lib/redis";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
+import { resolveClientDevice } from "@/lib/devices/client";
 
 /**
  * PATCH /api/chat/sessions/:sessionId/messages/:messageId. Edit a user message.
@@ -84,6 +85,9 @@ export async function PATCH(
   });
   const userMessageIndex = savedUserMessages.findIndex((m) => m.id === messageId);
 
+  // Which computer this edit came from: it decides what the agent may reach.
+  const clientDeviceId = await resolveClientDevice(authResult.user.id, request);
+
   // Update the message in place and delete messages after it
   await prisma.$transaction(async (tx) => {
     // Update the message content
@@ -92,6 +96,7 @@ export async function PATCH(
       data: {
         content: sanitizedContent,
         editedAt: new Date(),
+        clientDeviceId,
       },
     });
 

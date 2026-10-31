@@ -16,7 +16,8 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createAgentIdleTimeout, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
 import type { ImageContent } from "@/lib/pi/message-replay";
-import { createAndPool, get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
+import { createAndPool, get as getPoolEntry, getPoolKey, remove } from "@/lib/pi/agent-pool";
+import { resolveChatDeviceId } from "@/lib/devices/client";
 import {
   createChatAgentSession,
   loadChatUserSettings,
@@ -61,6 +62,22 @@ export async function ensureChatAgent(options: {
 }): Promise<{ entry: PooledChatSession; existedAlready: boolean }> {
   const { userId, sessionId } = options;
   const poolKey = getPoolKey(userId, sessionId);
+
+  // The chat's newest message decides which computer its agent may reach, and
+  // the tools for it are fixed when the session is built. A run prompted by a
+  // different client rebuilds the session, which is also how a chat wins the
+  // machine back when the message comes from it again.
+  const clientDeviceId = await resolveChatDeviceId(userId, sessionId);
+  const pooled = getPoolEntry(poolKey);
+  if (
+    pooled &&
+    pooled.deviceId !== clientDeviceId &&
+    !pooled.promptInFlight &&
+    !pooled.session.isStreaming
+  ) {
+    await remove(poolKey);
+  }
+
   const existing = getPoolEntry(poolKey);
 
   // A build can take minutes (checkout, fetch, setup script) and no run is
@@ -85,7 +102,7 @@ export async function ensureChatAgent(options: {
         ? await ensureWorktree(userId, sessionId)
         : null;
 
-      return createChatAgentSession({
+      const built = await createChatAgentSession({
         userId,
         sessionId,
         chatSession: options.chatSession,
@@ -94,9 +111,12 @@ export async function ensureChatAgent(options: {
         coderCustomInstructions: userSettings.coderCustomInstructions,
         toolPolicies: userSettings.toolPolicies,
         toolExposure: userSettings.toolExposure,
+        clientDeviceId,
         ...(worktree ? { workspaceCwd: worktree.path, checkoutMode: worktree.mode } : {}),
         emitApprovalRequest,
       });
+
+      return { ...built, deviceId: clientDeviceId };
     });
   } finally {
     await clearAgentBuilding(sessionId);

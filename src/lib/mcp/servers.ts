@@ -30,6 +30,9 @@ import {
 import { StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { loadDeviceMcpServers } from "@/lib/devices/entries";
+import { deviceIdFromUrl } from "@/lib/devices/shared";
+import { DeviceTransport } from "@/lib/devices/transport";
 import { getUploadsDir } from "@/lib/uploads";
 import { createMcpAuthProvider, type McpOAuthServer } from "./oauth";
 import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
@@ -82,13 +85,23 @@ export interface UserMcpServers {
   policies: Record<string, McpToolPolicy>;
   /** Server identity for OAuth, keyed by `mcpNameKey(name)`. */
   oauthServers: Map<string, McpOAuthServer>;
+  /** The chat's own computer, when it has one. */
+  device: { id: string; name: string } | null;
 }
 
 /**
  * Load the enabled servers of one user, ready for the MCP extension.
  * Scoped to `userId`. a server row is only reachable through its owner.
+ *
+ * `clientDeviceId` is the computer the chat was started from. When it is given,
+ * that device joins the list as one more server; a chat without one gets no
+ * computer at all, so an agent can never reach a machine the user did not start
+ * the chat on.
  */
-export async function loadUserMcpServers(userId: string): Promise<UserMcpServers> {
+export async function loadUserMcpServers(
+  userId: string,
+  clientDeviceId?: string | null,
+): Promise<UserMcpServers> {
   const servers = await prisma.mcpServer.findMany({
     where: { userId, enabled: true },
     orderBy: { createdAt: "asc" },
@@ -115,7 +128,25 @@ export async function loadUserMcpServers(userId: string): Promise<UserMcpServers
     });
   }
 
-  return { entries, policies, oauthServers };
+  // The chat's own computer. Its name is derived from the device, and Pi treats
+  // `-` and `_` as the same character, so a clash with a stored server would
+  // make two servers one. The stored server keeps the name it already has.
+  const device = await loadDeviceMcpServers(userId, clientDeviceId);
+  let deviceEntry: { id: string; name: string } | null = null;
+  for (const entry of device.entries) {
+    const key = mcpNameKey(entry.name);
+    if (entries.some((existing) => mcpNameKey(existing.name) === key)) {
+      console.error(
+        `The device "${entry.name}" is named like a configured MCP server, so it is not connected.`,
+      );
+      continue;
+    }
+    entries.push(entry);
+    Object.assign(policies, device.policies);
+    deviceEntry = device.device;
+  }
+
+  return { entries, policies, oauthServers, device: deviceEntry };
 }
 
 /** Where a user's MCP server log messages are appended. */
@@ -154,6 +185,11 @@ function createUserMcpTransport(servers: Map<string, McpOAuthServer>): McpTransp
       throw new Error(`MCP server "${entry.name}" must be configured with a URL`);
     }
 
+    // A paired computer: its messages travel over the channel the agent holds
+    // open, not over HTTP (see lib/devices/transport.ts).
+    const deviceId = deviceIdFromUrl(config.url);
+    if (deviceId) return new DeviceTransport(deviceId);
+
     const hasAuthorization = Object.keys(config.headers ?? {}).some(
       (header) => header.toLowerCase() === "authorization",
     );
@@ -171,6 +207,8 @@ function createUserMcpTransport(servers: Map<string, McpOAuthServer>): McpTransp
 export interface UserMcpExtension {
   extension: ExtensionFactory;
   policies: Record<string, McpToolPolicy>;
+  /** The chat's own computer, for the gate that keeps it to that machine. */
+  device: { id: string; name: string } | null;
 }
 
 /**
@@ -181,8 +219,14 @@ export interface UserMcpExtension {
  * change therefore needs the pooled session to be rebuilt (see
  * `evictUserSessions` in `lib/pi/agent-pool.ts`).
  */
-export async function createUserMcpExtension(userId: string): Promise<UserMcpExtension | null> {
-  const { entries, policies, oauthServers } = await loadUserMcpServers(userId);
+export async function createUserMcpExtension(
+  userId: string,
+  clientDeviceId?: string | null,
+): Promise<UserMcpExtension | null> {
+  const { entries, policies, oauthServers, device } = await loadUserMcpServers(
+    userId,
+    clientDeviceId,
+  );
   if (entries.length === 0) return null;
 
   const logPath = await getMcpLogPath(userId);
@@ -205,5 +249,5 @@ export async function createUserMcpExtension(userId: string): Promise<UserMcpExt
     },
   });
 
-  return { extension, policies };
+  return { extension, policies, device };
 }

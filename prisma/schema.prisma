@@ -13,50 +13,53 @@ datasource db {
 // ─── Better Auth models ────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
+  id                       String                    @id @default(cuid())
+  name                     String?
   // Login handle — better-auth username plugin (lowercase, unique, nullable
   // only for rows that predate it).
-  username      String?   @unique
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  image         String?
+  username                 String?                   @unique
+  email                    String                    @unique
+  emailVerified            Boolean                   @default(false)
+  image                    String?
   // Admin plugin fields
-  role          String    @default("user")
-  banned        Boolean   @default(false)
-  banReason     String?   @db.Text
-  banExpires    DateTime?
+  role                     String                    @default("user")
+  banned                   Boolean                   @default(false)
+  banReason                String?                   @db.Text
+  banExpires               DateTime?
   // Two-factor plugin field
-  twoFactorEnabled Boolean @default(false)
-  accounts      Account[]
-  sessions      Session[]
-  chatSessions  ChatSession[]
-  emailAccounts    EmailAccount[]
-  contacts         Contact[]
-  calendarAccounts CalendarAccount[]
-  queueTasks       QueueTask[]
-  settings      AppSettings?
-  providerApiKeys ProviderApiKey[] // user-scoped keys
-  tasks              Task[]
-  agentDefinitions   AgentDefinition[]
-  scriptWatchers     ScriptWatcher[]
-  telegramLink       TelegramLink?
-  telegramChats      TelegramChat[]
+  twoFactorEnabled         Boolean                   @default(false)
+  accounts                 Account[]
+  sessions                 Session[]
+  chatSessions             ChatSession[]
+  emailAccounts            EmailAccount[]
+  contacts                 Contact[]
+  calendarAccounts         CalendarAccount[]
+  queueTasks               QueueTask[]
+  settings                 AppSettings?
+  providerApiKeys          ProviderApiKey[] // user-scoped keys
+  tasks                    Task[]
+  agentDefinitions         AgentDefinition[]
+  scriptWatchers           ScriptWatcher[]
+  telegramLink             TelegramLink?
+  telegramChats            TelegramChat[]
   telegramOutboundMessages TelegramOutboundMessage[]
-  telegramLinkCodes  TelegramLinkCode[]
-  sandboxEnvVars     SandboxEnvVar[]
-  infraMachines      InfraMachine[]
-  mcpServers         McpServer[]
-  mcpOAuthCredentials McpOAuthCredential[]
-  councils           Council[]
-  coderProjects      CoderProject[]
-  prompts            Prompt[]
-  pushSubscriptions  PushSubscription[]
-  createdAt          DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  telegramLinkCodes        TelegramLinkCode[]
+  sandboxEnvVars           SandboxEnvVar[]
+  infraMachines            InfraMachine[]
+  mcpServers               McpServer[]
+  devices                  Device[]
+  devicePairCodes          DevicePairCode[]
+  mcpOAuthCredentials      McpOAuthCredential[]
+  councils                 Council[]
+  coderProjects            CoderProject[]
+  prompts                  Prompt[]
+  pushSubscriptions        PushSubscription[]
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
 
-  twoFactors    TwoFactor[]
-  avatar        UserAvatar?
+  twoFactors  TwoFactor[]
+  avatar      UserAvatar?
+  deviceCalls DeviceCall[]
 
   @@map("user")
 }
@@ -79,14 +82,14 @@ model UserAvatar {
 // better-auth two-factor plugin (TOTP) — managed via the plugin, never
 // write secrets/backup codes directly.
 model TwoFactor {
-  id                    String    @id @default(cuid())
-  userId                String
-  secret                String
-  backupCodes           String
-  verified              Boolean   @default(true)
-  failedVerificationCount Int     @default(0)
-  lockedUntil           DateTime?
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                      String    @id @default(cuid())
+  userId                  String
+  secret                  String
+  backupCodes             String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([secret])
@@ -94,17 +97,17 @@ model TwoFactor {
 }
 
 model Account {
-  id                    String  @id @default(cuid())
+  id                    String    @id @default(cuid())
   userId                String
   accountId             String
   providerId            String
-  accessToken           String? @db.Text
-  refreshToken          String? @db.Text
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
-  scope                 String? @db.Text
-  idToken               String? @db.Text
-  password              String? @db.Text
+  scope                 String?   @db.Text
+  idToken               String?   @db.Text
+  password              String?   @db.Text
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -146,54 +149,54 @@ model Verification {
 // ─── Chat ──────────────────────────────────────────────────────
 
 model ChatSession {
-  id               String        @id @default(cuid())
-  userId           String
-  title            String   @db.VarChar(50)
+  id                  String          @id @default(cuid())
+  userId              String
+  title               String          @db.VarChar(50)
   /// Where the title came from: "default" (no message yet), "auto" (read off
   /// the first message), "ai" (title job) or "user" (renamed or named on
   /// creation). The title job only retitles default and auto.
-  titleSource      String        @default("default")
-  temporary        Boolean       @default(false) // auto-deleted when user navigates away
+  titleSource         String          @default("default")
+  temporary           Boolean         @default(false) // auto-deleted when user navigates away
   /// Sticks the chat to the top of the chat list, above the recency groups.
-  pinned           Boolean       @default(false)
-  modelProvider    String?
-  modelName        String?
-  thinkingLevel    String        @default("off")
-  toolConfig       Json?         // { terminal: true, email: true, jobs: true, chatSearch: true, memory: true, web: true }
-  messageCount     Int           @default(0)
-  lastSummarizedAt DateTime?     // cursor — only process messages after this for memory extraction
-  memorySummary    String?       @db.Text // compressed running summary of the conversation
+  pinned              Boolean         @default(false)
+  modelProvider       String?
+  modelName           String?
+  thinkingLevel       String          @default("off")
+  toolConfig          Json? // { terminal: true, email: true, jobs: true, chatSearch: true, memory: true, web: true }
+  messageCount        Int             @default(0)
+  lastSummarizedAt    DateTime? // cursor — only process messages after this for memory extraction
+  memorySummary       String?         @db.Text // compressed running summary of the conversation
   // In-progress tool state (for SSE reconnection — shows what's running when user refreshes mid-tool)
-  activeToolCallId String?       @db.VarChar(100)
-  activeToolName   String?       @db.VarChar(200)
-  activeToolArgs   Json?
+  activeToolCallId    String?         @db.VarChar(100)
+  activeToolName      String?         @db.VarChar(200)
+  activeToolArgs      Json?
   activeToolStartedAt DateTime?
   // Sharing
-  shared           Boolean       @default(false) // owner has enabled sharing
-  shareToken       String?       @unique          // random 32-char token for /share/[token]
-  sourceShareToken String?                          // shareToken this session was copied from (idempotency guard)
-  messages         ChatMessage[]
-  scriptWatchers   ScriptWatcher[]
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  shared              Boolean         @default(false) // owner has enabled sharing
+  shareToken          String?         @unique // random 32-char token for /share/[token]
+  sourceShareToken    String? // shareToken this session was copied from (idempotency guard)
+  messages            ChatMessage[]
+  scriptWatchers      ScriptWatcher[]
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
   // Bumped ONLY on real chat activity (message sent/saved, title edited).
   // Sort/display timestamps in the UI use this — NOT updatedAt, which is
   // touched by tool state, background jobs (memory extraction, title
   // generation), etc. and would make every chat look "active today".
-  lastActivityAt    DateTime      @default(now())
+  lastActivityAt      DateTime        @default(now())
   /// Set for a coder chat: the project it works in. null is a normal chat.
-  projectId        String?
-  coderWorktree    CoderWorktree?
-  project          CoderProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId           String?
+  coderWorktree       CoderWorktree?
+  project             CoderProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// "user" | "watcher". A chat a watcher fire opened is an ordinary coder chat
   /// everywhere else; this is what lets it be badged and later cleaned up.
-  origin           String        @default("user")
+  origin              String          @default("user")
   /// The watcher that opened it.
-  originId         String?
+  originId            String?
   /// Branch its worktree is checked out on. Null derives one from the chat id;
   /// a watcher sets it so the branch names the watcher that made it.
-  worktreeBranch   String?
+  worktreeBranch      String?
 
   @@index([userId, createdAt])
   @@index([projectId, lastActivityAt])
@@ -209,29 +212,29 @@ model ChatSession {
 // Both paths are workspace-relative, so a chat is never tied to a mount point.
 
 model CoderProject {
-  id            String   @id @default(cuid())
-  userId        String
-  name          String   @db.VarChar(100)
-  slug          String   @db.VarChar(100)
+  id             String          @id @default(cuid())
+  userId         String
+  name           String          @db.VarChar(100)
+  slug           String          @db.VarChar(100)
   /// Workspace-relative repo dir, e.g. "projects/saale-web".
-  repoPath      String
-  originUrl     String?
-  defaultBranch String   @default("main")
+  repoPath       String
+  originUrl      String?
+  defaultBranch  String          @default("main")
   /// Files every worktree gets: [{ path, content }]. Worktrees are separate
   /// checkouts, so an untracked .env in the repo never reaches them.
-  envFiles      Json?
+  envFiles       Json?
   /// Command run in a worktree once it exists, e.g. "npm install".
-  setupScript   String?
+  setupScript    String?
   /// "worktree" gives every chat a checkout of its own; "repo" runs them all
   /// in the project's checkout.
-  chatMode      String    @default("worktree")
+  chatMode       String          @default("worktree")
   /// When the shared checkout last ran the setup script, null until it has.
-  repoSetupAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chats         ChatSession[]
-  worktrees     CoderWorktree[]
+  repoSetupAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chats          ChatSession[]
+  worktrees      CoderWorktree[]
   scriptWatchers ScriptWatcher[]
 
   @@unique([userId, slug])
@@ -242,17 +245,17 @@ model CoderProject {
 /// One worktree, one coder chat. The row holds the path so cleanup can retry
 /// after a directory and the registry disagree.
 model CoderWorktree {
-  id        String    @id @default(cuid())
+  id        String       @id @default(cuid())
   projectId String
-  sessionId String    @unique
+  sessionId String       @unique
   /// Workspace-relative, e.g. "worktrees/saale-web/c-1a2b3c4d".
   path      String
   branch    String
   /// Commit the branch started from, for the ahead count.
   baseSha   String
-  status    String    @default("active") // "active" | "removed"
+  status    String       @default("active") // "active" | "removed"
   removedAt DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime     @default(now())
   project   CoderProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   session   ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -268,13 +271,17 @@ model ChatMessage {
   thinking        String?          @db.Text // thinking/reasoning content for assistant turns
   toolCalls       String?          @db.Text // JSON array of tool calls
   errorMessage    String?          @db.Text // provider error when the turn failed (stopReason "error")
-  parentMessageId String?          // links turns to the root assistant message
+  parentMessageId String? // links turns to the root assistant message
   createdAt       DateTime         @default(now())
   editedAt        DateTime?
   /// Set while the message waits in the session's send queue (a generation
   /// was already running). Cleared when it is handed to the agent, which is
   /// also what moves it from the queue strip into the conversation.
   queuedAt        DateTime?
+  /// The computer this message was sent from, when the client claimed one. The
+  /// newest user message decides which machine the agent may reach, so a message
+  /// from anywhere else takes that away.
+  clientDeviceId  String?
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 
@@ -289,12 +296,12 @@ model ChatAttachment {
   id          String      @id @default(cuid())
   messageId   String
   storageId   String      @unique // public ID for URL serving (no user leakage)
-  fileName    String      // original file name
-  mimeType    String      // original MIME type (e.g. "image/png")
-  size        Int         // original byte size
+  fileName    String // original file name
+  mimeType    String // original MIME type (e.g. "image/png")
+  size        Int // original byte size
   width       Int?
   height      Int?
-  storagePath String      // path relative to user workspace (e.g. "images/abc.webp")
+  storagePath String // path relative to user workspace (e.g. "images/abc.webp")
   createdAt   DateTime    @default(now())
   message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
@@ -306,16 +313,16 @@ model ChatAttachment {
 
 /// Persistent memories extracted from chat history by the AI.
 model Memory {
-  id           String   @id @default(cuid())
-  userId       String
-  collection   String   // "facts" | "projects" | "people" | "preferences" | "decisions"
-  title        String
-  content      String   @db.Text
-  tags         String[] @default([])
-  source       String?  // ChatSession.id this memory came from
-  accessCount  Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  collection  String // "facts" | "projects" | "people" | "preferences" | "decisions"
+  title       String
+  content     String   @db.Text
+  tags        String[] @default([])
+  source      String? // ChatSession.id this memory came from
+  accessCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([userId, collection])
   @@index([userId, tags])
@@ -348,54 +355,54 @@ model Prompt {
 // ─── Email ─────────────────────────────────────────────────────
 
 model EmailAccount {
-  id                 String         @id @default(cuid())
-  userId             String
-  email              String
-  imapHost           String
-  imapPort           Int
-  imapSecure         Boolean        @default(true)
-  smtpHost           String
-  smtpPort           Int
-  smtpSecure         Boolean        @default(true)
-  encryptedPassword  String         @db.Text
-  enabled            Boolean        @default(true)
-  lastSyncedAt       DateTime?
-  lastSyncError      String?        // Why the last sync attempt failed, if it did
-  lastSyncErrorAt    DateTime?
-  cachedFolders      Json?          // Array of folder names discovered from IMAP
-  specialFolders     Json?          // { "\\Trash": "Trash", "\\Sent": "Sent", ... }
-  messages           EmailMessage[]
-  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  id                String         @id @default(cuid())
+  userId            String
+  email             String
+  imapHost          String
+  imapPort          Int
+  imapSecure        Boolean        @default(true)
+  smtpHost          String
+  smtpPort          Int
+  smtpSecure        Boolean        @default(true)
+  encryptedPassword String         @db.Text
+  enabled           Boolean        @default(true)
+  lastSyncedAt      DateTime?
+  lastSyncError     String? // Why the last sync attempt failed, if it did
+  lastSyncErrorAt   DateTime?
+  cachedFolders     Json? // Array of folder names discovered from IMAP
+  specialFolders    Json? // { "\\Trash": "Trash", "\\Sent": "Sent", ... }
+  messages          EmailMessage[]
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   @@unique([userId, email])
   @@map("EmailAccount")
 }
 
 model EmailMessage {
-  id          String       @id @default(cuid())
-  accountId   String
-  uid         String // IMAP UID
-  fromName    String?
-  fromEmail   String
-  to          String       @db.Text // JSON array
-  subject     String
-  date        DateTime
-  bodyPreview String?     @db.Text
-  bodyHtml    String?     @db.Text
-  bodyText    String?     @db.Text
-  isRead      Boolean     @default(false)
-  isStarred   Boolean     @default(false)
-  folder      String      @default("INBOX")
-  tags        String[]    @default([])
-  aiSummary   String?     @db.Text
-  classified      Boolean     @default(false) // has the classification job processed this email?
-  calendarScanned Boolean     @default(false) // has the email-to-calendar job processed this email?
-  taskScanned     Boolean     @default(false) // has the task extraction job processed this email?
-  spamScore     Float?
-  account     EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt   DateTime    @default(now())
+  id              String       @id @default(cuid())
+  accountId       String
+  uid             String // IMAP UID
+  fromName        String?
+  fromEmail       String
+  to              String       @db.Text // JSON array
+  subject         String
+  date            DateTime
+  bodyPreview     String?      @db.Text
+  bodyHtml        String?      @db.Text
+  bodyText        String?      @db.Text
+  isRead          Boolean      @default(false)
+  isStarred       Boolean      @default(false)
+  folder          String       @default("INBOX")
+  tags            String[]     @default([])
+  aiSummary       String?      @db.Text
+  classified      Boolean      @default(false) // has the classification job processed this email?
+  calendarScanned Boolean      @default(false) // has the email-to-calendar job processed this email?
+  taskScanned     Boolean      @default(false) // has the task extraction job processed this email?
+  spamScore       Float?
+  account         EmailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
 
   // IMAP UIDs are unique per mailbox, not per account — INBOX and Sent both
   // start at 1, so the folder has to be part of the key.
@@ -412,7 +419,7 @@ model EmailMessage {
 model Contact {
   id         String    @id @default(cuid())
   userId     String
-  name       String    // Display name; for auto-learned rows the email's local part
+  name       String // Display name; for auto-learned rows the email's local part
   email      String
   company    String?
   notes      String?   @db.Text
@@ -429,19 +436,19 @@ model Contact {
 // ─── Queue Tasks ───────────────────────────────────────────────
 
 model QueueTask {
-  id             String    @id @default(cuid())
-  userId         String
-  name           String?   // User-defined name
-  type           String    // "summarization" | "classification" | "spam_filtering" | "email_sync"
-  enabled        Boolean   @default(true)
-  modelId        String?   // Per-job AI model selection
-  config         String    @default("{}") @db.Text // JSON: cronExpression, retryPolicy, etc.
-  lastRunAt      DateTime?
-  runCount       Int       @default(0)
-  runs           TaskRun[]
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  userId    String
+  name      String? // User-defined name
+  type      String // "summarization" | "classification" | "spam_filtering" | "email_sync"
+  enabled   Boolean   @default(true)
+  modelId   String? // Per-job AI model selection
+  config    String    @default("{}") @db.Text // JSON: cronExpression, retryPolicy, etc.
+  lastRunAt DateTime?
+  runCount  Int       @default(0)
+  runs      TaskRun[]
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([userId, type])
   @@map("QueueTask")
@@ -467,10 +474,10 @@ model TaskRun {
 
 /// Global admin configuration — one row only.
 model AdminSettings {
-  id                     String   @id @default("global")
-  signupsEnabled         Boolean  @default(true)
-  globalModelProvider    String   @default("")
-  globalModelName        String   @default("")
+  id                   String   @id @default("global")
+  signupsEnabled       Boolean  @default(true)
+  globalModelProvider  String   @default("")
+  globalModelName      String   @default("")
   /// Per-provider availability, keyed by provider id:
   ///   { "anthropic": { "enabled": false } }                      — provider off
   ///   { "openai": { "enabled": true, "models": ["gpt-5"] } }     — allowlist
@@ -478,30 +485,30 @@ model AdminSettings {
   /// An empty `models` list means the same as no list: the admin's provider
   /// switch (`enabled`) is what turns a provider off, so saving a list without
   /// touching a provider cannot switch it off by accident.
-  globalProviderModels   Json?
+  globalProviderModels Json?
   /// Feature switches for regular accounts that have no override of their own:
   /// { "council": true }. Sparse — absent keys keep the built-in default.
-  featureDefaults        Json?
+  featureDefaults      Json?
   /// Directory scanned for global Pi plugins. Empty falls back to
   /// PI_GLOBAL_PLUGINS_DIR, then <uploads>/pi_plugins.
-  piPluginsDir           String   @default("")
+  piPluginsDir         String   @default("")
   /// Loads the plugins in `piPluginsDir` into every session.
-  piPluginsEnabled       Boolean  @default(false)
+  piPluginsEnabled     Boolean  @default(false)
   /// Lets plugins open dialogs in the chat (Pi's `ctx.ui`). On, a plugin that
   /// asks something waits for the answer; off, it is told "not available" at
   /// once, which is only what an admin who wants no interruptions picks.
-  piPluginsUi            Boolean  @default(true)
+  piPluginsUi          Boolean  @default(true)
   /// Per-plugin switches, keyed by directory name:
   ///   { "my-plugin": { "enabled": false } }
-  piPluginStates         Json?
+  piPluginStates       Json?
   /// Branding colours, sparse per mode:
   ///   { "light": { "primary": "#2563eb" }, "dark": { "primary": "#3b82f6" } }
   /// A token that is absent keeps the palette in globals.css.
-  themeColors            Json?
+  themeColors          Json?
   /// File name of the uploaded agent avatar under <uploads>/branding. Empty
   /// means the built-in mark is drawn instead.
-  brandingAvatar         String   @default("")
-  updatedAt              DateTime @updatedAt
+  brandingAvatar       String   @default("")
+  updatedAt            DateTime @updatedAt
 
   @@map("admin_settings")
 }
@@ -532,32 +539,32 @@ model Role {
 // ─── App Settings ──────────────────────────────────────────────
 
 model AppSettings {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  defaultModelProvider String   @default("")
-  defaultModelName     String   @default("")
-  defaultThinkingLevel String   @default("default") // "default" = leave the level to Pi
-  theme                String   @default("system") // "dark" | "light" | "system"
-  compactActivity      Boolean  @default(true) // Collapse a turn's reasoning and tool calls into one compact line instead of a card per step
-  agentCustomInstructions String?  @db.Text // User-defined custom instructions appended to the default system prompt
-  emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
+  id                      String  @id @default(cuid())
+  userId                  String  @unique
+  defaultModelProvider    String  @default("")
+  defaultModelName        String  @default("")
+  defaultThinkingLevel    String  @default("default") // "default" = leave the level to Pi
+  theme                   String  @default("system") // "dark" | "light" | "system"
+  compactActivity         Boolean @default(true) // Collapse a turn's reasoning and tool calls into one compact line instead of a card per step
+  agentCustomInstructions String? @db.Text // User-defined custom instructions appended to the default system prompt
+  emailWritingStyle       String? @db.Text // User-defined writing style for email reply drafts
   coderCustomInstructions String? @db.Text // Custom instructions for coder chats, in place of agentCustomInstructions
-  purposeModelOverrides  Json?                  // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
-  disabledModels       Json?                  // Array of "provider:modelId" strings for models the user has disabled
-  defaultToolConfig    Json?                  // Default tool config for new chat sessions: { "files": true, "email": true, ... }
-  coderToolConfig      Json?                  // Default tool config for new coder chats, sparse against CODER_TOOL_DEFAULTS
-  toolPolicies         Json?                  // Per-tool approval policies: { "bash": "ask", "mail_send": "off", ... }
-  toolExposure         Json?                  // Per-category how tools reach the model: { "email": "codemode", "jobs": "deferred" }. Sparse — absent = "direct".
-  sidebarItems         Json?                  // Sidebar layout, in display order: [{ "id": "chat", "hidden": false }, ...]. null = default order, everything visible
+  purposeModelOverrides   Json? // Per-purpose model overrides: { "email_draft": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" } }
+  disabledModels          Json? // Array of "provider:modelId" strings for models the user has disabled
+  defaultToolConfig       Json? // Default tool config for new chat sessions: { "files": true, "email": true, ... }
+  coderToolConfig         Json? // Default tool config for new coder chats, sparse against CODER_TOOL_DEFAULTS
+  toolPolicies            Json? // Per-tool approval policies: { "bash": "ask", "mail_send": "off", ... }
+  toolExposure            Json? // Per-category how tools reach the model: { "email": "codemode", "jobs": "deferred" }. Sparse — absent = "direct".
+  sidebarItems            Json? // Sidebar layout, in display order: [{ "id": "chat", "hidden": false }, ...]. null = default order, everything visible
   /// This account's feature switches (sparse): { "mail": false }. Absent keys
   /// follow the instance defaults.
-  features              Json?
+  features                Json?
   /// Which push notifications are wanted (sparse): { "chatDone": false }.
   /// Absent keys follow the defaults in `src/lib/notifications/preferences.ts`.
-  pushNotifications     Json?
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushNotifications       Json?
+  user                    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  updatedAt            DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("AppSettings")
 }
@@ -592,30 +599,30 @@ model PushSubscription {
 
 /// API keys for model providers. null userId = global (admin-managed), non-null = user-scoped.
 model ProviderApiKey {
-  id             String   @id @default(cuid())
-  userId         String?  // null = global provider, non-null = user-specific
-  provider       String   // "anthropic" | "openai" | "google" | "custom" | ...
-  encryptedKey   String   @db.Text
+  id                  String   @id @default(cuid())
+  userId              String? // null = global provider, non-null = user-specific
+  provider            String // "anthropic" | "openai" | "google" | "custom" | ...
+  encryptedKey        String   @db.Text
   /// Encrypted Pi credential — `ApiKeyCredential` ({ key, env }) or
   /// `OAuthCredential` (tokens) — for a provider whose auth flow Pi owns.
   /// `encryptedKey` holds the key of an OpenAI-compatible endpoint only.
-  encryptedCredential String? @db.Text
-  label          String   @default("") // optional label
-  baseUrl        String?  // for custom OpenAI-compatible providers
+  encryptedCredential String?  @db.Text
+  label               String   @default("") // optional label
+  baseUrl             String? // for custom OpenAI-compatible providers
   /// Output token cap for every model this endpoint serves: a model that sets
   /// its own in `modelCapabilities` overrides it, null = Pi's model default.
-  maxOutputTokens Int?
+  maxOutputTokens     Int?
   /// Context window for every model this endpoint serves: a model that sets
   /// its own in `modelCapabilities` overrides it, null = Pi's model default.
-  contextWindow   Int?
+  contextWindow       Int?
   /// Per-model settings (detected, or set by the user) for a provider whose
   /// models Saale discovers from `/models`: { "<modelId>": { "vision": true,
   /// "contextWindow": 32768, "maxOutputTokens": 8192 } }. A field a model leaves
   /// out inherits the row's default, then Pi's catalog, then Pi.
-  modelCapabilities Json?
-  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  modelCapabilities   Json?
+  user                User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@unique([userId, provider])
   @@index([userId])
@@ -628,10 +635,10 @@ model ProviderApiKey {
 model CalendarAccount {
   id                   String     @id @default(cuid())
   userId               String
-  name                 String     // User-friendly label (e.g. "Google Work", "iCloud Personal", "Local")
+  name                 String // User-friendly label (e.g. "Google Work", "iCloud Personal", "Local")
   accountType          String     @default("caldav") // "caldav" | "local"
   // CalDAV fields (nullable for local accounts)
-  serverUrl            String?    // e.g. "https://caldav.icloud.com"
+  serverUrl            String? // e.g. "https://caldav.icloud.com"
   username             String?    @default("")
   encryptedPassword    String?    @db.Text // App password or token secret
   authMethod           String     @default("basic") // "basic" | "oauth" | "bearer"
@@ -654,22 +661,22 @@ model CalendarAccount {
 }
 
 model Calendar {
-  id               String         @id @default(cuid())
-  accountId        String
-  remoteId         String?        // Remote calendar identifier (URL or ID from CalDAV server)
-  name             String         // Display name from server
-  color            String?        // Calendar color (hex, from server or user override)
-  description      String?        @db.Text
-  readOnly         Boolean        @default(false)
-  enabled          Boolean        @default(true)
-  lastSyncedAt     DateTime?
-  ctag             String?        // Calendar CTAG for sync detection
-  syncToken        String?        // Sync-token for incremental sync (RFC 6638)
-  events           CalendarEvent[]
-  subscriptions    CalendarSubscription[]
-  account          CalendarAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id            String                 @id @default(cuid())
+  accountId     String
+  remoteId      String? // Remote calendar identifier (URL or ID from CalDAV server)
+  name          String // Display name from server
+  color         String? // Calendar color (hex, from server or user override)
+  description   String?                @db.Text
+  readOnly      Boolean                @default(false)
+  enabled       Boolean                @default(true)
+  lastSyncedAt  DateTime?
+  ctag          String? // Calendar CTAG for sync detection
+  syncToken     String? // Sync-token for incremental sync (RFC 6638)
+  events        CalendarEvent[]
+  subscriptions CalendarSubscription[]
+  account       CalendarAccount        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   @@unique([accountId, remoteId])
   @@index([accountId])
@@ -677,44 +684,44 @@ model Calendar {
 }
 
 model CalendarEvent {
-  id               String     @id @default(cuid())
-  calendarId       String
-  uid              String     // iCalendar UID (unique across calendars)
-  summary          String     @default("(no title)")
-  description      String?    @db.Text
-  location         String?
-  url              String?
-  status           String?    // "CONFIRMED" | "TENTATIVE" | "CANCELLED"
-  transparency     String?    // "OPAQUE" | "TRANSPARENT" (free/busy)
-  sequence         Int        @default(0) // iCalendar SEQUENCE for conflict detection
+  id           String  @id @default(cuid())
+  calendarId   String
+  uid          String // iCalendar UID (unique across calendars)
+  summary      String  @default("(no title)")
+  description  String? @db.Text
+  location     String?
+  url          String?
+  status       String? // "CONFIRMED" | "TENTATIVE" | "CANCELLED"
+  transparency String? // "OPAQUE" | "TRANSPARENT" (free/busy)
+  sequence     Int     @default(0) // iCalendar SEQUENCE for conflict detection
 
   // Dates
-  dtStart          DateTime   // Start datetime (or all-day date)
-  dtEnd            DateTime?  // End datetime (null for all-day, computed from duration)
-  allDay           Boolean    @default(false)
-  timeZone         String?    // Timezone identifier (e.g. "Europe/Berlin")
+  dtStart  DateTime // Start datetime (or all-day date)
+  dtEnd    DateTime? // End datetime (null for all-day, computed from duration)
+  allDay   Boolean   @default(false)
+  timeZone String? // Timezone identifier (e.g. "Europe/Berlin")
 
   // Recurrence
-  recurrenceRule   String?    @db.Text // RRULE string
-  recurrenceDateIds String[]  @default([]) // RDATE UIDs for expanded instances
-  exceptionDateIds String[]   @default([]) // EXDATE UIDs
+  recurrenceRule    String?  @db.Text // RRULE string
+  recurrenceDateIds String[] @default([]) // RDATE UIDs for expanded instances
+  exceptionDateIds  String[] @default([]) // EXDATE UIDs
 
   // Alerts
-  alerts           String?    @db.Text // JSON array of { triggerMinutes, action }
+  alerts     String?   @db.Text // JSON array of { triggerMinutes, action }
   /// When this event's reminder was pushed, so the sweep sends it once.
-  remindedAt       DateTime?
+  remindedAt DateTime?
 
   // Origin tracking
-  source           String     @default("manual") // "manual" | "caldav" | "email_extraction" | "ics_import"
-  sourceEmailId    String?    // Link back to EmailMessage if created by email extraction
+  source        String  @default("manual") // "manual" | "caldav" | "email_extraction" | "ics_import"
+  sourceEmailId String? // Link back to EmailMessage if created by email extraction
 
   // Sync metadata
-  etag             String?    // Entity tag for change detection
-  lastModified     DateTime?
+  etag         String? // Entity tag for change detection
+  lastModified DateTime?
 
-  calendar         Calendar   @relation(fields: [calendarId], references: [id], onDelete: Cascade)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  calendar  Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([calendarId, uid])
   @@index([calendarId, dtStart])
@@ -724,19 +731,19 @@ model CalendarEvent {
 
 // Remote ICS URL subscriptions (read-only feeds synced into local calendars)
 model CalendarSubscription {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   calendarId   String
-  name         String   // Display name for the subscription
-  url          String   // Remote ICS URL
-  username     String?  // Optional auth
-  password     String?  @db.Text // Optional auth
-  etag         String?  // Last ETag for conditional fetch
-  enabled      Boolean  @default(true)
+  name         String // Display name for the subscription
+  url          String // Remote ICS URL
+  username     String? // Optional auth
+  password     String?   @db.Text // Optional auth
+  etag         String? // Last ETag for conditional fetch
+  enabled      Boolean   @default(true)
   lastSyncedAt DateTime?
-  calendar     Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  calendar     Calendar  @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([calendarId, url])
   @@index([userId])
@@ -752,18 +759,18 @@ model Task {
   title         String
   description   String?   @db.Text
   status        String    @default("pending") // "pending" | "completed"
-  priority      String    @default("medium")  // "low" | "medium" | "high"
+  priority      String    @default("medium") // "low" | "medium" | "high"
   dueDate       DateTime? // Date-only — stored at midnight UTC
   tags          String[]  @default([])
-  order         Int       @default(0)          // Manual sort within groups
-  source        String    @default("manual")  // "manual" | "chat" | "email_extraction"
-  sourceEmailId String?   // EmailMessage.id — no FK (cross-model traceability)
+  order         Int       @default(0) // Manual sort within groups
+  source        String    @default("manual") // "manual" | "chat" | "email_extraction"
+  sourceEmailId String? // EmailMessage.id — no FK (cross-model traceability)
   completedAt   DateTime?
   notifiedAt    DateTime? // Last time a due-date notification was sent
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, dueDate])
   @@index([userId, status, priority])
@@ -774,25 +781,23 @@ model Task {
 
 /// User-defined agent job templates — prompt + tools → agent does the work.
 model AgentDefinition {
-  id            String     @id @default(cuid())
+  id            String  @id @default(cuid())
   userId        String
-  name          String     @db.VarChar(100)
-
-  @@unique([userId, name])
-  description   String?    @db.Text
+  name          String  @db.VarChar(100)
+  description   String? @db.Text
   /// The user prompt sent to the agent on each run.
-  prompt        String     @db.Text
+  prompt        String  @db.Text
   /// Optional system prompt override (defaults to a generic job-oriented prompt).
-  systemPrompt  String?    @db.Text
+  systemPrompt  String? @db.Text
   /// Which tool categories to expose: { email: true, calendar: true, jobs: true, ... }.
   toolConfig    Json?
   /// Per-definition model override ("provider:modelName").
   modelId       String?
   /// Thinking level for the model.
-  thinkingLevel String     @default("off")
+  thinkingLevel String  @default("off")
 
   /// Output channel for agent responses: "telegram", "discord", etc. (null = no external output)
-  outputChannel String?
+  outputChannel   String?
   /// Target identifier for the output channel (e.g., Telegram chat ID, Discord channel ID)
   outputChannelId String?
 
@@ -811,6 +816,7 @@ model AgentDefinition {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
+  @@unique([userId, name])
   @@index([userId, enabled])
   @@index([userId, cronExpression])
   @@index([userId, runAt])
@@ -819,31 +825,31 @@ model AgentDefinition {
 
 /// A single execution of an agent definition.
 model AgentRun {
-  id             String          @id @default(cuid())
-  definitionId   String
-  userId         String
-  status         String          @default("pending") // "pending" | "running" | "completed" | "error" | "cancelled"
+  id            String    @id @default(cuid())
+  definitionId  String
+  userId        String
+  status        String    @default("pending") // "pending" | "running" | "completed" | "error" | "cancelled"
   /// The prompt sent to the agent (snapshot of definition.prompt at run time).
-  prompt         String          @db.Text
+  prompt        String    @db.Text
   /// System prompt used (snapshot of definition.systemPrompt at run time).
-  systemPrompt   String?         @db.Text
+  systemPrompt  String?   @db.Text
   /// Model used for this run.
-  modelId        String?
+  modelId       String?
   /// Token usage.
-  inputTokens    Int             @default(0)
-  outputTokens   Int             @default(0)
+  inputTokens   Int       @default(0)
+  outputTokens  Int       @default(0)
   /// Estimated cost (from provider metadata).
-  cost           Float           @default(0)
+  cost          Float     @default(0)
   /// Error message if the run failed.
-  error          String?         @db.Text
+  error         String?   @db.Text
   /// Delivery failure for the run's configured output channel (e.g. Telegram
   /// has no chat to send to). Set when the run produced output it could not
   /// deliver — the run itself may still have completed successfully.
-  deliveryError  String?         @db.Text
+  deliveryError String?   @db.Text
   /// When the agent started processing.
-  startedAt      DateTime?
+  startedAt     DateTime?
   /// When the agent finished (success or error).
-  completedAt    DateTime?
+  completedAt   DateTime?
 
   /// Output channel for this run (inherited from definition, can be overridden)
   outputChannel   String?
@@ -851,11 +857,11 @@ model AgentRun {
   outputChannelId String?
 
   /// Link to the TelegramChat that originated this run (for Telegram-sourced runs)
-  telegramChatId  BigInt?
+  telegramChatId BigInt?
 
-  messages       AgentRunMessage[]
-  definition     AgentDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-  createdAt      DateTime        @default(now())
+  messages   AgentRunMessage[]
+  definition AgentDefinition   @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime          @default(now())
 
   @@index([definitionId, createdAt])
   @@index([userId, status])
@@ -865,15 +871,15 @@ model AgentRun {
 
 /// Messages within an agent run — mirrors ChatMessage for observability.
 model AgentRunMessage {
-  id              String      @id @default(cuid())
+  id              String   @id @default(cuid())
   runId           String
-  role            String      // "user" | "assistant"
-  content         String      @db.Text
-  thinking        String?     @db.Text // reasoning/thinking content
-  toolCalls       String?     @db.Text // JSON array of tool calls with results
-  parentMessageId String?     // links multi-turn responses to the root assistant message
-  run             AgentRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
-  createdAt       DateTime    @default(now())
+  role            String // "user" | "assistant"
+  content         String   @db.Text
+  thinking        String?  @db.Text // reasoning/thinking content
+  toolCalls       String?  @db.Text // JSON array of tool calls with results
+  parentMessageId String? // links multi-turn responses to the root assistant message
+  run             AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
 
   @@index([runId, createdAt])
   @@map("AgentRunMessage")
@@ -894,31 +900,31 @@ model ScriptWatcher {
   description String? @db.Text
 
   /// Script body, run in the codemode sandbox as an async function body.
-  script     String   @db.Text
+  script String @db.Text
 
   cronExpression String
   enabled        Boolean @default(true)
 
   /// "chat" | "silent" | "coder": where a fire goes.
-  deliver        String  @default("chat")
+  deliver          String  @default("chat")
   /// The conversation a `chat` fire is posted into, and the context its script
   /// runs in. Only a `chat` watcher has one, so only it goes with the chat.
-  sessionId      String?
+  sessionId        String?
   /// The project a `coder` fire dispatches into.
-  projectId      String?
+  projectId        String?
   /// "per-fire" | "sticky": a fresh worktree for every fire, or one the watcher
   /// keeps for a thread that runs across fires.
-  worktreeMode   String  @default("per-fire")
+  worktreeMode     String  @default("per-fire")
   /// How long a finished per-fire chat is kept, in minutes.
-  retentionMinutes Int   @default(1440)
+  retentionMinutes Int     @default(1440)
   /// The chat a sticky watcher keeps its work in.
-  stickySessionId String?
+  stickySessionId  String?
   /// Instructions handed to the agent when the watcher fires; the script's
   /// returned value is appended as JSON.
-  wakePrompt     String  @db.Text
+  wakePrompt       String  @db.Text
   /// Model for a standalone wake. A chat-bound wake is a turn in that
   /// conversation, so the conversation's own model governs instead.
-  modelId        String?
+  modelId          String?
 
   /// The script's `store()`, carried from one tick to the next.
   store Json @default("{}")
@@ -935,11 +941,11 @@ model ScriptWatcher {
   cooldownMinutes Int       @default(0)
 
   ticks     ScriptWatcherTick[]
-  session   ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  project   CoderProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  session   ChatSession?        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  project   CoderProject?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 
   @@unique([userId, name])
   @@index([userId, enabled])
@@ -952,17 +958,17 @@ model ScriptWatcher {
 /// looks exactly like nothing happening, so the recent ticks are what makes a
 /// broken script visible. Old rows are pruned (see `TICK_HISTORY_LIMIT`).
 model ScriptWatcherTick {
-  id        String @id @default(cuid())
-  watcherId String
+  id         String   @id @default(cuid())
+  watcherId  String
   /// "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error"
-  status    String
+  status     String
   /// The script's returned value, JSON-encoded.
-  value     String? @db.Text
-  error     String? @db.Text
+  value      String?  @db.Text
+  error      String?  @db.Text
   /// The script's `text()`/`console` output.
-  output    String? @db.Text
-  durationMs Int     @default(0)
-  callCount  Int     @default(0)
+  output     String?  @db.Text
+  durationMs Int      @default(0)
+  callCount  Int      @default(0)
   /// The tools the script called, so a tick says what delivered it.
   toolNames  String[] @default([])
   /// The chat this tick's fire was delivered into.
@@ -985,9 +991,9 @@ model TelegramBot {
   id              String         @id @default("global")
   encryptedToken  String         @db.Text // encrypted bot token
   enabled         Boolean        @default(true)
-  botId           BigInt?        // numeric bot ID from getMe
-  botUsername     String?        // @username (without @)
-  webhookSecret   String         // random secret for webhook verification
+  botId           BigInt? // numeric bot ID from getMe
+  botUsername     String? // @username (without @)
+  webhookSecret   String // random secret for webhook verification
   /// Admin who last saved this configuration (audit trail).
   updatedByUserId String?
   links           TelegramLink[]
@@ -1008,19 +1014,19 @@ model TelegramBot {
 /// A private chat's ID equals its user's ID; `telegramChatId` is stored
 /// explicitly because that is the value messages are sent to.
 model TelegramLink {
-  id             String      @id @default(cuid())
-  botId          String
-  userId         String      @unique
-  telegramUserId BigInt      @unique
-  telegramChatId BigInt
-  displayName    String?
+  id              String      @id @default(cuid())
+  botId           String
+  userId          String      @unique
+  telegramUserId  BigInt      @unique
+  telegramChatId  BigInt
+  displayName     String?
   /// The chat this Telegram conversation is in. Set by a routed message and by
   /// `/new`, so a message that answers nothing continues the same conversation.
   activeSessionId String?
-  bot            TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  bot             TelegramBot @relation(fields: [botId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([botId])
   @@index([activeSessionId])
@@ -1122,20 +1128,20 @@ model SandboxEnvVar {
 
 /// Remote machines the agent can SSH into and manage.
 model InfraMachine {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   userId        String
-  name          String       @db.VarChar(100) // User-friendly label
-  host          String       // hostname or IP
-  port          Int          @default(22)
+  name          String      @db.VarChar(100) // User-friendly label
+  host          String // hostname or IP
+  port          Int         @default(22)
   username      String
-  authMethod    String       @default("key") // "key" | "password"
-  encryptedKey  String?      @db.Text         // SSH private key (PEM)
-  encryptedPass String?      @db.Text         // Password (if authMethod="password")
-  passPhrase    String?      @db.Text         // Key passphrase (encrypted)
+  authMethod    String      @default("key") // "key" | "password"
+  encryptedKey  String?     @db.Text // SSH private key (PEM)
+  encryptedPass String?     @db.Text // Password (if authMethod="password")
+  passPhrase    String?     @db.Text // Key passphrase (encrypted)
   notes         InfraNote[]
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@unique([userId, name])
   @@index([userId])
@@ -1147,23 +1153,23 @@ model InfraMachine {
 /// Model Context Protocol servers the agent connects to for this user.
 /// Only streamable HTTP endpoints are stored — see src/lib/mcp/servers.ts.
 model McpServer {
-  id             String   @id @default(cuid())
-  userId         String
+  id              String              @id @default(cuid())
+  userId          String
   /// Server name; names the tools it contributes (`mcp__<name>__<tool>`).
-  name           String   @db.VarChar(64)
+  name            String              @db.VarChar(64)
   /// Streamable HTTP endpoint, e.g. https://homeassistant.local:8123/api/mcp
-  url            String   @db.Text
+  url             String              @db.Text
   /// One-line summary of what the server offers, shown to the model.
-  description    String   @default("")
+  description     String              @default("")
   /// Bearer token sent as the Authorization header (AES-256-GCM via lib/crypto).
-  encryptedToken String?  @db.Text
+  encryptedToken  String?             @db.Text
   /// How this server's tool calls are approved: "ask" | "allow" | "off".
-  toolPolicy     String   @default("ask")
-  enabled        Boolean  @default(true)
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolPolicy      String              @default("ask")
+  enabled         Boolean             @default(true)
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   oauthCredential McpOAuthCredential?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@unique([userId, name])
   @@index([userId])
@@ -1187,6 +1193,77 @@ model McpOAuthCredential {
 
   @@index([userId])
   @@map("McpOAuthCredential")
+}
+
+// ─── Desktop agent ─────────────────────────────────────────────
+
+/// A computer running the Saale desktop agent. The agent dials out to this
+/// instance and speaks MCP over that channel, so the machine needs no open
+/// port. Its tool groups are what the agent reported on its last connect; the
+/// agent still owns the list and refuses a tool it has switched off.
+model Device {
+  id           String       @id @default(cuid())
+  userId       String
+  /// Label the agent reported at pairing (its hostname, usually).
+  name         String       @db.VarChar(64)
+  /// "linux" | "windows" | "macos".
+  platform     String       @default("linux") @db.VarChar(16)
+  /// "x11" | "wayland" | "unknown".
+  session      String       @default("unknown") @db.VarChar(16)
+  /// sha256 of the bearer token the agent sends. The token is never stored.
+  tokenHash    String       @unique
+  /// Tool groups the agent offers, e.g. ["screen", "mouse", "keyboard"].
+  capabilities String[]     @default([])
+  agentVersion String       @default("")
+  lastSeenAt   DateTime?
+  /// Set when the user disconnects it. A revoked agent's token is dead.
+  revokedAt    DateTime?
+  calls        DeviceCall[]
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("Device")
+}
+
+/// One call the agent made to a paired computer, as the settings page shows it.
+/// Written by the approval gate, so a call the user refused is here too.
+model DeviceCall {
+  id        String   @id @default(cuid())
+  deviceId  String
+  userId    String
+  /// ChatSession the call belongs to.
+  sessionId String
+  /// Tool as the agent offers it, e.g. `click`.
+  tool      String   @db.VarChar(64)
+  /// One line describing the call, the same text the card shows.
+  summary   String   @db.Text
+  /// "ok" | "error" | "blocked".
+  outcome   String   @db.VarChar(16)
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+  @@index([userId, createdAt])
+  @@map("DeviceCall")
+}
+
+/// A one-time code the user reads off the settings page and pastes into the
+/// agent, which trades it for a token. Only the hash is stored.
+model DevicePairCode {
+  id        String   @id @default(cuid())
+  codeHash  String   @unique
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("DevicePairCode")
 }
 
 /// Agent-maintained notes about a machine.

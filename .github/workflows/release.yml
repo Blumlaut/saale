@@ -170,6 +170,105 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           push: true
 
+  # The desktop agent is part of the release: the settings page links to the
+  # asset of the version the instance runs, so the two cannot drift apart.
+  desktop:
+    needs: [plan, checks]
+    if: needs.plan.outputs.release == 'true'
+    # The oldest base that provides WebKitGTK 4.1: an AppImage inherits this
+    # glibc floor, and a newer one fails on older distributions.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # xcap and enigo link against PipeWire, EGL and the X/Wayland libraries;
+      # the window links against WebKitGTK, which is a host package.
+      - name: Install the agent's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev libegl1-mesa-dev \
+            libgles2-mesa-dev libdrm-dev libgbm-dev libxkbcommon-dev libwayland-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libgtk-3-dev \
+            libsoup-3.0-dev librsvg2-dev patchelf
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Build the agent
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          SAALE_AGENT_VERSION: ${{ needs.plan.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path desktop/Cargo.toml
+          mkdir -p "$RUNNER_TEMP/agent"
+          cp desktop/target/release/saale-agent "$RUNNER_TEMP/agent/"
+          cp desktop/README.md "$RUNNER_TEMP/agent/README.md"
+          tar -czf "$RUNNER_TEMP/saale-agent-$VERSION-x86_64-linux.tar.gz" \
+            -C "$RUNNER_TEMP/agent" saale-agent README.md
+
+      # The AppImage is what a desktop user downloads: one file, no unpacking.
+      - name: Build the AppImage
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends file libxkbcommon-x11-0
+          curl -fsSLo "$RUNNER_TEMP/linuxdeploy" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/linuxdeploy"
+
+          mkdir -p "$RUNNER_TEMP/AppDir/usr/bin"
+          install -m 755 desktop/target/release/saale-agent "$RUNNER_TEMP/AppDir/usr/bin/saale-agent"
+          install -m 644 packaging/saale-agent.desktop "$RUNNER_TEMP/AppDir/saale-agent.desktop"
+          install -m 644 packaging/saale-agent.png "$RUNNER_TEMP/AppDir/saale-agent.png"
+
+          # libxkbcommon-x11 is opened by name at runtime, so linuxdeploy cannot
+          # find it from the binary's dependencies. Without it the window does
+          # not open on a machine that has no xkbcommon-x11 installed.
+          xkb="$(ldconfig -p | awk '/libxkbcommon-x11\.so\.0 /{print $NF; exit}')"
+          test -n "$xkb"
+
+          # The webview and the toolkit around it stay host packages: bundling
+          # them ties the AppImage to one GTK and glib.
+          install -m 755 packaging/AppRun "$RUNNER_TEMP/custom-AppRun"
+          cd "$RUNNER_TEMP"
+          LINUXDEPLOY_OUTPUT_VERSION="$VERSION" ./linuxdeploy \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/saale-agent \
+            --desktop-file AppDir/saale-agent.desktop \
+            --icon-file AppDir/saale-agent.png \
+            --custom-apprun "$RUNNER_TEMP/custom-AppRun" \
+            --library "$xkb" \
+            --exclude-library "libwebkit2gtk*" --exclude-library "libjavascriptcoregtk*" \
+            --exclude-library "libgtk-3*" --exclude-library "libgdk-3*" \
+            --exclude-library "libglib-2.0*" --exclude-library "libgio-2.0*" \
+            --exclude-library "libgobject-2.0*" --exclude-library "libgmodule-2.0*" \
+            --exclude-library "libsoup-3*" --exclude-library "libpango*" \
+            --exclude-library "libcairo*" --exclude-library "libgdk_pixbuf*" \
+            --exclude-library "libatk*" --exclude-library "libharfbuzz*" \
+            --exclude-library "libepoxy*" --exclude-library "libEGL*" \
+            --exclude-library "libGL*" --exclude-library "libdrm*" --exclude-library "libgbm*" \
+            --output appimage
+
+          mv ./*.AppImage "saale-agent-$VERSION-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saale-agent
+          path: |
+            ${{ runner.temp }}/saale-agent-*.tar.gz
+            ${{ runner.temp }}/saale-agent-*.AppImage
+          retention-days: 7
+
   release:
     needs: [plan, images]
     runs-on: ubuntu-latest
@@ -203,3 +302,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.version }}
         run: gh release create "$VERSION" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+
+  assets:
+    needs: [plan, desktop, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: saale-agent
+          path: ${{ runner.temp }}
+
+      - name: Attach the agent to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh release upload "$VERSION" "$RUNNER_TEMP"/saale-agent-* --repo "$GITHUB_REPOSITORY"

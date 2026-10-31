@@ -20,6 +20,8 @@ import { useTelegramIntegration } from "@/hooks/use-telegram-integration";
 import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/telegram-card";
 import { GithubCard } from "@/components/integrations/github-card";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
+import { DesktopCard, DesktopPairDialog } from "@/components/integrations/desktop-card";
+import { useDesktopDevices } from "@/hooks/use-desktop-devices";
 import { McpPanel } from "../components/mcp-panel";
 
 /** Delete confirmation descriptions per integration */
@@ -30,11 +32,13 @@ const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
 
 export function IntegrationsSection() {
   const telegram = useTelegramIntegration();
+  const desktop = useDesktopDevices();
 
   const initialLoading = telegram.loading;
 
   // Link dialog
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [desktopDialogOpen, setDesktopDialogOpen] = useState(false);
 
   // Delete confirmation
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
@@ -103,6 +107,21 @@ export function IntegrationsSection() {
                 setDeleteAlertOpen(true);
               }}
             />
+            <DesktopCard
+              devices={desktop.devices}
+              loading={desktop.loading}
+              revokingId={desktop.revokingId}
+              browserDeviceId={desktop.browserDeviceId}
+              onConnect={() => {
+                desktop.resetPairCode();
+                // Ask again: which builds exist changes when one is packaged.
+                void desktop.loadDevices();
+                setDesktopDialogOpen(true);
+              }}
+              onRevoke={desktop.revokeDevice}
+              onUseInBrowser={desktop.useInBrowser}
+              onSetGroups={desktop.setGroups}
+            />
             <SandboxEnvCard />
             <GithubCard />
           </div>
@@ -122,6 +141,16 @@ export function IntegrationsSection() {
         linked={!!telegram.link}
         onCreateCode={telegram.createLinkCode}
         onDone={telegram.loadIntegration}
+      />
+
+      <DesktopPairDialog
+        open={desktopDialogOpen}
+        onOpenChange={setDesktopDialogOpen}
+        downloads={desktop.downloads}
+        pairCode={desktop.pairCode}
+        creatingCode={desktop.creatingCode}
+        onCreateCode={desktop.createPairCode}
+        onDone={desktop.loadDevices}
       />
 
       {/* Delete Confirmation */}
