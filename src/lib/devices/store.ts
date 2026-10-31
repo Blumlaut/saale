@@ -6,6 +6,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { recentDeviceCalls, type DeviceCallEntry } from "./audit";
 import { isDeviceConnected } from "./channel";
 import { readDeviceGroups, type DeviceGroup } from "./shared";
 
@@ -21,6 +22,8 @@ export interface DeviceView {
   connected: boolean;
   lastSeenAt: string | null;
   createdAt: string;
+  /** The last few things this machine was asked to do. */
+  recent: DeviceCallEntry[];
 }
 
 const DEVICE_FIELDS = {
@@ -43,7 +46,7 @@ function toView(row: {
   agentVersion: string;
   lastSeenAt: Date | null;
   createdAt: Date;
-}): Omit<DeviceView, "connected"> {
+}): Omit<DeviceView, "connected" | "recent"> {
   return {
     id: row.id,
     name: row.name,
@@ -64,8 +67,17 @@ export async function listDevices(userId: string): Promise<DeviceView[]> {
     select: DEVICE_FIELDS,
   });
 
+  const calls = await recentDeviceCalls(
+    userId,
+    rows.map((row) => row.id),
+  );
+
   const views = await Promise.all(
-    rows.map(async (row) => ({ ...toView(row), connected: await isDeviceConnected(row.id) })),
+    rows.map(async (row) => ({
+      ...toView(row),
+      connected: await isDeviceConnected(row.id),
+      recent: calls.get(row.id) ?? [],
+    })),
   );
 
   return views.sort((a, b) => Number(b.connected) - Number(a.connected));

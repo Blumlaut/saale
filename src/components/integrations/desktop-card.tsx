@@ -121,6 +121,25 @@ export function DesktopCard({
                     )}
                   </p>
                   <p className="text-muted-foreground truncate text-xs">{describe(device)}</p>
+                  {device.recent.length > 0 && (
+                    <ul className="mt-1 space-y-0.5">
+                      {device.recent.map((call) => (
+                        <li
+                          key={`${call.tool}-${call.createdAt}`}
+                          className="text-muted-foreground truncate font-mono text-[11px]"
+                        >
+                          <span
+                            className={
+                              call.outcome === "ok" ? "text-emerald-600/80" : "text-destructive"
+                            }
+                          >
+                            {call.outcome === "ok" ? "·" : "!"}
+                          </span>{" "}
+                          {call.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger

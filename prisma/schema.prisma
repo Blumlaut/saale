@@ -57,8 +57,9 @@ model User {
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
 
-  twoFactors TwoFactor[]
-  avatar     UserAvatar?
+  twoFactors  TwoFactor[]
+  avatar      UserAvatar?
+  deviceCalls DeviceCall[]
 
   @@map("user")
 }
@@ -1201,29 +1202,53 @@ model McpOAuthCredential {
 /// port. Its tool groups are what the agent reported on its last connect; the
 /// agent still owns the list and refuses a tool it has switched off.
 model Device {
-  id           String    @id @default(cuid())
+  id           String       @id @default(cuid())
   userId       String
   /// Label the agent reported at pairing (its hostname, usually).
-  name         String    @db.VarChar(64)
+  name         String       @db.VarChar(64)
   /// "linux" | "windows" | "macos".
-  platform     String    @default("linux") @db.VarChar(16)
+  platform     String       @default("linux") @db.VarChar(16)
   /// "x11" | "wayland" | "unknown".
-  session      String    @default("unknown") @db.VarChar(16)
+  session      String       @default("unknown") @db.VarChar(16)
   /// sha256 of the bearer token the agent sends. The token is never stored.
-  tokenHash    String    @unique
+  tokenHash    String       @unique
   /// Tool groups the agent offers, e.g. ["screen", "mouse", "keyboard"].
-  capabilities String[]  @default([])
-  agentVersion String    @default("")
+  capabilities String[]     @default([])
+  agentVersion String       @default("")
   lastSeenAt   DateTime?
   /// Set when the user disconnects it. A revoked agent's token is dead.
   revokedAt    DateTime?
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  calls        DeviceCall[]
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@unique([userId, name])
   @@index([userId])
   @@map("Device")
+}
+
+/// One call the agent made to a paired computer, as the settings page shows it.
+/// Written by the approval gate, so a call the user refused is here too.
+model DeviceCall {
+  id        String   @id @default(cuid())
+  deviceId  String
+  userId    String
+  /// ChatSession the call belongs to.
+  sessionId String
+  /// Tool as the agent offers it, e.g. `click`.
+  tool      String   @db.VarChar(64)
+  /// One line describing the call, the same text the card shows.
+  summary   String   @db.Text
+  /// "ok" | "error" | "blocked".
+  outcome   String   @db.VarChar(16)
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+  @@index([userId, createdAt])
+  @@map("DeviceCall")
 }
 
 /// A one-time code the user reads off the settings page and pastes into the

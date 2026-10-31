@@ -32,6 +32,8 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { mcpNameKey, mcpServerFromToolName, type McpToolPolicy } from "@/lib/mcp/shared";
 import { resolveChatDeviceId } from "@/lib/devices/client";
+import { recordDeviceCall, type DeviceCallOutcome } from "@/lib/devices/audit";
+import { deviceToolSummary } from "@/lib/devices/summary";
 import { grantApprovalScope, isApprovalScopeGranted, releaseApprovalScope } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
@@ -82,6 +84,7 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
       // can keep a machine that the user has already taken away.
       const device = options.device;
       if (device && !(await deviceStillAllowed(options, toolName))) {
+        await audit(device, options, toolName, input, "blocked");
         return { block: true, reason: deviceLostReason(device.name) };
       }
       const policy = resolveToolPolicy(toolName, policies, {
@@ -143,9 +146,22 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
     });
 
     // The script has finished (or was aborted): its approval covers nothing.
-    pi.on("tool_result", (event) => {
+    pi.on("tool_result", async (event) => {
       if (event.toolName === CODEMODE_TOOL_NAME && !event.parentToolCallId) {
         releaseApprovalScope(options.sessionId, event.toolCallId);
+      }
+
+      // What the machine was asked, and how it went. A device tool that was
+      // never called this far was blocked before it ran.
+      const device = options.device;
+      if (device && deviceStillMine(device, event.toolName)) {
+        await audit(
+          device,
+          options,
+          event.toolName,
+          event.input as Record<string, unknown>,
+          event.isError ? "error" : "ok",
+        );
       }
       return undefined;
     });
@@ -203,6 +219,33 @@ async function deviceStillAllowed(gate: ToolApprovalOptions, toolName: string): 
   const device = gate.device;
   if (!device || mcpServerFromToolName(toolName) !== mcpNameKey(device.name)) return true;
   return (await resolveChatDeviceId(gate.userId, gate.sessionId)) === device.id;
+}
+
+/** Whether a tool name belongs to this session's computer. */
+function deviceStillMine(device: { name: string }, toolName: string): boolean {
+  return mcpServerFromToolName(toolName) === mcpNameKey(device.name);
+}
+
+/** Record one call against the computer it was made on. */
+async function audit(
+  device: { id: string; name: string },
+  gate: ToolApprovalOptions,
+  toolName: string,
+  input: Record<string, unknown>,
+  outcome: DeviceCallOutcome,
+): Promise<void> {
+  const server = mcpServerFromToolName(toolName);
+  if (!server) return;
+
+  const tool = toolName.slice(toolName.indexOf("__", "mcp__".length) + 2);
+  await recordDeviceCall({
+    deviceId: device.id,
+    userId: gate.userId,
+    sessionId: gate.sessionId,
+    tool,
+    summary: deviceToolSummary(server, tool, input) ?? tool,
+    outcome,
+  });
 }
 
 function deviceLostReason(name: string): string {

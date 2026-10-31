@@ -15,6 +15,13 @@ export interface DesktopDevice {
   connected: boolean;
   lastSeenAt: string | null;
   createdAt: string;
+  /** The last few things this machine was asked to do. */
+  recent: {
+    summary: string;
+    outcome: "ok" | "error" | "blocked";
+    tool: string;
+    createdAt: string;
+  }[];
 }
 
 /** An agent build to download, for this instance's version. */

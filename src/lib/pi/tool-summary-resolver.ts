@@ -1,5 +1,7 @@
 import { findToolInfo, resolveTemplate } from "./tool-infos";
 import { prisma } from "@/lib/db";
+import { deviceNameFromTool, deviceToolSummary } from "@/lib/devices/summary";
+import { sanitizeDeviceName } from "@/lib/devices/shared";
 
 /**
  * Server-side tool summary resolver.
@@ -18,10 +20,43 @@ export async function resolveToolSummary(
     return resolveInfraSummary(toolName, args, userId);
   }
 
+  // A paired computer's tools arrive as `mcp__<machine>__<tool>`, which reads as
+  // nothing at all without this.
+  const device = await resolveDeviceSummary(toolName, args, userId);
+  if (device) return device;
+
   const info = findToolInfo(toolName);
   if (!info?.summaryTemplate) return null;
 
   return resolveTemplate(info.summaryTemplate, args);
+}
+
+/**
+ * The summary of a paired computer's tool call, or null when the tool is not
+ * one of its.
+ *
+ * The machine is confirmed against the user's own devices first: any MCP server
+ * can offer a tool called `click`, and only the agent's own tools get this
+ * wording.
+ */
+async function resolveDeviceSummary(
+  toolName: string,
+  args: Record<string, unknown>,
+  userId: string,
+): Promise<string | null> {
+  const server = deviceNameFromTool(toolName);
+  if (!server) return null;
+
+  const tool = toolName.slice(toolName.indexOf("__", "mcp__".length) + 2);
+  const summary = deviceToolSummary(server, tool, args);
+  if (!summary) return null;
+
+  const known = await prisma.device.findFirst({
+    where: { userId, name: sanitizeDeviceName(server), revokedAt: null },
+    select: { id: true },
+  });
+
+  return known ? summary : null;
 }
 
 /**
