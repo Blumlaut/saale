@@ -36,7 +36,7 @@ impl StatusNotifier for Tray {
     }
 
     fn icon_name(&self) -> String {
-        "preferences-system".to_string()
+        "saale-agent".to_string()
     }
 
     /// A left click on the icon opens Saale.

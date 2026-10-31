@@ -13,6 +13,7 @@ mod app;
 mod autostart;
 mod backends;
 mod config;
+mod desktop;
 mod mcp;
 mod relay;
 mod tools;
@@ -168,6 +169,7 @@ async fn pair_now(
 
 async fn run(args: &[String]) -> Result<(), String> {
     let mut config = config::load()?;
+    desktop::install_icon_only();
 
     if let Some(list) = flag(args, "groups") {
         config.groups = tools::parse_list(list)?;
@@ -211,14 +213,8 @@ fn window(args: &[String]) -> Result<(), String> {
     }
 
     if let (Some(url), Some(code)) = (requested.clone(), link.code) {
-        let name = config::machine_name();
-        let groups = config
-            .as_ref()
-            .map(|config| config.groups.clone())
-            .unwrap_or_else(tools::Group::default_enabled);
-
         println!("Pairing with {url}...");
-        match runtime().block_on(pair_now(&url, &code, &name, groups)) {
+        match pair_with(&url, &code, config.as_ref()) {
             Ok(paired) => {
                 println!("Paired as \"{}\".", paired.name);
                 config = Some(paired);
@@ -241,7 +237,7 @@ fn window(args: &[String]) -> Result<(), String> {
     let device_id = config.as_ref().map(|config| config.device_id.clone());
 
     // The next "Open in the desktop app" click has to find this app.
-    app::register_scheme_handler();
+    desktop::install();
 
     let tray_options = config.clone().map(|config| {
         let options = app::TrayOptions {
@@ -268,7 +264,49 @@ fn window(args: &[String]) -> Result<(), String> {
     // A login starts in the tray; an unpaired machine has nothing to hide in.
     let hidden = has_flag(args, "--hidden") && tray_options.is_some();
 
-    app::open(url, device_id, hidden, tray_options)
+    // The same click from inside the window: the page hands over `saale://pair`,
+    // this pairs, starts answering and gives back the instance to show.
+    let on_link: app::OnPairLink = Arc::new(move |link: app::PairLink, handle| {
+        let (Some(url), Some(code)) = (link.url, link.code) else {
+            println!("A pairing link needs both an instance and a code");
+            return None;
+        };
+        let current = config::load().ok();
+
+        match pair_with(&url, &code, current.as_ref()) {
+            Ok(paired) => {
+                println!("Paired as \"{}\".", paired.name);
+                start_agent(paired.clone());
+                if let Err(err) = autostart::install() {
+                    println!("{err}");
+                }
+                app::start_tray_for(
+                    &handle,
+                    app::TrayOptions {
+                        groups: tools::new_groups(paired.groups.iter().copied()),
+                        name: paired.name.clone(),
+                        autostart: paired.autostart,
+                    },
+                );
+                Some(paired.url)
+            }
+            Err(err) => {
+                println!("Pairing failed: {err}");
+                None
+            }
+        }
+    });
+
+    app::open(url, device_id, hidden, tray_options, on_link)
+}
+
+/// Trade a code for a token, keeping the groups this machine already offers.
+fn pair_with(url: &str, code: &str, current: Option<&Config>) -> Result<Config, String> {
+    let name = config::machine_name();
+    let groups = current
+        .map(|config| config.groups.clone())
+        .unwrap_or_else(tools::Group::default_enabled);
+    runtime().block_on(pair_now(url, code, &name, groups))
 }
 
 /// Answer the instance for as long as the window is open, on its own runtime.

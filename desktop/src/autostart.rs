@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::app::executable;
+use crate::desktop::executable;
 
 /// `$XDG_CONFIG_HOME/autostart/saale-agent.desktop`, or the home fallback.
 pub fn path() -> Option<PathBuf> {

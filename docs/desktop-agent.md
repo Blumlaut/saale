@@ -28,6 +28,17 @@ agent never asks for it: `~/.config/saale-agent/config.json` holds it once
 paired, `~/.config/saale-agent/instance` holds it from the first link on. The
 first run writes its own `saale-agent.desktop` so the scheme has a handler.
 
+Clicked from a page inside the app's own window, the link is taken by
+`on_navigation` rather than handed to the desktop: a webview cannot launch a
+handler, and left alone it replaces Saale with "The URL can't be shown". The app
+pairs in-process, starts answering, and the window lands on the instance.
+
+The same first run installs the icon at
+`~/.local/share/icons/hicolor/256x256/apps/saale-agent.png` and names it as
+`StartupWMClass` in the entry, which is how a Wayland shell finds the icon for a
+window. GTK answers `gtk_window_set_icon` with the legacy WM_HINTS pixmap that
+X11 panels ignore, so the agent also sets `_NET_WM_ICON` on its own toplevel.
+
 ## Saale side
 
 - `Device` model: name, platform, token hash, capabilities, last seen, revoked.

@@ -3556,6 +3556,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "x11rb",
  "xcap",
 ]
 
@@ -4160,6 +4161,7 @@ dependencies = [
  "gtk",
  "heck 0.5.0",
  "http",
+ "image",
  "jni",
  "libc",
  "log",

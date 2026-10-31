@@ -48,8 +48,13 @@ which hands over `saale://pair?url=…&code=…`; the agent pairs, opens the
 instance and starts answering. The instance is carried by that link, so nothing
 is typed, and it is remembered in `~/.config/saale-agent/instance` even when the
 code turns out to be stale. The first run installs
-`~/.local/share/applications/saale-agent.desktop` so the scheme has a handler. The window needs `libwebkit2gtk-4.1-0`, which the
-AppImage asks the host for rather than bundling.
+`~/.local/share/applications/saale-agent.desktop` so the scheme has a handler. The first run also installs the icon and points `StartupWMClass` at
+`saale-agent`, so the taskbar shows the app's own icon rather than a generic
+window. The window needs `libwebkit2gtk-4.1-0`, which the AppImage asks the host
+for rather than bundling.
+
+**Open in the desktop app** pressed inside the app's own window still works: the
+window takes the link itself instead of letting the webview try to load it.
 
 ## The tray
 
