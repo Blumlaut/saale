@@ -20,11 +20,14 @@ const toastError = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
 
 /** A response whose body we can watch being dropped. */
-function response(status: number) {
+function response(status: number, init: { body?: string; type?: string } = {}) {
+  const body = init.body ?? "";
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: (name: string) => (name === "content-type" ? (init.type ?? null) : null) },
     body: { cancel: vi.fn(async () => {}) },
+    text: vi.fn(async () => body),
   };
 }
 
@@ -96,13 +99,34 @@ describe("downloadFile", () => {
     expect(frames()).toHaveLength(0);
     expect(toastError).toHaveBeenCalledWith("Could not download that file");
   });
-
   it("reports a check that never reached the server", async () => {
     stubFetch(new Error("offline"));
 
     await downloadFile("/api/chat/attachments/att-1");
 
     expect(frames()).toHaveLength(0);
+    expect(toastError).toHaveBeenCalledWith("Could not download that file");
+  });
+
+  it("passes on the reason the server gave", async () => {
+    stubFetch(
+      response(413, {
+        type: "application/json; charset=utf-8",
+        body: JSON.stringify({ error: "backup.img is 7.0 GB. Too large to serve here." }),
+      }),
+    );
+
+    await downloadFile("/api/files/raw?path=%2Fbackup.img&download=1");
+
+    expect(frames()).toHaveLength(0);
+    expect(toastError).toHaveBeenCalledWith("backup.img is 7.0 GB. Too large to serve here.");
+  });
+
+  it("falls back to its own wording for a refusal it cannot read", async () => {
+    stubFetch(response(502, { type: "text/html", body: "<html>Bad gateway</html>" }));
+
+    await downloadFile("/api/files/zip?dir=shots");
+
     expect(toastError).toHaveBeenCalledWith("Could not download that file");
   });
 

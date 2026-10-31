@@ -24,8 +24,10 @@ import { toast } from "sonner";
  */
 const FRAME_LIFETIME_MS = 60_000;
 
-/** Why a click produced no file. */
-type Refusal = "missing" | "failed";
+/** A server explanation longer than this is a stack trace, not a message. */
+const MAX_MESSAGE_CHARS = 200;
+
+const FAILED = "Could not download that file";
 
 /**
  * Ask the server for the status before a frame is aimed at the URL.
@@ -35,18 +37,54 @@ type Refusal = "missing" | "failed";
  * button that did nothing at all: indistinguishable from a download that
  * worked. Checking first costs the response headers, not the bytes. the body is
  * cancelled as soon as the status is in.
+ *
+ * Returns what to tell the user, or `null` when the file is there.
  */
-async function refusal(url: string): Promise<Refusal | null> {
+async function refusal(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, { credentials: "include" });
-    await response.body?.cancel();
-    if (response.ok) return null;
+    if (response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
     console.error(`Download refused (${response.status}): ${url}`);
-    return response.status === 404 ? "missing" : "failed";
+    if (response.status === 404) return "That file is no longer in the workspace";
+    return (await serverMessage(response)) ?? FAILED;
   } catch (err) {
     console.error(`Failed to check the download at ${url}:`, err);
-    return "failed";
+    return FAILED;
   }
+}
+
+/**
+ * The server's own reason, when it sent one a person can read.
+ *
+ * The file routes answer a refusal with `{ error }`; a proxy in front of them
+ * answers with a page of HTML, which is no use as a toast.
+ */
+async function serverMessage(response: Response): Promise<string | null> {
+  const type = response.headers.get("content-type") ?? "";
+  const read = type.includes("application/json") || type.includes("text/plain");
+  if (!read) {
+    await response.body?.cancel();
+    return null;
+  }
+
+  const body = (await response.text()).trim();
+  if (!body || body.length > MAX_MESSAGE_CHARS) return null;
+
+  if (type.includes("application/json")) {
+    try {
+      const parsed: unknown = JSON.parse(body);
+      const error = (parsed as { error?: unknown } | null)?.error;
+      return typeof error === "string" && error ? error : null;
+    } catch (err) {
+      console.error("Failed to read the download's error body:", err);
+      return null;
+    }
+  }
+
+  return body;
 }
 
 export async function downloadFile(url: string): Promise<void> {
@@ -54,11 +92,7 @@ export async function downloadFile(url: string): Promise<void> {
 
   const blocked = await refusal(url);
   if (blocked) {
-    toast.error(
-      blocked === "missing"
-        ? "That file is no longer in the workspace"
-        : "Could not download that file",
-    );
+    toast.error(blocked);
     return;
   }
 
