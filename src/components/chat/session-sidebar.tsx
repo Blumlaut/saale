@@ -373,6 +373,18 @@ export function SessionSidebar({
               {header ? `${header.slug} · ${header.defaultBranch}` : ""}
             </p>
           </div>
+          {/* The title bar's own action. Phones get the full-width button below. */}
+          {onNewChat && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="hidden shrink-0 md:inline-flex"
+              aria-label="New chat"
+              onClick={onNewChat}
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       ) : (
         <div className="border-border/30 flex h-11 shrink-0 items-center border-b px-4">
@@ -380,9 +392,9 @@ export function SessionSidebar({
         </div>
       )}
 
-      {/* New chat. the desktop views own their own action. */}
+      {/* New chat. the title bar owns it from md up, this bar is the phone's. */}
       {onNewChat && (
-        <div className="border-border/30 border-b p-2">
+        <div className="border-border/30 border-b p-2 md:hidden">
           <Button className="h-9 w-full justify-center gap-2 rounded-lg" onClick={onNewChat}>
             <MessageSquarePlus className="h-4 w-4" />
             New chat
