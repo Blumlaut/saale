@@ -13,5 +13,5 @@ export async function GET() {
 
   const devices = await listDevices(authResult.user.id);
 
-  return NextResponse.json({ devices, downloads: getDesktopDownloads() });
+  return NextResponse.json({ devices, downloads: await getDesktopDownloads() });
 }

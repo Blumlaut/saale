@@ -60,3 +60,6 @@ test-results/
 # Dev script state (logs and pids)
 .dev/
 .tmp/
+
+# A packaged desktop agent, built by npm run agent:package
+public/downloads/

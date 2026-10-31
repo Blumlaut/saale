@@ -254,7 +254,8 @@ export function DesktopPairDialog({
             <p className="console-label">1 · Install the agent</p>
             {downloads.length === 0 ? (
               <Notice>
-                This build has no agent attached. Releases ship one; a development build does not.
+                This instance has no agent build to offer. A release ships one; a checkout makes one
+                with <code className="font-mono">npm run agent:package</code>.
               </Notice>
             ) : (
               <div className="flex flex-wrap gap-2">
