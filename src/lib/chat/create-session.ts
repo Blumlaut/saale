@@ -37,8 +37,6 @@ export interface NewChatSessionInput {
   originId?: string | null | undefined;
   /** Branch its worktree is checked out on; null derives one from the id. */
   worktreeBranch?: string | null | undefined;
-  /** The computer the chat was started from, when the desktop agent started it. */
-  clientDeviceId?: string | null | undefined;
 }
 
 export interface NewChatSession {
@@ -94,7 +92,6 @@ export async function createChatSessionRow(
       ...(input.origin ? { origin: input.origin } : {}),
       ...(input.originId ? { originId: input.originId } : {}),
       ...(input.worktreeBranch ? { worktreeBranch: input.worktreeBranch } : {}),
-      ...(input.clientDeviceId ? { clientDeviceId: input.clientDeviceId } : {}),
       ...(toolConfig === undefined ? {} : { toolConfig: toolConfig as Prisma.InputJsonValue }),
     },
   });

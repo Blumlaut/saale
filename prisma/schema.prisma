@@ -191,9 +191,6 @@ model ChatSession {
   /// "user" | "watcher". A chat a watcher fire opened is an ordinary coder chat
   /// everywhere else; this is what lets it be badged and later cleaned up.
   origin              String          @default("user")
-  /// The computer this chat was started from, when the desktop agent's webview
-  /// started it. Its tools reach that machine and no other.
-  clientDeviceId      String?
   /// The watcher that opened it.
   originId            String?
   /// Branch its worktree is checked out on. Null derives one from the chat id;
@@ -280,6 +277,10 @@ model ChatMessage {
   /// was already running). Cleared when it is handed to the agent, which is
   /// also what moves it from the queue strip into the conversation.
   queuedAt        DateTime?
+  /// The computer this message was sent from, when the client claimed one. The
+  /// newest user message decides which machine the agent may reach, so a message
+  /// from anywhere else takes that away.
+  clientDeviceId  String?
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 

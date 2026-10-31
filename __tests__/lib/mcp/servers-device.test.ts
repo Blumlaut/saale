@@ -37,11 +37,13 @@ describe("a chat's computer among its MCP servers", () => {
       capabilities: ["screen", "terminal"],
     });
 
-    const { entries, policies } = await loadUserMcpServers(USER_ID, "dev-1");
+    const { entries, policies, device } = await loadUserMcpServers(USER_ID, "dev-1");
 
     expect(entries).toHaveLength(1);
     expect(entries[0]!.name).toBe("workstation");
     expect(policies).toEqual({ workstation: "ask" });
+    // The gate needs the machine itself, not just the tool names.
+    expect(device).toEqual({ id: "dev-1", name: "workstation" });
     expect(mockDevice).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "dev-1", userId: USER_ID, revokedAt: null } }),
     );

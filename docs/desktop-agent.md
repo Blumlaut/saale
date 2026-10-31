@@ -177,8 +177,11 @@ consent dialog returns.
 - Saale has the `Device` model, pairing codes, the relay over Redis, the
   `DeviceTransport`, and the settings card that offers the download and the
   pairing command.
-- A chat carries `ChatSession.clientDeviceId`, set from the cookie the agent's
-  window writes. Only that device joins the chat's tool list.
+- The newest user message decides which computer a chat may reach
+  (`ChatMessage.clientDeviceId`, set from the cookie the agent's window writes).
+  A message from anywhere else takes the machine away at once: the approval gate
+  re-reads the newest message on every device tool call, and a run prompted by
+  another client rebuilds the session without the device.
 - Screen capture is a placeholder with the real metadata contract. Mouse,
   keyboard, the portal session and the tray are still open.
 

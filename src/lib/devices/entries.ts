@@ -16,9 +16,11 @@ import { getChatDevice } from "./store";
 export interface DeviceMcpServers {
   entries: McpServerEntry[];
   policies: Record<string, McpToolPolicy>;
+  /** The machine behind the entry, for the gate that revokes it mid-run. */
+  device: { id: string; name: string } | null;
 }
 
-const NO_DEVICE: DeviceMcpServers = { entries: [], policies: {} };
+const NO_DEVICE: DeviceMcpServers = { entries: [], policies: {}, device: null };
 
 /** The device entry for one chat, or nothing. */
 export async function loadDeviceMcpServers(
@@ -50,5 +52,9 @@ export async function loadDeviceMcpServers(
     scope: "extension",
   };
 
-  return { entries: [entry], policies: { [mcpNameKey(name)]: "ask" } };
+  return {
+    entries: [entry],
+    policies: { [mcpNameKey(name)]: "ask" },
+    device: { id: device.id, name },
+  };
 }

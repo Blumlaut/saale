@@ -16,6 +16,11 @@ vi.mock("@/lib/pi/agent-pool", () => ({
   createAndPool: (...args: unknown[]) => mockCreateAndPool(...args),
 }));
 
+const mockChatDeviceId = vi.fn();
+vi.mock("@/lib/devices/client", () => ({
+  resolveChatDeviceId: (...args: unknown[]) => mockChatDeviceId(...args),
+}));
+
 const mockEnsureWorktree = vi.fn();
 vi.mock("@/lib/coder/worktrees", () => ({
   ensureWorktree: (...args: unknown[]) => mockEnsureWorktree(...args),
@@ -111,6 +116,7 @@ describe("ensureChatAgent", () => {
     mockCreateAndPool.mockImplementation(async (_key: string, create: () => unknown) => create());
     mockMarkBuilding.mockResolvedValue(undefined);
     mockClearBuilding.mockResolvedValue(undefined);
+    mockChatDeviceId.mockResolvedValue(null);
   });
 
   it("builds the agent with the user's settings and the approval channel on a miss", async () => {
@@ -123,7 +129,7 @@ describe("ensureChatAgent", () => {
     });
 
     expect(existedAlready).toBe(false);
-    expect(entry).toEqual({ session: {}, sessionDir: "/sessions/chat-1" });
+    expect(entry).toEqual({ session: {}, sessionDir: "/sessions/chat-1", deviceId: null });
     const options = mockCreateChatAgentSession.mock.calls[0]![0] as Record<string, unknown>;
     expect(options.customInstructions).toBe("Be brief.");
     expect(options.toolPolicies).toEqual({ bash: "ask" });

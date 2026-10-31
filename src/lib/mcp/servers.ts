@@ -85,6 +85,8 @@ export interface UserMcpServers {
   policies: Record<string, McpToolPolicy>;
   /** Server identity for OAuth, keyed by `mcpNameKey(name)`. */
   oauthServers: Map<string, McpOAuthServer>;
+  /** The chat's own computer, when it has one. */
+  device: { id: string; name: string } | null;
 }
 
 /**
@@ -130,6 +132,7 @@ export async function loadUserMcpServers(
   // `-` and `_` as the same character, so a clash with a stored server would
   // make two servers one. The stored server keeps the name it already has.
   const device = await loadDeviceMcpServers(userId, clientDeviceId);
+  let deviceEntry: { id: string; name: string } | null = null;
   for (const entry of device.entries) {
     const key = mcpNameKey(entry.name);
     if (entries.some((existing) => mcpNameKey(existing.name) === key)) {
@@ -140,9 +143,10 @@ export async function loadUserMcpServers(
     }
     entries.push(entry);
     Object.assign(policies, device.policies);
+    deviceEntry = device.device;
   }
 
-  return { entries, policies, oauthServers };
+  return { entries, policies, oauthServers, device: deviceEntry };
 }
 
 /** Where a user's MCP server log messages are appended. */
@@ -203,6 +207,8 @@ function createUserMcpTransport(servers: Map<string, McpOAuthServer>): McpTransp
 export interface UserMcpExtension {
   extension: ExtensionFactory;
   policies: Record<string, McpToolPolicy>;
+  /** The chat's own computer, for the gate that keeps it to that machine. */
+  device: { id: string; name: string } | null;
 }
 
 /**
@@ -217,7 +223,10 @@ export async function createUserMcpExtension(
   userId: string,
   clientDeviceId?: string | null,
 ): Promise<UserMcpExtension | null> {
-  const { entries, policies, oauthServers } = await loadUserMcpServers(userId, clientDeviceId);
+  const { entries, policies, oauthServers, device } = await loadUserMcpServers(
+    userId,
+    clientDeviceId,
+  );
   if (entries.length === 0) return null;
 
   const logPath = await getMcpLogPath(userId);
@@ -240,5 +249,5 @@ export async function createUserMcpExtension(
     },
   });
 
-  return { extension, policies };
+  return { extension, policies, device };
 }

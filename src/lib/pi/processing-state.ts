@@ -275,6 +275,7 @@ export async function createAgentResourceLoader(
         sessionId: interactive.sessionId,
         toolPolicies: interactive.toolPolicies,
         mcpServerPolicies: mcp?.policies ?? {},
+        device: mcp?.device ?? null,
         emitApprovalRequest: interactive.emitApprovalRequest,
       }),
     );

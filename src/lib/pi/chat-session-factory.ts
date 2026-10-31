@@ -61,11 +61,6 @@ export interface ChatSessionModelConfig {
   toolConfig: unknown;
   /** Set on a coder chat, which runs in its project's worktree. */
   projectId: string | null;
-  /**
-   * The computer the chat was started from, when the desktop agent's window
-   * started it. Only that machine's tools reach the session.
-   */
-  clientDeviceId?: string | null;
 }
 
 /** The chat's model, falling back to the user's default chat model. */
@@ -110,6 +105,11 @@ export interface CreateChatAgentSessionOptions {
   workspaceCwd?: string | undefined;
   /** Which checkout `workspaceCwd` is, for the prompt a coder chat starts with. */
   checkoutMode?: ChatMode | undefined;
+  /**
+   * The computer the chat's newest message came from, when its client claimed
+   * one. That machine's tools reach the session, and no other's.
+   */
+  clientDeviceId?: string | null | undefined;
 }
 
 /** The prompt a session starts with: the coder one for a project chat. */
@@ -187,11 +187,11 @@ export async function createChatAgentSession(
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies: options.toolPolicies,
     mcp: true,
-    clientDeviceId: chatSession.clientDeviceId ?? null,
+    clientDeviceId: options.clientDeviceId ?? null,
     systemPrompt: await buildSessionPrompt({
       userId,
       projectId: chatSession.projectId,
-      clientDeviceId: chatSession.clientDeviceId ?? null,
+      clientDeviceId: options.clientDeviceId ?? null,
       customInstructions: options.customInstructions,
       coderCustomInstructions: options.coderCustomInstructions,
       toolConfig,

@@ -6,6 +6,12 @@ import { getUploadsDir } from "@/lib/uploads";
 interface PooledSession {
   session: AgentSession;
   sessionDir: string;
+  /**
+   * The computer the session was built for, when it has one. Tools are fixed at
+   * creation, so a chat whose newest message came from another client needs a
+   * rebuild rather than a stale device.
+   */
+  deviceId: string | null;
   lastPromptedMessageId: string | null; // ChatMessage.id from DB. prevents double-prompting
   /** True while a prompt() call for this session is in flight (same-process race guard). */
   promptInFlight: boolean;
@@ -109,7 +115,7 @@ export function get(key: string): PooledSession | undefined {
  */
 export async function createAndPool(
   key: string,
-  createFn: () => Promise<{ session: AgentSession; sessionDir: string }>,
+  createFn: () => Promise<{ session: AgentSession; sessionDir: string; deviceId?: string | null }>,
 ): Promise<PooledSession> {
   const existing = pool.get(key);
   if (existing) {
@@ -124,10 +130,11 @@ export async function createAndPool(
 
   const generation = poolGeneration;
   const creation = createFn()
-    .then(({ session, sessionDir }) => {
+    .then(({ session, sessionDir, deviceId }) => {
       const entry: PooledSession = {
         session,
         sessionDir,
+        deviceId: deviceId ?? null,
         lastPromptedMessageId: null,
         promptInFlight: false,
         lastActive: Date.now(),

@@ -30,7 +30,8 @@
  */
 
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { McpToolPolicy } from "@/lib/mcp/shared";
+import { mcpNameKey, mcpServerFromToolName, type McpToolPolicy } from "@/lib/mcp/shared";
+import { resolveChatDeviceId } from "@/lib/devices/client";
 import { grantApprovalScope, isApprovalScopeGranted, releaseApprovalScope } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand } from "./command-classifier";
@@ -54,6 +55,12 @@ export interface ToolApprovalOptions {
   toolPolicies: Record<string, string> | null | undefined;
   /** Policy per MCP server, keyed by `mcpNameKey(name)`. */
   mcpServerPolicies?: Record<string, McpToolPolicy>;
+  /**
+   * The computer this session may reach, when it has one. Checked on every call
+   * against the chat's newest user message, so a message sent from another
+   * client takes the machine away mid-run.
+   */
+  device?: { id: string; name: string } | null;
   /** Where an approval request goes: the web session bus, a Telegram card, … */
   emitApprovalRequest: (request: ApprovalRequest) => void;
 }
@@ -69,6 +76,14 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
     pi.on("tool_call", async (event, ctx) => {
       const toolName = event.toolName;
       const input = event.input as Record<string, unknown>;
+
+      // A computer is only reachable while the chat's newest message came from
+      // it. This comes before the policies, so neither "allow" nor auto-approve
+      // can keep a machine that the user has already taken away.
+      const device = options.device;
+      if (device && !(await deviceStillAllowed(options, toolName))) {
+        return { block: true, reason: deviceLostReason(device.name) };
+      }
       const policy = resolveToolPolicy(toolName, policies, {
         readOnly: isReadOnlyTool(pi, toolName),
       });
@@ -167,7 +182,31 @@ async function ask(options: {
       reason: `Tool call "${toolName}" was denied by the user (approval timed out or was rejected).`,
     };
   }
+
+  // The card may have been on screen for a while, and a message sent from
+  // another client in the meantime takes the machine away.
+  const device = options.gate.device;
+  if (device && !(await deviceStillAllowed(options.gate, toolName))) {
+    return { block: true, reason: deviceLostReason(device.name) };
+  }
+
   return undefined;
+}
+
+/**
+ * Whether the session's computer is still the one its newest message came from.
+ *
+ * Anything that is not a device tool passes: this is the one check that revokes
+ * a machine, and it must not be the one that breaks a chat without one.
+ */
+async function deviceStillAllowed(gate: ToolApprovalOptions, toolName: string): Promise<boolean> {
+  const device = gate.device;
+  if (!device || mcpServerFromToolName(toolName) !== mcpNameKey(device.name)) return true;
+  return (await resolveChatDeviceId(gate.userId, gate.sessionId)) === device.id;
+}
+
+function deviceLostReason(name: string): string {
+  return `The newest message in this chat was not sent from ${name}, so it cannot be used.`;
 }
 
 /**

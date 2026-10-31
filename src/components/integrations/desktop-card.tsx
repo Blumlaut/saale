@@ -98,8 +98,8 @@ export function DesktopCard({
           </div>
         ) : devices.length === 0 ? (
           <p className="text-muted-foreground text-xs">
-            Install the agent on a computer, and a chat started from its window can use that
-            computer. Chats from elsewhere cannot.
+            Install the agent on a computer and claim it here. A chat can use that computer while
+            its newest message came from it.
           </p>
         ) : (
           <ul className="space-y-1">
@@ -244,8 +244,8 @@ export function DesktopPairDialog({
             Connect a computer
           </DialogTitle>
           <DialogDescription>
-            The agent runs on the computer itself and connects out to this Saale. Only a chat
-            started from its window can use that computer.
+            The agent runs on the computer itself and connects out to this Saale. A chat can use it
+            while its newest message came from that computer.
           </DialogDescription>
         </DialogHeader>
 

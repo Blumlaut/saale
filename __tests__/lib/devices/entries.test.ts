@@ -20,10 +20,12 @@ describe("the computer a chat may reach", () => {
     await expect(loadDeviceMcpServers(USER_ID, null)).resolves.toEqual({
       entries: [],
       policies: {},
+      device: null,
     });
     await expect(loadDeviceMcpServers(USER_ID, undefined)).resolves.toEqual({
       entries: [],
       policies: {},
+      device: null,
     });
     expect(mockGetChatDevice).not.toHaveBeenCalled();
   });
@@ -34,6 +36,7 @@ describe("the computer a chat may reach", () => {
     await expect(loadDeviceMcpServers(USER_ID, "someone-elses")).resolves.toEqual({
       entries: [],
       policies: {},
+      device: null,
     });
     expect(mockGetChatDevice).toHaveBeenCalledWith(USER_ID, "someone-elses");
   });
@@ -45,7 +48,7 @@ describe("the computer a chat may reach", () => {
       capabilities: ["screen", "mouse"],
     });
 
-    const { entries, policies } = await loadDeviceMcpServers(USER_ID, "dev-1");
+    const { entries, policies, device } = await loadDeviceMcpServers(USER_ID, "dev-1");
 
     expect(entries).toHaveLength(1);
     const entry = entries[0]!;
@@ -54,5 +57,6 @@ describe("the computer a chat may reach", () => {
     expect("url" in entry.config && entry.config.url).toBe(deviceUrl("dev-1"));
     expect(entry.config.description).toContain("screen, mouse");
     expect(policies).toEqual({ workstation: "ask" });
+    expect(device).toEqual({ id: "dev-1", name: "workstation" });
   });
 });

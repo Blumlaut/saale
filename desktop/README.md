@@ -4,8 +4,9 @@ Lets a chat use the computer it was started from. The agent runs on that machine
 connects out to your Saale instance, and answers the instance's calls. Nothing
 listens on the machine, so no port forwarding and no tunnel.
 
-A chat only reaches the computer it was started from. A chat opened from Telegram,
-from a phone, or from a plain browser tab gets no computer at all.
+The newest message in a chat decides which computer its agent may reach. A message
+from another client — a plain browser tab, a phone, Telegram — takes the machine
+away immediately, and a device tool call made after it is refused.
 
 ## Install
 

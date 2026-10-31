@@ -37,6 +37,7 @@ import {
 } from "@/lib/file-attachment";
 import { FileNotFoundError, FileUploadError } from "@/lib/files/errors";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { resolveClientDevice } from "@/lib/devices/client";
 
 /**
  * GET /api/chat/sessions/:sessionId/messages. Get messages for a session
@@ -250,6 +251,9 @@ export async function POST(
         sessionId,
         role: "user",
         content: promptContent,
+        // Which computer sent this. The newest message decides what the agent
+        // may reach, so this is what grants and revokes it.
+        clientDeviceId: await resolveClientDevice(authResult.userId, request),
         queuedAt: isBusy && interruptMode !== "steered" ? new Date() : null,
         ...(attachments.length > 0 && {
           attachments: {
