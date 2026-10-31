@@ -7,9 +7,10 @@
  * otherwise. so the workspace, the path rule and the size ceiling live here
  * rather than in either caller.
  *
- * The read is not the same operation as the file browser's: a browser streams
- * what the user asked for, while this happens in the middle of an agent run and
- * has to refuse anything past what a chat can actually deliver.
+ * A read here is not the same operation as the file browser's: `show_file` and
+ * Telegram need the bytes in hand and refuse anything past what a chat can
+ * deliver, so `readWorkspaceFile` is bounded and buffered. A browser download
+ * only needs the path, which is what `resolveWorkspaceFile` gives it.
  */
 
 import path from "node:path";
@@ -17,6 +18,8 @@ import path from "node:path";
 import { loadChatCheckout } from "@/lib/coder/checkout";
 
 import { FileNotFoundError } from "./errors";
+import { resolveMimeType } from "./mime";
+import type { FileProvider } from "./provider";
 import { baseName, isWithinRoot, requireWithinRoot, resolveWithinRoot } from "./paths";
 import { openUserFileTarget, type OpenedFileTarget } from "./targets";
 
@@ -27,7 +30,8 @@ import { openUserFileTarget, type OpenedFileTarget } from "./targets";
  * limit. because a file the web chat can show but no other channel can deliver
  * would be a `show_file` that works until the user leaves the browser. A
  * workspace read also returns the whole file as one buffer, so this is a memory
- * ceiling as much as a delivery one.
+ * ceiling as much as a delivery one. A download is streamed and does not go
+ * through here.
  */
 export const MAX_SHARED_FILE_BYTES = 50 * 1024 * 1024;
 
@@ -38,6 +42,49 @@ export interface WorkspaceFile {
   mimeType: string;
   size: number;
   buffer: Uint8Array<ArrayBuffer>;
+}
+
+/** A workspace file located and measured, with its bytes still on disk. */
+export interface ResolvedWorkspaceFile {
+  /** The workspace the file lives in. */
+  provider: FileProvider;
+  /** Absolute path, already confined to the workspace. */
+  path: string;
+  /** Last path segment. */
+  fileName: string;
+  mimeType: string;
+  size: number;
+  /** Epoch milliseconds. */
+  modified: number;
+}
+
+/**
+ * Find `filePath` in `userId`'s workspace without reading it.
+ *
+ * A download streams straight off this, so nothing that only passes the bytes
+ * on has to hold them.
+ */
+export async function resolveWorkspaceFile(
+  userId: string,
+  filePath: string,
+  options: { session?: string | undefined } = {},
+): Promise<ResolvedWorkspaceFile> {
+  const { provider, info } = await openUserFileTarget(userId);
+  const absolute = await resolveSharedPath(userId, provider, info.root, filePath, options.session);
+
+  const stat = await provider.stat(absolute);
+  if (!stat) throw new FileNotFoundError(filePath);
+  if (stat.kind !== "file") throw new Error(`Not a file: ${filePath}`);
+
+  const fileName = baseName(absolute);
+  return {
+    provider,
+    path: absolute,
+    fileName,
+    mimeType: resolveMimeType(fileName),
+    size: stat.size,
+    modified: stat.modified,
+  };
 }
 
 /**
@@ -54,23 +101,18 @@ export async function readWorkspaceFile(
   options: { maxBytes?: number; session?: string | undefined } = {},
 ): Promise<WorkspaceFile> {
   const maxBytes = options.maxBytes ?? MAX_SHARED_FILE_BYTES;
-  const { provider, info } = await openUserFileTarget(userId);
-  const absolute = await resolveSharedPath(userId, provider, info.root, filePath, options.session);
+  const resolved = await resolveWorkspaceFile(userId, filePath, options);
 
-  const stat = await provider.stat(absolute);
-  if (!stat) throw new FileNotFoundError(filePath);
-  if (stat.kind !== "file") throw new Error(`Not a file: ${filePath}`);
-
-  if (stat.size > maxBytes) {
+  if (resolved.size > maxBytes) {
     throw new Error(
-      `File too large: ${(stat.size / 1024 / 1024).toFixed(1)}MB. Max: ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`,
+      `File too large: ${(resolved.size / 1024 / 1024).toFixed(1)}MB. Max: ${(maxBytes / 1024 / 1024).toFixed(0)}MB.`,
     );
   }
 
-  const bytes = await provider.read(absolute);
+  const bytes = await resolved.provider.read(resolved.path);
 
   return {
-    fileName: baseName(absolute),
+    fileName: resolved.fileName,
     mimeType: bytes.mimeType,
     size: bytes.buffer.length,
     buffer: bytes.buffer,

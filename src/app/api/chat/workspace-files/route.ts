@@ -1,9 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import path from "path";
 import { requireSession } from "@/lib/auth";
-import { contentDisposition, contentEtag, matchesEtag } from "@/lib/files/http";
-import { readWorkspaceFile } from "@/lib/files/workspace-file";
+import { contentEtag, matchesEtag, streamedFileResponse } from "@/lib/files/http";
+import { readWorkspaceFile, resolveWorkspaceFile } from "@/lib/files/workspace-file";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 
 /**
@@ -16,6 +15,10 @@ import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
  * response as an attachment so the browser's own download machinery saves it.
  * The bytes come from the user's workspace directory, the same file the agent's
  * tools read, so a path an agent printed here resolves to what it printed.
+ *
+ * A download is streamed rather than read: the shared-file ceiling in
+ * `readWorkspaceFile` is what a chat channel can deliver, and it has no business
+ * refusing a file the browser can save by itself.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
@@ -29,15 +32,27 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = authResult.user.id;
-  const disposition =
-    searchParams.get("download") === "1" ? contentDisposition(path.basename(fileParam)) : undefined;
 
   try {
     // `session` is the chat that shared the file: its worktree is where the
     // agent's relative paths point.
     const session = searchParams.get("session");
-    const file = await readWorkspaceFile(userId, fileParam, session ? { session } : {});
-    return serveBuffer(request, file.buffer, file.mimeType, disposition);
+    const options = session ? { session } : {};
+
+    if (searchParams.get("download") === "1") {
+      const file = await resolveWorkspaceFile(userId, fileParam, options);
+      return streamedFileResponse(request, {
+        stream: await file.provider.openReadStream(file.path),
+        name: file.fileName,
+        mimeType: file.mimeType,
+        size: file.size,
+        modified: file.modified,
+        download: true,
+      });
+    }
+
+    const file = await readWorkspaceFile(userId, fileParam, options);
+    return serveBuffer(request, file.buffer, file.mimeType);
   } catch (err) {
     if (err instanceof FileNotFoundError) {
       return new NextResponse("File not found", { status: 404 });
@@ -63,8 +78,7 @@ function serveBuffer(
   request: NextRequest,
   buffer: Uint8Array<ArrayBuffer>,
   mimeType: string,
-  disposition: string | undefined,
-) {
+): NextResponse {
   const etag = contentEtag(buffer);
   if (matchesEtag(request.headers.get("if-none-match"), etag)) {
     return new NextResponse(null, {
@@ -79,7 +93,6 @@ function serveBuffer(
       "Content-Length": String(buffer.length),
       "Cache-Control": "private, no-cache",
       ETag: etag,
-      ...(disposition ? { "Content-Disposition": disposition } : {}),
     },
   });
 }

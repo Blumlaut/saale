@@ -69,6 +69,18 @@ export function createFakeProvider(tree: FakeTree, root = "/workspace"): FilePro
       };
     },
 
+    async openReadStream(path: string): Promise<ReadableStream<Uint8Array>> {
+      const value = files.get(path);
+      if (typeof value !== "string") throw new Error(`not a file: ${path}`);
+      const bytes = new Uint8Array(Buffer.from(value));
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+    },
+
     async write(path: string, data: Buffer): Promise<void> {
       files.set(path, data.toString("utf8"));
     },

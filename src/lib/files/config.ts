@@ -1,10 +1,9 @@
 /**
  * File browser limits.
  *
- * Reads are the ceiling here: the browser reads through an interface that hands
- * back whole payloads rather than streams (Open Terminal returns a file as one
- * buffer), so one large folder or one careless "download the toolchain" would
- * be an out-of-memory kill rather than a clear refusal.
+ * Nothing here bounds a download. a file is streamed to the browser no matter
+ * what it weighs, on its own or inside an archive. The one ceiling left on the
+ * way out is the inline preview, which the viewer has to hold in memory.
  *
  * Uploads go the other way and are chunked, one small request at a time, so a
  * file's size bounds the volume it lands on rather than the heap.
@@ -37,9 +36,6 @@ export const MAX_UPLOAD_FILES = 20;
 /** Entries a single zip download may contain, counting into folders. */
 export const MAX_ZIP_ENTRIES = 500;
 
-/** Uncompressed bytes a single zip download may contain. */
-export const MAX_ZIP_BYTES = 250 * 1024 * 1024;
-
 /**
  * Largest file the inline viewer will render; bigger ones download instead.
  * Monaco tokenizes a few megabytes comfortably, so the cap sits well above
@@ -56,12 +52,3 @@ export const MAX_PREVIEW_BYTES = 5 * 1024 * 1024;
  * as anything writes the folder.
  */
 export const FILE_MODIFIED_HEADER = "x-file-modified";
-
-/**
- * Largest file the API will serve or archive at all.
- *
- * A workspace read returns the whole file as one buffer, so this is a memory
- * ceiling, not a politeness limit: past it the honest answer is a refusal. It
- * also bounds what a zip entry can cost, since entries are read the same way.
- */
-export const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024;

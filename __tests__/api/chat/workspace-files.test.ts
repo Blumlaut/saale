@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { NextRequest } from "next/server";
+import { MAX_SHARED_FILE_BYTES } from "@/lib/files/workspace-file";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -195,6 +196,20 @@ describe("workspace file serving", () => {
     expect(res.headers.get("content-disposition")).toBe(
       `attachment; filename="q3.pdf"; filename*=UTF-8''q3.pdf`,
     );
+  });
+
+  it("streams a download past the ceiling the chat channels have to respect", async () => {
+    // Inline and Telegram delivery are capped by what a chat can hand over. A
+    // download is the browser saving bytes the app never reads.
+    const big = Buffer.alloc(MAX_SHARED_FILE_BYTES + 1024, 7);
+    await fs.writeFile(path.join(userRoot, "backup.img"), big);
+
+    await expect(request("backup.img")).rejects.toThrow(/File too large/);
+
+    const res = await downloadRequest("backup.img");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-length")).toBe(String(big.length));
+    expect((await body(res)).length).toBe(big.length);
   });
 
   it("encodes a non-ASCII download name for the client", async () => {

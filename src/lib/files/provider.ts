@@ -43,6 +43,15 @@ export interface FileProvider {
 
   read(path: string): Promise<FileBytes>;
 
+  /**
+   * The file's bytes as a stream.
+   *
+   * `read` hands back the whole file, so a download of a workspace-sized file
+   * through it is an out-of-memory kill for the app. Everything that only
+   * passes the bytes on uses this.
+   */
+  openReadStream(path: string): Promise<ReadableStream<Uint8Array>>;
+
   write(path: string, data: Buffer): Promise<void>;
 
   /** Add bytes to the end of a file, creating it. How a chunked upload is assembled. */

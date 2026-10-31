@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -12,7 +15,6 @@ vi.mock("@/lib/files/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/files/config")>()),
   MAX_LISTING_ENTRIES: 3,
   MAX_PREVIEW_BYTES: 32,
-  MAX_DOWNLOAD_BYTES: 64,
   MAX_UPLOAD_BYTES_PER_FILE: 32,
   MAX_UPLOAD_CHUNK_BYTES: 8,
   MAX_UPLOAD_FILES: 2,
@@ -39,6 +41,7 @@ import { requireSession } from "@/lib/auth";
 import { requireCouncilAccess } from "@/lib/council/access";
 import { openCouncilFileTarget } from "@/lib/council/files";
 import { WorkspaceUnavailableError } from "@/lib/files/errors";
+import { createLocalFileProvider } from "@/lib/files/local-provider";
 import { openUserFileTarget } from "@/lib/files/targets";
 import { FULL_CAPABILITIES } from "@/lib/files/types";
 import { GET as listRoute } from "@/app/api/files/list/route";
@@ -321,14 +324,62 @@ describe("GET /api/files/raw", () => {
     );
   });
 
-  it("refuses a preview of a file too large to show, but still allows the download", async () => {
-    useTree();
+  it("refuses a preview of a file too large to show, but streams the download", async () => {
+    const provider = useTree();
+    const read = vi.spyOn(provider, "read");
 
     const inline = await get(rawRoute, `?path=${at("big.bin")}`);
     expect(inline.status).toBe(413);
 
+    // A workspace can hold a file far past what a buffer can take, so the
+    // download is passed through rather than read.
     const download = await get(rawRoute, `?path=${at("big.bin")}&download=1`);
     expect(download.status).toBe(200);
+    expect(await download.text()).toBe("x".repeat(50));
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a download against the stat of the bytes", async () => {
+    useTree();
+
+    const first = await get(rawRoute, `?path=${at("notes.md")}&download=1`);
+    const etag = first.headers.get("etag") as string;
+    expect(etag).toBeTruthy();
+    expect(Number(first.headers.get("x-file-modified"))).toBe(FIXED_MTIME);
+
+    const revalidated = await rawRoute(
+      new NextRequest(`http://localhost/api/files/raw?path=${at("notes.md")}&download=1`, {
+        headers: { "If-None-Match": etag },
+      }),
+    );
+    expect(revalidated.status).toBe(304);
+  });
+
+  it("streams a real workspace file past the preview ceiling byte for byte", async () => {
+    // The provider tests stream a small file; this one goes through NextResponse
+    // and the real disk read, several chunks' worth of it.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "saale-raw-"));
+    try {
+      const content = Buffer.alloc(12 * 1024 * 1024);
+      for (let index = 0; index < content.length; index += 1) content[index] = index % 251;
+      await fs.writeFile(path.join(root, "dump.img"), content);
+      vi.mocked(openUserFileTarget).mockResolvedValue({
+        provider: createLocalFileProvider({ root }),
+        info: { id: "user", label: "files", root, capabilities: FULL_CAPABILITIES },
+      });
+
+      const response = await get(
+        rawRoute,
+        `?path=${encodeURIComponent(path.join(root, "dump.img"))}&download=1`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-length")).toBe(String(content.length));
+      const received = Buffer.from(await response.arrayBuffer());
+      expect(received.equals(content)).toBe(true);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("answers 404 for a directory", async () => {

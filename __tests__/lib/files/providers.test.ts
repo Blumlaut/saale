@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { FilePathEscapeError } from "@/lib/files/errors";
+import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { createLocalFileProvider } from "@/lib/files/local-provider";
 
 describe("local file provider", () => {
@@ -94,6 +94,33 @@ describe("local file provider", () => {
     // The directories it had to create are handed over too, or the account
     // could not write next to the file.
     expect((await fs.stat(path.join(root, "notes"))).uid).toBe(process.getuid?.());
+  });
+
+  it("streams a file's bytes without reading a whole file", async () => {
+    const provider = createLocalFileProvider({ root });
+    // Bigger than one stream chunk, so the passthrough is what is being tested
+    // rather than a single emit the provider happened to get in one read.
+    const content = Buffer.alloc(256 * 1024, 7);
+    await fs.writeFile(path.join(root, "backup.img"), content);
+
+    const stream = await provider.openReadStream(path.join(root, "backup.img"));
+    const received = Buffer.from(await new Response(stream).arrayBuffer());
+
+    expect(received.equals(content)).toBe(true);
+  });
+
+  it("refuses to stream a directory, or a symlink out of the workspace", async () => {
+    const provider = createLocalFileProvider({ root });
+    await fs.mkdir(path.join(root, "notes"));
+    await fs.writeFile(path.join(outside, "secret.txt"), "top secret");
+    await fs.symlink(path.join(outside, "secret.txt"), path.join(root, "link.txt"));
+
+    await expect(provider.openReadStream(path.join(root, "notes"))).rejects.toBeInstanceOf(
+      FileNotFoundError,
+    );
+    await expect(provider.openReadStream(path.join(root, "link.txt"))).rejects.toBeInstanceOf(
+      FilePathEscapeError,
+    );
   });
 
   it("refuses a traversal even when the target exists on disk", async () => {

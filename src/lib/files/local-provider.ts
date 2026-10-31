@@ -19,7 +19,9 @@
  */
 
 import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { FileNotFoundError, FilePathEscapeError, isNotFoundError } from "./errors";
 import { resolveMimeType } from "./mime";
 import { dirName, isWithinRoot } from "./paths";
@@ -181,6 +183,15 @@ export function createLocalFileProvider(options: {
       if (stats.isDirectory()) throw new FileNotFoundError(target);
       const buffer = await fs.readFile(/* turbopackIgnore: true */ real);
       return { buffer, mimeType: resolveMimeType(path.basename(real)) };
+    },
+
+    async openReadStream(target: string): Promise<ReadableStream<Uint8Array>> {
+      const real = await resolveReal(target);
+      const stats = await fs.stat(/* turbopackIgnore: true */ real);
+      if (stats.isDirectory()) throw new FileNotFoundError(target);
+      return Readable.toWeb(
+        createReadStream(/* turbopackIgnore: true */ real),
+      ) as ReadableStream<Uint8Array>;
     },
 
     async write(target: string, data: Buffer): Promise<void> {
