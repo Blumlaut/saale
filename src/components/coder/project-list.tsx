@@ -104,43 +104,60 @@ export function ProjectList() {
   };
 
   const foldChats = (project: CoderProjectSummary) => (
-    <div className="border-border/40 ml-8 border-l">
-      {project.chats.map((chat) => (
-        <ChatListRow
-          key={chat.id}
-          title={chat.title || "New Chat"}
-          href={`/dashboard/coder/${project.id}/${chat.id}`}
-          pinned={chat.pinned}
-          accessories={
-            <>
-              {/* Opened by a watcher fire rather than by a person. */}
-              {chat.origin === "watcher" && (
-                <Badge variant="secondary" className="shrink-0 gap-1 px-1.5 py-0 text-[10px]">
-                  <Bot className="h-3 w-3" />
-                  Bot
-                </Badge>
-              )}
-              {chat.isGenerating && (
-                <Loader2 className="text-primary h-3 w-3 shrink-0 animate-spin" />
-              )}
-            </>
-          }
-          subtitle={
-            <>
-              <span className="shrink-0">{formatRelativeDate(chat.lastActivityAt)}</span>
-              {chat.worktree && (
-                <span className="truncate text-[11px]">{chat.worktree.branch}</span>
-              )}
-            </>
-          }
-          onTogglePin={() => togglePin(chat)}
-          onDelete={() => setDeletingChat(chat)}
-        />
+    <div className="ml-8">
+      {project.chats.map((chat, index) => (
+        <div key={chat.id} className="relative">
+          {/* The project row is the trunk: its chats hang off it on a rail. */}
+          <span
+            aria-hidden
+            data-slot="fold-rail"
+            className={cn(
+              "bg-muted-foreground/30 absolute left-0 w-px",
+              index === project.chats.length - 1 ? "top-0 h-4" : "inset-y-0",
+            )}
+          />
+          <span
+            aria-hidden
+            data-slot="fold-rail"
+            className="bg-muted-foreground/30 absolute top-4 left-0 h-px w-2"
+          />
+          <div className="pl-2">
+            <ChatListRow
+              title={chat.title || "New Chat"}
+              href={`/dashboard/coder/${project.id}/${chat.id}`}
+              pinned={chat.pinned}
+              accessories={
+                <>
+                  {/* Opened by a watcher fire rather than by a person. */}
+                  {chat.origin === "watcher" && (
+                    <Badge variant="secondary" className="shrink-0 gap-1 px-1.5 py-0 text-[10px]">
+                      <Bot className="h-3 w-3" />
+                      Bot
+                    </Badge>
+                  )}
+                  {chat.isGenerating && (
+                    <Loader2 className="text-primary h-3 w-3 shrink-0 animate-spin" />
+                  )}
+                </>
+              }
+              subtitle={
+                <>
+                  <span className="shrink-0">{formatRelativeDate(chat.lastActivityAt)}</span>
+                  {chat.worktree && (
+                    <span className="truncate text-[11px]">{chat.worktree.branch}</span>
+                  )}
+                </>
+              }
+              onTogglePin={() => togglePin(chat)}
+              onDelete={() => setDeletingChat(chat)}
+            />
+          </div>
+        </div>
       ))}
       {project.chatCount > project.chats.length && (
         <Link
           href={`/dashboard/coder/${project.id}`}
-          className="text-muted-foreground hover:text-foreground flex items-center px-3 py-2 text-xs transition-colors"
+          className="text-muted-foreground hover:text-foreground flex items-center py-2 pr-3 pl-5 text-xs transition-colors"
         >
           All {project.chatCount} chats
         </Link>
