@@ -53,6 +53,11 @@ interface ModelPickerProps {
   /** Whether to show the trigger as compact (icon + name only) */
   compact?: boolean;
   /**
+   * The trigger keeps its icon alone while the toolbar is narrow. Needs a
+   * `@container` ancestor.
+   */
+  hideLabelWhenNarrow?: boolean;
+  /**
    * Where the list comes from. The admin pages pick from the instance's
    * providers, which the user endpoint does not serve.
    */
@@ -74,6 +79,7 @@ export function ModelPicker({
   placeholder = "Select model",
   fallback,
   compact = false,
+  hideLabelWhenNarrow = false,
   endpoint = "/api/providers/models",
   triggerClassName,
 }: ModelPickerProps) {
@@ -202,10 +208,16 @@ export function ModelPicker({
         PopoverTrigger renders as <button>. Never nest a <Button> (also <button>)
         inside it. use a styled <span> instead to avoid hydration errors.
       */}
-      <PopoverTrigger className={triggerClassName}>
+      <PopoverTrigger
+        className={triggerClassName}
+        aria-label={`Model: ${loading ? "loading" : (selected?.name ?? fallbackLabel ?? placeholder)}`}
+      >
         <span
           className={cn(
-            "hover:bg-accent/60 inline-flex h-7 items-center gap-1.5 px-2 text-sm font-medium transition-colors",
+            "hover:bg-accent/60 inline-flex max-w-full items-center text-sm font-medium transition-colors",
+            hideLabelWhenNarrow
+              ? "h-8 w-8 justify-center px-0 @[30rem]:h-7 @[30rem]:w-auto @[30rem]:justify-start @[30rem]:gap-1.5 @[30rem]:px-2"
+              : "h-7 gap-1.5 px-2",
             compact ? "min-w-0" : "",
             className,
           )}
@@ -216,10 +228,20 @@ export function ModelPicker({
           ) : (
             <Brain className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           )}
-          <span className="min-w-0 flex-1 truncate text-left text-sm">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-left text-sm",
+              hideLabelWhenNarrow && "hidden @[30rem]:block",
+            )}
+          >
             {loading ? "Loading..." : (selected?.name ?? fallbackLabel ?? placeholder)}
           </span>
-          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
+          <ChevronDown
+            className={cn(
+              "text-muted-foreground h-4 w-4 shrink-0",
+              hideLabelWhenNarrow && "hidden @[30rem]:block",
+            )}
+          />
         </span>
       </PopoverTrigger>
 

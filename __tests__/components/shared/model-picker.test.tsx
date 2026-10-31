@@ -6,7 +6,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 // The list is not what this covers, so the popover's parts render inline.
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverTrigger: ({ children, ...props }: { children: React.ReactNode }) => (
+    <div {...props}>{children}</div>
+  ),
   PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -69,5 +71,18 @@ describe("ModelPicker", () => {
     await waitFor(() =>
       expect(screen.getByTitle("Default: qwen3-coder")).toHaveTextContent("qwen3-coder"),
     );
+  });
+
+  it("names the model to a screen reader when only the icon is drawn", async () => {
+    render(
+      <ModelPicker
+        value=""
+        onChange={() => {}}
+        fallback="anthropic/claude-sonnet-4"
+        hideLabelWhenNarrow
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Model: Claude Sonnet 4")).toBeTruthy());
   });
 });

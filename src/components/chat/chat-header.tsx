@@ -71,7 +71,7 @@ export function ChatHeader({
   hideTemporaryToggle,
 }: ChatHeaderProps) {
   return (
-    <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
+    <div className="border-border/30 @container flex items-center gap-1.5 border-b px-3 py-2 md:gap-2 md:px-4 md:py-2.5">
       {/* Mobile: session list */}
       <div className="shrink-0 md:hidden">
         {mobileListTrigger ?? (
@@ -145,7 +145,8 @@ export function ChatHeader({
           onChange={onModelChange}
           fallback={defaultModelId}
           placeholder="No Model"
-          triggerClassName="max-w-[32vw] md:max-w-none"
+          hideLabelWhenNarrow
+          triggerClassName="@[30rem]:max-w-[200px]"
         />
         {settings && <ChatSettingsSheet settings={settings} />}
         {extraActions}
