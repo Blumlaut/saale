@@ -67,10 +67,15 @@ export async function listDevices(userId: string): Promise<DeviceView[]> {
     select: DEVICE_FIELDS,
   });
 
+  // The activity list is a nicety: a failure there must not take the page with
+  // it, which is what a client that predates `DeviceCall` would do.
   const calls = await recentDeviceCalls(
     userId,
     rows.map((row) => row.id),
-  );
+  ).catch((err: unknown) => {
+    console.error(`Failed to read the recent calls of ${userId}:`, err);
+    return new Map<string, DeviceCallEntry[]>();
+  });
 
   const views = await Promise.all(
     rows.map(async (row) => ({
