@@ -20,9 +20,15 @@ const DEFAULT_RELEASE_BASE = "https://github.com/Blumlaut/saale/releases/downloa
 /** Where a locally packaged agent is served from, under `public/`. */
 const LOCAL_DIR = "downloads";
 
-/** The asset name every build uses, so the install line is predictable. */
-function assetName(version: string): string {
-  return `saale-agent-${version}-x86_64-linux.tar.gz`;
+/** The assets a release carries, and what a checkout packages. */
+const ASSETS = [
+  { label: "AppImage (x86_64)", suffix: "-x86_64.AppImage" },
+  { label: "Linux tarball (x86_64)", suffix: "-x86_64-linux.tar.gz" },
+] as const;
+
+/** The file name of one asset for a version, so the install line is predictable. */
+function assetName(version: string, suffix: string): string {
+  return `saale-agent-${version}${suffix}`;
 }
 
 export interface DesktopDownload {
@@ -47,9 +53,13 @@ function releaseVersion(): string | null {
  * link.
  */
 export async function getDesktopDownloads(): Promise<DesktopDownload[]> {
-  const local = await findLocalAgent();
-  if (local) {
-    return [{ label: "Linux (x86_64)", file: local, url: `/${LOCAL_DIR}/${local}` }];
+  const local = await findLocalAgents();
+  if (local.length > 0) {
+    return local.map((name) => ({
+      label: labelFor(name),
+      file: name,
+      url: `/${LOCAL_DIR}/${name}`,
+    }));
   }
 
   const version = releaseVersion();
@@ -57,13 +67,21 @@ export async function getDesktopDownloads(): Promise<DesktopDownload[]> {
 
   // Releases are tagged with the bare version (`2026.10.2`), not a `v` prefix.
   const base = `${process.env.SAALE_DESKTOP_RELEASE_BASE ?? DEFAULT_RELEASE_BASE}/${version}`;
-  const file = assetName(version);
 
-  return [{ label: "Linux (x86_64)", file, url: `${base}/${file}` }];
+  return ASSETS.map((asset) => {
+    const file = assetName(version, asset.suffix);
+    return { label: asset.label, file, url: `${base}/${file}` };
+  });
 }
 
-/** A packaged agent in `public/downloads/`, newest first. */
-async function findLocalAgent(): Promise<string | null> {
+/** What a packaged file is, from its own name. */
+function labelFor(name: string): string {
+  const asset = ASSETS.find((candidate) => name.endsWith(candidate.suffix));
+  return asset?.label ?? "Linux (x86_64)";
+}
+
+/** The agents packaged into `public/downloads/`, newest name first. */
+async function findLocalAgents(): Promise<string[]> {
   const dir = path.join(process.cwd(), "public", LOCAL_DIR);
   const entries = await fs.readdir(dir).catch((err: unknown) => {
     // A checkout that never packaged one has no directory, which is not a fault.
@@ -73,10 +91,8 @@ async function findLocalAgent(): Promise<string | null> {
     return [] as string[];
   });
 
-  const agents = entries
-    .filter((name) => name.startsWith("saale-agent-") && name.endsWith(".tar.gz"))
-    .sort()
-    .reverse();
-
-  return agents[0] ?? null;
+  return entries
+    .filter((name) => name.startsWith("saale-agent-"))
+    .filter((name) => ASSETS.some((asset) => name.endsWith(asset.suffix)))
+    .sort();
 }

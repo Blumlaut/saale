@@ -208,10 +208,38 @@ jobs:
           tar -czf "$RUNNER_TEMP/saale-agent-$VERSION-x86_64-linux.tar.gz" \
             -C "$RUNNER_TEMP/agent" saale-agent README.md
 
+      # The AppImage is what a desktop user downloads: one file, no unpacking.
+      - name: Build the AppImage
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo "$RUNNER_TEMP/linuxdeploy" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/linuxdeploy"
+
+          mkdir -p "$RUNNER_TEMP/AppDir/usr/bin"
+          install -m 755 desktop/target/release/saale-agent "$RUNNER_TEMP/AppDir/usr/bin/saale-agent"
+          install -m 644 packaging/saale-agent.desktop "$RUNNER_TEMP/AppDir/saale-agent.desktop"
+          install -m 644 packaging/saale-agent.png "$RUNNER_TEMP/AppDir/saale-agent.png"
+
+          cd "$RUNNER_TEMP"
+          VERSION="$VERSION" ./linuxdeploy \
+            --appdir AppDir \
+            --desktop-file AppDir/saale-agent.desktop \
+            --icon-file AppDir/saale-agent.png \
+            --output appimage
+
+          mv ./*.AppImage "saale-agent-$VERSION-x86_64.AppImage"
+
       - uses: actions/upload-artifact@v4
         with:
           name: saale-agent
-          path: ${{ runner.temp }}/saale-agent-*.tar.gz
+          path: |
+            ${{ runner.temp }}/saale-agent-*.tar.gz
+            ${{ runner.temp }}/saale-agent-*.AppImage
           retention-days: 7
 
   release:
@@ -262,4 +290,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.plan.outputs.version }}
-        run: gh release upload "$VERSION" "$RUNNER_TEMP"/saale-agent-*.tar.gz --repo "$GITHUB_REPOSITORY"
+        run: gh release upload "$VERSION" "$RUNNER_TEMP"/saale-agent-* --repo "$GITHUB_REPOSITORY"

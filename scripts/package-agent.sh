@@ -33,4 +33,24 @@ tar -czf "$out/$asset" -C staging saale-agent README.md
 rm -rf staging
 
 echo "Packaged $out/$asset"
-echo "The settings page now offers /downloads/$asset"
+
+# The AppImage is what a release attaches, and what linuxdeploy makes there. It
+# needs linuxdeploy on the PATH, so a checkout packages the tarball alone unless
+# one is available.
+if command -v linuxdeploy >/dev/null 2>&1; then
+  appdir="$(mktemp -d)"
+  mkdir -p "$appdir/usr/bin"
+  install -m 755 desktop/target/release/saale-agent "$appdir/usr/bin/saale-agent"
+  install -m 644 packaging/saale-agent.desktop "$appdir/saale-agent.desktop"
+  install -m 644 packaging/saale-agent.png "$appdir/saale-agent.png"
+  APPIMAGE_EXTRACT_AND_RUN=1 VERSION="$version" linuxdeploy \
+    --appdir "$appdir" \
+    --desktop-file "$appdir/saale-agent.desktop" \
+    --icon-file "$appdir/saale-agent.png" \
+    --output appimage
+  mv ./*.AppImage "$out/saale-agent-${version}-x86_64.AppImage" 2>/dev/null || true
+  rm -rf "$appdir"
+  echo "Packaged $out/saale-agent-${version}-x86_64.AppImage"
+fi
+
+echo "The settings page now offers /downloads/ for this instance"

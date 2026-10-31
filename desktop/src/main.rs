@@ -10,8 +10,8 @@ mod config;
 mod mcp;
 mod relay;
 mod tools;
+mod tray;
 
-use std::collections::BTreeSet;
 use std::process::ExitCode;
 
 use backends::Desktop;
@@ -95,7 +95,7 @@ async fn pair(args: &[String]) -> Result<(), String> {
         Some(list) => tools::parse_list(list)?,
         None => tools::Group::default_enabled(),
     };
-    let groups: BTreeSet<tools::Group> = groups.into_iter().collect();
+    let groups = tools::new_groups(groups);
 
     let body = Relay::pair(url, code, &name, &groups).await?;
     let token = body
@@ -116,7 +116,7 @@ async fn pair(args: &[String]) -> Result<(), String> {
             .and_then(|value| value.as_str())
             .unwrap_or(&name)
             .to_string(),
-        groups: groups.into_iter().collect(),
+        groups: tools::enabled(&groups).into_iter().collect(),
     };
     config::save(&config)?;
 
@@ -135,8 +135,21 @@ async fn run(args: &[String]) -> Result<(), String> {
         config::save(&config)?;
     }
 
+    let groups = tools::new_groups(config.groups.iter().copied());
+    let name = config.name.clone();
     let relay = Relay::new(&config.url, &config.token);
-    relay.run(config.group_set(), Desktop::new()).await
+    let desktop = Desktop::new();
+
+    // A machine with no session bus has no tray; that is not a reason to stop.
+    let _tray = match tray::spawn(groups.clone(), name).await {
+        Ok(handle) => Some(handle),
+        Err(err) => {
+            println!("{err}. Running without one.");
+            None
+        }
+    };
+
+    relay.run(groups, desktop).await
 }
 
 fn groups(args: &[String]) -> Result<(), String> {

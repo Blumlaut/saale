@@ -14,11 +14,7 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const SERVER_NAME: &str = "saale-agent";
 
 /// Build the answer to one request, or nothing for a notification.
-pub async fn handle(
-    groups: &std::collections::BTreeSet<tools::Group>,
-    desktop: &Desktop,
-    message: &Value,
-) -> Option<Value> {
+pub async fn handle(groups: &tools::Groups, desktop: &Desktop, message: &Value) -> Option<Value> {
     let method = message.get("method").and_then(Value::as_str)?;
     let id = message.get("id").cloned();
 
@@ -72,12 +68,12 @@ pub async fn handle(
 }
 
 /// The hello the instance records: what this machine offers, and its version.
-pub fn hello(groups: &std::collections::BTreeSet<tools::Group>, display: bool) -> Value {
+pub fn hello(groups: &tools::Groups, display: bool) -> Value {
     // Only what this machine can actually do: a group with no tools to offer is
     // not a capability, whatever the switch says.
     json!({
         "hello": {
-            "capabilities": groups
+            "capabilities": tools::enabled(groups)
                 .iter()
                 .filter(|group| !matches!(group, tools::Group::Screen | tools::Group::Mouse | tools::Group::Keyboard) || display)
                 .map(|group| group.name())

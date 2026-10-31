@@ -169,7 +169,10 @@ global key grab is otherwise impossible.
 
 ## Packaging
 
-AppImage and deb, from one GitHub Actions matrix. No signing on Linux.
+AppImage and a tarball, from the release workflow. No signing on Linux. A
+checkout packages its own with `npm run agent:package` and serves it from
+`public/downloads/`, so a development build offers a real download instead of a
+release asset that does not exist yet.
 
 Flatpak is out: `run_command` needs the host, and a sandbox cannot provide it.
 
@@ -199,8 +202,12 @@ consent dialog returns.
   against the live instance.
 - Wayland capture rides on `xcap`'s Screenshot portal path, and Wayland input on
   the RemoteDesktop portal. Both are written but untested here: this machine has
-  no compositor. The ScreenCast frame session, `focus_window` and the tray are
-  still open.
+  no compositor.
+- The tray is a StatusNotifierItem over D-Bus, with a checkmark per tool group.
+  Flipping one takes effect in the running process. There is no window yet.
+- Every device tool call is recorded with its summary and outcome, and the
+  settings card shows the last few. The ScreenCast frame session, `focus_window`
+  and the pairing window are still open.
 
 ## Milestones
 

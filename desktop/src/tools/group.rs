@@ -5,6 +5,9 @@
 //! in a codemode script. The instance never decides this; it only reflects what
 //! the agent reports.
 
+use std::collections::BTreeSet;
+use std::sync::{Arc, RwLock};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -50,6 +53,38 @@ impl Group {
     }
 }
 
+/// The groups this process offers, shared with the tray so a switch takes
+/// effect without a restart.
+pub type Groups = Arc<RwLock<BTreeSet<Group>>>;
+
+pub fn new_groups(groups: impl IntoIterator<Item = Group>) -> Groups {
+    Arc::new(RwLock::new(groups.into_iter().collect()))
+}
+
+/// A copy of the groups that are on.
+pub fn enabled(groups: &Groups) -> BTreeSet<Group> {
+    groups.read().map(|set| set.clone()).unwrap_or_default()
+}
+
+/// Flip one group, and say what it is now.
+pub fn toggle(groups: &Groups, group: Group) -> bool {
+    match groups.write() {
+        Ok(mut set) => {
+            if set.contains(&group) {
+                set.remove(&group);
+                false
+            } else {
+                set.insert(group);
+                true
+            }
+        }
+        Err(err) => {
+            println!("Cannot change the tool groups: {err}");
+            false
+        }
+    }
+}
+
 /// Parse a comma separated list, reporting what was not a group.
 pub fn parse_list(value: &str) -> Result<Vec<Group>, String> {
     let mut groups = Vec::new();
@@ -64,4 +99,32 @@ pub fn parse_list(value: &str) -> Result<Vec<Group>, String> {
         }
     }
     Ok(groups)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_toggle_flips_one_group_and_leaves_the_rest() {
+        let groups = new_groups([Group::Screen, Group::Files]);
+
+        assert!(!toggle(&groups, Group::Screen));
+        assert_eq!(enabled(&groups), [Group::Files].into_iter().collect());
+
+        assert!(toggle(&groups, Group::Terminal));
+        assert_eq!(
+            enabled(&groups),
+            [Group::Files, Group::Terminal].into_iter().collect()
+        );
+    }
+
+    #[test]
+    fn reads_a_list_of_groups() {
+        assert_eq!(
+            parse_list("screen, Mouse ,keyboard").unwrap(),
+            vec![Group::Screen, Group::Mouse, Group::Keyboard]
+        );
+        assert!(parse_list("screen,clipboard").is_err());
+    }
 }

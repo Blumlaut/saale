@@ -6,9 +6,7 @@ mod input;
 mod screen;
 mod shell;
 
-pub use group::{parse_list, Group};
-
-use std::collections::BTreeSet;
+pub use group::{enabled, new_groups, parse_list, toggle, Group, Groups};
 
 use serde_json::{json, Value};
 
@@ -72,7 +70,8 @@ impl ToolResult {
 /// A machine without a display has no screen and no pointer to offer, so those
 /// groups contribute nothing even when they are switched on. The model never
 /// sees a tool that could only fail.
-pub fn list(groups: &BTreeSet<Group>, display: bool) -> Vec<ToolSpec> {
+pub fn list(groups: &Groups, display: bool) -> Vec<ToolSpec> {
+    let groups = enabled(groups);
     let mut tools = Vec::new();
 
     if display && groups.contains(&Group::Screen) {
@@ -97,12 +96,12 @@ pub fn list(groups: &BTreeSet<Group>, display: bool) -> Vec<ToolSpec> {
 /// Run one tool, refusing a group that is switched off.
 pub async fn call(
     desktop: &Desktop,
-    groups: &BTreeSet<Group>,
+    groups: &Groups,
     name: &str,
     args: &Value,
 ) -> Result<ToolResult, String> {
     let group = group_of(name).ok_or_else(|| format!("There is no tool called \"{name}\""))?;
-    if !groups.contains(&group) {
+    if !enabled(groups).contains(&group) {
         return Err(format!(
             "The {} group is switched off on this computer",
             group.name()

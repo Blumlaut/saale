@@ -32,6 +32,15 @@ saale-agent run
 The token it receives lands in `~/.config/saale-agent/config.json`, readable by
 your user only. Pair again to rotate it.
 
+## The tray
+
+`saale-agent run` puts an icon in the tray. Its menu lists the five groups as
+checkmarks: flipping one takes effect in the running process, so the tool list
+changes without a restart, and the choice is written to the config.
+
+GNOME shows tray icons only with the AppIndicator extension; KDE and XFCE show
+them as they are. Without a tray host the agent says so once and keeps running.
+
 ## Tool groups
 
 The agent owns these switches. A group that is off contributes no tool, so the
@@ -65,7 +74,8 @@ saale-agent groups --disable files
 - Wayland capture goes through `xcap`'s Screenshot portal, which asks once per
   grab. Wayland input goes through the RemoteDesktop portal: one consent dialog,
   then a restore token so it does not come back.
-- `saale-agent run` is the whole UI for now: no tray, no window, no autostart.
+- The tray is a StatusNotifierItem over D-Bus. There is no window yet: pairing is
+  still the command line, and there is no autostart.
 
 ## Development
 

@@ -4,7 +4,6 @@
 //! sends JSON-RPC requests down it and the agent posts its answers back up. No
 //! port is opened, so a machine behind NAT or a firewall pairs like any other.
 
-use std::collections::BTreeSet;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -44,7 +43,7 @@ impl Relay {
         base: &str,
         code: &str,
         name: &str,
-        groups: &BTreeSet<tools::Group>,
+        groups: &tools::Groups,
     ) -> Result<Value, String> {
         let client = reqwest::Client::new();
         let response = client
@@ -54,7 +53,7 @@ impl Relay {
                 "name": name,
                 "platform": std::env::consts::OS,
                 "session": mcp::session(),
-                "capabilities": groups.iter().map(|group| group.name()).collect::<Vec<_>>(),
+                "capabilities": tools::enabled(groups).iter().map(|group| group.name()).collect::<Vec<_>>(),
                 "agentVersion": crate::VERSION,
             }))
             .send()
@@ -103,7 +102,7 @@ impl Relay {
     }
 
     /// Stay connected, answering until the process is stopped.
-    pub async fn run(&self, groups: BTreeSet<tools::Group>, desktop: Desktop) -> ! {
+    pub async fn run(&self, groups: tools::Groups, desktop: Desktop) -> ! {
         let mut backoff = RETRY_MIN;
 
         loop {
@@ -124,11 +123,7 @@ impl Relay {
     }
 
     /// One connection's worth of stream.
-    async fn session(
-        &self,
-        groups: &BTreeSet<tools::Group>,
-        desktop: &Desktop,
-    ) -> Result<(), String> {
+    async fn session(&self, groups: &tools::Groups, desktop: &Desktop) -> Result<(), String> {
         let response = self
             .client
             .get(format!("{}{CHANNEL}", self.base))
@@ -168,7 +163,7 @@ impl Relay {
     async fn handle_event(
         &self,
         event: &str,
-        groups: &BTreeSet<tools::Group>,
+        groups: &tools::Groups,
         desktop: &Desktop,
     ) -> Result<(), String> {
         let mut kind = "message";

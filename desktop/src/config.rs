@@ -5,7 +5,6 @@
 //! here too, because the agent owns them: a group switched off contributes no
 //! tool at all, so a model cannot call what the machine does not offer.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -25,13 +24,6 @@ pub struct Config {
     pub name: String,
     /// Tool groups this machine offers.
     pub groups: Vec<Group>,
-}
-
-impl Config {
-    /// The groups as a set, which is how the tool list is built.
-    pub fn group_set(&self) -> BTreeSet<Group> {
-        self.groups.iter().copied().collect()
-    }
 }
 
 /// `$XDG_CONFIG_HOME/saale-agent/config.json`, or the home fallback.
