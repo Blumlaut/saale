@@ -114,6 +114,8 @@ export function IntegrationsSection() {
               browserDeviceId={desktop.browserDeviceId}
               onConnect={() => {
                 desktop.resetPairCode();
+                // Ask again: which builds exist changes when one is packaged.
+                void desktop.loadDevices();
                 setDesktopDialogOpen(true);
               }}
               onRevoke={desktop.revokeDevice}
