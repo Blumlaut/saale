@@ -12,6 +12,7 @@ import {
   MoreVertical,
   PlugZap,
   Power,
+  Square,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,14 +62,19 @@ export function DesktopCard({
   devices,
   loading,
   revokingId,
+  browserDeviceId,
   onConnect,
   onRevoke,
+  onUseInBrowser,
 }: {
   devices: DesktopDevice[];
   loading: boolean;
   revokingId: string | null;
+  /** The device chats started in this browser claim. */
+  browserDeviceId: string | null;
   onConnect: () => void;
   onRevoke: (deviceId: string) => void;
+  onUseInBrowser: (deviceId: string | null) => void;
 }) {
   const connected = devices.filter((device) => device.connected).length;
 
@@ -106,7 +112,14 @@ export function DesktopCard({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">{device.name}</p>
+                  <p className="truncate text-sm">
+                    {device.name}
+                    {device.id === browserDeviceId && (
+                      <Badge variant="secondary" className="ml-2 rounded-full align-middle">
+                        this browser
+                      </Badge>
+                    )}
+                  </p>
                   <p className="text-muted-foreground truncate text-xs">{describe(device)}</p>
                 </div>
                 <DropdownMenu>
@@ -128,6 +141,16 @@ export function DesktopCard({
                     }
                   />
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() =>
+                        onUseInBrowser(device.id === browserDeviceId ? null : device.id)
+                      }
+                    >
+                      <Square className="mr-2 h-4 w-4" />
+                      {device.id === browserDeviceId
+                        ? "Stop using in this browser"
+                        : "Use in this browser"}
+                    </DropdownMenuItem>
                     <DropdownMenuItem variant="destructive" onClick={() => onRevoke(device.id)}>
                       <Power className="mr-2 h-4 w-4" />
                       Disconnect

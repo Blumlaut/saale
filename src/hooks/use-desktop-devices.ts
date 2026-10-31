@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { deleteJson, fetchJson, postJson } from "@/lib/http";
-import type { DeviceGroup } from "@/lib/devices/shared";
+import { CLIENT_DEVICE_COOKIE, type DeviceGroup } from "@/lib/devices/shared";
 
 /** A computer running the desktop agent, as the settings page lists it. */
 export interface DesktopDevice {
@@ -30,6 +30,20 @@ export interface DevicePairCode {
   expiresAt: string;
 }
 
+/** The device this browser claims to be, from the cookie a chat is created with. */
+function readBrowserDevice(): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${CLIENT_DEVICE_COOKIE}=([^;]*)`));
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+/** Claim a device for chats started in this browser, or drop the claim. */
+function writeBrowserDevice(deviceId: string | null): void {
+  const year = 60 * 60 * 24 * 365;
+  document.cookie = deviceId
+    ? `${CLIENT_DEVICE_COOKIE}=${encodeURIComponent(deviceId)}; path=/; max-age=${year}; samesite=lax`
+    : `${CLIENT_DEVICE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
 /**
  * Self-contained hook for the desktop agent's state and actions.
  *
@@ -45,6 +59,7 @@ export function useDesktopDevices() {
   const [pairCode, setPairCode] = useState<DevicePairCode | null>(null);
   const [creatingCode, setCreatingCode] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [browserDeviceId, setBrowserDeviceId] = useState<string | null>(null);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -63,6 +78,7 @@ export function useDesktopDevices() {
   }, []);
 
   useEffect(() => {
+    setBrowserDeviceId(readBrowserDevice());
     void loadDevices();
   }, [loadDevices]);
 
@@ -94,8 +110,16 @@ export function useDesktopDevices() {
     }
   }, []);
 
+  /** Chats started in this browser use that computer from now on. */
+  const useInBrowser = useCallback((deviceId: string | null) => {
+    writeBrowserDevice(deviceId);
+    setBrowserDeviceId(deviceId);
+  }, []);
+
   return {
     devices,
+    browserDeviceId,
+    useInBrowser,
     downloads,
     loading,
     error,

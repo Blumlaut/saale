@@ -111,11 +111,13 @@ export function IntegrationsSection() {
               devices={desktop.devices}
               loading={desktop.loading}
               revokingId={desktop.revokingId}
+              browserDeviceId={desktop.browserDeviceId}
               onConnect={() => {
                 desktop.resetPairCode();
                 setDesktopDialogOpen(true);
               }}
               onRevoke={desktop.revokeDevice}
+              onUseInBrowser={desktop.useInBrowser}
             />
             <SandboxEnvCard />
             <GithubCard />
