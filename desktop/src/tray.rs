@@ -4,18 +4,26 @@
 //! XFCE and anywhere else that hosts tray icons. GNOME needs the AppIndicator
 //! extension for it to show at all.
 //!
-//! The menu owns the tool groups. Flipping one changes what this process offers
-//! straight away, and writes it to the config so the next run starts that way.
+//! The menu owns the tool groups and the start-at-login switch. Flipping one
+//! changes what this process offers straight away, and writes it to the config
+//! so the next run starts that way.
+
+use std::sync::Arc;
 
 use ksni::menu::{CheckmarkItem, Disposition, MenuItem, StandardItem};
 use ksni::{Handle, Tray as StatusNotifier, TrayMethods};
 
 use crate::tools::{self, Group, Groups};
 
+/// Bring the window up. Absent on a machine nobody sits in front of.
+pub type OpenWindow = Arc<dyn Fn() + Send + Sync>;
+
 /// The tray icon and its menu.
 pub struct Tray {
     groups: Groups,
     name: String,
+    autostart: bool,
+    open: Option<OpenWindow>,
 }
 
 impl StatusNotifier for Tray {
@@ -31,6 +39,13 @@ impl StatusNotifier for Tray {
         "preferences-system".to_string()
     }
 
+    /// A left click on the icon opens Saale.
+    fn activate(&mut self, _x: i32, _y: i32) {
+        if let Some(open) = &self.open {
+            open();
+        }
+    }
+
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let enabled = tools::enabled(&self.groups);
         let mut items = Vec::new();
@@ -42,6 +57,20 @@ impl StatusNotifier for Tray {
             ..Default::default()
         }));
         items.push(MenuItem::Separator);
+
+        if self.open.is_some() {
+            items.push(MenuItem::Standard(StandardItem {
+                label: "Open Saale".to_string(),
+                icon_name: "window-new".to_string(),
+                activate: Box::new(|tray: &mut Tray| {
+                    if let Some(open) = &tray.open {
+                        open();
+                    }
+                }),
+                ..Default::default()
+            }));
+            items.push(MenuItem::Separator);
+        }
 
         for group in Group::ALL {
             let label = group_label(group);
@@ -60,6 +89,27 @@ impl StatusNotifier for Tray {
         }
 
         items.push(MenuItem::Separator);
+        items.push(MenuItem::Checkmark(CheckmarkItem {
+            label: "Start at login".to_string(),
+            checked: self.autostart,
+            enabled: true,
+            visible: true,
+            activate: Box::new(|tray: &mut Tray| {
+                tray.autostart = !tray.autostart;
+                let changed = if tray.autostart {
+                    crate::autostart::install()
+                } else {
+                    crate::autostart::remove()
+                };
+                if let Err(err) = changed {
+                    println!("{err}");
+                }
+                tray.remember();
+            }),
+            ..Default::default()
+        }));
+
+        items.push(MenuItem::Separator);
         items.push(MenuItem::Standard(StandardItem {
             label: "Quit".to_string(),
             icon_name: "application-exit".to_string(),
@@ -72,7 +122,7 @@ impl StatusNotifier for Tray {
 }
 
 impl Tray {
-    /// Keep the switches for the next run.
+    /// Keep the switches and the login setting for the next run.
     fn remember(&self) {
         let Ok(mut config) = crate::config::load() else {
             println!("Cannot read the config to keep the tool groups");
@@ -81,6 +131,7 @@ impl Tray {
         let mut groups = tools::enabled(&self.groups).into_iter().collect::<Vec<_>>();
         groups.sort();
         config.groups = groups;
+        config.autostart = self.autostart;
         if let Err(err) = crate::config::save(&config) {
             println!("Cannot keep the tool groups: {err}");
         }
@@ -104,8 +155,18 @@ fn group_label(group: Group) -> &'static str {
  * runs. A machine with no session bus has no tray, which is not a failure: the
  * agent keeps answering over its channel.
  */
-pub async fn spawn(groups: Groups, name: String) -> Result<Handle<Tray>, String> {
-    let tray = Tray { groups, name };
+pub async fn spawn(
+    groups: Groups,
+    name: String,
+    open: Option<OpenWindow>,
+    autostart: bool,
+) -> Result<Handle<Tray>, String> {
+    let tray = Tray {
+        groups,
+        name,
+        autostart,
+        open,
+    };
     tray.spawn()
         .await
         .map_err(|err| format!("No tray icon: {err}"))

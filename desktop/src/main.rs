@@ -10,6 +10,7 @@
 //! window, for a machine nobody sits in front of.
 
 mod app;
+mod autostart;
 mod backends;
 mod config;
 mod mcp;
@@ -34,9 +35,10 @@ pub const VERSION: &str = match option_env!("SAALE_AGENT_VERSION") {
 const USAGE: &str = "\
 saale-agent: let a chat use this computer.
 
-  saale-agent [--url <instance>]
+  saale-agent [--url <instance>] [--hidden]
       Open Saale in a window, paired with this computer. Pairing from Saale's
       settings page fills this in; --url points it at an instance before then.
+      --hidden starts it in the tray, which is how a login does it.
 
   saale-agent pair --url <instance> --code <code> [--groups screen,files]
       Pair this machine without a window.
@@ -90,6 +92,10 @@ fn runtime() -> tokio::runtime::Runtime {
 }
 
 /// `--flag value` and `--flag=value`, so both forms work.
+fn has_flag(args: &[String], name: &str) -> bool {
+    args.iter().any(|arg| arg == name)
+}
+
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     let prefix = format!("--{name}=");
     for (index, arg) in args.iter().enumerate() {
@@ -153,6 +159,7 @@ async fn pair_now(
             .unwrap_or(name)
             .to_string(),
         groups: tools::enabled(&groups).into_iter().collect(),
+        autostart: true,
     };
 
     config::save(&config)?;
@@ -175,7 +182,7 @@ async fn run(args: &[String]) -> Result<(), String> {
     let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line: &str| println!("{line}"));
 
     // A machine with no session bus has no tray; that is not a reason to stop.
-    let _tray = match tray::spawn(groups.clone(), name).await {
+    let _tray = match tray::spawn(groups.clone(), name, None, autostart::enabled()).await {
         Ok(handle) => Some(handle),
         Err(err) => {
             println!("{err}. Running without one.");
@@ -236,17 +243,37 @@ fn window(args: &[String]) -> Result<(), String> {
     // The next "Open in the desktop app" click has to find this app.
     app::register_scheme_handler();
 
-    if let Some(config) = config.clone() {
+    let tray_options = config.clone().map(|config| {
+        let options = app::TrayOptions {
+            groups: tools::new_groups(config.groups.iter().copied()),
+            name: config.name.clone(),
+            autostart: config.autostart,
+        };
         start_agent(config);
+        options
+    });
+
+    // Keep this machine in the login session, unless the user turned that off.
+    if let Some(options) = &tray_options {
+        let changed = if options.autostart {
+            autostart::install()
+        } else {
+            autostart::remove()
+        };
+        if let Err(err) = changed {
+            println!("{err}");
+        }
     }
 
-    app::open(url, device_id)
+    // A login starts in the tray; an unpaired machine has nothing to hide in.
+    let hidden = has_flag(args, "--hidden") && tray_options.is_some();
+
+    app::open(url, device_id, hidden, tray_options)
 }
 
 /// Answer the instance for as long as the window is open, on its own runtime.
 fn start_agent(config: Config) {
     let groups = tools::new_groups(config.groups.iter().copied());
-    let name = config.name.clone();
     let relay = Relay::new(&config.url, &config.token);
     let desktop = Desktop::new();
     let stop = Arc::new(AtomicBool::new(true));
@@ -264,14 +291,6 @@ fn start_agent(config: Config) {
         };
 
         runtime.block_on(async move {
-            match tray::spawn(groups.clone(), name).await {
-                Ok(handle) => {
-                    // Keep the icon on the bus for the life of the process.
-                    std::mem::forget(handle);
-                }
-                Err(err) => println!("{err}. Running without a tray icon."),
-            }
-
             let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line: &str| println!("{line}"));
             relay.run(groups, desktop, stop, say).await;
         });
@@ -322,6 +341,14 @@ fn status() -> Result<(), String> {
     println!("instance  {}", config.url);
     println!("machine   {} ({})", config.name, config.device_id);
     println!("session   {}", mcp::session());
+    println!(
+        "login     {}",
+        if autostart::enabled() {
+            "starts in the tray"
+        } else {
+            "not started at login"
+        }
+    );
     println!(
         "groups    {}",
         config

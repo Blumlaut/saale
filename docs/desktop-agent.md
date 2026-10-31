@@ -8,11 +8,17 @@ no tunnel. Linux first, X11 and Wayland.
 
 One app, three surfaces, one core:
 
-- **Tray and window.** Autostarts at login. Closing the window leaves it in the
-  tray. The window renders `saale.example.com` in a plain webview with no IPC
-  access, so page JavaScript can never reach the input APIs.
-- **Capability window.** A local page with IPC, reachable from the tray. Owns
-  the switches, the connection state, the audit log and pairing.
+- **Tray and window.** Starts at login from `~/.config/autostart/saale-agent.desktop`
+  with `--hidden`, so it comes up in the tray. Closing the window hides it there,
+  and a left click or **Open Saale** brings it back. Without a tray to hide into
+  — no session bus, or GNOME without the AppIndicator extension — the window
+  stays visible and closing it quits, because hiding it would leave no way in.
+  The window renders `saale.example.com` in a plain webview with no IPC access,
+  so page JavaScript can never reach the input APIs.
+- **Switches in the tray.** The menu owns the tool groups and **Start at login**,
+  which writes or removes the autostart entry and keeps the choice in the
+  config. Saale's integrations page carries the same groups, so neither surface
+  is the only way in.
 - **Headless.** `saale-agent --headless`, no window, for machines where nobody
   signs into Saale's UI.
 

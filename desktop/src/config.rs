@@ -24,6 +24,13 @@ pub struct Config {
     pub name: String,
     /// Tool groups this machine offers.
     pub groups: Vec<Group>,
+    /// Start in the tray at login.
+    #[serde(default = "starts_at_login")]
+    pub autostart: bool,
+}
+
+fn starts_at_login() -> bool {
+    true
 }
 
 /// `$XDG_CONFIG_HOME/saale-agent/config.json`, or the home fallback.
