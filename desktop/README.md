@@ -21,9 +21,10 @@ sudo install -m 755 saale-agent /usr/local/bin/saale-agent
 
 ## Pair
 
-Run `saale-agent` with no arguments. The window asks for the instance and a
-code, which you get in **Settings → Integrations → This computer → Connect a
-computer**. A `saale://pair?url=…&code=…` link fills both in.
+Run `saale-agent` with no arguments. It opens Saale, where **Settings →
+Integrations → This computer → Connect a computer** has a code and an **Open in
+the desktop app** button that pairs this machine in one click. Unpaired, the
+window shows a page that says so.
 
 On a machine nobody sits in front of, the command line does the same:
 
@@ -37,8 +38,15 @@ your user only. Pair again to rotate it.
 
 ## The window
 
-`saale-agent` opens a window: the pairing form, the five group switches and a
-Start button. It is the whole UI, with no browser in it.
+`saale-agent` opens Saale itself, in a plain webview: the instance this machine
+is paired with, with no IPC and no local bridge, so page JavaScript can reach
+nothing of the agent. The one thing it adds is the `saale_client` cookie, which
+is what binds a chat started here to this computer.
+
+Pairing arrives by link. Saale's settings page has **Open in the desktop app**,
+which hands over `saale://pair?url=…&code=…`; the agent pairs, opens the
+instance and starts answering. The window needs `libwebkit2gtk-4.1-0`, which the
+AppImage asks the host for rather than bundling.
 
 ## The tray
 
@@ -82,8 +90,8 @@ saale-agent groups --disable files
 - Wayland capture goes through `xcap`'s Screenshot portal, which asks once per
   grab. Wayland input goes through the RemoteDesktop portal: one consent dialog,
   then a restore token so it does not come back.
-- The tray is a StatusNotifierItem over D-Bus. There is no window yet: pairing is
-  still the command line, and there is no autostart.
+- The tray is a StatusNotifierItem over D-Bus, and the window is Saale in a
+  WebKitGTK webview. There is no autostart yet.
 
 ## Development
 

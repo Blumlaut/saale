@@ -222,8 +222,11 @@ consent dialog returns.
   no compositor.
 - The tray is a StatusNotifierItem over D-Bus, with a checkmark per tool group.
   Flipping one takes effect in the running process.
-- The window is `egui`: the pairing form, the same switches, and Start.
-  `saale-agent` with no arguments opens it; `saale-agent run` stays headless.
+- The window is Saale itself in a WebKitGTK webview with no IPC, which is the
+  shell the plan describes. It sets the `saale_client` cookie so a chat started
+  in the window is bound to this computer, and it pairs from a
+  `saale://pair?url=…&code=…` link that Saale's settings page fires.
+  `saale-agent run` stays headless.
 - Every device tool call is recorded with its summary and outcome, and the
   settings card shows the last few. The ScreenCast frame session, `focus_window`
   and the pairing window are still open.

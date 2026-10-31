@@ -1,0 +1,14 @@
+#!/bin/sh
+# The webview comes from the system, not from this file: bundling WebKitGTK ties
+# an AppImage to one GTK and glib, which is how it breaks on the next distro
+# release. Every desktop install has it; a bare window manager may not, so say
+# what to install instead of dying in the loader.
+if ! ldconfig -p 2>/dev/null | grep -q "libwebkit2gtk-4\.1\.so\.0"; then
+  echo "Saale Agent needs libwebkit2gtk-4.1-0 to open its window." >&2
+  echo "Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-0" >&2
+  echo "Fedora: sudo dnf install webkit2gtk4.1" >&2
+  echo "Without it, 'saale-agent run' still answers Saale over its channel." >&2
+  exit 1
+fi
+
+exec "$APPDIR/usr/bin/saale-agent" "$@"

@@ -4,18 +4,22 @@
 //! to the Saale instance it was paired with, offers the tool groups the user
 //! switched on, and answers the instance's calls. Nothing listens on this
 //! machine.
+//!
+//! Started with no arguments it opens Saale itself in a window, which is how a
+//! desktop user pairs and uses it. `saale-agent run` is the same agent without a
+//! window, for a machine nobody sits in front of.
 
+mod app;
 mod backends;
 mod config;
 mod mcp;
 mod relay;
 mod tools;
 mod tray;
-mod window;
 
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use backends::Desktop;
 use config::Config;
@@ -30,11 +34,12 @@ pub const VERSION: &str = match option_env!("SAALE_AGENT_VERSION") {
 const USAGE: &str = "\
 saale-agent: let a chat use this computer.
 
-  saale-agent
-      Open the window: pair this computer, choose what it offers, start it.
+  saale-agent [--url <instance>]
+      Open Saale in a window, paired with this computer. Pairing from Saale's
+      settings page fills this in; --url points it at an instance before then.
 
   saale-agent pair --url <instance> --code <code> [--groups screen,files]
-      Pair this machine with a Saale instance.
+      Pair this machine without a window.
 
   saale-agent run [--groups screen,files,terminal]
       Stay connected without a window, for a machine nobody sits in front of.
@@ -47,13 +52,12 @@ saale-agent: let a chat use this computer.
 
 Tool groups: screen, mouse, keyboard, files, terminal.";
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
     let result = match args.first().map(String::as_str) {
-        Some("pair") => pair(&args[1..]).await,
-        Some("run") => run(&args[1..]).await,
+        Some("pair") => runtime().block_on(pair(&args[1..])),
+        Some("run") => runtime().block_on(run(&args[1..])),
         Some("groups") => groups(&args[1..]),
         Some("status") => status(),
         Some("--version") | Some("-V") => {
@@ -64,10 +68,8 @@ async fn main() -> ExitCode {
             println!("{USAGE}");
             Ok(())
         }
-        // No command opens the window, which is how a desktop user pairs and
-        // starts the agent. `run` stays for the boxes nobody sits in front of.
-        None => open_window(),
-        Some(other) => Err(format!("Unknown command \"{other}\".\n\n{USAGE}")),
+        // A `saale://pair?...` link, or no command at all: the window.
+        Some(_) | None => window(&args),
     };
 
     match result {
@@ -77,6 +79,14 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// A tokio runtime for the parts that talk to the instance.
+fn runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a tokio runtime")
 }
 
 /// `--flag value` and `--flag=value`, so both forms work.
@@ -104,36 +114,49 @@ async fn pair(args: &[String]) -> Result<(), String> {
         Some(list) => tools::parse_list(list)?,
         None => tools::Group::default_enabled(),
     };
-    let groups = tools::new_groups(groups);
 
-    let body = Relay::pair(url, code, &name, &groups).await?;
+    let config = pair_now(url, code, &name, groups).await?;
+    println!(
+        "Paired as \"{}\". Start it with `saale-agent`.",
+        config.name
+    );
+    Ok(())
+}
+
+/// Trade a code for a token and keep it. Shared by the command line and the
+/// window, which arrives here from a `saale://pair` link.
+async fn pair_now(
+    url: &str,
+    code: &str,
+    name: &str,
+    groups: Vec<tools::Group>,
+) -> Result<Config, String> {
+    let groups = tools::new_groups(groups);
+    let body = Relay::pair(url, code, name, &groups).await?;
+
     let token = body
         .get("token")
         .and_then(|value| value.as_str())
         .ok_or("The instance did not send a token")?;
-    let device_id = body
-        .get("deviceId")
-        .and_then(|value| value.as_str())
-        .ok_or("The instance did not send a device id")?;
 
     let config = Config {
         url: url.trim_end_matches('/').to_string(),
         token: token.to_string(),
-        device_id: device_id.to_string(),
+        device_id: body
+            .get("deviceId")
+            .and_then(|value| value.as_str())
+            .ok_or("The instance did not send a device id")?
+            .to_string(),
         name: body
             .get("name")
             .and_then(|value| value.as_str())
-            .unwrap_or(&name)
+            .unwrap_or(name)
             .to_string(),
         groups: tools::enabled(&groups).into_iter().collect(),
     };
-    config::save(&config)?;
 
-    println!(
-        "Paired as \"{}\". Start it with `saale-agent run`.",
-        config.name
-    );
-    Ok(())
+    config::save(&config)?;
+    Ok(config)
 }
 
 async fn run(args: &[String]) -> Result<(), String> {
@@ -164,27 +187,79 @@ async fn run(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// The window, with a config it reads and writes on its own.
-fn open_window() -> Result<(), String> {
-    let config = config::load().ok();
-    let groups = tools::new_groups(
-        config
+/// Open Saale in a window, pairing first when the launch carried a link.
+fn window(args: &[String]) -> Result<(), String> {
+    let link = app::PairLink::from_args(args.iter().cloned());
+    let requested = link.url.or_else(|| flag(args, "url").map(str::to_string));
+
+    let mut config = config::load().ok();
+
+    // Arriving from Saale's "Open in the desktop app" button: the link carries
+    // both halves, so this is the whole pairing step.
+    if let (Some(url), Some(code)) = (requested.clone(), link.code) {
+        let name = config::machine_name();
+        let groups = config
             .as_ref()
-            .map(|c| c.groups.clone())
-            .unwrap_or_default(),
-    );
+            .map(|config| config.groups.clone())
+            .unwrap_or_else(tools::Group::default_enabled);
 
-    let shared = Arc::new(Mutex::new(window::Shared {
-        config,
-        groups,
-        status: "Not running".to_string(),
-        busy: false,
-        error: None,
-        running: Arc::new(AtomicBool::new(false)),
-        ctx: None,
-    }));
+        println!("Pairing with {url}...");
+        match runtime().block_on(pair_now(&url, &code, &name, groups)) {
+            Ok(paired) => {
+                println!("Paired as \"{}\".", paired.name);
+                config = Some(paired);
+            }
+            Err(err) => return Err(format!("Pairing failed: {err}")),
+        }
+    }
 
-    window::open(shared)
+    // Show what this machine is paired with, or what to do about it.
+    let url = config
+        .as_ref()
+        .map(|config| config.url.clone())
+        .or(requested);
+    let device_id = config.as_ref().map(|config| config.device_id.clone());
+
+    if let Some(config) = config.clone() {
+        start_agent(config);
+    }
+
+    app::open(url, device_id)
+}
+
+/// Answer the instance for as long as the window is open, on its own runtime.
+fn start_agent(config: Config) {
+    let groups = tools::new_groups(config.groups.iter().copied());
+    let name = config.name.clone();
+    let relay = Relay::new(&config.url, &config.token);
+    let desktop = Desktop::new();
+    let stop = Arc::new(AtomicBool::new(true));
+
+    std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(err) => {
+                println!("Cannot start the agent: {err}");
+                return;
+            }
+        };
+
+        runtime.block_on(async move {
+            match tray::spawn(groups.clone(), name).await {
+                Ok(handle) => {
+                    // Keep the icon on the bus for the life of the process.
+                    std::mem::forget(handle);
+                }
+                Err(err) => println!("{err}. Running without a tray icon."),
+            }
+
+            let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line: &str| println!("{line}"));
+            relay.run(groups, desktop, stop, say).await;
+        });
+    });
 }
 
 fn groups(args: &[String]) -> Result<(), String> {
@@ -221,7 +296,7 @@ fn groups(args: &[String]) -> Result<(), String> {
     }
 
     if changed {
-        println!("\nRestart `saale-agent run` to apply this.");
+        println!("\nRestart `saale-agent` to apply this.");
     }
     Ok(())
 }

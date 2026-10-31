@@ -53,15 +53,34 @@ if command -v linuxdeploy >/dev/null 2>&1; then
     exit 1
   fi
 
+  # The webview and the toolkit around it come from the host. Bundling them is
+  # what makes an AppImage stop working on the next distro release.
+  set -- \
+    --exclude-library "libwebkit2gtk*" --exclude-library "libjavascriptcoregtk*" \
+    --exclude-library "libgtk-3*" --exclude-library "libgdk-3*" \
+    --exclude-library "libglib-2.0*" --exclude-library "libgio-2.0*" \
+    --exclude-library "libgobject-2.0*" --exclude-library "libgmodule-2.0*" \
+    --exclude-library "libsoup-3*" --exclude-library "libpango*" \
+    --exclude-library "libcairo*" --exclude-library "libgdk_pixbuf*" \
+    --exclude-library "libatk*" --exclude-library "libharfbuzz*" \
+    --exclude-library "libepoxy*" --exclude-library "libEGL*" \
+    --exclude-library "libGL*" --exclude-library "libdrm*" --exclude-library "libgbm*"
+
+  # linuxdeploy copies this into the AppDir itself, so it must not be there yet.
+  custom_apprun="$(mktemp)"
+  install -m 755 packaging/AppRun "$custom_apprun"
+
   APPIMAGE_EXTRACT_AND_RUN=1 LINUXDEPLOY_OUTPUT_VERSION="$version" linuxdeploy \
     --appdir "$appdir" \
     --executable "$appdir/usr/bin/saale-agent" \
     --desktop-file "$appdir/saale-agent.desktop" \
     --icon-file "$appdir/saale-agent.png" \
+    --custom-apprun "$custom_apprun" \
     --library "$xkb" \
+    "$@" \
     --output appimage
   mv ./*.AppImage "$out/saale-agent-${version}-x86_64.AppImage" 2>/dev/null || true
-  rm -rf "$appdir"
+  rm -rf "$appdir" "$custom_apprun"
   echo "Packaged $out/saale-agent-${version}-x86_64.AppImage"
 fi
 
