@@ -107,9 +107,9 @@ function coderChat(id: string, title: string, extra: Record<string, unknown> = {
   };
 }
 
-/** The row's main button  the click target that opens (or selects) a chat. */
-function rowButton(title: string) {
-  return screen.getByText(title).closest("button") as HTMLElement;
+/** The row's link  the click target that opens (or selects) a chat. */
+function rowLink(title: string) {
+  return screen.getByText(title).closest("a") as HTMLElement;
 }
 
 async function renderSidebar(activeSessionId?: string, expected = "Fresh chat") {
@@ -178,10 +178,10 @@ describe("SessionSidebar older chats", () => {
     await renderSidebar();
 
     fireEvent.click(screen.getByRole("button", { name: "Show older chats" }));
-    const row = await screen.findByText("Ancient chat");
-    fireEvent.click(row.closest("button") as HTMLElement);
 
-    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/chat/s-ancient");
+    // The row is a link, so a middle click and the browser's own menu work too.
+    expect(await screen.findByText("Ancient chat")).toBeInTheDocument();
+    expect(rowLink("Ancient chat")).toHaveAttribute("href", "/dashboard/chat/s-ancient");
   });
 
   it("starts folded shut while the active chat is recent", async () => {
@@ -349,12 +349,12 @@ describe("SessionSidebar multi-select", () => {
   it("picks several chats with ctrl-click and deletes them in one request", async () => {
     await renderSidebar();
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
-    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Recent chat"), { ctrlKey: true });
 
     expect(screen.getByText("2 selected")).toBeInTheDocument();
     // Picking a chat is not opening it.
-    expect(routerMock.push).not.toHaveBeenCalled();
+    expect(rowLink("Fresh chat")).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
     expect(await screen.findByText("Delete 2 chats?")).toBeInTheDocument();
@@ -377,8 +377,8 @@ describe("SessionSidebar multi-select", () => {
   it("toggles a chat when the tap lands on its selection box", async () => {
     await renderSidebar();
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
-    const box = rowButton("Recent chat").querySelector('[data-slot="selection-indicator"]');
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
+    const box = rowLink("Recent chat").querySelector('[data-slot="selection-indicator"]');
     expect(box).not.toBeNull();
 
     // The box is part of the row's single target  one tap, one toggle.
@@ -392,15 +392,14 @@ describe("SessionSidebar multi-select", () => {
   it("toggles a chat off by tapping it, and stops selecting with the last one", async () => {
     await renderSidebar();
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
-    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Recent chat"), { ctrlKey: true });
 
     // A plain tap inside a selection toggles, so the rows stay reachable there.
-    fireEvent.click(rowButton("Fresh chat"));
+    fireEvent.click(rowLink("Fresh chat"));
     expect(screen.getByText("1 selected")).toBeInTheDocument();
-    expect(routerMock.push).not.toHaveBeenCalled();
 
-    fireEvent.click(rowButton("Recent chat"));
+    fireEvent.click(rowLink("Recent chat"));
     expect(screen.getByText("Conversations")).toBeInTheDocument();
     expect(screen.queryByText(/selected/)).not.toBeInTheDocument();
   });
@@ -412,15 +411,15 @@ describe("SessionSidebar multi-select", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Select chat" }));
 
     expect(screen.getByText("1 selected")).toBeInTheDocument();
-    expect(rowButton("Fresh chat")).toHaveAttribute("aria-pressed", "true");
-    expect(rowButton("Recent chat")).toHaveAttribute("aria-pressed", "false");
+    expect(rowLink("Fresh chat")).toHaveAttribute("aria-pressed", "true");
+    expect(rowLink("Recent chat")).toHaveAttribute("aria-pressed", "false");
   });
 
   it("keeps the row you held selected without opening it", async () => {
     await renderSidebar();
 
     vi.useFakeTimers();
-    const row = rowButton("Fresh chat");
+    const row = rowLink("Fresh chat");
     fireEvent.pointerDown(row, { pointerType: "touch", button: 0, clientX: 10, clientY: 10 });
     act(() => {
       vi.advanceTimersByTime(LONG_PRESS_MS);
@@ -428,9 +427,9 @@ describe("SessionSidebar multi-select", () => {
 
     expect(screen.getByText("1 selected")).toBeInTheDocument();
 
-    // Browsers still send the click that follows the hold; it must not open the chat.
-    fireEvent.click(row);
-    expect(routerMock.push).not.toHaveBeenCalled();
+    // Browsers still send the click that follows the hold; it must not follow
+    // the row's link.
+    expect(fireEvent.click(row)).toBe(false);
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
@@ -438,7 +437,7 @@ describe("SessionSidebar multi-select", () => {
     await renderSidebar();
 
     vi.useFakeTimers();
-    const row = rowButton("Fresh chat");
+    const row = rowLink("Fresh chat");
     fireEvent.pointerDown(row, { pointerType: "touch", button: 0, clientX: 10, clientY: 10 });
     fireEvent.pointerMove(row, { pointerType: "touch", clientX: 10, clientY: 80 });
     act(() => {
@@ -447,14 +446,14 @@ describe("SessionSidebar multi-select", () => {
 
     expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
 
-    fireEvent.click(row);
-    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/chat/s-fresh");
+    // A scroll is not a hold, so the tap that ends it still opens the chat.
+    expect(fireEvent.click(row)).toBe(true);
   });
 
   it("exits the selection with Escape", async () => {
     await renderSidebar();
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
     expect(screen.getByText("1 selected")).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
@@ -464,7 +463,7 @@ describe("SessionSidebar multi-select", () => {
   it("leaves the chat view when the open chat is among the deleted", async () => {
     await renderSidebar("s-fresh");
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Delete 1 selected chat" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
@@ -478,8 +477,8 @@ describe("SessionSidebar multi-select", () => {
     });
     await renderSidebar();
 
-    fireEvent.click(rowButton("Fresh chat"), { ctrlKey: true });
-    fireEvent.click(rowButton("Recent chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fresh chat"), { ctrlKey: true });
+    fireEvent.click(rowLink("Recent chat"), { ctrlKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
@@ -501,8 +500,8 @@ describe("SessionSidebar pinned chats", () => {
     await renderSidebar(undefined, "Pinned chat");
 
     expect(screen.getByText("Pinned")).toBeInTheDocument();
-    const pinnedRow = rowButton("Pinned chat");
-    const freshRow = rowButton("Fresh chat");
+    const pinnedRow = rowLink("Pinned chat");
+    const freshRow = rowLink("Fresh chat");
     // Document order is list order: the pinned row sits above the fresh one.
     expect(pinnedRow.compareDocumentPosition(freshRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -581,9 +580,7 @@ describe("SessionSidebar for a coder project", () => {
     mockSessions([coderChat("s-1", "Fix the sidebar")], undefined, PROJECT);
     await renderProjectSidebar();
 
-    fireEvent.click(rowButton("Fix the sidebar"));
-
-    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/project-1/s-1");
+    expect(rowLink("Fix the sidebar")).toHaveAttribute("href", "/dashboard/coder/project-1/s-1");
   });
 
   it("leads back to the project list from the header", async () => {
@@ -604,11 +601,9 @@ describe("SessionSidebar for a coder project", () => {
 
     await renderProjectSidebar();
 
-    const row = rowButton("Fix the sidebar").closest("[data-slot=session-row]") as HTMLElement;
+    const row = rowLink("Fix the sidebar").closest("[data-slot=session-row]") as HTMLElement;
     expect(row.textContent).toContain("Bot");
-    expect(rowButton("Ship it").closest("[data-slot=session-row]")?.textContent).not.toContain(
-      "Bot",
-    );
+    expect(rowLink("Ship it").closest("[data-slot=session-row]")?.textContent).not.toContain("Bot");
   });
 
   it("deletes several of a project's chats in one request", async () => {
@@ -619,8 +614,8 @@ describe("SessionSidebar for a coder project", () => {
     );
     await renderProjectSidebar("s-1");
 
-    fireEvent.click(rowButton("Fix the sidebar"), { ctrlKey: true });
-    fireEvent.click(rowButton("Ship it"), { ctrlKey: true });
+    fireEvent.click(rowLink("Fix the sidebar"), { ctrlKey: true });
+    fireEvent.click(rowLink("Ship it"), { ctrlKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 

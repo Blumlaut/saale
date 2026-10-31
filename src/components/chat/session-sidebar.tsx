@@ -279,10 +279,9 @@ export function SessionSidebar({
     setOlderOpen(olderAutoOpen);
   }, [activeSessionId, olderAutoOpen]);
 
-  const openSession = useCallback(
-    (id: string) =>
-      router.push(projectId ? `/dashboard/coder/${projectId}/${id}` : `/dashboard/chat/${id}`),
-    [router, projectId],
+  const sessionHref = useCallback(
+    (id: string) => (projectId ? `/dashboard/coder/${projectId}/${id}` : `/dashboard/chat/${id}`),
+    [projectId],
   );
 
   const renderRow = (session: ChatSession) => (
@@ -338,7 +337,7 @@ export function SessionSidebar({
         toggle: () => toggleSelect(session.id),
         start: () => selectRow(session.id),
       }}
-      onOpen={() => openSession(session.id)}
+      href={sessionHref(session.id)}
       onTogglePin={() => togglePin(session.id, !session.pinned)}
       onDelete={() => requestDelete([session.id])}
     />

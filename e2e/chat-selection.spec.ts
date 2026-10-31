@@ -53,9 +53,9 @@ function row(page: Page, title: string) {
   return page.locator('[data-slot="session-row"]:visible').filter({ hasText: title }).first();
 }
 
-/** The one control inside the row  what a tap has to reach. */
+/** The one control inside the row  the link a tap has to reach. */
 function rowToggle(page: Page, title: string) {
-  return row(page, title).locator("button").first();
+  return row(page, title).locator("a").first();
 }
 
 /** Press and hold a point with a real touch, the way a thumb does. */
@@ -83,14 +83,14 @@ test.describe("chat multi-select", () => {
     try {
       // Start the selection from the row menu: deterministic, and it covers the
       // labelled path for anyone who does not know the gestures.
-      await row(page, ALPHA).locator("button").last().click();
+      await row(page, ALPHA).getByRole("button").click();
       await page.getByRole("menuitem", { name: "Select chat" }).click();
       await expect(rowToggle(page, ALPHA)).toHaveAttribute("aria-pressed", "true");
 
       // The row's control has to reach every edge of the row, or a tap that
       // lands a few pixels off does nothing at all.
       const geometry = await row(page, BETA).evaluate((el) => {
-        const inner = el.querySelector("button")!.getBoundingClientRect();
+        const inner = el.querySelector("a")!.getBoundingClientRect();
         const outer = el.getBoundingClientRect();
         return {
           outer: { left: outer.left, top: outer.top, right: outer.right, bottom: outer.bottom },
@@ -171,7 +171,7 @@ test.describe("chat multi-select", () => {
 
       await expect(page.getByText("1 selected")).toBeVisible();
       await expect(
-        page.locator('[data-slot="session-row"] button[aria-pressed="true"]'),
+        page.locator('[data-slot="session-row"] [aria-pressed="true"]'),
         "a hold at the list's edge picked a chat nobody touched",
       ).toHaveCount(1);
     } finally {

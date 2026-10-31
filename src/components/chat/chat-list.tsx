@@ -43,10 +43,8 @@ export interface ChatListRowProps {
   selection?: ChatRowSelection;
   onTogglePin?: () => void;
   onDelete: () => void;
-  /** A row with an href is a link (prefetch, open in a new tab). */
-  href?: string;
-  /** A row without one is a button, and the host navigates here. */
-  onOpen?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  /** The chat's page. The row is a link, so the browser opens it as one. */
+  href: string;
 }
 
 export function ChatListRow({
@@ -60,7 +58,6 @@ export function ChatListRow({
   onTogglePin,
   onDelete,
   href,
-  onOpen,
 }: ChatListRowProps) {
   // Holding a row is the touch way into a selection; ctrl/⌘-click is the pointer
   // way, and the row menu offers a labelled path for anyone who finds neither.
@@ -71,14 +68,16 @@ export function ChatListRow({
   });
 
   const handleActivate = (event: ReactMouseEvent<HTMLElement>) => {
-    // The hold already acted on this gesture. the browser's click follows it.
-    if (hold.consumeLongPress()) return;
+    // The hold already acted on this gesture. the browser's click follows it,
+    // and on a link that click would open the chat.
+    if (hold.consumeLongPress()) {
+      event.preventDefault();
+      return;
+    }
     if (selection && (selection.selecting || event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       selection.toggle();
-      return;
     }
-    if (!href) onOpen?.(event as ReactMouseEvent<HTMLButtonElement>);
   };
 
   const targetClassName = cn(
@@ -129,24 +128,14 @@ export function ChatListRow({
       onPointerCancel={hold.onPointerCancel}
       onContextMenu={hold.onContextMenu}
     >
-      {href ? (
-        <Link
-          href={href}
-          className={targetClassName}
-          aria-pressed={selection ? selection.selected : undefined}
-          onClick={handleActivate}
-        >
-          {content}
-        </Link>
-      ) : (
-        <button
-          className={targetClassName}
-          aria-pressed={selection ? selection.selected : undefined}
-          onClick={handleActivate}
-        >
-          {content}
-        </button>
-      )}
+      <Link
+        href={href}
+        className={targetClassName}
+        aria-pressed={selection ? selection.selected : undefined}
+        onClick={handleActivate}
+      >
+        {content}
+      </Link>
       {/* Delete lives behind the row menu: a permanent one-tap delete next to
           every row is too easy to hit while scrolling. */}
       {!selection?.selecting && (
