@@ -12,57 +12,59 @@ Saale was built on the idea that legacy is no excuse for bad practices. It runs 
 work out of the box. Saale adds only the few things it takes to make working with a local
 provider pleasant.
 
-You skip the pile of environment variables. Saale is set up once with Docker Compose,
-which brings its dependencies with it, and from then on you work entirely in the web UI.
+One Docker Compose file brings up the whole stack: app, worker, Postgres, Redis, the speech
+and search sidecars. Four secrets in `.env`, and everything else happens in the web UI.
 
-Every account gets a workspace the model can use, and the user decides which tools it may
-reach there. Files and images you upload are handed to the model and kept in that
-workspace; they go when you delete the chat.
+Every account gets a workspace of its own. It runs in its own container, on its own
+directory of the workspace volume, so no other user's files are reachable from it, and the
+user decides which tools the model may reach there. Uploaded files and images are handed to
+the model and kept with the chat until it is deleted.
 
 There is also a Coder mode, with worktrees, git history and management, a terminal and a
 file browser.
 
-## How do you save tokens?
+## How does it save tokens?
 
 Saale leans on Pi's `codemode`. The model looks up the tools it needs and calls them from a
-small JavaScript script, so it writes tool calls the way it writes code. One script does
-the work of several calls, and the model keeps every tool it might need.
+small JavaScript script, the way it writes code. Several calls fit in one script.
 
 A Saale prompt with the basic productivity tools uses **less than 6,000 tokens**.
 
 ## What else can Saale do?
 
-The Agent can pretty much do anything a Linux machine can, install programs, execute code, do web searches, if you can think of it, it probably can do it.
+The agent runs in a Linux container, so it installs packages, executes code and searches the
+web.
 
-Saale itself brings a normal set of productivity tools: mail over SMTP and IMAP, a calendar, a
-to-do list, infrastructure management (SSH connections, notes), memories, agents, schedules and watchers.
+Saale itself brings a normal set of productivity tools: mail over SMTP and IMAP, a calendar,
+a to-do list, infrastructure management (SSH connections, notes), memories, agents,
+schedules and watchers.
 
 - **Agents** are prompts that run on a schedule and do the work on their own.
 - **Schedules** are jobs Saale runs on its own: mail and calendar sync, chat titles, tags,
   memory compaction.
-- **Watchers** run a script when a file or a repository changes. A fire opens a chat and
-  hands the result to the model, opens a coder chat, or stays silent.
+- **Watchers** are a script on a schedule. It runs in the same sandbox as a chat's
+  `codemode`, with every tool to hand, so it watches a repository, a mailbox, a calendar or
+  anything else a tool reaches and acts on what changed. A fire lands in a chat, in a coder
+  chat, or nowhere when the script handles it itself.
 
-It also works as a coding environment, with Monaco (VS Code's editor) built in. It supports
-worktrees and a full set of repository tools. Connect GitHub once in Settings, under
-Integrations, and your private repositories, pushes and pull requests work from the
-workspace.
+Monaco (VS Code's editor) is built in for edits. Connect GitHub under Settings →
+Integrations for private repositories, pushes and pull requests.
 
 ## Multi-User?
 
-Yes, Saale supports multiple users with permission groups.
-
-Additionally, there are global and "local" providers, local providers are configured by users themselves, so a user is not locked into the global models.
+Yes, with permission groups. Providers come in two kinds: global ones an admin configures,
+and local ones each user sets up for themselves.
 
 ## Infrastructure Management?
 
-You can use Saale to connect to and manage servers via SSH, this requires a reachable SSH Port and for an SSH Key to be configured (or Password authentication to be enabled).
+Saale connects to and manages servers over SSH. The host needs a reachable SSH port, and
+either a key configured in Saale or password authentication enabled.
 
 ## Screenshots
 
-**Chat.** A conversation with the agent. Answers stream in as markdown, and each turn
-shows the tools it used. Here it drafted a launch note, checked the calendar and the mail
-to pick a send time, and sent it.
+**Chat.** A conversation with the agent. Answers stream in as markdown, and each turn shows
+the tools it used. Here it drafted a launch note, checked the calendar and the mail to pick
+a send time, and sent it.
 
 ![Chat](docs/screenshots/chat.png)
 
@@ -82,11 +84,10 @@ cp .env.example .env                            # fill in the four secrets
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-That pulls the published images; nothing is built. `docker-compose.yml` builds the same
-stack from the checkout, which is what changing the code uses.
+That runs the published images. `docker-compose.yml` builds the same stack from a checkout.
 
-Open <http://localhost:3630> and create the first account, which is the admin. The agent
-needs a model: add a provider key in Settings.
+Open <http://localhost:3630> and create the first account, which is the admin. Add a
+provider key in Settings so the agent has a model.
 
 ## Docs
 
