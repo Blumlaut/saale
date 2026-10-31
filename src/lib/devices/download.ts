@@ -58,7 +58,7 @@ export async function getDesktopDownloads(): Promise<DesktopDownload[]> {
     return local.map((name) => ({
       label: labelFor(name),
       file: name,
-      url: `/${LOCAL_DIR}/${name}`,
+      url: `/api/devices/download/${name}`,
     }));
   }
 
@@ -72,6 +72,17 @@ export async function getDesktopDownloads(): Promise<DesktopDownload[]> {
     const file = assetName(version, asset.suffix);
     return { label: asset.label, file, url: `${base}/${file}` };
   });
+}
+
+/**
+ * The absolute path of one packaged agent, or null when this instance has no
+ * such file. The name is checked against what is on disk, so a request cannot
+ * walk out of the directory.
+ */
+export async function packagedAgent(name: string): Promise<string | null> {
+  const agents = await findLocalAgents();
+  if (!agents.includes(name)) return null;
+  return path.join(process.cwd(), "public", LOCAL_DIR, name);
 }
 
 /** What a packaged file is, from its own name. */

@@ -13,5 +13,9 @@ export async function GET() {
 
   const devices = await listDevices(authResult.user.id);
 
-  return NextResponse.json({ devices, downloads: await getDesktopDownloads() });
+  // Which builds exist changes when one is packaged, so this must not be cached.
+  return NextResponse.json(
+    { devices, downloads: await getDesktopDownloads() },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }
