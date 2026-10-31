@@ -75,9 +75,6 @@ pub async fn handle(
 pub fn hello(groups: &std::collections::BTreeSet<tools::Group>, display: bool) -> Value {
     // Only what this machine can actually do: a group with no tools to offer is
     // not a capability, whatever the switch says.
-    let offered: Vec<&str> = tools::list(groups, display).iter().map(|_| "").collect();
-    let _ = offered;
-
     json!({
         "hello": {
             "capabilities": groups
