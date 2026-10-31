@@ -25,6 +25,11 @@ use wayland::{char_keysym, map_to_stream, named_keysym, Wayland, BTN_LEFT, BTN_M
 /// Longest edge of the image handed to the model.
 const MAX_IMAGE_EDGE: u32 = 1568;
 
+/// How long a capture gets before the tool call gives up on it. A portal
+/// selector waits for a person, so this is generous; it exists so a portal that
+/// never answers cannot leave a chat waiting for good.
+const CAPTURE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// How much one scroll step moves, in the portal's motion units.
 const SCROLL_UNIT: f64 = 15.0;
 
@@ -64,6 +69,115 @@ pub struct Shot {
     pub display: DisplayInfo,
     pub image_width: u32,
     pub image_height: u32,
+}
+
+/// Capture a display by asking the portal, and keep the monitor's part of it.
+fn capture_with_portal(
+    display: &DisplayInfo,
+    displays: &[DisplayInfo],
+) -> Result<image::RgbaImage, String> {
+    // A backend that will not grab the screen on its own still answers a request
+    // for a selection, which is the selector the user sees.
+    let png = with_deadline(wayland::screenshot(false), CAPTURE_DEADLINE).or_else(|err| {
+        println!("The portal would not take a picture on its own ({err}); asking for one.");
+        with_deadline(wayland::screenshot(true), CAPTURE_DEADLINE)
+    })?;
+    let desktop = image::load_from_memory(&png)
+        .map_err(|err| format!("The portal sent something that is not an image: {err}"))?
+        .to_rgba8();
+
+    Ok(crop_to(desktop, display, displays))
+}
+
+/// The monitor's rectangle inside a capture of the whole desktop.
+fn crop_to(
+    image: image::RgbaImage,
+    display: &DisplayInfo,
+    displays: &[DisplayInfo],
+) -> image::RgbaImage {
+    if display.width == 0 || display.height == 0 {
+        return image;
+    }
+
+    // The portal hands back physical pixels; the layout is logical, and the
+    // capture covers the whole layout.
+    let layout_width = displays
+        .iter()
+        .map(|other| other.x.max(0) as u32 + other.width)
+        .max()
+        .unwrap_or(display.width);
+    let scale = f64::from(image.width()) / f64::from(layout_width.max(1));
+    let x = (f64::from(display.x) * scale).round().max(0.0) as u32;
+    let y = (f64::from(display.y) * scale).round().max(0.0) as u32;
+    let width = ((f64::from(display.width) * scale).round() as u32)
+        .min(image.width() - x.min(image.width()));
+    let height = ((f64::from(display.height) * scale).round() as u32)
+        .min(image.height() - y.min(image.height()));
+
+    if width == 0 || height == 0 {
+        return image;
+    }
+    if x == 0 && y == 0 && width == image.width() && height == image.height() {
+        return image;
+    }
+
+    imageops::crop_imm(&image, x, y, width, height).to_image()
+}
+
+/// Capture a display through xcap, which reads the X server.
+fn capture_with_xcap(display: &DisplayInfo) -> Result<image::RgbaImage, String> {
+    let handle = xcap::Monitor::all()
+        .map_err(|err| format!("Cannot list displays: {err}"))?
+        .into_iter()
+        .find(|candidate| {
+            candidate
+                .id()
+                .map(|id| format!("display-{id}") == display.id)
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| format!("{} went away", display.id))?;
+
+    let id = display.id.clone();
+    with_deadline(
+        async move {
+            handle
+                .capture_image()
+                .map_err(|err| format!("Cannot capture {id}: {err}"))
+        },
+        CAPTURE_DEADLINE,
+    )
+}
+
+/// Run something that talks to the portal on a thread of its own, and stop
+/// waiting for it after a while.
+///
+/// The portal can be slow because a person is looking at a dialog, or because
+/// nothing is listening at all; neither may hold a tool call open forever.
+fn with_deadline<T: Send + 'static>(
+    work: impl std::future::Future<Output = Result<T, String>> + Send + 'static,
+    deadline: std::time::Duration,
+) -> Result<T, String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(err) => {
+                let _ = sender.send(Err(format!("Cannot start the portal client: {err}")));
+                return;
+            }
+        };
+        let _ = sender.send(runtime.block_on(work));
+    });
+
+    receiver.recv_timeout(deadline).map_err(|_| {
+        format!(
+            "The screen did not answer within {} seconds.",
+            deadline.as_secs()
+        )
+    })?
 }
 
 /// A window on the desktop.
@@ -173,20 +287,10 @@ impl Desktop {
         let displays = Self::displays()?;
         let display = Self::monitor(&displays, monitor)?;
 
-        let handle = xcap::Monitor::all()
-            .map_err(|err| format!("Cannot list displays: {err}"))?
-            .into_iter()
-            .find(|candidate| {
-                candidate
-                    .id()
-                    .map(|id| format!("display-{id}") == display.id)
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| format!("{} went away", display.id))?;
-
-        let image = handle
-            .capture_image()
-            .map_err(|err| format!("Cannot capture {}: {err}", display.id))?;
+        let image = match &self.input {
+            Input::Wayland(_) => capture_with_portal(&display, &displays)?,
+            Input::X11(_) => capture_with_xcap(&display)?,
+        };
 
         let scaled = downscale(&image::DynamicImage::ImageRgba8(image).to_rgb8());
 
@@ -657,5 +761,56 @@ mod tests {
         let scaled = downscale(&image);
         assert_eq!(scaled.width(), MAX_IMAGE_EDGE);
         assert_eq!(scaled.height(), 882);
+    }
+
+    fn monitor(x: i32, width: u32) -> DisplayInfo {
+        DisplayInfo {
+            id: format!("display-{x}"),
+            name: "DP-1".to_string(),
+            x,
+            y: 0,
+            width,
+            height: 1080,
+            scale: 1.0,
+            primary: x == 0,
+        }
+    }
+
+    #[test]
+    fn gives_up_on_a_screen_that_never_answers() {
+        let result = with_deadline(
+            std::future::pending::<Result<(), String>>(),
+            std::time::Duration::from_millis(50),
+        );
+
+        assert!(result.unwrap_err().contains("did not answer"));
+    }
+
+    #[test]
+    fn takes_one_monitor_out_of_a_whole_desktop_capture() {
+        let monitors = [monitor(0, 1920), monitor(1920, 1920)];
+        let desktop = image::RgbaImage::new(3840, 1080);
+        let right = crop_to(desktop, &monitors[1], &monitors);
+
+        assert_eq!(right.dimensions(), (1920, 1080));
+    }
+
+    #[test]
+    fn keeps_a_capture_that_is_already_one_monitor() {
+        let monitors = [monitor(0, 1920)];
+        let shot = image::RgbaImage::new(1920, 1080);
+        let cropped = crop_to(shot, &monitors[0], &monitors);
+
+        assert_eq!(cropped.dimensions(), (1920, 1080));
+    }
+
+    #[test]
+    fn reads_the_scale_the_portal_sent() {
+        // a 2x display, so the capture is twice the layout
+        let monitors = [monitor(0, 1920)];
+        let desktop = image::RgbaImage::new(3840, 2160);
+        let cropped = crop_to(desktop, &monitors[0], &monitors);
+
+        assert_eq!(cropped.dimensions(), (3840, 2160));
     }
 }

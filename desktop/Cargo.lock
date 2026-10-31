@@ -3548,6 +3548,7 @@ dependencies = [
  "base64 0.22.1",
  "enigo",
  "futures-util",
+ "gtk",
  "image",
  "ksni",
  "reqwest 0.12.28",

@@ -63,7 +63,7 @@ impl PairLink {
             let Some((key, value)) = pair.split_once('=') else {
                 continue;
             };
-            let decoded = percent_decode(value);
+            let decoded = crate::uri::percent_decode(value);
             match key {
                 "url" => link.url = Some(decoded),
                 "code" => link.code = Some(decoded),
@@ -77,35 +77,6 @@ impl PairLink {
     pub fn is_empty(&self) -> bool {
         self.url.is_none() && self.code.is_none()
     }
-}
-
-/// Enough of percent-decoding for a URL in a query string.
-fn percent_decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'%' if index + 2 < bytes.len() => {
-                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
-                match u8::from_str_radix(hex, 16) {
-                    Ok(byte) => {
-                        out.push(byte);
-                        index += 3;
-                    }
-                    Err(_) => {
-                        out.push(bytes[index]);
-                        index += 1;
-                    }
-                }
-            }
-            byte => {
-                out.push(byte);
-                index += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).to_string()
 }
 
 /// Set `_NET_WM_ICON` on this process's window.
@@ -359,6 +330,12 @@ pub fn open(
 
     tauri::Builder::default()
         .setup(move |app| {
+            // Wayland reports this as the app id, and a taskbar looks the icon up
+            // by that name. Without it GTK's capitalised class is used and the
+            // lookup finds nothing.
+            gtk::gdk::set_program_class("saale-agent");
+            gtk::glib::set_prgname(Some("saale-agent"));
+
             let mut builder = WebviewWindowBuilder::new(app, "main", target)
                 .title("Saale")
                 .inner_size(1280.0, 860.0)

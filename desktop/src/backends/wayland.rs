@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use ashpd::desktop::{
     remote_desktop::{DeviceType, KeyState, RemoteDesktop, SelectDevicesOptions, StartOptions},
     screencast::{CursorMode, Screencast, SelectSourcesOptions, SourceType},
+    screenshot::Screenshot,
     PersistMode, Session,
 };
 use ashpd::enumflags2::BitFlags;
@@ -37,6 +38,39 @@ impl StreamInfo {
             && x < f64::from(self.x + self.width)
             && y < f64::from(self.y + self.height)
     }
+}
+
+/**
+ * A picture of the desktop, through the Screenshot portal.
+ *
+ * Asked for here rather than through `xcap`: its Wayland path calls the shell's
+ * own D-Bus interface first and then waits on a request path it composed itself,
+ * and neither has a deadline, so a portal that does not answer leaves the tool
+ * call pending for good. This asks the portal once and takes the picture it
+ * wrote; timing is the caller's business.
+ *
+ * Interactive means the portal's own selector opens, which is what a backend
+ * without permission to grab the whole screen needs.
+ */
+pub async fn screenshot(interactive: bool) -> Result<Vec<u8>, String> {
+    let request = Screenshot::request()
+        .interactive(interactive)
+        .modal(interactive)
+        .send()
+        .await
+        .map_err(|err| format!("The screenshot portal refused: {err}"))?;
+
+    let response = request
+        .response()
+        .map_err(|err| format!("The screenshot portal returned nothing: {err}"))?;
+
+    let uri = response.uri().to_string();
+    let path = uri
+        .strip_prefix("file://")
+        .ok_or_else(|| format!("The portal handed back {uri}, which is not a file"))?;
+    let path = crate::uri::percent_decode(path);
+
+    std::fs::read(&path).map_err(|err| format!("Cannot read the capture at {path}: {err}"))
 }
 
 /// A live portal session.
@@ -320,6 +354,16 @@ pub fn map_to_stream(streams: &[StreamInfo], x: f64, y: f64) -> Option<(u32, f64
 
 #[cfg(test)]
 mod tests {
+    /// Not run in CI: this talks to a real portal, and there is none there.
+    #[tokio::test]
+    #[ignore = "needs a session bus and xdg-desktop-portal"]
+    async fn the_portal_answers_or_says_why() {
+        match super::screenshot(false).await {
+            Ok(png) => assert!(png.starts_with(b"\x89PNG"), "not a png"),
+            Err(err) => println!("portal said: {err}"),
+        }
+    }
+
     use super::*;
 
     fn display(node: u32, x: i32, y: i32, width: i32, height: i32) -> StreamInfo {

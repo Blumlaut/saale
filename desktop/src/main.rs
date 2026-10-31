@@ -18,6 +18,7 @@ mod mcp;
 mod relay;
 mod tools;
 mod tray;
+mod uri;
 
 use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;

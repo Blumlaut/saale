@@ -33,6 +33,11 @@ Clicked from a page inside the app's own window, the link is taken by
 handler, and left alone it replaces Saale with "The URL can't be shown". The app
 pairs in-process, starts answering, and the window lands on the instance.
 
+Wayland reports GTK's program class as the app id, so the agent sets it to
+`saale-agent`: that is the name a taskbar looks the icon up by, and it matches the
+desktop file. Without it GTK's capitalised class is reported and the lookup finds
+nothing.
+
 The same first run installs the icon at
 `~/.local/share/icons/hicolor/256x256/apps/saale-agent.png` and names it as
 `StartupWMClass` in the entry, which is how a Wayland shell finds the icon for a
@@ -128,11 +133,16 @@ wlroots needs the uinput fallback for input.
 
 ### Capture
 
-`xcap` already speaks Wayland: on a wlroots compositor it reads through
-libwayshot, and elsewhere it calls the `Screenshot` portal over D-Bus and takes
-the file it returns. That is a working capture on GNOME and KDE today, at the
-price of one consent dialog per grab, which is why the ScreenCast session is
-still the goal:
+The agent asks the `Screenshot` portal itself, and falls back to its selector
+when the backend will not grab the screen on its own. `xcap`'s Wayland path is
+not used: it calls the shell's own D-Bus interface first, then waits on a
+request path it composed rather than the one the portal handed back, and nothing
+in it has a deadline, so an unanswered request leaves a tool call pending for
+good. Every capture also runs against a deadline, so a portal that says nothing
+becomes an error instead of a chat that never returns.
+
+One consent dialog per grab remains the price, which is why the ScreenCast
+session is still the goal:
 
 - Create one session on the RemoteDesktop portal, call
   `Screencast::select_sources` on it, start it once.
@@ -243,9 +253,9 @@ consent dialog returns.
 - Screen capture, the pointer and the keyboard work on X11: a real capture, a
   click mapped from the image, typing and key combinations. Verified under Xvfb
   against the live instance.
-- Wayland capture rides on `xcap`'s Screenshot portal path, and Wayland input on
+- Wayland capture goes through the `Screenshot` portal, and Wayland input through
   the RemoteDesktop portal. Both are written but untested here: this machine has
-  no compositor.
+  no compositor, and the portal here has no frontend to answer.
 - The tray is a StatusNotifierItem over D-Bus, with a checkmark per tool group.
   Flipping one takes effect in the running process.
 - The window is Saale itself in a WebKitGTK webview with no IPC, which is the
