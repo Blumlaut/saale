@@ -1,14 +1,16 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { FileLimitError, FilePathEscapeError } from "@/lib/files/errors";
 import { planZip, streamZip } from "@/lib/files/zip";
+import { createLocalFileProvider } from "@/lib/files/local-provider";
 import { createFakeProvider, readZipEntries } from "../../helpers/fake-file-provider";
 
-// Shrink the ceilings so a test can hit them without building megabytes.
+// Shrink the entry ceiling so a test can hit it without building a big tree.
 vi.mock("@/lib/files/config", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/files/config")>()),
   MAX_ZIP_ENTRIES: 4,
-  MAX_ZIP_BYTES: 4096,
-  MAX_DOWNLOAD_BYTES: 1024,
 }));
 
 const ROOT = "/workspace";
@@ -53,7 +55,6 @@ describe("planZip", () => {
     expect(plan.entries.map((entry) => entry.name)).toEqual(["src/app.ts", "src/deep/nested.txt"]);
     // A single folder downloads as that folder, which is what a person expects.
     expect(plan.fileName).toBe("src.zip");
-    expect(plan.totalBytes).toBe("export const app = 1;".length + "deep".length);
   });
 
   it("records an empty folder so it survives the round trip", async () => {
@@ -112,25 +113,19 @@ describe("planZip", () => {
     ).rejects.toBeInstanceOf(FileLimitError);
   });
 
-  it("refuses a selection larger than the byte ceiling", async () => {
+  it("plans a selection of any size, because nothing is buffered", async () => {
+    // A download has no ceiling: the bytes go from the disk into the archive a
+    // chunk at a time, so a huge file costs the same memory as a small one.
     const tree = {
       [`${ROOT}/big`]: null,
-      [`${ROOT}/big/report.bin`]: "x".repeat(2000),
+      [`${ROOT}/big/report.bin`]: "x".repeat(2_000_000),
+      [`${ROOT}/big/notes.md`]: "# notes",
     };
     const provider = createFakeProvider(tree);
 
-    await expect(
-      planZip(provider, ROOT, [`${ROOT}/big`], { includeDotfiles: false }),
-    ).rejects.toBeInstanceOf(FileLimitError);
-  });
+    const plan = await planZip(provider, ROOT, [`${ROOT}/big`], { includeDotfiles: false });
 
-  it("refuses a single file larger than the served-file ceiling", async () => {
-    const tree = { [`${ROOT}/huge.bin`]: "x".repeat(2000) };
-    const provider = createFakeProvider(tree);
-
-    await expect(
-      planZip(provider, ROOT, [`${ROOT}/huge.bin`], { includeDotfiles: false }),
-    ).rejects.toBeInstanceOf(FileLimitError);
+    expect(plan.entries.map((entry) => entry.name)).toEqual(["big/report.bin", "big/notes.md"]);
   });
 
   it("reports a missing entry rather than writing an empty archive", async () => {
@@ -142,6 +137,31 @@ describe("planZip", () => {
 });
 
 describe("streamZip", () => {
+  it("streams a real workspace's files into the archive", async () => {
+    // The bytes go from the disk into the archive without a buffer in between,
+    // which is the whole reason a large selection has no ceiling.
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "saale-zip-"));
+    try {
+      const content = Buffer.alloc(1024 * 1024, 3);
+      await fs.mkdir(path.join(root, "dump"));
+      await fs.writeFile(path.join(root, "dump", "blob.bin"), content);
+      await fs.writeFile(path.join(root, "dump", "notes.md"), "# notes");
+      const provider = createLocalFileProvider({ root });
+
+      const plan = await planZip(provider, root, [path.join(root, "dump")], {
+        includeDotfiles: false,
+      });
+      const archive = readZipEntries(await collect(streamZip(provider, plan)));
+
+      expect(archive.map((entry) => entry.name).sort()).toEqual(["dump/blob.bin", "dump/notes.md"]);
+      expect(archive.find((entry) => entry.name === "dump/blob.bin")?.content.equals(content)).toBe(
+        true,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("produces a real archive whose entries inflate back to their bytes", async () => {
     const provider = createFakeProvider(TREE);
     const plan = await planZip(provider, ROOT, [`${ROOT}/src`, `${ROOT}/notes.md`], {

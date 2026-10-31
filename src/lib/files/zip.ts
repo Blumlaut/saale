@@ -1,23 +1,24 @@
 /**
  * Zip downloads for a selection of files and folders.
  *
- * Two passes, deliberately. The selection is walked and measured first, so a
- * selection that exceeds a ceiling is refused with a status and a sentence
- * instead of a download that stops halfway. a truncated archive is worse than
- * a refusal, because it looks like it worked. Only then are bytes streamed.
+ * Two passes, deliberately. The selection is walked first, so an archive that
+ * cannot be built is refused with a status and a sentence instead of a download
+ * that stops halfway. a truncated archive is worse than a refusal, because it
+ * looks like it worked. Only then are bytes streamed.
  *
- * Entries are read lazily, one at a time, as the archive is written:
+ * Entries are streamed, one at a time, as the archive is written:
  * `addReadStreamLazy` asks for the next file only once the previous one is on
- * the wire, which keeps memory flat no matter how large the selection is. A file
- * that changes size between the two passes fails the entry, which destroys the
- * response rather than shipping a corrupt archive.
+ * the wire, and the bytes come off the disk into the archive rather than through
+ * a buffer. Memory stays flat whatever the selection weighs. A file that changes
+ * size between the two passes fails the entry, which destroys the response
+ * rather than shipping a corrupt archive.
  */
 
 import { Readable } from "node:stream";
+import type { ReadableStream as NodeWebStream } from "node:stream/web";
 import { ZipFile } from "yazl";
-import { MAX_DOWNLOAD_BYTES, MAX_ZIP_BYTES, MAX_ZIP_ENTRIES } from "./config";
+import { MAX_ZIP_ENTRIES } from "./config";
 import { FileLimitError, FileNotFoundError, FilePathEscapeError } from "./errors";
-import { formatFileSize } from "@/lib/utils";
 import { baseName, relativeToRoot } from "./paths";
 import { isDotfile, type FileProvider } from "./provider";
 
@@ -36,7 +37,6 @@ export interface ZipPlan {
   entries: ZipPlanEntry[];
   /** Folders that would otherwise leave no trace in the archive. */
   emptyDirectories: { name: string; modified: number }[];
-  totalBytes: number;
   fileName: string;
 }
 
@@ -57,7 +57,6 @@ export async function planZip(
   const entries: ZipPlanEntry[] = [];
   const emptyDirectories: ZipPlan["emptyDirectories"] = [];
   const seen = new Set<string>();
-  let totalBytes = 0;
 
   async function add(path: string, name: string): Promise<void> {
     if (seen.has(path)) return;
@@ -67,20 +66,9 @@ export async function planZip(
     if (!stat) throw new FileNotFoundError(path);
 
     if (stat.kind === "file") {
-      totalBytes += stat.size;
-      if (stat.size > MAX_DOWNLOAD_BYTES) {
-        throw new FileLimitError(
-          `${baseName(path)} is larger than ${formatFileSize(MAX_DOWNLOAD_BYTES)} and cannot be zipped.`,
-        );
-      }
       if (entries.length >= MAX_ZIP_ENTRIES) {
         throw new FileLimitError(
           `That selection has more than ${MAX_ZIP_ENTRIES} files. Pick fewer, or a smaller folder.`,
-        );
-      }
-      if (totalBytes > MAX_ZIP_BYTES) {
-        throw new FileLimitError(
-          `That selection is larger than ${formatFileSize(MAX_ZIP_BYTES)}. Pick fewer, or a smaller folder.`,
         );
       }
       entries.push({ name, path, size: stat.size, modified: stat.modified });
@@ -113,7 +101,7 @@ export async function planZip(
   const single = selections.length === 1 && first ? await provider.stat(first) : null;
   const fileName = single?.kind === "directory" && first ? `${baseName(first)}.zip` : "files.zip";
 
-  return { entries, emptyDirectories, totalBytes, fileName };
+  return { entries, emptyDirectories, fileName };
 }
 
 /** Stream a plan as an archive body. */
@@ -133,12 +121,15 @@ export function streamZip(provider: FileProvider, plan: ZipPlan): ReadableStream
   }
 
   for (const entry of plan.entries) {
+    // `size` is what tells yazl to use ZIP64 for an entry past 4GB, so it stays
+    // even though the bytes are streamed rather than counted first.
     zip.addReadStreamLazy(
       entry.name,
       { size: entry.size, mtime: new Date(entry.modified) },
       (cb) => {
-        provider.read(entry.path).then(
-          (file) => cb(null, Readable.from([file.buffer])),
+        provider.openReadStream(entry.path).then(
+          // The provider hands back a web stream; yazl wants a Node one to pipe.
+          (stream) => cb(null, Readable.fromWeb(stream as unknown as NodeWebStream)),
           (err) => cb(err instanceof Error ? err : new Error(String(err)), undefined as never),
         );
       },

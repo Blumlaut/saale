@@ -13,8 +13,9 @@ import { planZip, streamZip } from "@/lib/files/zip";
  * browsed. which keeps the shape of the tree and makes collisions between
  * same-named files in different folders impossible.
  *
- * The selection is measured before anything is written: an oversized zip is a
- * 413 with a sentence, not a download that half-works.
+ * The selection is walked before anything is written, so an archive that cannot
+ * be built is a 413 with a sentence rather than a download that half-works. Size
+ * is not one of those reasons: entries are streamed into the archive.
  */
 export async function GET(request: NextRequest) {
   try {
