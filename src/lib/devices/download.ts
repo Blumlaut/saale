@@ -33,7 +33,8 @@ export function getDesktopDownloads(): DesktopDownload[] {
   const version = releaseVersion();
   if (!version) return [];
 
-  const base = `${process.env.SAALE_DESKTOP_RELEASE_BASE ?? DEFAULT_RELEASE_BASE}/v${version}`;
+  // Releases are tagged with the bare version (`2026.10.2`), not a `v` prefix.
+  const base = `${process.env.SAALE_DESKTOP_RELEASE_BASE ?? DEFAULT_RELEASE_BASE}/${version}`;
   const file = `saale-agent-${version}-x86_64-linux.tar.gz`;
 
   return [{ label: "Linux (x86_64)", file, url: `${base}/${file}` }];

@@ -169,6 +169,19 @@ The AppImage sets a fixed desktop file name so the portal can key its persisted
 permissions to one app id. Without it every launch looks like a new app and the
 consent dialog returns.
 
+## Built so far
+
+- `desktop/` is a Rust binary that pairs, holds the channel and answers MCP. It
+  builds in CI and ships with each release as
+  `saale-agent-<version>-x86_64-linux.tar.gz`.
+- Saale has the `Device` model, pairing codes, the relay over Redis, the
+  `DeviceTransport`, and the settings card that offers the download and the
+  pairing command.
+- A chat carries `ChatSession.clientDeviceId`, set from the cookie the agent's
+  window writes. Only that device joins the chat's tool list.
+- Screen capture is a placeholder with the real metadata contract. Mouse,
+  keyboard, the portal session and the tray are still open.
+
 ## Milestones
 
 | Step | Work                                                                                                                              | Time   |
