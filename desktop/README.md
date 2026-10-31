@@ -53,12 +53,19 @@ AppImage asks the host for rather than bundling.
 
 ## The tray
 
-`saale-agent run` puts an icon in the tray. Its menu lists the five groups as
-checkmarks: flipping one takes effect in the running process, so the tool list
-changes without a restart, and the choice is written to the config.
+`saale-agent` opens its window and puts an icon in the tray. Its menu has **Open
+Saale**, the five groups as checkmarks, **Start at login**, and **Quit**. Flipping
+a group takes effect in the running process, so the tool list changes without a
+restart, and the choice is written to the config.
+
+Closing the window hides it in the tray; a left click on the icon brings it back.
+The first run of a paired machine writes
+`~/.config/autostart/saale-agent.desktop`, so the agent comes up in the tray when
+you sign in. **Start at login** turns that off again.
 
 GNOME shows tray icons only with the AppIndicator extension; KDE and XFCE show
-them as they are. Without a tray host the agent says so once and keeps running.
+them as they are. On a machine with no tray host there is nothing to hide into,
+so the window stays visible and closing it quits.
 
 ## Tool groups
 
