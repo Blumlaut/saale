@@ -341,8 +341,8 @@ export function DesktopPairDialog({
                   </Button>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  Opens the agent with both fields filled in, if its link handler is installed.
-                  Otherwise run the command above. The code works once and expires at{" "}
+                  Pairs the app in one click. If nothing opens, start the agent once so it can
+                  register its link handler, then press it again. The code works once and expires at{" "}
                   {new Date(pairCode.expiresAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",

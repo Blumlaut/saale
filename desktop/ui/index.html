@@ -31,9 +31,18 @@
       <p>
         Open <strong>Settings → Integrations → This computer</strong> in Saale, get a pairing
         code, and press <strong>Open in the desktop app</strong>. That pairs this machine and
-        opens Saale here.
+        opens Saale here. The instance travels with that link, so there is nothing to type.
       </p>
-      <p>Without Saale open anywhere: <code>saale-agent pair --url &lt;instance&gt; --code &lt;code&gt;</code>.</p>
+      <p>
+        Nothing happens when you press it? Start this app once (you are looking at it), then
+        press the button again: the first run registers the handler for
+        <code>saale://</code> links.
+      </p>
+      <p>
+        No Saale within reach: <code>saale-agent --url &lt;instance&gt;</code> opens it, and
+        <code>saale-agent pair --url &lt;instance&gt; --code &lt;code&gt;</code> pairs without a
+        window.
+      </p>
     </main>
   </body>
 </html>
