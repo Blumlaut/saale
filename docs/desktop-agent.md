@@ -16,8 +16,11 @@ One app, three surfaces, one core:
 - **Headless.** `saale-agent --headless`, no window, for machines where nobody
   signs into Saale's UI.
 
-Pairing comes from the deep link `saale://pair/<code>`. Saale's settings page
-shows the code, the app registers itself against the signed-in session.
+Pairing comes from the deep link `saale://pair?url=…&code=…`. Saale's settings
+page shows the code and fires that link, so the instance travels with it and the
+agent never asks for it: `~/.config/saale-agent/config.json` holds it once
+paired, `~/.config/saale-agent/instance` holds it from the first link on. The
+first run writes its own `saale-agent.desktop` so the scheme has a handler.
 
 ## Saale side
 

@@ -81,6 +81,76 @@ fn percent_decode(value: &str) -> String {
     String::from_utf8_lossy(&out).to_string()
 }
 
+/// Register this app as the handler for `saale://` links.
+///
+/// Saale's "Open in the desktop app" button is the whole pairing step, and it
+/// only works if something claims the scheme. A first run installs the desktop
+/// entry for the current user, so the second click lands.
+pub fn register_scheme_handler() {
+    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+        return;
+    };
+
+    // An AppImage runs from a temporary mount; the file to launch again is the
+    // AppImage itself.
+    let exec = std::env::var("APPIMAGE")
+        .map(std::path::PathBuf::from)
+        .or_else(|_| std::env::current_exe())
+        .unwrap_or_default();
+    if exec.as_os_str().is_empty() {
+        return;
+    }
+
+    let dir = home.join(".local/share/applications");
+    let path = dir.join("saale-agent.desktop");
+    let entry = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Saale Agent\n\
+         Comment=Let a Saale chat use this computer\n\
+         Exec=\"{}\" %u\n\
+         Icon=saale-agent\n\
+         Terminal=false\n\
+         Categories=Utility;\n\
+         MimeType=x-scheme-handler/saale;\n",
+        exec.display()
+    );
+
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    if current != entry {
+        if let Err(err) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &entry))
+        {
+            println!(
+                "Cannot register the saale:// handler in {}: {err}",
+                dir.display()
+            );
+            return;
+        }
+    }
+
+    // Best effort: a missing xdg tool means the entry is there and the desktop
+    // database catches up on its own.
+    for command in [
+        vec!["update-desktop-database", dir.to_string_lossy().as_ref()],
+        vec![
+            "xdg-mime",
+            "default",
+            "saale-agent.desktop",
+            "x-scheme-handler/saale",
+        ],
+    ] {
+        let (program, args) = command.split_first().expect("a program");
+        match std::process::Command::new(program).args(args).output() {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => println!(
+                "{program} said: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+            Err(err) => println!("Cannot run {program}: {err}"),
+        }
+    }
+}
+
 /// The script that claims this computer for chats started in the window.
 fn cookie_script(device_id: &str) -> String {
     format!(

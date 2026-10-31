@@ -45,7 +45,10 @@ is what binds a chat started here to this computer.
 
 Pairing arrives by link. Saale's settings page has **Open in the desktop app**,
 which hands over `saale://pair?url=…&code=…`; the agent pairs, opens the
-instance and starts answering. The window needs `libwebkit2gtk-4.1-0`, which the
+instance and starts answering. The instance is carried by that link, so nothing
+is typed, and it is remembered in `~/.config/saale-agent/instance` even when the
+code turns out to be stale. The first run installs
+`~/.local/share/applications/saale-agent.desktop` so the scheme has a handler. The window needs `libwebkit2gtk-4.1-0`, which the
 AppImage asks the host for rather than bundling.
 
 ## The tray

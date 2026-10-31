@@ -195,7 +195,14 @@ fn window(args: &[String]) -> Result<(), String> {
     let mut config = config::load().ok();
 
     // Arriving from Saale's "Open in the desktop app" button: the link carries
-    // both halves, so this is the whole pairing step.
+    // both halves, so this is the whole pairing step. The instance is kept even
+    // if the code is stale, so the window still lands on the right Saale.
+    if let Some(url) = requested.clone() {
+        if let Err(err) = config::save_instance(&url) {
+            println!("{err}");
+        }
+    }
+
     if let (Some(url), Some(code)) = (requested.clone(), link.code) {
         let name = config::machine_name();
         let groups = config
@@ -209,7 +216,12 @@ fn window(args: &[String]) -> Result<(), String> {
                 println!("Paired as \"{}\".", paired.name);
                 config = Some(paired);
             }
-            Err(err) => return Err(format!("Pairing failed: {err}")),
+            Err(err) => {
+                // Show Saale anyway: the code can be minted again from there,
+                // and typing the instance a second time is not the user's job.
+                println!("Pairing failed: {err}");
+                println!("Open Settings, Integrations, This computer in Saale to try again.");
+            }
         }
     }
 
@@ -217,8 +229,12 @@ fn window(args: &[String]) -> Result<(), String> {
     let url = config
         .as_ref()
         .map(|config| config.url.clone())
-        .or(requested);
+        .or(requested)
+        .or_else(config::load_instance);
     let device_id = config.as_ref().map(|config| config.device_id.clone());
+
+    // The next "Open in the desktop app" click has to find this app.
+    app::register_scheme_handler();
 
     if let Some(config) = config.clone() {
         start_agent(config);

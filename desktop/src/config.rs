@@ -35,6 +35,33 @@ pub fn config_path() -> PathBuf {
     base.join("saale-agent").join("config.json")
 }
 
+/// Where the instance is remembered before pairing succeeds.
+///
+/// A code can expire or be mistyped, and the instance is not something a user
+/// should have to type twice: the link from Saale carries it, so it is kept even
+/// when the pairing that came with it failed.
+pub fn instance_path() -> PathBuf {
+    config_path().with_file_name("instance")
+}
+
+/// Remember the instance this machine talks to.
+pub fn save_instance(url: &str) -> Result<(), String> {
+    let path = instance_path();
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|err| format!("Cannot create {}: {err}", dir.display()))?;
+    }
+    fs::write(&path, url.trim_end_matches('/'))
+        .map_err(|err| format!("Cannot keep {}: {err}", path.display()))
+}
+
+/// The instance this machine last talked to, if it has one.
+pub fn load_instance() -> Option<String> {
+    fs::read_to_string(instance_path())
+        .ok()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+}
+
 /// Read the config, or explain what to run first.
 pub fn load() -> Result<Config, String> {
     let path = config_path();
