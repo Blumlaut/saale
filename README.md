@@ -8,7 +8,7 @@ A self-hosted chat UI that doesn't waste your tokens.
 ## Why should I care?
 
 Saale was built on the idea that legacy is no excuse for bad practices. It runs on
-[Pi](pi.dev), so the common inference providers
+[Pi](https://pi.dev), so the common inference providers
 work out of the box. Saale adds only the few things it takes to make working with a local
 provider pleasant.
 
