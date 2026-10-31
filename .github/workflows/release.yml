@@ -65,8 +65,39 @@ jobs:
         shell: bash
         run: echo "version=$(sh scripts/release-version.sh)" >> "$GITHUB_OUTPUT"
 
-  images:
+  # A tag is a promise that the tree was sound when it was cut, and main can be
+  # pushed to directly. Cheaper than the checks on a pull request, and it is the
+  # last moment anything can say no.
+  checks:
     needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # `prisma generate` runs on install and wants a parseable URL. Nothing
+      # connects.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same newest Node the pull-request checks run on, so a release cannot
+      # disagree with them about the toolchain.
+      - name: Resolve the latest Node version
+        id: node
+        shell: bash
+        run: echo "version=$(curl -fsSL https://nodejs.org/dist/index.json | jq -r '.[0].version')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  images:
+    needs: [plan, checks]
     if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     strategy:

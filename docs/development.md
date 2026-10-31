@@ -85,6 +85,9 @@ it:
 A day with nothing new stops after the checkout, so a quiet repository costs nothing.
 `workflow_dispatch` cuts a release on demand.
 
+GHCR creates the three packages private the first time a release pushes them. They have to
+be set to public once, in each package's settings, or nobody can pull an image.
+
 `scripts/release-version.sh` works out the next number from the tags, so it can be run
 before a manual release:
 
