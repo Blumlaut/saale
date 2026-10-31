@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildShellRequest,
+  buildMkdirRequest,
+  buildWriteRequest,
   parsePlatformProbe,
   InvalidExecOptionsError,
   PLATFORM_PROBE,
@@ -56,6 +58,72 @@ describe("buildShellRequest on POSIX", () => {
     const { stdin } = buildShellRequest("posix", command);
 
     expect(stdin).toBe(command);
+  });
+});
+
+describe("buildMkdirRequest", () => {
+  it("creates the path over the login shell, quoted", () => {
+    const { request, stdin } = buildMkdirRequest("/srv/my app's dir");
+
+    expect(request).toBe(POSIX_REQUEST);
+    expect(stdin).toBe("mkdir -p '/srv/my app'\\''s dir'");
+  });
+});
+
+describe("buildWriteRequest", () => {
+  /** The bytes the heredoc carries, as the remote base64 would decode them. */
+  function heredocBytes(stdin: string): Buffer {
+    return Buffer.from(stdin.split("\n").slice(1, -1).join(""), "base64");
+  }
+
+  it("redirects base64 into the file, keeping the content out of the request", () => {
+    const { request, stdin } = buildWriteRequest(
+      "/etc/wireguard/ch-zrh.peer",
+      Buffer.from("Endpoint = 1.2.3.4\n"),
+    );
+
+    expect(request).toBe(POSIX_REQUEST);
+    expect(request).not.toContain("Endpoint");
+    expect(stdin.split("\n")[0]).toBe(
+      "base64 -d > '/etc/wireguard/ch-zrh.peer' <<'SAALE_WRITE_EOF'",
+    );
+    expect(heredocBytes(stdin).toString("utf8")).toBe("Endpoint = 1.2.3.4\n");
+  });
+
+  it("decodes back to the same bytes, whatever the content says", () => {
+    const content = "SAALE_WRITE_EOF\n'; rm -rf / #\n$(whoami) `id`\n\t\n";
+
+    const { stdin } = buildWriteRequest("/tmp/notes.txt", Buffer.from(content));
+
+    expect(heredocBytes(stdin).toString("utf8")).toBe(content);
+    // The delimiter ends the heredoc on a line of its own, which the content
+    // cannot forge.
+    expect(stdin.split("\n").filter((line) => line === "SAALE_WRITE_EOF")).toHaveLength(1);
+  });
+
+  it("keeps bytes that are not text", () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff, 0x0a, 0x0d]);
+
+    const { stdin } = buildWriteRequest("/tmp/logo.png", bytes);
+
+    expect(heredocBytes(stdin).equals(bytes)).toBe(true);
+  });
+
+  it("wraps a long body so no heredoc line runs away", () => {
+    const content = "x".repeat(500);
+
+    const { stdin } = buildWriteRequest("/tmp/big.txt", Buffer.from(content));
+
+    const body = stdin.split("\n").slice(1, -1);
+    expect(body.length).toBeGreaterThan(1);
+    expect(body.every((line) => line.length <= 76)).toBe(true);
+    expect(heredocBytes(stdin).toString("utf8")).toBe(content);
+  });
+
+  it("writes an empty file from an empty heredoc", () => {
+    const { stdin } = buildWriteRequest("/tmp/empty", Buffer.alloc(0));
+
+    expect(heredocBytes(stdin)).toHaveLength(0);
   });
 });
 

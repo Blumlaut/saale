@@ -12,11 +12,14 @@ import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import {
+  buildMkdirRequest,
   buildShellRequest,
+  buildWriteRequest,
   parsePlatformProbe,
   InvalidExecOptionsError,
   PLATFORM_PROBE,
   type RemotePlatform,
+  type ShellRequest,
 } from "@/lib/infra/shell";
 
 // ─── Limits ─────────────────────────────────────────────────────
@@ -248,18 +251,6 @@ function sftpRead(sftp: SFTPWrapper, path: string): Promise<Buffer> {
 }
 
 /**
- * Write a file via SFTP.
- */
-function sftpWrite(sftp: SFTPWrapper, path: string, content: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    sftp.writeFile(path, content, "utf8", (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
-
-/**
  * Write raw bytes to a file via SFTP.
  */
 function sftpWriteBuffer(sftp: SFTPWrapper, path: string, content: Buffer): Promise<void> {
@@ -269,6 +260,46 @@ function sftpWriteBuffer(sftp: SFTPWrapper, path: string, content: Buffer): Prom
       else resolve();
     });
   });
+}
+
+/**
+ * Whether the SFTP session died on the bytes the server sent rather than on what
+ * was asked of it.
+ *
+ * A machine whose profile prints a banner into the SFTP channel kills the
+ * session before its first packet, and ssh2 reads the text as a packet length.
+ */
+function isBrokenSftpSession(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /Invalid packet length|exceeds max length of \d+/.test(message);
+}
+
+/**
+ * Run an SFTP operation, and the same work as a shell request when the session
+ * is dead. The shell reaches the same files without the subsystem.
+ */
+async function withSftpFallback(
+  ssh: NodeSSH,
+  operation: (sftp: SFTPWrapper) => Promise<void>,
+  fallback: () => ShellRequest,
+): Promise<void> {
+  try {
+    await operation(await getSftp(ssh));
+  } catch (err) {
+    // The fallback speaks POSIX, so a machine that is not one keeps its own
+    // error.
+    if (!isBrokenSftpSession(err) || (await resolvePlatform(ssh)) !== "posix") throw err;
+
+    console.error("SFTP session is unusable, doing the work over the shell:", err);
+
+    const { request, stdin } = fallback();
+    const result = await ssh.execCommand(request, { stdin });
+    if (result.code !== 0) {
+      throw new Error(
+        `The shell fallback failed: ${result.stderr || `exit code ${result.code ?? "unknown"}`}`,
+      );
+    }
+  }
 }
 
 /**
@@ -634,8 +665,11 @@ export async function createDirectory(
   const { ssh, disconnect } = await connect(machineId, userId);
 
   try {
-    const sftp = await getSftp(ssh);
-    await sftpMkdirRecursive(sftp, dirPath);
+    await withSftpFallback(
+      ssh,
+      (sftp) => sftpMkdirRecursive(sftp, dirPath),
+      () => buildMkdirRequest(dirPath),
+    );
     return { ok: true };
   } finally {
     disconnect();
@@ -643,7 +677,29 @@ export async function createDirectory(
 }
 
 /**
- * Write content to a file on a remote machine via SFTP.
+ * Write bytes to a file on a remote machine, over SFTP or the shell.
+ */
+async function writeRemoteFile(
+  machineId: string,
+  userId: string,
+  filePath: string,
+  content: Buffer,
+): Promise<void> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    await withSftpFallback(
+      ssh,
+      (sftp) => sftpWriteBuffer(sftp, filePath, content),
+      () => buildWriteRequest(filePath, content),
+    );
+  } finally {
+    disconnect();
+  }
+}
+
+/**
+ * Write content to a file on a remote machine, replacing what it held.
  */
 export async function writeFile(
   machineId: string,
@@ -651,22 +707,15 @@ export async function writeFile(
   filePath: string,
   content: string,
 ): Promise<{ ok: boolean }> {
-  const { ssh, disconnect } = await connect(machineId, userId);
-
-  try {
-    const sftp = await getSftp(ssh);
-    await sftpWrite(sftp, filePath, content);
-    return { ok: true };
-  } finally {
-    disconnect();
-  }
+  await writeRemoteFile(machineId, userId, filePath, Buffer.from(content, "utf8"));
+  return { ok: true };
 }
 
 /**
- * Write raw bytes to a file on a remote machine via SFTP.
+ * Write raw bytes to a file on a remote machine.
  *
- * Unlike {@link writeFile} this preserves arbitrary binary content, so it is
- * the counterpart to {@link readFileForTransfer}.
+ * The counterpart to {@link readFileForTransfer}: arbitrary bytes survive, which
+ * is what an upload needs and what a text write must not lose either.
  */
 export async function writeFileBuffer(
   machineId: string,
@@ -674,15 +723,8 @@ export async function writeFileBuffer(
   filePath: string,
   content: Buffer,
 ): Promise<{ ok: boolean; size: number }> {
-  const { ssh, disconnect } = await connect(machineId, userId);
-
-  try {
-    const sftp = await getSftp(ssh);
-    await sftpWriteBuffer(sftp, filePath, content);
-    return { ok: true, size: content.length };
-  } finally {
-    disconnect();
-  }
+  await writeRemoteFile(machineId, userId, filePath, content);
+  return { ok: true, size: content.length };
 }
 
 /**

@@ -519,7 +519,97 @@ describe("SFTP file operations", () => {
 
     await writeFile("machine-1", "user-1", "/tmp/app.conf", "key = value\n");
 
-    expect(written).toEqual([{ path: "/tmp/app.conf", content: "key = value\n" }]);
+    expect(written).toEqual([{ path: "/tmp/app.conf", content: Buffer.from("key = value\n") }]);
+  });
+
+  /**
+   * Stand up a machine whose SFTP session dies on the server's bytes, which is
+   * what a profile banner printed into the channel does, and let the shell
+   * answer for it.
+   */
+  function setupBannerSftp(shell: { code?: number; stderr?: string } = {}) {
+    const desync = new Error("Packet length 171785533 exceeds max length of 262144");
+
+    const sftp = {
+      mkdir: vi.fn((_path: string, cb: (err?: Error) => void) => cb(desync)),
+      stat: vi.fn((_path: string, cb: (err?: Error) => void) => cb(desync)),
+      writeFile: vi.fn((_path: string, _content: unknown, encOrCb: unknown, maybeCb?: unknown) => {
+        const cb = (typeof encOrCb === "function" ? encOrCb : maybeCb) as (err?: Error) => void;
+        cb(desync);
+      }),
+    };
+
+    const execCommand = vi.fn().mockImplementation((request: string) => {
+      if (request === PLATFORM_PROBE) {
+        return Promise.resolve({
+          stdout: "",
+          stderr: "sh: 1: cmd.exe: not found\n",
+          code: 127,
+          signal: null,
+        });
+      }
+      return Promise.resolve({
+        stdout: "",
+        stderr: shell.stderr ?? "",
+        code: shell.code ?? 0,
+        signal: null,
+      });
+    });
+
+    (NodeSSH as unknown as Mock).mockImplementation(function () {
+      return {
+        connect: vi.fn().mockResolvedValue(undefined),
+        requestSFTP: vi.fn().mockResolvedValue(sftp),
+        execCommand,
+        dispose: vi.fn(),
+      };
+    });
+
+    vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(machine);
+
+    return { execCommand };
+  }
+
+  /** The script the shell fallback was handed. */
+  function lastScript(execCommand: Mock): string {
+    const [, options] = execCommand.mock.calls[execCommand.mock.calls.length - 1]! as [
+      string,
+      { stdin?: string },
+    ];
+    return options.stdin ?? "";
+  }
+
+  it("creates the directory over the shell when the SFTP session is dead", async () => {
+    const { execCommand } = setupBannerSftp();
+
+    await createDirectory("machine-1", "user-1", "/etc/wireguard/relays");
+
+    expect(lastScript(execCommand)).toBe("mkdir -p '/etc/wireguard/relays'");
+  });
+
+  it("writes the file over the shell when the SFTP session is dead", async () => {
+    const { execCommand } = setupBannerSftp();
+
+    await writeFile(
+      "machine-1",
+      "user-1",
+      "/etc/wireguard/relays/ch-zrh.peer",
+      "Endpoint = 1.2.3.4\n",
+    );
+
+    const script = lastScript(execCommand);
+    expect(script).toContain("base64 -d > '/etc/wireguard/relays/ch-zrh.peer'");
+    expect(Buffer.from(script.split("\n").slice(1, -1).join(""), "base64").toString("utf8")).toBe(
+      "Endpoint = 1.2.3.4\n",
+    );
+  });
+
+  it("reports a failed fallback instead of claiming the write landed", async () => {
+    setupBannerSftp({ code: 1, stderr: "base64: command not found\n" });
+
+    await expect(writeFile("machine-1", "user-1", "/tmp/key", "secret")).rejects.toThrow(
+      "base64: command not found",
+    );
   });
 
   it("writes raw bytes through SFTP", async () => {

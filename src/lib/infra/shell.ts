@@ -39,6 +39,9 @@ export const PLATFORM_PROBE = "cmd.exe /C echo %OS%";
 /** A name a shell accepts on the left of an assignment. */
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** Ends the heredoc that carries a file's content. Base64 cannot spell it. */
+const WRITE_HEREDOC = "SAALE_WRITE_EOF";
+
 /** cmd has no escape for these inside a quoted value. */
 const WINDOWS_UNSAFE_VALUE = /["\r\n]/;
 
@@ -149,6 +152,24 @@ export function buildShellRequest(
     request: platform === "windows" ? WINDOWS_REQUEST : POSIX_REQUEST,
     stdin: platform === "windows" ? windowsScript(command, options) : posixScript(command, options),
   };
+}
+
+/**
+ * Build a POSIX request that writes `content` to `filePath`.
+ *
+ * For machines whose SFTP session cannot be used. The content travels as base64
+ * inside a heredoc, so no byte of it is read as shell syntax and no line of it
+ * can end the heredoc early.
+ */
+export function buildWriteRequest(filePath: string, content: Buffer): ShellRequest {
+  const base64 = content.toString("base64").replace(/(.{76})/g, "$1\n");
+  const script = `base64 -d > ${posixQuote(filePath)} <<'${WRITE_HEREDOC}'\n${base64}\n${WRITE_HEREDOC}`;
+  return buildShellRequest("posix", script);
+}
+
+/** Build a POSIX request that makes a directory and any parents it needs. */
+export function buildMkdirRequest(dirPath: string): ShellRequest {
+  return buildShellRequest("posix", `mkdir -p ${posixQuote(dirPath)}`);
 }
 
 /**
