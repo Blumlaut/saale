@@ -22,6 +22,7 @@ import {
   isValidUsername,
   normalizeUsername,
 } from "@/lib/auth/username";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password";
 import {
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_REFRESH_WINDOW_SECONDS,
@@ -45,8 +46,8 @@ export const auth = betterAuth({
   trustedOrigins: trustedOriginsFromEnv(),
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 8,
-    maxPasswordLength: 128,
+    minPasswordLength: PASSWORD_MIN_LENGTH,
+    maxPasswordLength: PASSWORD_MAX_LENGTH,
   },
   socialProviders: {},
   // Security settings

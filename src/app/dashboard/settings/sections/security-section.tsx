@@ -17,6 +17,7 @@ import {
   PowerOff,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password";
 import { TwoFactorDialog, type TwoFactorDialogMode } from "@/components/auth/two-factor-dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -158,12 +159,12 @@ export function SecuritySection() {
                 {...register("newPassword", {
                   required: "New password is required",
                   minLength: {
-                    value: 8,
-                    message: "Password must be at least 8 characters",
+                    value: PASSWORD_MIN_LENGTH,
+                    message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
                   },
                   maxLength: {
-                    value: 128,
-                    message: "Password must be less than 128 characters",
+                    value: PASSWORD_MAX_LENGTH,
+                    message: `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
                   },
                 })}
               />
