@@ -7,13 +7,11 @@
 
 ## Set it up
 
-Saale runs from published images, so a deployment is three files and a `pull`. Take them
-from the release you want:
+Saale runs from published images, so a deployment is three files and a `pull`.
 
 ```bash
 mkdir saale && cd saale
-export SAALE_VERSION=2026.10.0
-base="https://raw.githubusercontent.com/Blumlaut/saale/$SAALE_VERSION"
+base="https://raw.githubusercontent.com/Blumlaut/saale/main"
 curl -fsSLO "$base/docker-compose.prod.yml"
 curl -fsSLO "$base/.env.example"
 mkdir -p searxng
@@ -33,12 +31,6 @@ openssl rand -hex 32      # WORKER_API_KEY
 `ENCRYPTION_KEY` must be 64 hex characters: it decrypts the mail passwords in the
 database, and changing it later makes them unreadable.
 
-Also write the release down, so an update is a change of one line:
-
-```dotenv
-SAALE_VERSION="2026.10.0"
-```
-
 Then:
 
 ```bash
@@ -47,8 +39,12 @@ docker compose -f docker-compose.prod.yml up -d
 
 Open <http://localhost:3630> and create the first account. The first account is the admin.
 
-Releases are cut once a day, and only when something changed. Leave `SAALE_VERSION` out
-of `.env` and the stack follows `latest` instead, which moves with every release.
+The stack follows `latest`, which moves with every release. Releases are cut once a day,
+and only when something changed. To stay on one of them, pin it in `.env`:
+
+```dotenv
+SAALE_VERSION="2026.10.1"
+```
 
 Changing the code itself is a different setup: see [development.md](development.md).
 
@@ -122,12 +118,14 @@ volume has rows pointing at files that are not there.
 
 ## Updating
 
-Change `SAALE_VERSION` in `.env`, then:
-
 ```bash
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+That takes the newest release, and with it the newest compose file: re-download it the
+same way if a release changed the stack. A pinned `SAALE_VERSION` stays where it is until
+you change it.
 
 The migrations run before `web` and `worker` start, so nothing else is needed. The version
 a running instance is on is in the console footer.
