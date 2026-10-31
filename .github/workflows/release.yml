@@ -182,6 +182,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # xcap and enigo link against PipeWire, EGL and the X/Wayland libraries.
+      - name: Install the agent's build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev libegl1-mesa-dev \
+            libgles2-mesa-dev libdrm-dev libgbm-dev libxkbcommon-dev libwayland-dev
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop

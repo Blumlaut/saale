@@ -176,6 +176,15 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      # xcap and enigo link against PipeWire, EGL and the X/Wayland libraries.
+      - name: Install the agent's build dependencies
+        if: steps.files.outputs.rust == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpipewire-0.3-dev libspa-0.2-dev libclang-dev libegl1-mesa-dev \
+            libgles2-mesa-dev libdrm-dev libgbm-dev libxkbcommon-dev libwayland-dev
+
       - name: Cache the agent's build
         if: steps.files.outputs.rust == 'true'
         uses: Swatinem/rust-cache@v2
