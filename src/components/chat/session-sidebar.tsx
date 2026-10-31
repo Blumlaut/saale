@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { PinnedChatGroup, ChatListRow, WatcherChatBadge } from "@/components/chat/chat-list";
+import { useOnResume } from "@/hooks/use-on-resume";
 import { fetchJson, postJson } from "@/lib/http";
 import {
   broadcastSessionsDeleted,
@@ -134,6 +135,12 @@ export function SessionSidebar({
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions, activeSessionId]); // refetch when active session changes
+
+  // A suspended app comes back to whatever the list looked like when it was
+  // last on screen. anything said or finished elsewhere is new.
+  useOnResume(() => {
+    void fetchSessions();
+  });
 
   // Renames happen elsewhere in the tree, deletions in whichever list was
   // used. both events keep this list in step with the server.

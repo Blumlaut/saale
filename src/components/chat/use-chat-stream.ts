@@ -20,6 +20,9 @@ const STALL_THRESHOLD_MS = 60_000;
 /** How often the watchdog checks for stalls. */
 const WATCHDOG_TICK_MS = 15_000;
 
+/** `EventSource.readyState` once the browser has stopped retrying (2). */
+const EVENT_SOURCE_CLOSED = 2;
+
 /**
  * Fallback batching interval for an environment with no animation frames.
  * Real browsers always have them (see the coalesced dispatch below).
@@ -73,11 +76,12 @@ const FRAME_FALLBACK_MS = 16;
  * - `error`. terminal: reload, close the connection
  *
  * Heartbeat/watchdog: the server sends `event: ping` every 15s (unbuffered,
- * no id). The browser's EventSource only auto-reconnects on transport errors
- *. a silently half-open connection (proxy dropped, server wedged) would
- * stall forever. If no ping arrives within STALL_THRESHOLD_MS while the
- * connection reports OPEN, we close it and reconnect; the server replays the
- * buffer, so nothing is lost.
+ * no id). The browser's EventSource only auto-reconnects on transport errors,
+ * and gives up entirely once a retry gets a non-200 response. a silently
+ * half-open connection (proxy dropped, server wedged) or a source that closed
+ * for good would stall forever. If no ping arrives within STALL_THRESHOLD_MS,
+ * we close the source and open a new one; the server replays the buffer and
+ * re-sends its state, so nothing is lost.
  */
 
 export interface ChatStreamOptions {
@@ -156,10 +160,21 @@ export function useChatStream(options: ChatStreamOptions) {
     const eventSource = new EventSource(`/api/chat/sessions/${sessionId}/stream`);
     eventSourceRef.current = eventSource;
 
+    /** Drop this source (whatever state it is in) and open a fresh one. */
+    const replace = (reason: string) => {
+      // A superseded source's late error must not replace the live connection.
+      if (eventSourceRef.current !== eventSource) return;
+      console.warn(`[chat-stream] ${reason}, reconnecting`);
+      eventSource.close();
+      eventSourceRef.current = null;
+      connectRef.current();
+    };
+
     wireStreamListeners({
       eventSource,
       rootMessageIdRef,
       ...optionsRef.current,
+      onConnectionLost: () => replace("browser gave up on the connection"),
     });
 
     // ── Watchdog: force a reconnect if the server stops sending pings. ──
@@ -169,15 +184,10 @@ export function useChatStream(options: ChatStreamOptions) {
       lastPingAt = Date.now();
     });
     watchdogRef.current = window.setInterval(() => {
-      // If the browser is already reconnecting, leave it alone.
-      if (eventSource.readyState !== EventSource.OPEN) return;
+      // Covers a connection that never opened too: a retry the browser keeps
+      // scheduling and losing leaves no ping and no state behind it.
       if (Date.now() - lastPingAt <= STALL_THRESHOLD_MS) return;
-      console.warn(
-        `[chat-stream] no heartbeat for ${STALL_THRESHOLD_MS}ms. connection presumed dead, reconnecting`,
-      );
-      eventSource.close();
-      eventSourceRef.current = null;
-      connectRef.current();
+      replace(`no heartbeat for ${STALL_THRESHOLD_MS}ms`);
     }, WATCHDOG_TICK_MS);
   }, [sessionId, eventSourceRef]);
 
@@ -200,7 +210,18 @@ export function useChatStream(options: ChatStreamOptions) {
     }
   }, [eventSourceRef]);
 
-  return { connect, disconnect };
+  /**
+   * Close the connection and open a new one. The server answers with the
+   * current truth: replayed buffer, pending approvals, and its decision for
+   * this chat. The only way back from a connection the browser kept open
+   * across a suspension but no longer delivers anything on.
+   */
+  const reconnect = useCallback(() => {
+    disconnect();
+    connect();
+  }, [disconnect, connect]);
+
+  return { connect, disconnect, reconnect };
 }
 
 // ── SSE event wiring ───────────────────────────────────────────────────────────
@@ -208,6 +229,8 @@ export function useChatStream(options: ChatStreamOptions) {
 interface StreamListenerOpts extends ChatStreamOptions {
   eventSource: EventSource;
   rootMessageIdRef: React.MutableRefObject<string | null>;
+  /** The stream closed for good. the browser will not retry it. */
+  onConnectionLost?: () => void;
 }
 
 export function wireStreamListeners(opts: StreamListenerOpts) {
@@ -651,8 +674,10 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
   });
 
   // ── Transport error. the browser auto-reconnects with Last-Event-ID and
-  //    the server replays buffered events, so we don't need to do anything.
+  //    the server replays buffered events. A CLOSED source is the browser
+  //    giving up (its retry got a non-200), and nothing revives it but a new
+  //    one.
   eventSource.onerror = () => {
-    // Auto-reconnect handled by the browser.
+    if (eventSource.readyState === EVENT_SOURCE_CLOSED) opts.onConnectionLost?.();
   };
 }

@@ -13,6 +13,7 @@ import { QueuedMessages } from "./queued-messages";
 import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
 import { useChatSeen } from "@/hooks/use-chat-seen";
+import { SUSPENSION_MIN_HIDDEN_MS, useOnResume } from "@/hooks/use-on-resume";
 import { loadDraft } from "@/lib/chat/draft";
 import { shouldAutoDeleteSession } from "@/lib/chat/auto-delete";
 import { useCompactActivity } from "@/hooks/use-compact-activity";
@@ -234,7 +235,9 @@ export function ChatInterface({
     } catch (err) {
       if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
         router.push(goneHref);
+        return;
       }
+      console.error("Failed to load the chat messages:", err);
     }
   }, [sessionId, router, applySession, goneHref]);
 
@@ -321,7 +324,7 @@ export function ChatInterface({
   // Shared stream orchestration (declared before the message handlers it
   // references; `onGenerationEnd` is only invoked after mount, by which time
   // `handleSend` is initialized).
-  const { connect, disconnect } = useChatStream({
+  const { connect, disconnect, reconnect } = useChatStream({
     sessionId,
     eventSourceRef,
     setMessages,
@@ -415,11 +418,10 @@ export function ChatInterface({
         // The server already cancelled the run. mirror the client half of
         // `handleStop`: hold the queue and reconnect so the server re-decides.
         setQueuePaused(true);
-        disconnect();
-        connect();
+        reconnect();
       }
     },
-    [loadMessages, disconnect, connect],
+    [loadMessages, reconnect],
   );
 
   const runCommand = useCallback(
@@ -573,8 +575,7 @@ export function ChatInterface({
             // pending prompt. Reconnect to force the server to re-decide
             // (prompt, or observe a run already in flight) and dispatch the
             // message to the LLM immediately.
-            disconnect();
-            connect();
+            reconnect();
             return;
           }
         }
@@ -599,7 +600,7 @@ export function ChatInterface({
         }
       }
     },
-    [sessionId, router, goneHref, connect, disconnect, setDraft, runCommand, applySession],
+    [sessionId, router, goneHref, reconnect, setDraft, runCommand, applySession],
   );
 
   // ─── Send queue actions ──────────────────────────────────────────────────
@@ -654,8 +655,7 @@ export function ChatInterface({
           // claims it and prompts immediately.
           setQueuedMessages((prev) => prev.filter((m) => m.id !== messageId));
           setIsLoading(true);
-          disconnect();
-          connect();
+          reconnect();
         }
         // Steered into the running turn, or prompted: the message is part of
         // the conversation now.
@@ -680,7 +680,7 @@ export function ChatInterface({
         setSendingQueuedId(null);
       }
     },
-    [sessionId, connect, disconnect, loadMessages],
+    [sessionId, reconnect, loadMessages],
   );
 
   const handleEditMessage = useCallback(
@@ -699,8 +699,7 @@ export function ChatInterface({
         // Force a fresh connection (same rationale as handleSend): the open
         // keep-alive observer was decided when idle and would never claim
         // the pending prompt set by the PATCH.
-        disconnect();
-        connect();
+        reconnect();
       } catch (err) {
         const status =
           err instanceof Error && "status" in err ? (err as { status?: number }).status : undefined;
@@ -725,7 +724,7 @@ export function ChatInterface({
         throw err;
       }
     },
-    [sessionId, connect, disconnect, loadMessages],
+    [sessionId, reconnect, connect, loadMessages],
   );
 
   // ─── MessageList callbacks ───────────────────────────────────────────────
@@ -759,10 +758,9 @@ export function ChatInterface({
       })
       .finally(() => {
         if (!mountedRef.current) return;
-        disconnect();
-        connect();
+        reconnect();
       });
-  }, [sessionId, connect, disconnect]);
+  }, [sessionId, reconnect]);
 
   const handleCompact = useCallback(() => {
     setIsCompacting(true);
@@ -809,11 +807,10 @@ export function ChatInterface({
         // queued: reconnect so the server re-decides. its idle path drains
         // the send queue. instead of leaving the messages in the strip.
         if (mountedRef.current) {
-          disconnect();
-          connect();
+          reconnect();
         }
       });
-  }, [sessionId, connect, disconnect, loadMessages]);
+  }, [sessionId, reconnect, loadMessages]);
 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
@@ -891,19 +888,16 @@ export function ChatInterface({
     wasLoadingRef.current = isLoading;
   }, [isLoading, reportSeen]);
 
-  // Re-sync from the DB when the tab becomes visible again. The SSE keep-alive
-  // connection self-heals on its own, but a server restart mid-generation can
-  // leave it silently stalled. a visibility refresh snaps the UI back to the
-  // true DB state without a full page reload.
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void loadMessages();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [loadMessages]);
+  // Re-sync when the page comes back from a suspension. The SSE connection a
+  // frozen app left behind looks alive, so a chat blocked on an approval (or
+  // one that finished elsewhere) would sit there showing nothing new. A fresh
+  // connection makes the server answer with everything it owes: the replayed
+  // buffer, its pending approvals, and its decision for this chat, which
+  // reloads the messages for an idle one.
+  useOnResume((hiddenForMs) => {
+    if (hiddenForMs >= SUSPENSION_MIN_HIDDEN_MS) reconnect();
+    void loadMessages();
+  });
 
   useEffect(() => {
     const mountedAt = mountTimeRef.current;

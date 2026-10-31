@@ -14,6 +14,8 @@ import type { ApprovalData, Message, PluginDialogData } from "@/components/chat/
 class FakeEventSource {
   listeners = new Map<string, EventListener[]>();
   onerror: ((event?: unknown) => void) | null = null;
+  /** OPEN, until a test says the browser gave up. */
+  readyState = 1;
 
   addEventListener(type: string, listener: EventListener) {
     const list = this.listeners.get(type) ?? [];
@@ -29,7 +31,7 @@ class FakeEventSource {
   }
 }
 
-function wire(onToolEnd?: (toolName: string) => void) {
+function wire(onToolEnd?: (toolName: string) => void, onConnectionLost?: () => void) {
   const eventSource = new FakeEventSource();
   const opts = {
     eventSource: eventSource as unknown as EventSource,
@@ -43,6 +45,7 @@ function wire(onToolEnd?: (toolName: string) => void) {
     markDone: vi.fn(),
     onReload: vi.fn(),
     ...(onToolEnd ? { onToolEnd } : {}),
+    ...(onConnectionLost ? { onConnectionLost } : {}),
   };
   wireStreamListeners(opts);
   return { ...opts, eventSource };
@@ -103,6 +106,29 @@ describe("wireStreamListeners tool_end", () => {
 
     expect(setMessages).toHaveBeenCalledTimes(1);
     expect(onToolEnd).toHaveBeenCalledWith("watcher_update");
+  });
+});
+
+describe("wireStreamListeners connection loss", () => {
+  it("reports a source the browser stopped retrying", () => {
+    const onConnectionLost = vi.fn();
+    const { eventSource } = wire(undefined, onConnectionLost);
+
+    // A retry that got a non-200 leaves the source CLOSED, not reconnecting.
+    eventSource.readyState = 2;
+    eventSource.onerror?.();
+
+    expect(onConnectionLost).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a connection the browser is still retrying to the browser", () => {
+    const onConnectionLost = vi.fn();
+    const { eventSource } = wire(undefined, onConnectionLost);
+
+    eventSource.readyState = 0; // CONNECTING
+    eventSource.onerror?.();
+
+    expect(onConnectionLost).not.toHaveBeenCalled();
   });
 });
 
