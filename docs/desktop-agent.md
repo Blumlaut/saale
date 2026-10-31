@@ -169,10 +169,27 @@ global key grab is otherwise impossible.
 
 ## Packaging
 
-AppImage and a tarball, from the release workflow. No signing on Linux. A
-checkout packages its own with `npm run agent:package` and serves it from
+AppImage first, plus a tarball, from the release workflow. No signing on Linux.
+A checkout packages its own with `npm run agent:package` and serves it from
 `public/downloads/`, so a development build offers a real download instead of a
 release asset that does not exist yet.
+
+The AppImage carries everything the agent links against, including the libraries
+it opens by name at runtime (`libxkbcommon-x11` on X11), which `ldd` cannot see.
+
+**The webview is not bundled, and that is deliberate.** Tauri's own AppImage
+guide treats WebKitGTK as a host package: it asks for a build on the oldest base
+system that provides `libwebkit2gtk-4.1-dev`, because bundling the webview ties
+the AppImage to one GTK and glib. So:
+
+- The AppImage is built on Debian 12, which sets the glibc floor and is where
+  `libwebkit2gtk-4.1` comes from.
+- At startup the AppRun checks for `libwebkit2gtk-4.1.so.0` and says
+  `install libwebkit2gtk-4.1-0` instead of failing silently. Every GNOME, KDE
+  and XFCE install has it; a bare window manager may not.
+- `saale-agent run` needs no webview at all, so a box without it still answers
+  over the channel, and a user without the app can drive the agent from Saale in
+  their own browser.
 
 Flatpak is out: `run_command` needs the host, and a sandbox cannot provide it.
 
