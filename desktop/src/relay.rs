@@ -4,6 +4,8 @@
 //! sends JSON-RPC requests down it and the agent posts its answers back up. No
 //! port is opened, so a machine behind NAT or a firewall pairs like any other.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt;
@@ -101,20 +103,26 @@ impl Relay {
         Ok(())
     }
 
-    /// Stay connected, answering until the process is stopped.
-    pub async fn run(&self, groups: tools::Groups, desktop: Desktop) -> ! {
+    /// Stay connected, answering until `stop` is cleared.
+    pub async fn run(
+        &self,
+        groups: tools::Groups,
+        desktop: Desktop,
+        stop: Arc<AtomicBool>,
+        say: Arc<dyn Fn(&str) + Send + Sync>,
+    ) {
         let mut backoff = RETRY_MIN;
 
-        loop {
-            println!(
+        while stop.load(Ordering::Relaxed) {
+            say(&format!(
                 "Connecting to {} with {} tools...",
                 self.base,
                 tools::list(&groups, desktop.available()).len()
-            );
+            ));
 
             match self.session(&groups, &desktop).await {
-                Ok(()) => println!("The channel closed. Reconnecting."),
-                Err(err) => println!("{err}"),
+                Ok(()) => say("The channel closed. Reconnecting."),
+                Err(err) => say(&err),
             }
 
             tokio::time::sleep(backoff).await;

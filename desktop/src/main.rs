@@ -11,8 +11,11 @@ mod mcp;
 mod relay;
 mod tools;
 mod tray;
+mod window;
 
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 use backends::Desktop;
 use config::Config;
@@ -27,11 +30,14 @@ pub const VERSION: &str = match option_env!("SAALE_AGENT_VERSION") {
 const USAGE: &str = "\
 saale-agent: let a chat use this computer.
 
+  saale-agent
+      Open the window: pair this computer, choose what it offers, start it.
+
   saale-agent pair --url <instance> --code <code> [--groups screen,files]
       Pair this machine with a Saale instance.
 
   saale-agent run [--groups screen,files,terminal]
-      Stay connected and answer the instance.
+      Stay connected without a window, for a machine nobody sits in front of.
 
   saale-agent groups [--enable screen,mouse] [--disable terminal]
       Show or change which tool groups this machine offers.
@@ -54,10 +60,13 @@ async fn main() -> ExitCode {
             println!("{VERSION}");
             Ok(())
         }
-        Some("--help") | Some("-h") | None => {
+        Some("--help") | Some("-h") => {
             println!("{USAGE}");
             Ok(())
         }
+        // No command opens the window, which is how a desktop user pairs and
+        // starts the agent. `run` stays for the boxes nobody sits in front of.
+        None => open_window(),
         Some(other) => Err(format!("Unknown command \"{other}\".\n\n{USAGE}")),
     };
 
@@ -139,6 +148,8 @@ async fn run(args: &[String]) -> Result<(), String> {
     let name = config.name.clone();
     let relay = Relay::new(&config.url, &config.token);
     let desktop = Desktop::new();
+    let stop = Arc::new(AtomicBool::new(true));
+    let say: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(|line: &str| println!("{line}"));
 
     // A machine with no session bus has no tray; that is not a reason to stop.
     let _tray = match tray::spawn(groups.clone(), name).await {
@@ -149,7 +160,31 @@ async fn run(args: &[String]) -> Result<(), String> {
         }
     };
 
-    relay.run(groups, desktop).await
+    relay.run(groups, desktop, stop, say).await;
+    Ok(())
+}
+
+/// The window, with a config it reads and writes on its own.
+fn open_window() -> Result<(), String> {
+    let config = config::load().ok();
+    let groups = tools::new_groups(
+        config
+            .as_ref()
+            .map(|c| c.groups.clone())
+            .unwrap_or_default(),
+    );
+
+    let shared = Arc::new(Mutex::new(window::Shared {
+        config,
+        groups,
+        status: "Not running".to_string(),
+        busy: false,
+        error: None,
+        running: Arc::new(AtomicBool::new(false)),
+        ctx: None,
+    }));
+
+    window::open(shared)
 }
 
 fn groups(args: &[String]) -> Result<(), String> {

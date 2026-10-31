@@ -204,7 +204,9 @@ consent dialog returns.
   the RemoteDesktop portal. Both are written but untested here: this machine has
   no compositor.
 - The tray is a StatusNotifierItem over D-Bus, with a checkmark per tool group.
-  Flipping one takes effect in the running process. There is no window yet.
+  Flipping one takes effect in the running process.
+- The window is `egui`: the pairing form, the same switches, and Start.
+  `saale-agent` with no arguments opens it; `saale-agent run` stays headless.
 - Every device tool call is recorded with its summary and outcome, and the
   settings card shows the last few. The ScreenCast frame session, `focus_window`
   and the pairing window are still open.

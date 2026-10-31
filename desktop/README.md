@@ -21,8 +21,11 @@ sudo install -m 755 saale-agent /usr/local/bin/saale-agent
 
 ## Pair
 
-Get a code in **Settings → Integrations → This computer → Connect a computer**,
-then:
+Run `saale-agent` with no arguments. The window asks for the instance and a
+code, which you get in **Settings → Integrations → This computer → Connect a
+computer**. A `saale://pair?url=…&code=…` link fills both in.
+
+On a machine nobody sits in front of, the command line does the same:
 
 ```sh
 saale-agent pair --url https://saale.example.com --code ABCD-EFGH
@@ -31,6 +34,11 @@ saale-agent run
 
 The token it receives lands in `~/.config/saale-agent/config.json`, readable by
 your user only. Pair again to rotate it.
+
+## The window
+
+`saale-agent` opens a window: the pairing form, the five group switches and a
+Start button. It is the whole UI, with no browser in it.
 
 ## The tray
 

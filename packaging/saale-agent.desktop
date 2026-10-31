@@ -2,7 +2,8 @@
 Type=Application
 Name=Saale Agent
 Comment=Let a Saale chat use this computer
-Exec=saale-agent run
+Exec=saale-agent
+MimeType=x-scheme-handler/saale;
 Icon=saale-agent
 Terminal=false
 Categories=Utility;
