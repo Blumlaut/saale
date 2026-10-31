@@ -216,6 +216,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get install -y --no-install-recommends file libxkbcommon-x11-0
           curl -fsSLo "$RUNNER_TEMP/linuxdeploy" \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x "$RUNNER_TEMP/linuxdeploy"
@@ -225,11 +226,19 @@ jobs:
           install -m 644 packaging/saale-agent.desktop "$RUNNER_TEMP/AppDir/saale-agent.desktop"
           install -m 644 packaging/saale-agent.png "$RUNNER_TEMP/AppDir/saale-agent.png"
 
+          # libxkbcommon-x11 is opened by name at runtime, so linuxdeploy cannot
+          # find it from the binary's dependencies. Without it the window does
+          # not open on a machine that has no xkbcommon-x11 installed.
+          xkb="$(ldconfig -p | awk '/libxkbcommon-x11\.so\.0 /{print $NF; exit}')"
+          test -n "$xkb"
+
           cd "$RUNNER_TEMP"
-          VERSION="$VERSION" ./linuxdeploy \
+          LINUXDEPLOY_OUTPUT_VERSION="$VERSION" ./linuxdeploy \
             --appdir AppDir \
+            --executable AppDir/usr/bin/saale-agent \
             --desktop-file AppDir/saale-agent.desktop \
             --icon-file AppDir/saale-agent.png \
+            --library "$xkb" \
             --output appimage
 
           mv ./*.AppImage "saale-agent-$VERSION-x86_64.AppImage"

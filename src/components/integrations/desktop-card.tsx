@@ -233,6 +233,11 @@ export function DesktopPairDialog({
   }, []);
 
   const command = pairCode ? `saale-agent pair --url ${origin} --code ${pairCode.code}` : "";
+  // Opens the agent with both fields filled in, so pairing on this machine is
+  // one click where the handler is installed.
+  const deepLink = pairCode
+    ? `saale://pair?url=${encodeURIComponent(origin)}&code=${encodeURIComponent(pairCode.code)}`
+    : "";
 
   const copyCommand = () => {
     navigator.clipboard
@@ -317,6 +322,12 @@ export function DesktopPairDialog({
               </>
             ) : (
               <>
+                <Button asChild className="h-9 w-full text-xs font-medium">
+                  <a href={deepLink}>
+                    <PlugZap className="mr-2 h-3.5 w-3.5" />
+                    Open in the desktop app
+                  </a>
+                </Button>
                 <div className="bg-muted rounded-2xl border-0 px-4 py-3">
                   <code className="font-mono text-xs break-all">{command}</code>
                   <Button
@@ -330,7 +341,8 @@ export function DesktopPairDialog({
                   </Button>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  The code works once and expires at{" "}
+                  Opens the agent with both fields filled in, if its link handler is installed.
+                  Otherwise run the command above. The code works once and expires at{" "}
                   {new Date(pairCode.expiresAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",

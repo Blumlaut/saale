@@ -43,10 +43,22 @@ if command -v linuxdeploy >/dev/null 2>&1; then
   install -m 755 desktop/target/release/saale-agent "$appdir/usr/bin/saale-agent"
   install -m 644 packaging/saale-agent.desktop "$appdir/saale-agent.desktop"
   install -m 644 packaging/saale-agent.png "$appdir/saale-agent.png"
-  APPIMAGE_EXTRACT_AND_RUN=1 VERSION="$version" linuxdeploy \
+
+  # libxkbcommon-x11 is opened by name at runtime, so linuxdeploy cannot see it
+  # through the binary's own dependencies. Hand it over explicitly or the window
+  # fails to open on a machine that does not have it installed.
+  xkb="$(ldconfig -p 2>/dev/null | awk '/libxkbcommon-x11\.so\.0 /{print $NF; exit}')"
+  if [ -z "$xkb" ]; then
+    echo "libxkbcommon-x11 is not installed; the AppImage would not open a window" >&2
+    exit 1
+  fi
+
+  APPIMAGE_EXTRACT_AND_RUN=1 LINUXDEPLOY_OUTPUT_VERSION="$version" linuxdeploy \
     --appdir "$appdir" \
+    --executable "$appdir/usr/bin/saale-agent" \
     --desktop-file "$appdir/saale-agent.desktop" \
     --icon-file "$appdir/saale-agent.png" \
+    --library "$xkb" \
     --output appimage
   mv ./*.AppImage "$out/saale-agent-${version}-x86_64.AppImage" 2>/dev/null || true
   rm -rf "$appdir"
