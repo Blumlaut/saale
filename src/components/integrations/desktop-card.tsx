@@ -344,8 +344,8 @@ export function DesktopPairDialog({
           <div className="text-muted-foreground flex items-start gap-2 text-xs">
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
-              The agent decides which tool groups it offers. Turn a group off in its window and the
-              model cannot call it at all.
+              The agent decides which tool groups it offers. Turn a group off in its tray menu and
+              the model cannot call it at all.
             </span>
           </div>
         </div>
