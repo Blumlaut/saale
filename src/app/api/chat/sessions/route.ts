@@ -6,6 +6,7 @@ import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 import { createChatSessionRow } from "@/lib/chat/create-session";
 import { getProjectSettings, ownedProjectId } from "@/lib/coder/projects";
 import { getActiveSessions } from "@/lib/redis";
+import { resolveClientDevice } from "@/lib/devices/client";
 
 /**
  * GET /api/chat/sessions. List user's chat sessions
@@ -110,6 +111,8 @@ export async function POST(request: NextRequest) {
     thinkingLevel: normalizeThinkingLevelSetting(thinkingLevel),
     toolConfig,
     projectId: ownedProject,
+    // Only a chat the desktop agent's window starts may reach that computer.
+    clientDeviceId: await resolveClientDevice(authResult.user.id, request),
   });
 
   return NextResponse.json({

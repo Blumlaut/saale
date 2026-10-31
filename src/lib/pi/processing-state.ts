@@ -237,6 +237,12 @@ export interface AgentResourceOptions {
     sessionId: string;
     toolPolicies: Record<string, string> | null | undefined;
     emitApprovalRequest: (request: ApprovalRequest) => void;
+    /**
+     * The computer this chat was started from, when the desktop agent started
+     * it. Its tools reach that machine and no other, so a chat from Telegram or
+     * from a phone gets no computer at all.
+     */
+    clientDeviceId?: string | null | undefined;
   };
 }
 
@@ -257,7 +263,7 @@ export async function createAgentResourceLoader(
     // Without the MCP feature the user's servers are never connected, so no MCP
     // tool reaches the model through codemode either.
     const mcp = (await hasFeature(interactive.userId, "mcp"))
-      ? await createUserMcpExtension(interactive.userId)
+      ? await createUserMcpExtension(interactive.userId, interactive.clientDeviceId ?? null)
       : null;
 
     // One gate for every tool call the session can make, whichever way the

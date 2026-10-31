@@ -242,6 +242,12 @@ async function mockMachineNotes(page: Page) {
  * A linked Telegram account and a fresh one-time code, so the link dialog can
  * be opened (and its unbreakable code rendered) without a live bot.
  */
+async function mockNoDevices(page: Page) {
+  await page.route(/\/api\/devices$/, (route) =>
+    route.fulfill({ json: { devices: [], downloads: [] } }),
+  );
+}
+
 async function mockTelegramLinked(page: Page) {
   await page.route(/\/api\/integrations\/telegram$/, async (route) => {
     const method = route.request().method();
@@ -1156,6 +1162,16 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsSection(page, "integrations");
       await click(page, 'button:has-text("Link Telegram")');
+    },
+  },
+  {
+    name: "settings · connect a computer",
+    path: SETTINGS,
+    sources: ["src/components/integrations/desktop-card.tsx"],
+    mock: mockNoDevices,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, 'button:has-text("Connect a computer")');
     },
   },
   {

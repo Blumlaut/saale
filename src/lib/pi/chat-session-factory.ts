@@ -61,6 +61,11 @@ export interface ChatSessionModelConfig {
   toolConfig: unknown;
   /** Set on a coder chat, which runs in its project's worktree. */
   projectId: string | null;
+  /**
+   * The computer the chat was started from, when the desktop agent's window
+   * started it. Only that machine's tools reach the session.
+   */
+  clientDeviceId?: string | null;
 }
 
 /** The chat's model, falling back to the user's default chat model. */
@@ -116,14 +121,18 @@ async function buildSessionPrompt(options: {
   toolConfig: ToolConfig;
   toolExposure: ToolExposureConfig | null | undefined;
   checkoutMode?: ChatMode | undefined;
+  /** The chat's own computer, so the prompt names it when it has one. */
+  clientDeviceId?: string | null | undefined;
 }): Promise<string> {
   const sandboxEnvNames = await listSandboxEnvNames(options.userId);
   // MCP tools are codemode's by default, so a user with servers needs the hint
   // even when every category they enabled is declared in full.
-  const mcpServers = await loadUserMcpServers(options.userId).catch((err: unknown) => {
-    console.error(`Failed to load the MCP servers of ${options.userId} for its prompt:`, err);
-    return { entries: [] };
-  });
+  const mcpServers = await loadUserMcpServers(options.userId, options.clientDeviceId).catch(
+    (err: unknown) => {
+      console.error(`Failed to load the MCP servers of ${options.userId} for its prompt:`, err);
+      return { entries: [] };
+    },
+  );
   const shared = {
     // A coder chat carries its own instructions: "answer in German" suits a
     // conversation but is not what a coding session needs to be told.
@@ -178,9 +187,11 @@ export async function createChatAgentSession(
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies: options.toolPolicies,
     mcp: true,
+    clientDeviceId: chatSession.clientDeviceId ?? null,
     systemPrompt: await buildSessionPrompt({
       userId,
       projectId: chatSession.projectId,
+      clientDeviceId: chatSession.clientDeviceId ?? null,
       customInstructions: options.customInstructions,
       coderCustomInstructions: options.coderCustomInstructions,
       toolConfig,

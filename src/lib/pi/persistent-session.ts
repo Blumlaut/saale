@@ -59,6 +59,8 @@ export async function createPersistentSession(options: {
   emitApprovalRequest?: ((request: ApprovalRequest) => void) | undefined;
   toolPolicies?: Record<string, string> | null | undefined;
   mcp?: boolean;
+  /** The computer this chat was started from, when the desktop agent started it. */
+  clientDeviceId?: string | null | undefined;
 }): Promise<CreateAgentSessionResult> {
   // Ensure session directory exists
   await fs.mkdir(options.sessionDir, { recursive: true });
@@ -121,6 +123,7 @@ export async function createPersistentSession(options: {
               sessionId: options.sessionId,
               toolPolicies: options.toolPolicies,
               emitApprovalRequest: options.emitApprovalRequest,
+              clientDeviceId: options.clientDeviceId ?? null,
             },
           }
         : {}),
