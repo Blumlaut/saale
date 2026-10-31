@@ -10,6 +10,7 @@ name = "saale-agent"
 path = "src/main.rs"
 
 [dependencies]
+ashpd = { version = "0.13.13", default-features = false, features = ["tokio", "remote_desktop", "screencast"] }
 base64 = "0.22"
 # x11rb only: the libei backend unwraps its portal connection, so a machine
 # without xdg-desktop-portal panics instead of falling back. Wayland input comes

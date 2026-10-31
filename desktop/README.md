@@ -60,8 +60,8 @@ saale-agent groups --disable files
   and a click is mapped from that image back onto the display, so the model
   never has to think in desktop pixels.
 - Wayland capture goes through `xcap`'s Screenshot portal, which asks once per
-  grab. Wayland input is not in this build: `enigo`'s libei backend panics when
-  no portal is running.
+  grab. Wayland input goes through the RemoteDesktop portal: one consent dialog,
+  then a restore token so it does not come back.
 - `saale-agent run` is the whole UI for now: no tray, no window, no autostart.
 
 ## Development

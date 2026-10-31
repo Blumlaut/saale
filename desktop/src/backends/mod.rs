@@ -1,22 +1,40 @@
 //! The machine's screen and pointer.
 //!
-//! One backend for now: X11, through `xcap` for capture and `enigo` for input.
-//! The Wayland portal backend lands next and takes its place behind the same
-//! surface.
+//! Capture goes through `xcap`, which reads the X server on X11 and the
+//! Screenshot portal on Wayland. Input is two paths: `enigo` over X11, and the
+//! RemoteDesktop portal on Wayland, where the compositor allows nothing else.
 //!
 //! Coordinates are the delicate part. The model sees a downscaled image, so a
 //! click arrives in image space and has to be mapped back to the display's
-//! position on the desktop. Every capture records the display and the factor it
-//! was scaled by, and a click maps through the capture of the same display.
+//! position on the desktop, and on Wayland from there into a monitor's own
+//! logical space. Every capture records the display and the factor it was
+//! scaled by, and a click maps through the capture of the same display.
+
+mod wayland;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{
+    Axis, Button as X11Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings,
+};
 use image::{imageops, RgbImage};
+
+use wayland::{char_keysym, map_to_stream, named_keysym, Wayland, BTN_LEFT, BTN_MIDDLE, BTN_RIGHT};
 
 /// Longest edge of the image handed to the model.
 const MAX_IMAGE_EDGE: u32 = 1568;
+
+/// How much one scroll step moves, in the portal's motion units.
+const SCROLL_UNIT: f64 = 15.0;
+
+/// A pointer button, in the terms the tools speak.
+#[derive(Clone, Copy, Debug)]
+pub enum Button {
+    Left,
+    Right,
+    Middle,
+}
 
 /// A display, as the compositor lays it out.
 #[derive(Clone, Debug)]
@@ -60,21 +78,37 @@ pub struct WindowInfo {
     pub focused: bool,
 }
 
+/// How this session takes input.
+enum Input {
+    /// X11, through enigo.
+    X11(Box<Mutex<Option<Enigo>>>),
+    /// Wayland, through the RemoteDesktop portal.
+    Wayland(Wayland),
+}
+
 /// The display server this process can drive.
 pub struct Desktop {
     /// Whether there is a display to drive. Decided once, at startup.
     available: bool,
-    /// Created on first use: a process without a display must still start.
-    enigo: Mutex<Option<Enigo>>,
+    input: Input,
     /// The capture each display's coordinates are currently relative to.
     spaces: Mutex<HashMap<String, CaptureSpace>>,
 }
 
 impl Desktop {
     pub fn new() -> Desktop {
+        let available = wayland::Wayland::available() || std::env::var_os("DISPLAY").is_some();
+
+        let input = if wayland::Wayland::available() {
+            let token = crate::config::config_path().with_file_name("portal-token");
+            Input::Wayland(Wayland::new(token))
+        } else {
+            Input::X11(Box::new(Mutex::new(None)))
+        };
+
         Desktop {
-            available: std::env::var_os("DISPLAY").is_some(),
-            enigo: Mutex::new(None),
+            available,
+            input,
             spaces: Mutex::new(HashMap::new()),
         }
     }
@@ -209,7 +243,7 @@ impl Desktop {
     }
 
     /// Map a point in a capture's image space onto the desktop.
-    fn screen_point(&self, monitor: Option<&str>, x: f64, y: f64) -> Result<(i32, i32), String> {
+    fn screen_point(&self, monitor: Option<&str>, x: f64, y: f64) -> Result<(f64, f64), String> {
         let space = self.space(monitor)?;
         if x < 0.0
             || y < 0.0
@@ -226,14 +260,31 @@ impl Desktop {
         let factor_y = f64::from(space.display.height) / f64::from(space.image_height);
 
         Ok((
-            space.display.x + (x * factor_x).round() as i32,
-            space.display.y + (y * factor_y).round() as i32,
+            f64::from(space.display.x) + x * factor_x,
+            f64::from(space.display.y) + y * factor_y,
         ))
     }
 
+    /// The monitor and point absolute motion takes on Wayland.
+    async fn wayland_target(
+        &self,
+        input: &Wayland,
+        monitor: Option<&str>,
+        x: f64,
+        y: f64,
+    ) -> Result<(u32, f64, f64), String> {
+        let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
+        let streams = input.streams().await?;
+        map_to_stream(&streams, screen_x, screen_y)
+            .ok_or_else(|| "The portal shared no monitor to point at".to_string())
+    }
+
     fn with_enigo<T>(&self, run: impl FnOnce(&mut Enigo) -> T) -> Result<T, String> {
-        let mut guard = self
-            .enigo
+        let Input::X11(slot) = &self.input else {
+            return Err("This session takes input through the portal".to_string());
+        };
+
+        let mut guard = slot
             .lock()
             .map_err(|err| format!("The input device is poisoned: {err}"))?;
 
@@ -253,7 +304,7 @@ impl Desktop {
         Ok(run(enigo))
     }
 
-    pub fn click(
+    pub async fn click(
         &self,
         monitor: Option<&str>,
         x: f64,
@@ -261,64 +312,118 @@ impl Desktop {
         button: Button,
         times: u32,
     ) -> Result<(), String> {
-        let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
-        self.with_enigo(|enigo| {
-            enigo
-                .move_mouse(screen_x, screen_y, Coordinate::Abs)
-                .map_err(|err| format!("Cannot move the pointer: {err}"))?;
-            for _ in 0..times.max(1) {
-                enigo
-                    .button(button, Direction::Click)
-                    .map_err(|err| format!("Cannot click: {err}"))?;
+        let times = times.max(1);
+
+        match &self.input {
+            Input::X11(_) => {
+                let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
+                self.with_enigo(|enigo| {
+                    enigo
+                        .move_mouse(screen_x as i32, screen_y as i32, Coordinate::Abs)
+                        .map_err(|err| format!("Cannot move the pointer: {err}"))?;
+                    for _ in 0..times {
+                        enigo
+                            .button(x11_button(button), Direction::Click)
+                            .map_err(|err| format!("Cannot click: {err}"))?;
+                    }
+                    Ok(())
+                })?
             }
-            Ok(())
-        })?
+            Input::Wayland(input) => {
+                let (node, screen_x, screen_y) = self.wayland_target(input, monitor, x, y).await?;
+                input.move_absolute(node, screen_x, screen_y).await?;
+                for _ in 0..times {
+                    input.button(evdev_button(button), true).await?;
+                    input.button(evdev_button(button), false).await?;
+                }
+                Ok(())
+            }
+        }
     }
 
-    pub fn move_to(&self, monitor: Option<&str>, x: f64, y: f64) -> Result<(), String> {
-        let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
-        self.with_enigo(|enigo| {
-            enigo
-                .move_mouse(screen_x, screen_y, Coordinate::Abs)
-                .map_err(|err| format!("Cannot move the pointer: {err}"))
-        })?
+    pub async fn move_to(&self, monitor: Option<&str>, x: f64, y: f64) -> Result<(), String> {
+        match &self.input {
+            Input::X11(_) => {
+                let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
+                self.with_enigo(|enigo| {
+                    enigo
+                        .move_mouse(screen_x as i32, screen_y as i32, Coordinate::Abs)
+                        .map_err(|err| format!("Cannot move the pointer: {err}"))
+                })?
+            }
+            Input::Wayland(input) => {
+                let (node, screen_x, screen_y) = self.wayland_target(input, monitor, x, y).await?;
+                input.move_absolute(node, screen_x, screen_y).await
+            }
+        }
     }
 
-    pub fn drag(
+    pub async fn drag(
         &self,
         monitor: Option<&str>,
         from: (f64, f64),
         to: (f64, f64),
     ) -> Result<(), String> {
-        let start = self.screen_point(monitor, from.0, from.1)?;
-        let end = self.screen_point(monitor, to.0, to.1)?;
+        // A straight jump reads as a drop, not a drag, in most toolkits.
+        const STEPS: u32 = 12;
 
-        self.with_enigo(|enigo| {
-            enigo
-                .move_mouse(start.0, start.1, Coordinate::Abs)
-                .map_err(|err| format!("Cannot move the pointer: {err}"))?;
-            enigo
-                .button(Button::Left, Direction::Press)
-                .map_err(|err| format!("Cannot hold the button: {err}"))?;
+        match &self.input {
+            Input::X11(_) => {
+                let start = self.screen_point(monitor, from.0, from.1)?;
+                let end = self.screen_point(monitor, to.0, to.1)?;
 
-            // A straight jump reads as a drop, not a drag, in most toolkits.
-            let steps = 12;
-            for step in 1..=steps {
-                let x = start.0 + (end.0 - start.0) * step / steps;
-                let y = start.1 + (end.1 - start.1) * step / steps;
-                enigo
-                    .move_mouse(x, y, Coordinate::Abs)
-                    .map_err(|err| format!("Cannot move the pointer: {err}"))?;
-                std::thread::sleep(std::time::Duration::from_millis(12));
+                self.with_enigo(|enigo| {
+                    enigo
+                        .move_mouse(start.0 as i32, start.1 as i32, Coordinate::Abs)
+                        .map_err(|err| format!("Cannot move the pointer: {err}"))?;
+                    enigo
+                        .button(X11Button::Left, Direction::Press)
+                        .map_err(|err| format!("Cannot hold the button: {err}"))?;
+
+                    for step in 1..=STEPS {
+                        let x = start.0 + (end.0 - start.0) * f64::from(step) / f64::from(STEPS);
+                        let y = start.1 + (end.1 - start.1) * f64::from(step) / f64::from(STEPS);
+                        enigo
+                            .move_mouse(x as i32, y as i32, Coordinate::Abs)
+                            .map_err(|err| format!("Cannot move the pointer: {err}"))?;
+                        std::thread::sleep(std::time::Duration::from_millis(12));
+                    }
+
+                    enigo
+                        .button(X11Button::Left, Direction::Release)
+                        .map_err(|err| format!("Cannot release the button: {err}"))
+                })?
             }
+            Input::Wayland(input) => {
+                let start = self.wayland_target(input, monitor, from.0, from.1).await?;
+                let end = self.wayland_target(input, monitor, to.0, to.1).await?;
 
-            enigo
-                .button(Button::Left, Direction::Release)
-                .map_err(|err| format!("Cannot release the button: {err}"))
-        })?
+                input.move_absolute(start.0, start.1, start.2).await?;
+                input.button(BTN_LEFT, true).await?;
+
+                if start.0 == end.0 {
+                    for step in 1..=STEPS {
+                        let ratio = f64::from(step) / f64::from(STEPS);
+                        input
+                            .move_absolute(
+                                start.0,
+                                start.1 + (end.1 - start.1) * ratio,
+                                start.2 + (end.2 - start.2) * ratio,
+                            )
+                            .await?;
+                        tokio::time::sleep(std::time::Duration::from_millis(12)).await;
+                    }
+                } else {
+                    // Two monitors: the move has to land on the second one.
+                    input.move_absolute(end.0, end.1, end.2).await?;
+                }
+
+                input.button(BTN_LEFT, false).await
+            }
+        }
     }
 
-    pub fn scroll(
+    pub async fn scroll(
         &self,
         monitor: Option<&str>,
         x: f64,
@@ -326,35 +431,56 @@ impl Desktop {
         dy: i32,
         dx: i32,
     ) -> Result<(), String> {
-        let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
-        self.with_enigo(|enigo| {
-            enigo
-                .move_mouse(screen_x, screen_y, Coordinate::Abs)
-                .map_err(|err| format!("Cannot move the pointer: {err}"))?;
-            if dy != 0 {
-                enigo
-                    .scroll(dy, Axis::Vertical)
-                    .map_err(|err| format!("Cannot scroll: {err}"))?;
+        match &self.input {
+            Input::X11(_) => {
+                let (screen_x, screen_y) = self.screen_point(monitor, x, y)?;
+                self.with_enigo(|enigo| {
+                    enigo
+                        .move_mouse(screen_x as i32, screen_y as i32, Coordinate::Abs)
+                        .map_err(|err| format!("Cannot move the pointer: {err}"))?;
+                    if dy != 0 {
+                        enigo
+                            .scroll(dy, Axis::Vertical)
+                            .map_err(|err| format!("Cannot scroll: {err}"))?;
+                    }
+                    if dx != 0 {
+                        enigo
+                            .scroll(dx, Axis::Horizontal)
+                            .map_err(|err| format!("Cannot scroll: {err}"))?;
+                    }
+                    Ok(())
+                })?
             }
-            if dx != 0 {
-                enigo
-                    .scroll(dx, Axis::Horizontal)
-                    .map_err(|err| format!("Cannot scroll: {err}"))?;
+            Input::Wayland(input) => {
+                let (node, screen_x, screen_y) = self.wayland_target(input, monitor, x, y).await?;
+                input.move_absolute(node, screen_x, screen_y).await?;
+                input
+                    .scroll(f64::from(dx) * SCROLL_UNIT, f64::from(dy) * SCROLL_UNIT)
+                    .await
             }
-            Ok(())
-        })?
+        }
     }
 
-    pub fn type_text(&self, text: &str) -> Result<(), String> {
-        self.with_enigo(|enigo| {
-            enigo
-                .text(text)
-                .map_err(|err| format!("Cannot type: {err}"))
-        })?
+    pub async fn type_text(&self, text: &str) -> Result<(), String> {
+        match &self.input {
+            Input::X11(_) => self.with_enigo(|enigo| {
+                enigo
+                    .text(text)
+                    .map_err(|err| format!("Cannot type: {err}"))
+            })?,
+            Input::Wayland(input) => {
+                for character in text.chars() {
+                    let keysym = char_keysym(character);
+                    input.keysym(keysym, true).await?;
+                    input.keysym(keysym, false).await?;
+                }
+                Ok(())
+            }
+        }
     }
 
     /// Press a key or a combination, written `ctrl+shift+t`.
-    pub fn press_key(&self, combination: &str) -> Result<(), String> {
+    pub async fn press_key(&self, combination: &str) -> Result<(), String> {
         let parts: Vec<&str> = combination
             .split('+')
             .map(str::trim)
@@ -364,28 +490,53 @@ impl Desktop {
             .split_last()
             .ok_or_else(|| "A key is required".to_string())?;
 
-        let key = key_for(last)?;
-        let held: Vec<Key> = modifiers
-            .iter()
-            .map(|name| key_for(name))
-            .collect::<Result<_, _>>()?;
+        match &self.input {
+            Input::X11(_) => {
+                let key = x11_key(last)?;
+                let held: Vec<Key> = modifiers
+                    .iter()
+                    .map(|name| x11_key(name))
+                    .collect::<Result<_, _>>()?;
 
-        self.with_enigo(|enigo| {
-            for modifier in &held {
-                enigo
-                    .key(*modifier, Direction::Press)
-                    .map_err(|err| format!("Cannot hold {}: {err}", modifier_name(modifier)))?;
+                self.with_enigo(|enigo| {
+                    for modifier in &held {
+                        enigo
+                            .key(*modifier, Direction::Press)
+                            .map_err(|err| format!("Cannot hold a modifier: {err}"))?;
+                    }
+                    let pressed = enigo
+                        .key(key, Direction::Click)
+                        .map_err(|err| format!("Cannot press {combination}: {err}"));
+                    for modifier in held.iter().rev() {
+                        enigo
+                            .key(*modifier, Direction::Release)
+                            .map_err(|err| format!("Cannot release a modifier: {err}"))?;
+                    }
+                    pressed
+                })?
             }
-            let pressed = enigo
-                .key(key, Direction::Click)
-                .map_err(|err| format!("Cannot press {combination}: {err}"));
-            for modifier in held.iter().rev() {
-                enigo
-                    .key(*modifier, Direction::Release)
-                    .map_err(|err| format!("Cannot release {}: {err}", modifier_name(modifier)))?;
+            Input::Wayland(input) => {
+                let key = named_keysym(last)
+                    .ok_or_else(|| format!("\"{last}\" is not a key this agent knows"))?;
+                let held: Vec<i32> = modifiers
+                    .iter()
+                    .map(|name| {
+                        named_keysym(name)
+                            .ok_or_else(|| format!("\"{name}\" is not a key this agent knows"))
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                for modifier in &held {
+                    input.keysym(*modifier, true).await?;
+                }
+                let pressed = input.keysym(key, true).await;
+                let released = input.keysym(key, false).await;
+                for modifier in held.iter().rev() {
+                    input.keysym(*modifier, false).await?;
+                }
+                pressed.and(released)
             }
-            pressed
-        })?
+        }
     }
 
     pub fn windows(&self) -> Result<Vec<WindowInfo>, String> {
@@ -408,6 +559,22 @@ impl Desktop {
     }
 }
 
+fn x11_button(button: Button) -> X11Button {
+    match button {
+        Button::Left => X11Button::Left,
+        Button::Right => X11Button::Right,
+        Button::Middle => X11Button::Middle,
+    }
+}
+
+fn evdev_button(button: Button) -> i32 {
+    match button {
+        Button::Left => BTN_LEFT,
+        Button::Right => BTN_RIGHT,
+        Button::Middle => BTN_MIDDLE,
+    }
+}
+
 /// Fit the capture into the model's image budget.
 fn downscale(image: &RgbImage) -> RgbImage {
     let (width, height) = image.dimensions();
@@ -422,18 +589,8 @@ fn downscale(image: &RgbImage) -> RgbImage {
     imageops::resize(image, target_w, target_h, imageops::FilterType::Triangle)
 }
 
-fn modifier_name(key: &Key) -> &'static str {
-    match key {
-        Key::Control => "ctrl",
-        Key::Shift => "shift",
-        Key::Alt => "alt",
-        Key::Meta => "meta",
-        _ => "the modifier",
-    }
-}
-
-/// A key by the name a person writes.
-fn key_for(name: &str) -> Result<Key, String> {
+/// A key by the name a person writes, for the X11 path.
+fn x11_key(name: &str) -> Result<Key, String> {
     let lower = name.trim().to_lowercase();
     let key = match lower.as_str() {
         "ctrl" | "control" => Key::Control,
@@ -481,10 +638,10 @@ mod tests {
 
     #[test]
     fn reads_a_combination() {
-        assert_eq!(key_for("ctrl").unwrap(), Key::Control);
-        assert_eq!(key_for("F5").unwrap(), Key::F5);
-        assert_eq!(key_for("t").unwrap(), Key::Unicode('t'));
-        assert!(key_for("nope").is_err());
+        assert_eq!(x11_key("ctrl").unwrap(), Key::Control);
+        assert_eq!(x11_key("F5").unwrap(), Key::F5);
+        assert_eq!(x11_key("t").unwrap(), Key::Unicode('t'));
+        assert!(x11_key("nope").is_err());
     }
 
     #[test]

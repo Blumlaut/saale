@@ -112,8 +112,10 @@ pub async fn call(
     match name {
         "screenshot" => screen::screenshot(desktop, args),
         "list_windows" => screen::list_windows(desktop),
-        "click" | "double_click" | "move" | "drag" | "scroll" => input::mouse(desktop, name, args),
-        "type_text" | "press_key" => input::keyboard(desktop, name, args),
+        "click" | "double_click" | "move" | "drag" | "scroll" => {
+            input::mouse(desktop, name, args).await
+        }
+        "type_text" | "press_key" => input::keyboard(desktop, name, args).await,
         "read_file" => files::read_file(args).await,
         "write_file" => files::write_file(args).await,
         "list_dir" => files::list_dir(args).await,

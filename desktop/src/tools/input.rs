@@ -7,7 +7,7 @@
 use serde_json::{json, Value};
 
 use super::{ToolResult, ToolSpec};
-use crate::backends::Desktop;
+use crate::backends::{Button, Desktop};
 
 pub fn mouse_specs() -> Vec<ToolSpec> {
     vec![
@@ -117,18 +117,18 @@ fn monitor(args: &Value) -> Option<&str> {
     args.get("monitor").and_then(Value::as_str)
 }
 
-pub fn mouse(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, String> {
+pub async fn mouse(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, String> {
     match name {
         "click" | "double_click" => {
             let x = number(args, "x")?;
             let y = number(args, "y")?;
             let button = match args.get("button").and_then(Value::as_str) {
-                Some("right") => enigo::Button::Right,
-                Some("middle") => enigo::Button::Middle,
-                _ => enigo::Button::Left,
+                Some("right") => Button::Right,
+                Some("middle") => Button::Middle,
+                _ => Button::Left,
             };
             let times = if name == "double_click" { 2 } else { 1 };
-            desktop.click(monitor(args), x, y, button, times)?;
+            desktop.click(monitor(args), x, y, button, times).await?;
             Ok(ToolResult::text(format!(
                 "Clicked at {x}, {y} ({times}x, {button:?})"
             )))
@@ -136,13 +136,13 @@ pub fn mouse(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, 
         "move" => {
             let x = number(args, "x")?;
             let y = number(args, "y")?;
-            desktop.move_to(monitor(args), x, y)?;
+            desktop.move_to(monitor(args), x, y).await?;
             Ok(ToolResult::text(format!("Moved the pointer to {x}, {y}")))
         }
         "drag" => {
             let from = (number(args, "from_x")?, number(args, "from_y")?);
             let to = (number(args, "to_x")?, number(args, "to_y")?);
-            desktop.drag(monitor(args), from, to)?;
+            desktop.drag(monitor(args), from, to).await?;
             Ok(ToolResult::text(format!(
                 "Dragged from {}, {} to {}, {}",
                 from.0, from.1, to.0, to.1
@@ -153,21 +153,21 @@ pub fn mouse(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, 
             let y = number(args, "y")?;
             let dy = args.get("dy").and_then(Value::as_i64).unwrap_or(0) as i32;
             let dx = args.get("dx").and_then(Value::as_i64).unwrap_or(0) as i32;
-            desktop.scroll(monitor(args), x, y, dy, dx)?;
+            desktop.scroll(monitor(args), x, y, dy, dx).await?;
             Ok(ToolResult::text(format!("Scrolled {dx}, {dy} at {x}, {y}")))
         }
         other => Err(format!("There is no tool called \"{other}\"")),
     }
 }
 
-pub fn keyboard(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, String> {
+pub async fn keyboard(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResult, String> {
     match name {
         "type_text" => {
             let text = args
                 .get("text")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "\"text\" is required".to_string())?;
-            desktop.type_text(text)?;
+            desktop.type_text(text).await?;
             Ok(ToolResult::text(format!(
                 "Typed {} characters",
                 text.chars().count()
@@ -178,7 +178,7 @@ pub fn keyboard(desktop: &Desktop, name: &str, args: &Value) -> Result<ToolResul
                 .get("keys")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "\"keys\" is required".to_string())?;
-            desktop.press_key(keys)?;
+            desktop.press_key(keys).await?;
             Ok(ToolResult::text(format!("Pressed {keys}")))
         }
         other => Err(format!("There is no tool called \"{other}\"")),

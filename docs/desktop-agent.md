@@ -116,16 +116,24 @@ still the goal:
 
 ### Input
 
-`enigo` has the portal path built in: with its `libei_tokio` feature it opens the
-RemoteDesktop portal, asks for `ConnectToEIS`, and injects through libei. That is
-the same mechanism the plan had hand-rolled with `ashpd` and `reis`, and it
-handles keysyms and absolute motion for us.
+The agent drives the pointer and keyboard over the RemoteDesktop portal, through
+`ashpd` directly:
 
-It is not enabled yet. `enigo` unwraps the portal connection, so a machine
-without `xdg-desktop-portal` panics inside `Enigo::new` instead of returning an
-error, and that panic is not containable from the caller. Wayland input lands
-once that path is guarded, either by pinning the backend per session type or by
-calling the portal directly.
+- One session, `select_devices` with keyboard and pointer, and a monitor source
+  on the same session so absolute motion has a space to point in.
+- `notify_pointer_motion_absolute` takes the stream's node id and a point in its
+  logical space, `notify_pointer_button` takes evdev codes, `notify_pointer_axis`
+  takes smooth scroll deltas, and `notify_keyboard_keysym` types by keysym.
+- `persist_mode = 2` plus a restore token in `~/.config/saale-agent/portal-token`
+  keeps the consent dialog from returning. Persistence belongs to the
+  RemoteDesktop portal for a combined session, so the ScreenCast call carries no
+  persist options.
+- A failed call drops the session, so the next one asks for a fresh one instead
+  of talking to a dead object path.
+
+`enigo`'s own `libei_tokio` path would be lower latency, but it unwraps its
+portal connection and panics where no portal answers, which kills the agent.
+EIS stays a later optimisation.
 
 The uinput fallback for wlroots creates a real virtual device through
 `/dev/uinput`. It needs a udev rule, installed by the deb and printed by the
@@ -185,8 +193,10 @@ consent dialog returns.
 - Screen capture, the pointer and the keyboard work on X11: a real capture, a
   click mapped from the image, typing and key combinations. Verified under Xvfb
   against the live instance.
-- Wayland capture rides on `xcap`'s Screenshot portal path. Wayland input, the
-  ScreenCast session, `focus_window` and the tray are still open.
+- Wayland capture rides on `xcap`'s Screenshot portal path, and Wayland input on
+  the RemoteDesktop portal. Both are written but untested here: this machine has
+  no compositor. The ScreenCast frame session, `focus_window` and the tray are
+  still open.
 
 ## Milestones
 
