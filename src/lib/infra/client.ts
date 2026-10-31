@@ -18,6 +18,7 @@ import {
   parsePlatformProbe,
   InvalidExecOptionsError,
   PLATFORM_PROBE,
+  SHELL_DONE_MARKER,
   type RemotePlatform,
   type ShellRequest,
 } from "@/lib/infra/shell";
@@ -297,6 +298,12 @@ async function withSftpFallback(
     if (result.code !== 0) {
       throw new Error(
         `The shell fallback failed: ${result.stderr || `exit code ${result.code ?? "unknown"}`}`,
+      );
+    }
+    // A script cut short still exits 0, so the marker decides.
+    if (!result.stdout.includes(SHELL_DONE_MARKER)) {
+      throw new Error(
+        `The shell fallback did not finish: ${result.stderr || "no marker from the shell"}`,
       );
     }
   }

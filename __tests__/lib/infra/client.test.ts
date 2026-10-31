@@ -527,12 +527,16 @@ describe("SFTP file operations", () => {
    * what a profile banner printed into the channel does, and let the shell
    * answer for it.
    */
-  function setupBannerSftp(shell: { code?: number; stderr?: string } = {}) {
+  function setupBannerSftp(
+    shell: { code?: number; stdout?: string; stderr?: string } = {},
+    opts: { sftpFailsOnOpen?: boolean; platform?: "posix" | "windows" } = {},
+  ) {
     const desync = new Error("Packet length 171785533 exceeds max length of 262144");
+    const fail = (cb: (err?: Error) => void) => cb(desync);
 
     const sftp = {
-      mkdir: vi.fn((_path: string, cb: (err?: Error) => void) => cb(desync)),
-      stat: vi.fn((_path: string, cb: (err?: Error) => void) => cb(desync)),
+      mkdir: vi.fn((_path: string, cb: (err?: Error) => void) => fail(cb)),
+      stat: vi.fn((_path: string, cb: (err?: Error) => void) => fail(cb)),
       writeFile: vi.fn((_path: string, _content: unknown, encOrCb: unknown, maybeCb?: unknown) => {
         const cb = (typeof encOrCb === "function" ? encOrCb : maybeCb) as (err?: Error) => void;
         cb(desync);
@@ -541,15 +545,14 @@ describe("SFTP file operations", () => {
 
     const execCommand = vi.fn().mockImplementation((request: string) => {
       if (request === PLATFORM_PROBE) {
-        return Promise.resolve({
-          stdout: "",
-          stderr: "sh: 1: cmd.exe: not found\n",
-          code: 127,
-          signal: null,
-        });
+        return Promise.resolve(
+          opts.platform === "windows"
+            ? { stdout: "Windows_NT\r\n", stderr: "", code: 0, signal: null }
+            : { stdout: "", stderr: "sh: 1: cmd.exe: not found\n", code: 127, signal: null },
+        );
       }
       return Promise.resolve({
-        stdout: "",
+        stdout: shell.stdout ?? "saale:done\n",
         stderr: shell.stderr ?? "",
         code: shell.code ?? 0,
         signal: null,
@@ -559,7 +562,10 @@ describe("SFTP file operations", () => {
     (NodeSSH as unknown as Mock).mockImplementation(function () {
       return {
         connect: vi.fn().mockResolvedValue(undefined),
-        requestSFTP: vi.fn().mockResolvedValue(sftp),
+        // The session can die before it is handed over, too.
+        requestSFTP: opts.sftpFailsOnOpen
+          ? vi.fn().mockRejectedValue(desync)
+          : vi.fn().mockResolvedValue(sftp),
         execCommand,
         dispose: vi.fn(),
       };
@@ -567,7 +573,7 @@ describe("SFTP file operations", () => {
 
     vi.mocked(mockInfraMachine.findFirst).mockResolvedValue(machine);
 
-    return { execCommand };
+    return { execCommand, sftp };
   }
 
   /** The script the shell fallback was handed. */
@@ -579,12 +585,22 @@ describe("SFTP file operations", () => {
     return options.stdin ?? "";
   }
 
+  /** What the last shell request carries, heredoc body decoded. */
+  function lastWrittenBytes(execCommand: Mock): Buffer {
+    const lines = lastScript(execCommand).split("\n");
+    const open = lines.findIndex((line) => line.startsWith("base64 -d > "));
+    const close = lines.indexOf("SAALE_WRITE_EOF", open + 1);
+    return Buffer.from(lines.slice(open + 1, close).join(""), "base64");
+  }
+
   it("creates the directory over the shell when the SFTP session is dead", async () => {
     const { execCommand } = setupBannerSftp();
 
     await createDirectory("machine-1", "user-1", "/etc/wireguard/relays");
 
-    expect(lastScript(execCommand)).toBe("mkdir -p '/etc/wireguard/relays'");
+    expect(lastScript(execCommand)).toBe("mkdir -p '/etc/wireguard/relays' && echo saale:done");
+    // The probe runs first, so the directory request is the last one.
+    expect(execCommand).toHaveBeenCalledTimes(2);
   });
 
   it("writes the file over the shell when the SFTP session is dead", async () => {
@@ -598,9 +614,50 @@ describe("SFTP file operations", () => {
     );
 
     const script = lastScript(execCommand);
-    expect(script).toContain("base64 -d > '/etc/wireguard/relays/ch-zrh.peer'");
-    expect(Buffer.from(script.split("\n").slice(1, -1).join(""), "base64").toString("utf8")).toBe(
-      "Endpoint = 1.2.3.4\n",
+    // Decoded beside the target, then copied onto it.
+    expect(script).toContain("temp='/etc/wireguard/relays/ch-zrh.peer'.saale-$$");
+    expect(script).toContain("cat \"$temp\" > '/etc/wireguard/relays/ch-zrh.peer'");
+    expect(lastWrittenBytes(execCommand).toString("utf8")).toBe("Endpoint = 1.2.3.4\n");
+  });
+
+  it("carries the bytes of a binary write over the shell untouched", async () => {
+    const { execCommand } = setupBannerSftp();
+    const bytes = Buffer.from([0x00, 0xff, 0x0a, 0x0d, 0x27, 0x22, 0x24]);
+
+    const result = await writeFileBuffer("machine-1", "user-1", "/tmp/logo.png", bytes);
+
+    expect(result).toEqual({ ok: true, size: 7 });
+    expect(lastWrittenBytes(execCommand).equals(bytes)).toBe(true);
+  });
+
+  it("falls back when the SFTP session dies before it opens", async () => {
+    const { execCommand } = setupBannerSftp({}, { sftpFailsOnOpen: true });
+
+    await writeFile("machine-1", "user-1", "/tmp/app.conf", "key = value\n");
+
+    expect(lastWrittenBytes(execCommand).toString("utf8")).toBe("key = value\n");
+  });
+
+  it("keeps an SFTP error that is about the file, not the session", async () => {
+    const { sftp } = setupBannerSftp();
+    const denied = Object.assign(new Error("Permission denied"), { code: 3 });
+    sftp.writeFile.mockImplementation(
+      (_path: string, _content: unknown, encOrCb: unknown, maybeCb?: unknown) => {
+        const cb = (typeof encOrCb === "function" ? encOrCb : maybeCb) as (err?: Error) => void;
+        cb(denied);
+      },
+    );
+
+    await expect(writeFile("machine-1", "user-1", "/root/key", "secret")).rejects.toThrow(
+      "Permission denied",
+    );
+  });
+
+  it("keeps the SFTP error on a machine the shell fallback cannot speak for", async () => {
+    setupBannerSftp({}, { platform: "windows" });
+
+    await expect(writeFile("machine-1", "user-1", "C:\\app\\conf", "x")).rejects.toThrow(
+      "exceeds max length",
     );
   });
 
@@ -609,6 +666,14 @@ describe("SFTP file operations", () => {
 
     await expect(writeFile("machine-1", "user-1", "/tmp/key", "secret")).rejects.toThrow(
       "base64: command not found",
+    );
+  });
+
+  it("reports a shell that exited cleanly without finishing the write", async () => {
+    setupBannerSftp({ code: 0, stdout: "" });
+
+    await expect(writeFile("machine-1", "user-1", "/tmp/key", "secret")).rejects.toThrow(
+      "did not finish",
     );
   });
 

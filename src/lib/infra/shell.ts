@@ -42,6 +42,14 @@ const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Ends the heredoc that carries a file's content. Base64 cannot spell it. */
 const WRITE_HEREDOC = "SAALE_WRITE_EOF";
 
+/**
+ * Printed by a fallback script once its work is done.
+ *
+ * The client waits for it, so a script that stopped early cannot pass for a
+ * finished write.
+ */
+export const SHELL_DONE_MARKER = "saale:done";
+
 /** cmd has no escape for these inside a quoted value. */
 const WINDOWS_UNSAFE_VALUE = /["\r\n]/;
 
@@ -160,16 +168,33 @@ export function buildShellRequest(
  * For machines whose SFTP session cannot be used. The content travels as base64
  * inside a heredoc, so no byte of it is read as shell syntax and no line of it
  * can end the heredoc early.
+ *
+ * The content lands in a file beside the target first, and the target is only
+ * overwritten once every byte arrived. A connection that drops mid-script leaves
+ * the target as it was.
  */
 export function buildWriteRequest(filePath: string, content: Buffer): ShellRequest {
+  const target = posixQuote(filePath);
   const base64 = content.toString("base64").replace(/(.{76})/g, "$1\n");
-  const script = `base64 -d > ${posixQuote(filePath)} <<'${WRITE_HEREDOC}'\n${base64}\n${WRITE_HEREDOC}`;
+
+  const script = [
+    `temp=${target}.saale-$$`,
+    `trap 'rm -f "$temp"' EXIT`,
+    `base64 -d > "$temp" <<'${WRITE_HEREDOC}'`,
+    base64,
+    WRITE_HEREDOC,
+    // `wc` pads its answer on some platforms, and the comparison is textual.
+    `size=$(wc -c < "$temp" | tr -d ' ')`,
+    `[ "$size" = '${content.length}' ] || { echo "wrote $size of ${content.length} bytes to $temp" >&2; exit 1; }`,
+    `cat "$temp" > ${target} && echo ${SHELL_DONE_MARKER}`,
+  ].join("\n");
+
   return buildShellRequest("posix", script);
 }
 
 /** Build a POSIX request that makes a directory and any parents it needs. */
 export function buildMkdirRequest(dirPath: string): ShellRequest {
-  return buildShellRequest("posix", `mkdir -p ${posixQuote(dirPath)}`);
+  return buildShellRequest("posix", `mkdir -p ${posixQuote(dirPath)} && echo ${SHELL_DONE_MARKER}`);
 }
 
 /**

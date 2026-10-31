@@ -703,7 +703,7 @@ export function createInfraTools(userId: string): ToolDefinition[] {
       name: "infra_write_file",
       label: "Write Remote File",
       description:
-        "Write content to a file on a remote machine via SFTP, replacing the file's entire contents. Creates parent directories if needed. For a change to part of an existing file, use `infra_edit_file` instead. sending the whole file back is expensive and risks dropping everything you did not mean to touch.",
+        "Write content to a file on a remote machine, replacing the file's entire contents. Creates parent directories if needed. For a change to part of an existing file, use `infra_edit_file` instead. sending the whole file back is expensive and risks dropping everything you did not mean to touch.",
       parameters: Type.Object({
         id: Type.String({ description: "Machine ID." }),
         path: Type.String({

@@ -66,17 +66,20 @@ describe("buildMkdirRequest", () => {
     const { request, stdin } = buildMkdirRequest("/srv/my app's dir");
 
     expect(request).toBe(POSIX_REQUEST);
-    expect(stdin).toBe("mkdir -p '/srv/my app'\\''s dir'");
+    expect(stdin).toBe("mkdir -p '/srv/my app'\\''s dir' && echo saale:done");
   });
 });
 
 describe("buildWriteRequest", () => {
   /** The bytes the heredoc carries, as the remote base64 would decode them. */
   function heredocBytes(stdin: string): Buffer {
-    return Buffer.from(stdin.split("\n").slice(1, -1).join(""), "base64");
+    const lines = stdin.split("\n");
+    const open = lines.findIndex((line) => line.startsWith("base64 -d > "));
+    const close = lines.indexOf("SAALE_WRITE_EOF", open + 1);
+    return Buffer.from(lines.slice(open + 1, close).join(""), "base64");
   }
 
-  it("redirects base64 into the file, keeping the content out of the request", () => {
+  it("decodes into a file beside the target, then copies it over", () => {
     const { request, stdin } = buildWriteRequest(
       "/etc/wireguard/ch-zrh.peer",
       Buffer.from("Endpoint = 1.2.3.4\n"),
@@ -84,10 +87,26 @@ describe("buildWriteRequest", () => {
 
     expect(request).toBe(POSIX_REQUEST);
     expect(request).not.toContain("Endpoint");
-    expect(stdin.split("\n")[0]).toBe(
-      "base64 -d > '/etc/wireguard/ch-zrh.peer' <<'SAALE_WRITE_EOF'",
-    );
+    expect(stdin.split("\n").slice(0, 3)).toEqual([
+      "temp='/etc/wireguard/ch-zrh.peer'.saale-$$",
+      "trap 'rm -f \"$temp\"' EXIT",
+      "base64 -d > \"$temp\" <<'SAALE_WRITE_EOF'",
+    ]);
+    expect(stdin.split("\n").slice(-3)).toEqual([
+      "size=$(wc -c < \"$temp\" | tr -d ' ')",
+      '[ "$size" = \'19\' ] || { echo "wrote $size of 19 bytes to $temp" >&2; exit 1; }',
+      "cat \"$temp\" > '/etc/wireguard/ch-zrh.peer' && echo saale:done",
+    ]);
     expect(heredocBytes(stdin).toString("utf8")).toBe("Endpoint = 1.2.3.4\n");
+  });
+
+  it("checks the byte count before it touches the target", () => {
+    const { stdin } = buildWriteRequest("/tmp/a", Buffer.from("four"));
+
+    const check = stdin.indexOf("[ \"$size\" = '4' ]");
+    const copy = stdin.indexOf("cat \"$temp\" > '/tmp/a'");
+    expect(check).toBeGreaterThan(-1);
+    expect(copy).toBeGreaterThan(check);
   });
 
   it("decodes back to the same bytes, whatever the content says", () => {
@@ -96,8 +115,7 @@ describe("buildWriteRequest", () => {
     const { stdin } = buildWriteRequest("/tmp/notes.txt", Buffer.from(content));
 
     expect(heredocBytes(stdin).toString("utf8")).toBe(content);
-    // The delimiter ends the heredoc on a line of its own, which the content
-    // cannot forge.
+    // The content cannot end the heredoc, so the delimiter stands once.
     expect(stdin.split("\n").filter((line) => line === "SAALE_WRITE_EOF")).toHaveLength(1);
   });
 
@@ -114,16 +132,21 @@ describe("buildWriteRequest", () => {
 
     const { stdin } = buildWriteRequest("/tmp/big.txt", Buffer.from(content));
 
-    const body = stdin.split("\n").slice(1, -1);
+    const lines = stdin.split("\n");
+    const body = lines.slice(
+      lines.findIndex((line) => line.startsWith("base64 -d > ")) + 1,
+      lines.indexOf("SAALE_WRITE_EOF"),
+    );
     expect(body.length).toBeGreaterThan(1);
     expect(body.every((line) => line.length <= 76)).toBe(true);
     expect(heredocBytes(stdin).toString("utf8")).toBe(content);
   });
 
-  it("writes an empty file from an empty heredoc", () => {
+  it("declares an empty write as zero bytes", () => {
     const { stdin } = buildWriteRequest("/tmp/empty", Buffer.alloc(0));
 
     expect(heredocBytes(stdin)).toHaveLength(0);
+    expect(stdin).toContain("[ \"$size\" = '0' ]");
   });
 });
 
