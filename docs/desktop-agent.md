@@ -190,6 +190,10 @@ consent dialog returns.
   A message from anywhere else takes the machine away at once: the approval gate
   re-reads the newest message on every device tool call, and a run prompted by
   another client rebuilds the session without the device.
+- The file tools hand an image to the model as an image: `read_file` sniffs the
+  header (png, jpeg, gif, webp) and returns the picture plus its path, mime and
+  size, and `write_file` writes base64 when asked, so a generated image lands on
+  the filesystem and can be read back.
 - Screen capture, the pointer and the keyboard work on X11: a real capture, a
   click mapped from the image, typing and key combinations. Verified under Xvfb
   against the live instance.

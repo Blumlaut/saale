@@ -56,6 +56,9 @@ saale-agent groups --disable files
 ## What this build does and does not do
 
 - The channel, pairing, the tool list and the group switches are done.
+- `read_file` sniffs the header: png, jpeg, gif and webp come back as an image
+  to look at, everything else as text. `write_file` takes `encoding: "base64"`
+  so an image can be saved and read back.
 - Screen, pointer and keyboard work on X11. A capture is downscaled to 1568px,
   and a click is mapped from that image back onto the display, so the model
   never has to think in desktop pixels.
