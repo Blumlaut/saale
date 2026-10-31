@@ -40,8 +40,14 @@ first run writes its own `saale-agent.desktop` so the scheme has a handler.
 
 ## Capability groups
 
-The client decides what exists. A blocked tool is missing from `tools/list`, so
-the model cannot see it, call it, or find it in codemode.
+The agent decides what exists, and the switches live in Saale's settings page and
+in the tray. Flipping one sends `notifications/saale/groups` over the device
+channel; the agent applies it, keeps it for the next run, and answers with a
+hello so the page shows what the machine actually took. A notification rather
+than a tool, because the model must not be able to reach it.
+
+A blocked tool is missing from `tools/list`, so the model cannot see it, call it,
+or find it in codemode.
 
 | Group    | Tools                                                             |
 | -------- | ----------------------------------------------------------------- |

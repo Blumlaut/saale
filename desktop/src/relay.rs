@@ -200,10 +200,31 @@ impl Relay {
             }
         };
 
+        // Saale's settings page changing what this machine offers. Applied here
+        // and reported back, so the page shows what the agent actually took.
+        if let Some(wanted) = mcp::requested_groups(&message) {
+            let applied = tools::set_groups(groups, wanted);
+            keep_groups(&applied);
+            self.post(mcp::hello(groups, desktop.available())).await?;
+            return Ok(());
+        }
+
         if let Some(answer) = mcp::handle(groups, desktop, &message).await {
             self.post(json!({ "messages": [answer] })).await?;
         }
 
         Ok(())
+    }
+}
+
+/// Keep the groups the user just chose, so the next run starts that way.
+fn keep_groups(applied: &std::collections::BTreeSet<tools::Group>) {
+    let Ok(mut config) = crate::config::load() else {
+        println!("Cannot read the config to keep the tool groups");
+        return;
+    };
+    config.groups = applied.iter().copied().collect();
+    if let Err(err) = crate::config::save(&config) {
+        println!("Cannot keep the tool groups: {err}");
     }
 }

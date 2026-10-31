@@ -45,6 +45,21 @@ function parseMessage(payload: string, deviceId: string): JsonRpcMessage | null 
   }
 }
 
+/**
+ * The notification that changes which tool groups an agent offers.
+ *
+ * A notification rather than a tool: the model must not be able to reach it, and
+ * a switch the user flips in Saale is not a tool call. The agent applies it and
+ * answers with a fresh hello, so the page shows what it actually took.
+ */
+export function groupsNotification(groups: readonly string[]): JsonRpcMessage {
+  return {
+    jsonrpc: "2.0",
+    method: "notifications/saale/groups",
+    params: { groups: [...groups] },
+  } as JsonRpcMessage;
+}
+
 /** Send one JSON-RPC message to an agent, through its open stream. */
 export async function publishToDevice(deviceId: string, message: JsonRpcMessage): Promise<void> {
   await getRedis().publish(outChannel(deviceId), JSON.stringify(message));

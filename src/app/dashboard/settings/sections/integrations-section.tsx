@@ -120,6 +120,7 @@ export function IntegrationsSection() {
               }}
               onRevoke={desktop.revokeDevice}
               onUseInBrowser={desktop.useInBrowser}
+              onSetGroups={desktop.setGroups}
             />
             <SandboxEnvCard />
             <GithubCard />

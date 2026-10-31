@@ -73,6 +73,10 @@ model cannot call it and cannot find it in a codemode script.
 | mouse    | none yet                                              |
 | keyboard | none yet                                              |
 
+They are in three places, all writing the same config: the checkboxes on Saale's
+Integrations page (the agent applies them over its channel), the tray menu, and
+this command.
+
 ```sh
 saale-agent groups                    # what is on
 saale-agent groups --enable terminal  # turn one on

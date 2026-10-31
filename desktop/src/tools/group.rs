@@ -66,6 +66,21 @@ pub fn enabled(groups: &Groups) -> BTreeSet<Group> {
     groups.read().map(|set| set.clone()).unwrap_or_default()
 }
 
+/// Replace the whole set, which is what Saale's settings page sends.
+pub fn set_groups(groups: &Groups, wanted: impl IntoIterator<Item = Group>) -> BTreeSet<Group> {
+    let next: BTreeSet<Group> = wanted.into_iter().collect();
+    match groups.write() {
+        Ok(mut set) => {
+            *set = next.clone();
+            next
+        }
+        Err(err) => {
+            println!("Cannot change the tool groups: {err}");
+            BTreeSet::new()
+        }
+    }
+}
+
 /// Flip one group, and say what it is now.
 pub fn toggle(groups: &Groups, group: Group) -> bool {
     match groups.write() {
@@ -117,6 +132,15 @@ mod tests {
             enabled(&groups),
             [Group::Files, Group::Terminal].into_iter().collect()
         );
+    }
+
+    #[test]
+    fn replaces_the_whole_set() {
+        let groups = new_groups([Group::Screen]);
+        let next = set_groups(&groups, [Group::Mouse, Group::Keyboard]);
+
+        assert_eq!(next, [Group::Mouse, Group::Keyboard].into_iter().collect());
+        assert_eq!(enabled(&groups), next);
     }
 
     #[test]

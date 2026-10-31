@@ -30,8 +30,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ROW_ACTION } from "@/lib/utils";
-import { DEVICE_GROUP_LABELS } from "@/lib/devices/shared";
+import { DEVICE_GROUPS, DEVICE_GROUP_LABELS, type DeviceGroup } from "@/lib/devices/shared";
 import type { DesktopDevice, DesktopDownload } from "@/hooks/use-desktop-devices";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 
@@ -66,6 +67,7 @@ export function DesktopCard({
   onConnect,
   onRevoke,
   onUseInBrowser,
+  onSetGroups,
 }: {
   devices: DesktopDevice[];
   loading: boolean;
@@ -75,21 +77,10 @@ export function DesktopCard({
   onConnect: () => void;
   onRevoke: (deviceId: string) => void;
   onUseInBrowser: (deviceId: string | null) => void;
+  onSetGroups: (deviceId: string, groups: DeviceGroup[]) => void;
 }) {
-  const connected = devices.filter((device) => device.connected).length;
-
   return (
-    <IntegrationBox
-      manifest={DESKTOP_BOX}
-      connected={devices.length > 0}
-      badges={
-        devices.length > 0 ? (
-          <Badge variant="outline" className="rounded-full">
-            {connected > 0 ? `${connected} online` : "offline"}
-          </Badge>
-        ) : undefined
-      }
-    >
+    <IntegrationBox manifest={DESKTOP_BOX} connected={devices.length > 0}>
       <div className="space-y-3">
         {loading ? (
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
@@ -121,6 +112,27 @@ export function DesktopCard({
                     )}
                   </p>
                   <p className="text-muted-foreground truncate text-xs">{describe(device)}</p>
+                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                    {DEVICE_GROUPS.map((group) => (
+                      <label
+                        key={group}
+                        className="text-muted-foreground flex items-center gap-1.5 text-xs"
+                      >
+                        <Checkbox
+                          checked={device.capabilities.includes(group)}
+                          onCheckedChange={(checked) =>
+                            onSetGroups(
+                              device.id,
+                              checked
+                                ? [...device.capabilities, group]
+                                : device.capabilities.filter((on) => on !== group),
+                            )
+                          }
+                        />
+                        {DEVICE_GROUP_LABELS[group]}
+                      </label>
+                    ))}
+                  </div>
                   {device.recent.length > 0 && (
                     <ul className="mt-1 space-y-0.5">
                       {device.recent.map((call) => (

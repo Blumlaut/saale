@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { deleteJson, fetchJson, postJson } from "@/lib/http";
+import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import { CLIENT_DEVICE_COOKIE, type DeviceGroup } from "@/lib/devices/shared";
 
 /** A computer running the desktop agent, as the settings page lists it. */
@@ -104,6 +104,24 @@ export function useDesktopDevices() {
 
   const resetPairCode = useCallback(() => setPairCode(null), []);
 
+  /**
+   * Ask a computer to change what it offers.
+   *
+   * The agent owns the switches and confirms with a hello, so the list is
+   * re-read rather than assumed.
+   */
+  const setGroups = useCallback(async (deviceId: string, groups: DeviceGroup[]) => {
+    setDevices((prev) =>
+      prev.map((device) => (device.id === deviceId ? { ...device, capabilities: groups } : device)),
+    );
+    try {
+      await patchJson(`/api/devices/${deviceId}`, { groups });
+    } catch (err) {
+      console.error("Failed to change what a computer offers:", err);
+      setError((err as Error).message || "Could not change that computer");
+    }
+  }, []);
+
   const revokeDevice = useCallback(async (deviceId: string) => {
     setRevokingId(deviceId);
     try {
@@ -137,5 +155,6 @@ export function useDesktopDevices() {
     createPairCode,
     resetPairCode,
     revokeDevice,
+    setGroups,
   };
 }

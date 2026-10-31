@@ -6,7 +6,7 @@ mod input;
 mod screen;
 mod shell;
 
-pub use group::{enabled, new_groups, parse_list, toggle, Group, Groups};
+pub use group::{enabled, new_groups, parse_list, set_groups, toggle, Group, Groups};
 
 use serde_json::{json, Value};
 

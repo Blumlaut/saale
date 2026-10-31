@@ -13,6 +13,31 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 
 pub const SERVER_NAME: &str = "saale-agent";
 
+/// The notification Saale sends to change which groups this machine offers.
+///
+/// A notification, not a tool: the model must not be able to reach it, and a
+/// request the user makes in Saale's settings page is not a tool call. The
+/// agent applies it and reports the new set back in its next hello.
+pub const GROUPS_METHOD: &str = "notifications/saale/groups";
+
+/// The groups a `GROUPS_METHOD` notification asks for, when it names any.
+pub fn requested_groups(message: &Value) -> Option<Vec<tools::Group>> {
+    let method = message.get("method").and_then(Value::as_str)?;
+    if method != GROUPS_METHOD {
+        return None;
+    }
+
+    let params = message.get("params")?;
+    let list = params.get("groups")?.as_array()?;
+    let wanted = list
+        .iter()
+        .filter_map(Value::as_str)
+        .filter_map(tools::Group::parse)
+        .collect::<Vec<_>>();
+
+    Some(wanted)
+}
+
 /// Build the answer to one request, or nothing for a notification.
 pub async fn handle(groups: &tools::Groups, desktop: &Desktop, message: &Value) -> Option<Value> {
     let method = message.get("method").and_then(Value::as_str)?;
