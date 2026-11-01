@@ -30,7 +30,7 @@ export interface SandboxConfig {
   /** Process limit: threads count too. 0 means no limit. */
   pids: number;
   cpus: number;
-  /** Idle minutes before a container is stopped. */
+  /** Idle minutes before a container is stopped, running commands included. */
   idleMinutes: number;
   /** Age in days before a container is removed. */
   ttlDays: number;
@@ -59,7 +59,7 @@ const DEFAULTS = {
   // the container was unusable until whatever held the threads exited.
   pids: 4096,
   cpus: 2,
-  idleMinutes: 240,
+  idleMinutes: 720,
   ttlDays: 7,
   tmpHours: 72,
   port: 8100,

@@ -43,7 +43,7 @@ The agent runs commands in a container of its own, one per user.
 | `SANDBOX_MEMORY`             | `4g`    | Memory limit per container.                                     |
 | `SANDBOX_PIDS`               | `4096`  | Process limit. Threads count too, and a dev server needs many.  |
 | `SANDBOX_CPUS`               | `2`     | CPU limit per container.                                        |
-| `SANDBOX_IDLE_MINUTES`       | `240`   | Minutes before an idle container is stopped.                    |
+| `SANDBOX_IDLE_MINUTES`       | `720`   | Minutes before an idle container is stopped.                    |
 | `SANDBOX_CONTAINER_TTL_DAYS` | `7`     | Days before a container is removed. `0` keeps them.             |
 | `SANDBOX_TMP_HOURS`          | `72`    | Hours before a workspace's `.tmp/` is emptied. `0` keeps it.    |
 
@@ -51,6 +51,9 @@ A changed `SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` reaches the contain
 next command, without replacing it, so an installed package and a running service stay
 where they are. Redeploy the stack first: the limits reach containers through
 `sandbox-exec`'s environment, and only after that service is recreated.
+
+`SANDBOX_IDLE_MINUTES` stops a container once nothing has run in it for that long. A dev
+server left running is stopped with it, and the next command starts the container again.
 
 `SANDBOX_CONTAINER_TTL_DAYS` removes a container once it is that old, and takes whatever
 was written to the container's own filesystem with it: `apt-get`, a global `pip`. Packages

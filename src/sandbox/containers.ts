@@ -586,12 +586,20 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     });
   }
 
+  /** Signal every command an identity has running, so a stop does not cut them mid-write. */
+  async function killRunning(id: string): Promise<void> {
+    for (const execId of registry.idsFor(id)) {
+      await kill(execId).catch((err) => console.error(`Failed to stop ${execId}:`, err));
+    }
+  }
+
   async function stop(identity: string): Promise<boolean> {
     const id = parseIdentity(identity);
     const name = containerName(id);
     const existing = await inspectOrNull(name);
     if (!existing) return false;
     if (!existing.State.Running) return true;
+    await killRunning(id);
     await docker.getContainer(name).stop({ t: 10 });
     lastUsed.delete(id);
     return true;
@@ -599,11 +607,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
 
   async function remove(identity: string): Promise<boolean> {
     const id = parseIdentity(identity);
-    for (const execId of registry.idsFor(id)) {
-      await kill(execId).catch((err) =>
-        console.error(`Failed to stop ${execId} before removal:`, err),
-      );
-    }
+    await killRunning(id);
 
     const name = containerName(id);
     const existing = await inspectOrNull(name);
@@ -714,6 +718,7 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
 
       if (ttlMs > 0 && age > ttlMs) {
         try {
+          await killRunning(identity);
           await container.remove({ force: true });
           lastUsed.delete(identity);
           removed += 1;
@@ -724,12 +729,10 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
       }
 
       if (!state.State.Running) continue;
-      // A command still running is the container being used, however long ago it
-      // was started: a dev server is not idleness.
-      if (registry.idsFor(identity).length > 0) continue;
       const used = lastUsed.get(identity) ?? created;
       if (Number.isFinite(used) && at - used > idleMs) {
         try {
+          await killRunning(identity);
           await container.stop({ t: 10 });
           lastUsed.delete(identity);
           stopped += 1;
