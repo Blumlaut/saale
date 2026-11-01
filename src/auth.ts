@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { saaleAccessControl } from "@/lib/permissions/statements";
 import { AUTH_ROLES, loadRoleDefinitions } from "@/lib/permissions/role-cache";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
+import { destroyUserSandbox } from "@/lib/sandbox/teardown";
 import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
 import {
@@ -106,6 +107,13 @@ export const auth = betterAuth({
         // by the plugin immediately afterwards.
         after: async (user, context) => {
           await revokeSessionsOnTwoFactorEnable(user, context);
+        },
+      },
+      delete: {
+        // The user's directory and container are outside the database, so the
+        // cascade does not reach them.
+        after: async (user) => {
+          await destroyUserSandbox(user.id);
         },
       },
     },

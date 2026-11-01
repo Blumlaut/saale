@@ -36,7 +36,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createSandboxOperations } from "@/lib/sandbox/operations";
 import * as sandboxClient from "@/lib/sandbox/client";
-import { ensureWorkspace, removeWorkspace } from "@/lib/sandbox/workspace";
+import { ensureWorkspace } from "@/lib/sandbox/workspace";
+import { destroySandbox } from "@/lib/sandbox/teardown";
 import { resolveWithinRoot } from "@/lib/files/paths";
 import { sandboxIdentity, type CouncilSandboxIdentity } from "./accounts";
 
@@ -185,22 +186,10 @@ export async function ensureCouncilSandbox(identity: CouncilSandboxIdentity): Pr
 /**
  * Remove the sandbox container and its directory.
  *
- * Best-effort and never throws: a council that is being deleted must not stay
- * behind because the service was briefly unreachable, but a cleanup that did
- * not happen is reported. a sandbox left on disk holds the members' work.
+ * Best-effort: a council that is being deleted must not stay behind because the
+ * service was briefly unreachable, but a cleanup that did not happen is
+ * reported. a sandbox left on disk holds the members' work.
  */
 export async function destroyCouncilSandbox(identity: CouncilSandboxIdentity): Promise<void> {
-  if (sandboxClient.isConfigured()) {
-    try {
-      await sandboxClient.removeContainer(identity.id);
-    } catch (err) {
-      console.warn(`[council] Could not remove the sandbox container ${identity.id}:`, err);
-    }
-  }
-
-  try {
-    await removeWorkspace(identity.id);
-  } catch (err) {
-    console.error(`[council] Could not remove the sandbox directory ${identity.path}:`, err);
-  }
+  await destroySandbox(identity.id);
 }
