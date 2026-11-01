@@ -32,7 +32,7 @@ export interface SandboxConfig {
   cpus: number;
   /** Idle minutes before a container is stopped, running commands included. */
   idleMinutes: number;
-  /** Age in days before a container is removed. */
+  /** Age in days before a container is removed. 0 keeps it until its user is deleted. */
   ttlDays: number;
   /** Age in hours before a scratch file in a workspace is removed. */
   tmpHours: number;
@@ -60,7 +60,7 @@ const DEFAULTS = {
   pids: 4096,
   cpus: 2,
   idleMinutes: 720,
-  ttlDays: 7,
+  ttlDays: 0,
   tmpHours: 72,
   port: 8100,
   previewPort: 8101,

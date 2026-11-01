@@ -226,7 +226,7 @@ services:
       - SANDBOX_GID=${SANDBOX_GID:-1000}
       - SANDBOX_MEMORY=${SANDBOX_MEMORY:-4g}
       - SANDBOX_IDLE_MINUTES=${SANDBOX_IDLE_MINUTES:-720}
-      - SANDBOX_CONTAINER_TTL_DAYS=${SANDBOX_CONTAINER_TTL_DAYS:-7}
+      - SANDBOX_CONTAINER_TTL_DAYS=${SANDBOX_CONTAINER_TTL_DAYS:-0}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -44,7 +44,7 @@ The agent runs commands in a container of its own, one per user.
 | `SANDBOX_PIDS`               | `4096`  | Process limit. Threads count too, and a dev server needs many.  |
 | `SANDBOX_CPUS`               | `2`     | CPU limit per container.                                        |
 | `SANDBOX_IDLE_MINUTES`       | `720`   | Minutes before an idle container is stopped.                    |
-| `SANDBOX_CONTAINER_TTL_DAYS` | `7`     | Days before a container is removed. `0` keeps them.             |
+| `SANDBOX_CONTAINER_TTL_DAYS` | `0`     | Days before a container is removed. `0` keeps them.             |
 | `SANDBOX_TMP_HOURS`          | `72`    | Hours before a workspace's `.tmp/` is emptied. `0` keeps it.    |
 
 A changed `SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` reaches the container on its
@@ -59,8 +59,9 @@ server left running is stopped with it, and the next command starts the containe
 was written to the container's own filesystem with it: `apt-get`, a global `pip`. Packages
 an agent installs for itself survive, because they live in the workspaces volume:
 `pip install --user`, `npm install -g` (the image points npm's global prefix at
-`$HOME/.local`) and anything else under `~/.local/bin`. An installation that has to keep
-its system packages sets `SANDBOX_CONTAINER_TTL_DAYS=0`.
+`$HOME/.local`) and anything else under `~/.local/bin`. It defaults to `0`: a container is
+removed when its user is deleted. Set a number to also remove containers nothing has
+touched for that many days.
 
 ## Voice input
 
