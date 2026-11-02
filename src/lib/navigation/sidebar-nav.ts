@@ -86,22 +86,16 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
     label: "Jobs",
     sections: [
       {
-        id: "agents",
-        href: "/dashboard/jobs/agents",
-        label: "Agents",
-        description: "Prompts that run on a schedule",
+        id: "automations",
+        href: "/dashboard/jobs/automations",
+        label: "Automations",
+        description: "Scheduled work that wakes the agent when something happens",
       },
       {
         id: "scheduled",
         href: "/dashboard/jobs/scheduled",
         label: "Schedules",
         description: "Built-in jobs that run on a schedule",
-      },
-      {
-        id: "watchers",
-        href: "/dashboard/jobs/watchers",
-        label: "Watchers",
-        description: "Scripts that react to a file or a repository",
       },
     ],
   },

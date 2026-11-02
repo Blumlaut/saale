@@ -100,14 +100,15 @@ export async function login(page: Page): Promise<void> {
 export async function seedStressData(request: APIRequestContext): Promise<void> {
   const seeds: SeedSpec[] = [
     {
-      label: "agent job",
-      listUrl: "/api/agent-jobs/definitions",
-      listKey: "definitions",
-      createUrl: "/api/agent-jobs/definitions",
+      label: "automation",
+      listUrl: "/api/automations",
+      listKey: "watchers",
+      createUrl: "/api/automations",
       data: {
         name: "Daily Market Research Digest with a Very Long Name",
-        prompt: "Summarize the latest market trends for the team.",
+        script: "return await tools.mail_list({});",
         cronExpression: "0 9 * * *",
+        deliver: "none",
       },
     },
     {

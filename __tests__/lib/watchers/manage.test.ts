@@ -42,8 +42,10 @@ describe("normalizeCronExpression", () => {
     expect(normalizeCronExpression("0,30 8-18 * * MON-FRI")).toBe("0,30 8-18 * * MON-FRI");
   });
 
-  it("rejects a missing or empty cadence", () => {
-    expect(() => normalizeCronExpression(undefined)).toThrow(WatcherInputError);
+  it("reads a missing cadence as no schedule at all", () => {
+    // An automation without a cron only runs when someone starts it.
+    expect(normalizeCronExpression(undefined)).toBeNull();
+    expect(normalizeCronExpression("")).toBeNull();
     expect(() => normalizeCronExpression("   ")).toThrow(WatcherInputError);
   });
 
@@ -284,6 +286,98 @@ describe("where a fire is delivered", () => {
     expect(written?.sessionId).toBeNull();
   });
 
+  it("accepts an automation with no gate and no schedule", async () => {
+    await createWatcher({
+      userId: "user-1",
+      fields: {
+        name: "Morning digest",
+        script: null,
+        cronExpression: null,
+        deliver: "none",
+      },
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.script).toBeNull();
+    expect(written?.cronExpression).toBeNull();
+    expect(written?.deliver).toBe("none");
+    // Nothing to review, so the instructions are the ones for running it.
+    expect(written?.wakePrompt).toMatch(/Run what this automation is for/);
+  });
+
+  it("stores a fire limit and a thinking level", async () => {
+    await createWatcher({
+      userId: "user-1",
+      fields: {
+        name: "One reminder",
+        script: "return 'now';",
+        cronExpression: "0 9 5 11 *",
+        deliver: "none",
+        maxFires: 1,
+        thinkingLevel: "high",
+      },
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.maxFires).toBe(1);
+    expect(written?.thinkingLevel).toBe("high");
+  });
+
+  it("refuses a fire limit below one", async () => {
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        fields: {
+          name: "Nope",
+          script: "return 1;",
+          cronExpression,
+          deliver: "none",
+          maxFires: 0,
+        },
+      }),
+    ).rejects.toThrow(/at least 1/);
+  });
+
+  it("starts a finished automation again when the limit is raised", async () => {
+    vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
+      id: "w-1",
+      userId: "user-1",
+      name: "One reminder",
+      description: null,
+      script: "return 'now';",
+      cronExpression: "0 9 5 11 *",
+      enabled: false,
+      deliver: "none",
+      sessionId: null,
+      originSessionId: null,
+      projectId: null,
+      worktreeMode: "per-fire",
+      retentionMinutes: 1440,
+      stickySessionId: null,
+      wakePrompt: "Act.",
+      modelId: null,
+      thinkingLevel: "off",
+      store: {},
+      lastValue: null,
+      lastTickAt: null,
+      lastError: null,
+      lastFiredAt: null,
+      tickCount: 1,
+      fireCount: 1,
+      cooldownMinutes: 0,
+      maxFires: 1,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as never);
+
+    await updateWatcher({ id: "w-1", userId: "user-1", fields: { maxFires: 3 } });
+
+    const written = vi.mocked(prisma.scriptWatcher.update).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.maxFires).toBe(3);
+    // It stopped itself, so the change that gives it more to do turns it back on.
+    expect(written?.enabled).toBe(true);
+  });
+
   it("keeps the default model when an update does not name one", async () => {
     vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
       id: "w-1",
@@ -328,11 +422,12 @@ describe("deliveryNote", () => {
   it("says where each target puts a fire", () => {
     expect(deliveryNote("chat")).toMatch(/posted into its conversation/);
     expect(deliveryNote("coder")).toMatch(/coder chat in its project/);
+    expect(deliveryNote("none")).toMatch(/runs you on your own/);
     expect(deliveryNote("silent")).toMatch(/wakes nobody/);
   });
 
   it("never promises a wake the target does not do", () => {
-    for (const target of ["chat", "coder", "silent"] as const) {
+    for (const target of ["chat", "none", "coder", "silent"] as const) {
       expect(deliveryNote(target).length).toBeGreaterThan(0);
     }
     expect(deliveryNote("silent")).not.toMatch(/answers you|wakes you/);

@@ -16,6 +16,7 @@ import {
 import {
   AlertCircle,
   BellOff,
+  Bot,
   CheckCircle,
   Clock,
   FolderGit2,
@@ -79,6 +80,13 @@ function TickBadge({ status }: { status: string }) {
           Cooling down
         </Badge>
       );
+    case "finished":
+      return (
+        <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">
+          <CheckCircle className="mr-1 h-3 w-3" />
+          Finished
+        </Badge>
+      );
     case "idle":
       return (
         <Badge variant="secondary">
@@ -120,10 +128,10 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const loadWatchers = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const data = await fetchJson<{ watchers: ScriptWatcher[] }>("/api/watchers");
+      const data = await fetchJson<{ watchers: ScriptWatcher[] }>("/api/automations");
       setWatchers(data.watchers ?? []);
     } catch (err) {
-      console.error("Failed to load watchers:", err);
+      console.error("Failed to load automations:", err);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -132,10 +140,10 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const loadTicks = useCallback(async (watcherId: string) => {
     setLoadingTicks(true);
     try {
-      const data = await fetchJson<{ ticks: ScriptWatcherTick[] }>(`/api/watchers/${watcherId}`);
+      const data = await fetchJson<{ ticks: ScriptWatcherTick[] }>(`/api/automations/${watcherId}`);
       setTicks(data.ticks ?? []);
     } catch (err) {
-      console.error("Failed to load watcher ticks:", err);
+      console.error("Failed to load automation ticks:", err);
     } finally {
       setLoadingTicks(false);
     }
@@ -166,11 +174,11 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
 
   const handleToggle = async (watcher: ScriptWatcher, enabled: boolean) => {
     try {
-      await patchJson(`/api/watchers/${watcher.id}`, { enabled });
+      await patchJson(`/api/automations/${watcher.id}`, { enabled });
       setWatchers((prev) => prev.map((w) => (w.id === watcher.id ? { ...w, enabled } : w)));
       onRefresh?.();
     } catch (err) {
-      console.error("Failed to toggle watcher:", err);
+      console.error("Failed to toggle automation:", err);
     }
   };
 
@@ -178,7 +186,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
     setBusyId(watcher.id);
     try {
       // A real tick: recorded, and delivered if the script reports something.
-      await fetchJson(`/api/watchers/${watcher.id}/tick`, {
+      await fetchJson(`/api/automations/${watcher.id}/tick`, {
         method: "POST",
         body: JSON.stringify({ preview: false }),
       });
@@ -186,7 +194,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
       await loadTicks(watcher.id);
       onRefresh?.();
     } catch (err) {
-      console.error("Failed to run watcher:", err);
+      console.error("Failed to run automation:", err);
     } finally {
       setBusyId(null);
     }
@@ -194,7 +202,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
 
   const handleDelete = async (watcher: ScriptWatcher) => {
     try {
-      await deleteJson(`/api/watchers/${watcher.id}`);
+      await deleteJson(`/api/automations/${watcher.id}`);
       setWatchers((prev) => prev.filter((w) => w.id !== watcher.id));
       if (selectedId === watcher.id) {
         setSelectedId(null);
@@ -203,16 +211,16 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
       broadcastWatchersChanged();
       onRefresh?.();
     } catch (err) {
-      console.error("Failed to delete watcher:", err);
+      console.error("Failed to delete automation:", err);
     }
   };
 
   return (
     <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-5">
-      {/* Watchers */}
+      {/* Automations */}
       <div className="min-w-0 lg:col-span-2">
         <GlassPanel className="h-full">
-          <GlassPanelHeader title="Watchers" action={action} />
+          <GlassPanelHeader title="Automations" action={action} />
           <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {loading ? (
               <div className="flex items-center justify-center py-8">
@@ -221,10 +229,10 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
             ) : watchers.length === 0 ? (
               <div className="flex flex-col items-center justify-center px-4 py-8 text-center">
                 <Radar className="text-muted-foreground/30 mb-3 h-10 w-10" />
-                <p className="text-muted-foreground text-sm">No watchers configured</p>
+                <p className="text-muted-foreground text-sm">No automations configured</p>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  A watcher runs a script on a schedule and wakes the agent only when the script
-                  reports something.
+                  An automation runs on a schedule and wakes the agent when its script reports
+                  something. Without a script it wakes the agent on every tick.
                 </p>
               </div>
             ) : (
@@ -249,7 +257,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                       <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {getCronLabel(watcher.cronExpression)}
+                          {watcher.cronExpression ? getCronLabel(watcher.cronExpression) : "Manual"}
                         </span>
                         {watcher.deliver === "coder" ? (
                           <span className="inline-flex max-w-full items-center gap-1">
@@ -258,6 +266,11 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                               {watcher.projectName ?? "Project"}
                               {watcher.worktreeMode === "sticky" ? " · one worktree" : ""}
                             </span>
+                          </span>
+                        ) : watcher.deliver === "none" ? (
+                          <span className="inline-flex max-w-full items-center gap-1">
+                            <Bot className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Runs on its own</span>
                           </span>
                         ) : watcher.deliver === "silent" ? (
                           <span className="inline-flex max-w-full items-center gap-1">
@@ -282,7 +295,12 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                         ) : (
                           <span className="truncate">No target</span>
                         )}
-                        {watcher.fireCount > 0 && <span>· fired {watcher.fireCount}×</span>}
+                        {watcher.fireCount > 0 && (
+                          <span>
+                            · fired {watcher.fireCount}
+                            {watcher.maxFires == null ? "×" : ` of ${watcher.maxFires}`}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -342,7 +360,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
           <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
             {!selected ? (
               <div className="text-muted-foreground flex items-center justify-center px-4 py-8 text-sm">
-                Select a watcher to see what its script has been reporting.
+                Select an automation to see what its ticks have been doing.
               </div>
             ) : loadingTicks ? (
               <div className="flex items-center justify-center py-8">
@@ -360,7 +378,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
 
                 {ticks.length === 0 ? (
                   <div className="text-muted-foreground px-4 py-8 text-center text-sm">
-                    This watcher has not ticked yet.
+                    This automation has not ticked yet.
                   </div>
                 ) : (
                   ticks.map((tick, i) => (
@@ -395,6 +413,11 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                           </div>
                         )}
 
+                        {tick.answer && (
+                          <pre className="bg-muted/50 mt-2 max-h-40 overflow-auto rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">
+                            {tick.answer}
+                          </pre>
+                        )}
                         {tick.value && (
                           <pre className="bg-muted/50 mt-2 max-h-40 overflow-auto rounded p-2 font-mono text-xs break-all whitespace-pre-wrap">
                             {tick.value}

@@ -470,63 +470,8 @@ async function mockContacts(page: Page) {
   );
 }
 
-async function mockAgentRuns(page: Page) {
-  await page.route(/\/api\/agent-jobs\/definitions\/[^/]+\/runs(\?|$)/, (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    return route.fulfill({
-      json: {
-        runs: [
-          {
-            id: "e2e-run",
-            status: "completed",
-            prompt: "Summarize the latest market trends.",
-            modelId: null,
-            inputTokens: 1200,
-            outputTokens: 340,
-            cost: 0.0021,
-            error: null,
-            startedAt: NOW,
-            completedAt: NOW,
-            messageCount: 2,
-            duration: 4200,
-            createdAt: NOW,
-          },
-        ],
-      },
-    });
-  });
-  await page.route(/\/api\/agent-jobs\/runs\/[^/]+\/messages(\?|$)/, (route) =>
-    route.fulfill({
-      json: {
-        messages: [
-          {
-            id: "e2e-msg-1",
-            role: "assistant",
-            content: "Fetched the market digest and summarized it for the team.",
-            thinking: "The tool returned a long, unbreakable payload.",
-            toolCalls: [
-              {
-                id: "e2e-tool-1",
-                name: "web_fetch",
-                args: {
-                  url: "https://example.com/a/very/long/unbreakable/path/that/keeps/going/and/going/forever",
-                },
-                result: JSON.stringify({
-                  status: 200,
-                  body: "x".repeat(240),
-                }),
-              },
-            ],
-            createdAt: NOW,
-          },
-        ],
-      },
-    }),
-  );
-}
-
 async function mockWatchers(page: Page) {
-  await page.route(/\/api\/watchers(\?|$)/, async (route) => {
+  await page.route(/\/api\/automations(\?|$)/, async (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({ json: { watchers: [] } });
     }
@@ -960,36 +905,20 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
 
   // ── Jobs ──────────────────────────────────────────────────────────────────
   {
-    name: "jobs · new agent job",
-    path: "/dashboard/jobs/agents",
-    sources: ["src/components/jobs/agent-job-dialog.tsx"],
-    open: (page) => click(page, 'button:has-text("New agent")'),
-  },
-  {
     name: "jobs · new scheduled job",
     path: "/dashboard/jobs/scheduled",
     sources: ["src/components/jobs/job-dialog.tsx"],
     open: (page) => click(page, 'button:has-text("New job")'),
   },
   {
-    name: "jobs · agent run messages",
-    path: "/dashboard/jobs/agents",
-    sources: ["src/components/jobs/agent-job-list.tsx"],
-    mock: mockAgentRuns,
-    open: async (page) => {
-      await clickText(page, "Daily Market Research Digest");
-      await clickText(page, "Completed");
-    },
-  },
-  {
-    name: "jobs · new watcher",
-    path: "/dashboard/jobs/watchers",
-    // The watcher dialog carries the longest content in the app: a script and a
-    // script's returned value, both of which used to widen auto-sized overlay
+    name: "jobs · new automation",
+    path: "/dashboard/jobs/automations",
+    // The automation dialog carries the longest content in the app: a script and
+    // a script's returned value, both of which used to widen auto-sized overlay
     // tracks.
     sources: ["src/components/jobs/watcher-dialog.tsx"],
     mock: mockWatchers,
-    open: (page) => click(page, 'button:has-text("New watcher")'),
+    open: (page) => click(page, 'button:has-text("New automation")'),
   },
 
   // ── Chat ──────────────────────────────────────────────────────────────────

@@ -57,11 +57,6 @@ const TOOL_CALL_READERS: Array<{
   guardedBy: string;
 }> = [
   {
-    path: "src/app/api/agent-jobs/runs/[id]/messages/route.ts",
-    access: "owner",
-    guardedBy: "requireSession() + the run is looked up by userId",
-  },
-  {
     path: "src/app/api/chat/sessions/share/[token]/messages/route.ts",
     access: "public",
     guardedBy: "loadSharedChat() → serializeSharedChatMessage()",

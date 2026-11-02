@@ -15,8 +15,7 @@ import { createCalendarTools } from "./tools/calendar-tools";
 import { createWebTools } from "./tools/web-tools";
 import { createMemoryTools } from "./tools/memory-tools";
 import { createTaskTools } from "./tools/task-tools";
-import { createAgentJobTools } from "./tools/agent-job-tools";
-import { createWatcherTools } from "./tools/watcher-tools";
+import { createAutomationTools } from "./tools/automation-tools";
 import { createTelegramTools } from "./tools/telegram-tools";
 import { createInfraTools } from "./tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
@@ -52,8 +51,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   web: () => createWebTools(),
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
-  agentJobs: (userId) => createAgentJobTools(userId),
-  watchers: (userId, sessionId) => createWatcherTools(userId, sessionId),
+  watchers: (userId, sessionId) => createAutomationTools(userId, sessionId),
   infra: (userId) => createInfraTools(userId),
   coder: (userId, sessionId) => createProjectTools(userId, sessionId),
   settings: (userId, sessionId) => createSettingsTools(userId, sessionId),

@@ -388,9 +388,9 @@ export function ChatInterface({
     },
     onReload: () => void loadMessages(),
     onToolEnd: (toolName) => {
-      // A watcher tool just finished, so the session's linked watchers may
-      // have changed mid-conversation. Refresh before the next navigation.
-      if (!toolName.startsWith("watcher_")) return;
+      // An automation tool just finished, so the session's linked automations
+      // may have changed mid-conversation. Refresh before the next navigation.
+      if (!toolName.startsWith("automation_")) return;
       void reloadLinks();
       broadcastWatchersChanged();
     },

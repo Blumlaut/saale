@@ -1,10 +1,13 @@
 /**
- * Creating and editing watchers. the one place the rules live.
+ * Creating and editing automations. the one place the rules live.
+ *
+ * An automation is a schedule, an optional script gate and a delivery. With no
+ * script it fires on every tick, which is what the agent jobs it replaced did.
  *
  * The API routes and the LLM's tools are two doors onto the same write, so the
  * validation and the scheduler sync happen here once. A route that
- * re-implemented any of it would be a second answer to "is this watcher allowed
- * to do that".
+ * re-implemented any of it would be a second answer to "is this automation
+ * allowed to do that".
  */
 
 import { prisma } from "@/lib/db";
@@ -19,13 +22,21 @@ import {
   type DeliverTarget,
 } from "./delivery";
 import { scheduleWatcher, syncWatcherSchedule, unscheduleWatcher } from "@/lib/queue";
+import { normalizeThinkingLevelSetting } from "@/lib/pi/thinking-levels";
 
-/** Longest cooldown a watcher may be given: a week, in minutes. */
+/** Longest cooldown an automation may be given: a week, in minutes. */
 export const MAX_COOLDOWN_MINUTES = 7 * 24 * 60;
 
-/** Used when a watcher is created without instructions for its wake. */
+/** Most fires an automation may be given. A bound, not a budget. */
+export const MAX_FIRES_LIMIT = 10_000;
+
+/** Used when an automation is created without instructions for its wake. */
 export const DEFAULT_WAKE_PROMPT =
   "Something changed. Review what the script reported and act on it, then tell me briefly what you did.";
+
+/** Used when an automation has no script, so there is nothing to report. */
+export const DEFAULT_UNGATED_WAKE_PROMPT =
+  "Run what this automation is for, and act on it. Say briefly what you did.";
 
 /** A user-facing rejection of a watcher write. */
 export class WatcherInputError extends Error {
@@ -71,7 +82,9 @@ function isValidCronToken(token: string): boolean {
  * cron expression, so a typo fails at the write with a message the user can act
  * on instead of silently never scheduling anything.
  */
-export function normalizeCronExpression(value: unknown): string {
+export function normalizeCronExpression(value: unknown): string | null {
+  // No schedule is a valid automation: it runs when someone starts it.
+  if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !value.trim()) {
     throw new WatcherInputError("A cron expression is required (for example '*/5 * * * *').");
   }
@@ -99,11 +112,26 @@ function normalizeName(value: unknown): string {
   return name;
 }
 
-function normalizeScript(value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new WatcherInputError("A script is required.");
+/** The script, or null for an automation with no gate. */
+function normalizeScript(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new WatcherInputError("A script has to be text.");
   }
-  return value;
+  return value.trim() ? value : null;
+}
+
+/** How many fires the automation delivers before it stops itself. */
+function normalizeMaxFires(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const fires = Number(value);
+  if (!Number.isInteger(fires) || fires < 1) {
+    throw new WatcherInputError("The fire limit must be a whole number of at least 1.");
+  }
+  if (fires > MAX_FIRES_LIMIT) {
+    throw new WatcherInputError(`The fire limit must be at most ${MAX_FIRES_LIMIT}.`);
+  }
+  return fires;
 }
 
 function normalizeCooldown(value: unknown): number {
@@ -146,7 +174,7 @@ async function assertOwnsProject(userId: string, projectId: string): Promise<voi
 function normalizeDeliver(value: unknown): DeliverTarget {
   if (value === undefined || value === null || value === "") return DEFAULT_DELIVER;
   if (!isDeliverTarget(value)) {
-    throw new WatcherInputError('Delivery must be "chat", "silent" or "coder".');
+    throw new WatcherInputError('Delivery must be "chat", "none", "silent" or "coder".');
   }
   return value;
 }
@@ -170,8 +198,10 @@ function normalizeRetention(value: unknown): number {
 export interface WatcherFields {
   name: string;
   description: string | null;
-  script: string;
-  cronExpression: string;
+  /** Null means no gate: the automation fires on every tick. */
+  script: string | null;
+  /** Null means no schedule: the automation only runs when started by hand. */
+  cronExpression: string | null;
   deliver: DeliverTarget;
   sessionId: string | null;
   projectId: string | null;
@@ -179,7 +209,9 @@ export interface WatcherFields {
   retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
+  thinkingLevel: string;
   cooldownMinutes: number;
+  maxFires: number | null;
   enabled: boolean;
 }
 
@@ -196,7 +228,9 @@ export interface WatcherFieldInput {
   retentionMinutes?: unknown;
   wakePrompt?: unknown;
   modelId?: unknown;
+  thinkingLevel?: unknown;
   cooldownMinutes?: unknown;
+  maxFires?: unknown;
   enabled?: unknown;
 }
 
@@ -270,7 +304,7 @@ async function validateFields(userId: string, input: WatcherFieldInput): Promise
 
   if (deliver === "chat" && !sessionId) {
     throw new WatcherInputError(
-      "A watcher that reports into a conversation needs one. Pick a chat, dispatch into a project, or deliver from the script.",
+      "An automation that reports into a conversation needs one. Pick a chat, run it on its own, dispatch into a project, or deliver from the script.",
     );
   }
 
@@ -282,15 +316,17 @@ async function validateFields(userId: string, input: WatcherFieldInput): Promise
       : null;
   if (deliver === "coder") {
     if (!projectId) {
-      throw new WatcherInputError("A watcher that dispatches into a project needs one.");
+      throw new WatcherInputError("An automation that dispatches into a project needs one.");
     }
     await assertOwnsProject(userId, projectId);
   }
 
+  const script = normalizeScript(input.script);
+
   return {
     name: normalizeName(input.name),
     description: typeof input.description === "string" ? input.description.trim() || null : null,
-    script: normalizeScript(input.script),
+    script,
     cronExpression: normalizeCronExpression(input.cronExpression),
     deliver,
     sessionId,
@@ -300,10 +336,16 @@ async function validateFields(userId: string, input: WatcherFieldInput): Promise
     wakePrompt:
       typeof input.wakePrompt === "string" && input.wakePrompt.trim()
         ? input.wakePrompt.trim()
-        : DEFAULT_WAKE_PROMPT,
+        : // Without a script there is no report to review, so the default
+          // instructions are the ones for running the thing itself.
+          script
+          ? DEFAULT_WAKE_PROMPT
+          : DEFAULT_UNGATED_WAKE_PROMPT,
     modelId:
       typeof input.modelId === "string" && input.modelId.trim() ? input.modelId.trim() : null,
+    thinkingLevel: normalizeThinkingLevelSetting(input.thinkingLevel),
     cooldownMinutes: normalizeCooldown(input.cooldownMinutes),
+    maxFires: normalizeMaxFires(input.maxFires),
     enabled: input.enabled !== false,
   };
 }
@@ -321,7 +363,7 @@ export async function updateWatcher(params: {
   const { id, userId } = params;
 
   const current = await prisma.scriptWatcher.findFirst({ where: { id, userId } });
-  if (!current) throw new WatcherInputError("Watcher not found.");
+  if (!current) throw new WatcherInputError("Automation not found.");
 
   // An explicit null clears a field; leaving it out keeps what the row has.
   const keep = (sent: unknown, stored: unknown): unknown => (sent === undefined ? stored : sent);
@@ -338,16 +380,32 @@ export async function updateWatcher(params: {
     retentionMinutes: keep(params.fields.retentionMinutes, current.retentionMinutes),
     wakePrompt: keep(params.fields.wakePrompt, current.wakePrompt),
     modelId: keep(params.fields.modelId, current.modelId),
+    thinkingLevel: keep(params.fields.thinkingLevel, current.thinkingLevel),
     cooldownMinutes: keep(params.fields.cooldownMinutes, current.cooldownMinutes),
+    maxFires: keep(params.fields.maxFires, current.maxFires),
     enabled: keep(params.fields.enabled, current.enabled),
   });
+
+  // Raising or clearing the limit is how a finished automation starts again: it
+  // stopped itself, so waiting for a separate switch would leave the user
+  // pressing one more button than the change they just made.
+  if (
+    params.fields.enabled === undefined &&
+    current.maxFires != null &&
+    current.fireCount >= current.maxFires &&
+    (merged.maxFires == null || merged.maxFires > current.fireCount)
+  ) {
+    merged.enabled = true;
+  }
 
   if (merged.name !== current.name) {
     const clash = await prisma.scriptWatcher.findFirst({
       where: { userId, name: merged.name, id: { not: id } },
       select: { id: true },
     });
-    if (clash) throw new WatcherInputError(`A watcher named "${merged.name}" already exists.`);
+    if (clash) {
+      throw new WatcherInputError(`An automation named "${merged.name}" already exists.`);
+    }
   }
 
   const watcher = await prisma.scriptWatcher.update({
@@ -356,31 +414,33 @@ export async function updateWatcher(params: {
   });
 
   await syncWatcherSchedule(watcher).catch((err) => {
-    console.error(`Failed to reschedule watcher ${watcher.id}:`, err);
+    console.error(`Failed to reschedule automation ${watcher.id}:`, err);
   });
 
   return { id: watcher.id, deliver: merged.deliver };
 }
 
-/** Delete a watcher and stop its ticks. */
+/** Delete an automation and stop its ticks. */
 export async function deleteWatcher(id: string, userId: string): Promise<void> {
   const current = await prisma.scriptWatcher.findFirst({
     where: { id, userId },
     select: { id: true },
   });
-  if (!current) throw new WatcherInputError("Watcher not found.");
+  if (!current) throw new WatcherInputError("Automation not found.");
 
   await prisma.scriptWatcher.delete({ where: { id } });
   await unscheduleWatcher(id);
 }
 
-/** The shape every reader of a watcher gets. API, tools and UI alike. */
+/** The shape every reader of an automation gets. API, tools and UI alike. */
 export interface SerializedWatcher {
   id: string;
   name: string;
   description: string | null;
-  script: string;
-  cronExpression: string;
+  /** Null when the automation has no gate and fires on every tick. */
+  script: string | null;
+  /** Null when the automation has no schedule and only runs by hand. */
+  cronExpression: string | null;
   enabled: boolean;
   deliver: string;
   sessionId: string | null;
@@ -391,7 +451,9 @@ export interface SerializedWatcher {
   retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
+  thinkingLevel: string;
   cooldownMinutes: number;
+  maxFires: number | null;
   tickCount: number;
   fireCount: number;
   lastTickAt: string | null;
@@ -424,7 +486,9 @@ export function serializeWatcher(watcher: WatcherRow): SerializedWatcher {
     retentionMinutes: watcher.retentionMinutes,
     wakePrompt: watcher.wakePrompt,
     modelId: watcher.modelId,
+    thinkingLevel: watcher.thinkingLevel,
     cooldownMinutes: watcher.cooldownMinutes,
+    maxFires: watcher.maxFires,
     tickCount: watcher.tickCount,
     fireCount: watcher.fireCount,
     lastTickAt: watcher.lastTickAt?.toISOString() ?? null,

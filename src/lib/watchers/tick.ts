@@ -1,24 +1,28 @@
 /**
- * One watcher tick, end to end: run the script, decide whether the result is
+ * One automation tick, end to end: run the script, decide whether the result is
  * worth waking the agent for, and record what happened.
  *
  * The decision to spend tokens belongs here rather than in the script. A script
  * that could say "wake the agent" on every tick would be an unbounded spend
- * channel; a script that reports what it found, with the definition owning the
- * cooldown and the ledger, keeps the bound in the place the user configured.
+ * channel; a script that reports what it found, with the automation owning the
+ * cooldown, the fire limit and the ledger, keeps the bound in the place the user
+ * configured. An automation with no script has no gate at all: it fires on every
+ * tick, which is what an agent job used to be.
  */
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { unscheduleWatcher } from "@/lib/queue";
 import { loadWatcherToolAccess } from "./access";
 import { applyStoreWrites, isFiring, runWatcherScript } from "./runner";
 import { deliverWake } from "./wake";
 
-/** Ticks kept per watcher. Older rows are pruned after each tick. */
+/** Ticks kept per automation. Older rows are pruned after each tick. */
 export const TICK_HISTORY_LIMIT = 50;
 
 /** What one tick concluded. */
-export type TickStatus = "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error";
+export type TickStatus =
+  "idle" | "fired" | "reported" | "cooldown" | "finished" | "blocked" | "error";
 
 export interface TickOutcome {
   status: TickStatus;
@@ -33,9 +37,14 @@ export interface TickOutcome {
   callNames: string[];
   /** The chat a fire was delivered into, if one was. */
   sessionId?: string | null;
+  /** What the woken agent answered, when there was no chat to answer in. */
+  answer?: string | null;
+  /** Tokens the wake spent. */
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
-/** The watcher a tick runs for. */
+/** The automation a tick runs for. */
 type WatcherRow = Prisma.ScriptWatcherGetPayload<Record<string, never>>;
 
 /** Reading a script's result: what it produced, and whether it is a report. */
@@ -46,6 +55,8 @@ interface Evaluation {
   nextStore: Record<string, unknown>;
   /** True when the script reported something. the wake decision is separate. */
   firing: boolean;
+  /** Whether a script decided this, or the automation has no gate at all. */
+  gated: boolean;
 }
 
 /** The store, as the JSON column holds it. */
@@ -62,7 +73,7 @@ function encodeValue(value: unknown): string | null {
   try {
     return JSON.stringify(value) ?? null;
   } catch (err) {
-    console.error("Failed to encode watcher tick value:", err);
+    console.error("Failed to encode automation tick value:", err);
     return null;
   }
 }
@@ -81,9 +92,27 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
   const { callable } = await loadWatcherToolAccess(watcher.userId, scopeId);
 
   const store = readStore(watcher.store);
+  const script = watcher.script?.trim() ?? "";
+
+  // ── No script, no gate: every tick is news ───────────────────────────
+  if (!script) {
+    return {
+      watcher,
+      outcome: {
+        status: "fired",
+        output: "",
+        durationMs: 0,
+        callCount: 0,
+        callNames: [],
+      },
+      nextStore: store,
+      firing: true,
+      gated: false,
+    };
+  }
 
   // ── The script ──────────────────────────────────────────────────────
-  const result = await runWatcherScript({ script: watcher.script, tools: callable, store });
+  const result = await runWatcherScript({ script, tools: callable, store });
 
   const measured = {
     output: result.output,
@@ -98,6 +127,7 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
       outcome: { ...measured, status: "error", reason: result.error ?? "Script failed" },
       nextStore: store,
       firing: false,
+      gated: true,
     };
   }
 
@@ -110,18 +140,20 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
       outcome: { ...measured, status: "idle", value: result.value },
       nextStore,
       firing: false,
+      gated: true,
     };
   }
 
-  // A silent watcher delivers from its own script (`tools.telegram_send`), so a
-  // returned value is recorded and wakes nobody. Returning one is how the script
-  // leaves a note in the log, not a second message to the user.
+  // A silent automation delivers from its own script (`tools.telegram_send`), so
+  // a returned value is recorded and wakes nobody. Returning one is how the
+  // script leaves a note in the log, not a second message to the user.
   if (watcher.deliver === "silent") {
     return {
       watcher,
       outcome: { ...measured, status: "reported", value: result.value },
       nextStore,
       firing: false,
+      gated: true,
     };
   }
 
@@ -130,11 +162,12 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
     outcome: { ...measured, status: "fired", value: result.value },
     nextStore,
     firing: true,
+    gated: true,
   };
 }
 
 /**
- * Record a tick and advance the watcher's counters.
+ * Record a tick and advance the automation's counters.
  *
  * `store` is passed only when the tick's work is finished with the state it
  * read. A tick that intended to wake the agent but could not leaves the store
@@ -160,6 +193,9 @@ async function recordTick(options: {
       callCount: outcome.callCount,
       toolNames: outcome.callNames.slice(0, 50),
       sessionId: outcome.sessionId ?? null,
+      answer: outcome.answer ? outcome.answer.slice(0, 20_000) : null,
+      inputTokens: outcome.inputTokens ?? 0,
+      outputTokens: outcome.outputTokens ?? 0,
     },
   });
 
@@ -179,7 +215,7 @@ async function recordTick(options: {
   });
 
   await pruneTicks(options.watcherId).catch((err) => {
-    console.error(`Failed to prune ticks for watcher ${options.watcherId}:`, err);
+    console.error(`Failed to prune ticks for automation ${options.watcherId}:`, err);
   });
 
   return outcome;
@@ -202,7 +238,25 @@ async function pruneTicks(watcherId: string): Promise<void> {
 }
 
 /**
- * Run one tick for a watcher.
+ * Switch an automation off once it has delivered every fire it was given.
+ *
+ * The row keeps its history and its definition, so raising or clearing the limit
+ * is all it takes to start it again; deleting it would lose the log of what it
+ * reported.
+ */
+async function finishWatcher(watcherId: string): Promise<void> {
+  await prisma.scriptWatcher.update({
+    where: { id: watcherId },
+    data: { enabled: false },
+  });
+
+  await unscheduleWatcher(watcherId).catch((err) => {
+    console.error(`Failed to unschedule a finished automation ${watcherId}:`, err);
+  });
+}
+
+/**
+ * Run one tick for an automation.
  *
  * Never throws: every outcome. including a script that failed and a wake that
  * could not be delivered. is a tick the log has to show, so each one is recorded
@@ -212,16 +266,36 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
   const watcher = await prisma.scriptWatcher.findUnique({ where: { id: watcherId } });
 
   if (!watcher || !watcher.enabled) {
-    // The scheduler is removed by the caller for a disabled watcher; a tick that
-    // still arrives gets no row, so a removed watcher cannot grow a log.
+    // The scheduler is removed by the caller for a disabled automation; a tick
+    // that still arrives gets no row, so a removed automation cannot grow a log.
     return {
       status: "blocked",
-      reason: watcher ? "Watcher is disabled" : "Watcher not found",
+      reason: watcher ? "Automation is disabled" : "Automation not found",
       output: "",
       durationMs: 0,
       callCount: 0,
       callNames: [],
     };
+  }
+
+  // ── The fire limit ──────────────────────────────────────────────────
+  // A finished automation has nothing left to give, so the tick records why and
+  // stops it rather than spending another one's worth of tokens.
+  if (watcher.maxFires != null && watcher.fireCount >= watcher.maxFires) {
+    const outcome = await recordTick({
+      watcherId: watcher.id,
+      outcome: {
+        status: "finished",
+        reason: `Fire limit reached (${watcher.maxFires})`,
+        output: "",
+        durationMs: 0,
+        callCount: 0,
+        callNames: [],
+      },
+      fired: false,
+    });
+    await finishWatcher(watcher.id);
+    return outcome;
   }
 
   const evaluation = await evaluate(watcher);
@@ -256,7 +330,7 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
   }
 
   // ── The wake ────────────────────────────────────────────────────────
-  let delivered: { sessionId: string | null };
+  let delivered: Awaited<ReturnType<typeof deliverWake>>;
   try {
     delivered = await deliverWake({
       watcher: {
@@ -265,17 +339,20 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
         name: watcher.name,
         deliver: watcher.deliver,
         sessionId: watcher.sessionId,
+        originSessionId: watcher.originSessionId,
         projectId: watcher.projectId,
         worktreeMode: watcher.worktreeMode,
         stickySessionId: watcher.stickySessionId,
         wakePrompt: watcher.wakePrompt,
         modelId: watcher.modelId,
+        thinkingLevel: watcher.thinkingLevel,
       },
       value: outcome.value,
+      gated: evaluation.gated,
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    console.error(`[watcher:${watcher.id}] Wake failed:`, err);
+    console.error(`[automation:${watcher.id}] Wake failed:`, err);
     return recordTick({
       watcherId: watcher.id,
       outcome: { ...outcome, status: "blocked", reason },
@@ -284,16 +361,32 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     });
   }
 
-  return recordTick({
+  const recorded = await recordTick({
     watcherId: watcher.id,
-    outcome: { ...outcome, sessionId: delivered.sessionId },
+    outcome: {
+      ...outcome,
+      sessionId: delivered.sessionId,
+      ...(delivered.answer === undefined ? {} : { answer: delivered.answer }),
+      ...(delivered.inputTokens === undefined ? {} : { inputTokens: delivered.inputTokens }),
+      ...(delivered.outputTokens === undefined ? {} : { outputTokens: delivered.outputTokens }),
+      // The tools a standalone run called are how it delivered, so they belong
+      // in the log next to the script's own.
+      callNames: [...new Set([...outcome.callNames, ...(delivered.toolNames ?? [])])],
+    },
     store: evaluation.nextStore,
     fired: true,
   });
+
+  // ── The last fire ───────────────────────────────────────────────────
+  if (watcher.maxFires != null && watcher.fireCount + 1 >= watcher.maxFires) {
+    await finishWatcher(watcher.id);
+  }
+
+  return recorded;
 }
 
 /**
- * Run a watcher's script once without recording it or waking anyone.
+ * Run an automation's script once without recording it or waking anyone.
  *
  * This is how a script gets written: the model or the user runs it, sees what it
  * returns, and only then commits to a schedule. Running the real tick would wake
@@ -304,7 +397,7 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
   if (!watcher) {
     return {
       status: "blocked",
-      reason: "Watcher not found",
+      reason: "Automation not found",
       output: "",
       durationMs: 0,
       callCount: 0,
@@ -317,12 +410,12 @@ export async function previewWatcherTick(watcherId: string): Promise<TickOutcome
 }
 
 /**
- * Run a script that is not a watcher yet. the authoring loop.
+ * Run a script that is not an automation yet. the authoring loop.
  *
  * Testing a script spends the tools it calls, so the decision that it may run
- * at all belongs to the tool policy that called this (`watcher_test` is allowed
- * by default, but the user can still gate it). Nothing is recorded and nobody
- * is woken.
+ * at all belongs to the tool policy that called this (`automation_test` is
+ * allowed by default, but the user can still gate it). Nothing is recorded and
+ * nobody is woken.
  */
 export async function previewScript(params: {
   userId: string;

@@ -537,93 +537,44 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultExposure: "deferred",
   },
 
-  // ── Agent Jobs ────────────────────────────────────────────────────
+  // ── Automations ───────────────────────────────────────────────────
   {
-    name: "agent_job_list",
-    label: "List Agent Jobs",
-    description: "List agent job definitions",
-    category: "agentJobs",
-    defaultPolicy: "allow",
-    defaultExposure: "codemode",
-  },
-  {
-    name: "agent_job_logs",
-    label: "Agent Job Logs",
-    description: "View recent agent job runs",
-    category: "agentJobs",
-    defaultPolicy: "allow",
-    defaultExposure: "deferred",
-  },
-  {
-    name: "agent_job_run_messages",
-    label: "Agent Run Messages",
-    description: "View conversation for a specific agent run",
-    category: "agentJobs",
-    defaultPolicy: "allow",
-    defaultExposure: "deferred",
-  },
-  {
-    name: "agent_job_create",
-    label: "Create Agent Job",
-    description: "Create a background agent job",
-    category: "agentJobs",
-    defaultPolicy: "ask",
-    defaultExposure: "deferred",
-  },
-  {
-    name: "agent_job_update",
-    label: "Update Agent Job",
-    description: "Update an agent job definition",
-    category: "agentJobs",
-    defaultPolicy: "allow",
-    defaultExposure: "deferred",
-  },
-  {
-    name: "agent_job_run",
-    label: "Run Agent Job",
-    description: "Trigger an immediate agent job run",
-    category: "agentJobs",
-    defaultPolicy: "ask",
-    defaultExposure: "deferred",
-  },
-  {
-    name: "agent_job_delete",
-    label: "Delete Agent Job",
-    description: "Delete an agent job and all its runs",
-    category: "agentJobs",
-    defaultPolicy: "ask",
-    defaultExposure: "deferred",
-  },
-
-  // ── Watchers ──────────────────────────────────────────────────────
-  {
-    name: "watcher_list",
-    label: "List Watchers",
-    description: "List script watchers and their last outcome",
+    name: "automation_list",
+    label: "List Automations",
+    description: "List automations and their last outcome",
     category: "watchers",
     defaultPolicy: "allow",
     defaultExposure: "codemode",
   },
   {
-    name: "watcher_get",
-    label: "Read Watcher",
-    description: "Read one watcher in full, script included",
+    name: "automation_get",
+    label: "Read Automation",
+    description: "Read one automation in full, script included",
     category: "watchers",
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
   {
-    name: "watcher_ticks",
-    label: "Watcher Ticks",
-    description: "Read a watcher's recent ticks",
+    name: "automation_run",
+    label: "Run Automation",
+    // Spends what a real tick spends, so the user says yes first.
+    description: "Run an automation once, now, and deliver what it does",
+    category: "watchers",
+    defaultPolicy: "ask",
+    defaultExposure: "deferred",
+  },
+  {
+    name: "automation_ticks",
+    label: "Automation Ticks",
+    description: "Read an automation's recent ticks",
     category: "watchers",
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
   {
-    name: "watcher_test",
-    label: "Test Watcher Script",
-    description: "Run a watcher script once without scheduling it",
+    name: "automation_test",
+    label: "Test Automation Script",
+    description: "Run an automation script once without scheduling it",
     category: "watchers",
     // Runs in a sandbox without recording a tick or waking anyone, so it is
     // safe to let the model exercise scripts on its own.
@@ -631,29 +582,29 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     defaultExposure: "deferred",
   },
   {
-    name: "watcher_create",
-    label: "Create Watcher",
-    description: "Create a scheduled script watcher",
+    name: "automation_create",
+    label: "Create Automation",
+    description: "Create scheduled work that wakes the agent",
     category: "watchers",
     // Spends nothing until its schedule comes round, and the user can stop it
-    // from the Watchers page.
+    // from the Automations page.
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
   {
-    name: "watcher_update",
-    label: "Update Watcher",
-    description: "Change a watcher's script or schedule",
+    name: "automation_update",
+    label: "Update Automation",
+    description: "Change an automation's script, schedule or limits",
     category: "watchers",
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
   {
-    name: "watcher_delete",
-    label: "Delete Watcher",
-    description: "Delete a watcher and stop its ticks",
+    name: "automation_delete",
+    label: "Delete Automation",
+    description: "Delete an automation and stop its ticks",
     category: "watchers",
-    // Stopping a watch the user asked for, and reversible by creating it again.
+    // Stopping work the user asked for, and reversible by creating it again.
     defaultPolicy: "allow",
     defaultExposure: "deferred",
   },
@@ -990,34 +941,6 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   job_run: { id: "Job" },
   job_logs: { id: "Job", limit: "Limit", status: "Status" },
   job_delete: { id: "Job" },
-  agent_job_create: {
-    name: "Name",
-    prompt: "Prompt",
-    systemPrompt: "System prompt",
-    toolConfig: "Tools",
-    modelId: "Model",
-    outputChannel: "Output channel",
-    outputChannelId: "Channel ID",
-    cronExpression: "Schedule",
-    runAt: "Runs at",
-  },
-  agent_job_update: {
-    id: "Agent job",
-    name: "Name",
-    prompt: "Prompt",
-    systemPrompt: "System prompt",
-    toolConfig: "Tools",
-    modelId: "Model",
-    outputChannel: "Output channel",
-    outputChannelId: "Channel ID",
-    cronExpression: "Schedule",
-    runAt: "Runs at",
-    enabled: "Enabled",
-  },
-  agent_job_run: { id: "Agent job", prompt: "Prompt" },
-  agent_job_logs: { id: "Agent job", limit: "Limit", status: "Status" },
-  agent_job_run_messages: { runId: "Run" },
-  agent_job_delete: { id: "Agent job" },
   infra_add_machine: {
     name: "Name",
     host: "Host",
@@ -1207,10 +1130,6 @@ const SUMMARY_BUILDERS: Record<string, SummaryBuilder> = {
   },
   job_update: () => null, // id-only. resolved server-side (job name)
   job_delete: () => null, // id-only. resolved server-side (job name)
-  agent_job_create: (a) => (typeof a.name === "string" ? `Create agent job \"${a.name}\"` : null),
-  agent_job_run: () => null, // id-only. resolved server-side (job name)
-  agent_job_update: () => null, // id-only. resolved server-side (job name)
-  agent_job_delete: () => null, // id-only. resolved server-side (job name)
 };
 
 /**

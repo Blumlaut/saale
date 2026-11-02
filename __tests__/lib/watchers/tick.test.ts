@@ -38,6 +38,10 @@ vi.mock("@/lib/watchers/wake", () => ({
   deliverWake: vi.fn(),
 }));
 
+vi.mock("@/lib/queue", () => ({
+  unscheduleWatcher: vi.fn(async () => {}),
+}));
+
 import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "@/lib/watchers/access";
 import { deliverWake } from "@/lib/watchers/wake";
@@ -72,6 +76,7 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     stickySessionId: null,
     wakePrompt: "Tell me about it.",
     modelId: null,
+    thinkingLevel: "off",
     store: {},
     lastValue: null,
     lastTickAt: null,
@@ -80,6 +85,7 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     tickCount: 0,
     fireCount: 0,
     cooldownMinutes: 0,
+    maxFires: null,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
     ...overrides,
@@ -259,6 +265,66 @@ describe("runWatcherTick", () => {
     // user never received, so the next tick reports it again.
     expect(writtenUpdate()?.fireCount).toBeUndefined();
     expect(writtenUpdate()?.store).toBeUndefined();
+  });
+
+  it("fires every tick when there is no script to gate it", async () => {
+    findWatcher.mockResolvedValue(watcher({ script: null, deliver: "none", sessionId: null }));
+
+    const outcome = await runWatcherTick("w-1");
+
+    expect(outcome.status).toBe("fired");
+    // No script ran, so there is nothing to report and nothing was spent on one.
+    expect(access).toHaveBeenCalled();
+    expect(wake).toHaveBeenCalledWith(
+      expect.objectContaining({ watcher: expect.objectContaining({ deliver: "none" }), gated: false }),
+    );
+    expect(writtenTick()?.callCount).toBe(0);
+  });
+
+  it("records the answer and the usage a chat-less run produced", async () => {
+    findWatcher.mockResolvedValue(watcher({ script: null, deliver: "none", sessionId: null }));
+    wake.mockResolvedValue({
+      sessionId: null,
+      answer: "Nothing new.",
+      toolNames: ["telegram_send"],
+      inputTokens: 90,
+      outputTokens: 12,
+    });
+
+    await runWatcherTick("w-1");
+
+    expect(writtenTick()?.answer).toBe("Nothing new.");
+    expect(writtenTick()?.inputTokens).toBe(90);
+    expect(writtenTick()?.outputTokens).toBe(12);
+    // The tools the run called are how it delivered, so they land in the log.
+    expect(writtenTick()?.toolNames).toEqual(["telegram_send"]);
+  });
+
+  it("switches itself off once it has fired as many times as it was given", async () => {
+    findWatcher.mockResolvedValue(watcher({ script: null, maxFires: 2, fireCount: 1 }));
+
+    const outcome = await runWatcherTick("w-1");
+
+    expect(outcome.status).toBe("fired");
+    // The last fire delivered, then the automation stops itself.
+    expect(updateWatcher).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "w-1" }, data: { enabled: false } }),
+    );
+  });
+
+  it("records a finished tick instead of firing past the limit", async () => {
+    findWatcher.mockResolvedValue(
+      watcher({ script: null, maxFires: 1, fireCount: 1, enabled: true }),
+    );
+
+    const outcome = await runWatcherTick("w-1");
+
+    expect(outcome.status).toBe("finished");
+    expect(wake).not.toHaveBeenCalled();
+    expect(writtenTick()?.status).toBe("finished");
+    expect(updateWatcher).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "w-1" }, data: { enabled: false } }),
+    );
   });
 
   it("does nothing for a watcher that is disabled or gone", async () => {

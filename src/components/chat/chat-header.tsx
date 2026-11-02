@@ -127,7 +127,7 @@ export function ChatHeader({
               linksOpen && "bg-accent/70 text-foreground",
             )}
             onClick={onToggleLinks}
-            title="Linked watchers"
+            title="Linked automations"
             aria-pressed={linksOpen}
           >
             <Radar className="h-4 w-4" />

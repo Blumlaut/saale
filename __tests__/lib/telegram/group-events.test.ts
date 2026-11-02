@@ -6,8 +6,6 @@ const {
   mockFindUnique,
   mockUpdate,
   mockUpsert,
-  mockDefinitionUpdateMany,
-  mockRunUpdateMany,
   mockTransaction,
   mockGetTelegramChatInfo,
   mockLeaveTelegramChat,
@@ -17,8 +15,6 @@ const {
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
   mockUpsert: vi.fn(),
-  mockDefinitionUpdateMany: vi.fn(),
-  mockRunUpdateMany: vi.fn(),
   mockTransaction: vi.fn(),
   mockGetTelegramChatInfo: vi.fn(),
   mockLeaveTelegramChat: vi.fn(),
@@ -33,8 +29,6 @@ vi.mock("@/lib/db", () => ({
       update: (...args: unknown[]) => mockUpdate(...args),
       upsert: (...args: unknown[]) => mockUpsert(...args),
     },
-    agentDefinition: { updateMany: (...args: unknown[]) => mockDefinitionUpdateMany(...args) },
-    agentRun: { updateMany: (...args: unknown[]) => mockRunUpdateMany(...args) },
     $transaction: (...args: unknown[]) => mockTransaction(...args),
   },
 }));
@@ -121,8 +115,6 @@ beforeEach(() => {
   mockFindUnique.mockResolvedValue(null);
   mockUpdate.mockResolvedValue(chatRow());
   mockUpsert.mockResolvedValue(chatRow());
-  mockDefinitionUpdateMany.mockResolvedValue({ count: 0 });
-  mockRunUpdateMany.mockResolvedValue({ count: 0 });
   mockTransaction.mockImplementation(async (ops: unknown[]) => Promise.all(ops));
   mockGetTelegramChatInfo.mockResolvedValue({
     chatId: BigInt(GROUP_ID),
@@ -324,7 +316,7 @@ describe("service messages from a registered group", () => {
 describe("a group upgraded to a supergroup", () => {
   const NEW_ID = -1009876543210;
 
-  it("rewrites the row and the stored send targets", async () => {
+  it("rewrites the row", async () => {
     mockFindUnique.mockResolvedValue(chatRow());
 
     await handle({ migrate_to_chat_id: NEW_ID });
@@ -332,14 +324,6 @@ describe("a group upgraded to a supergroup", () => {
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: "chat-row-1" },
       data: { chatId: BigInt(NEW_ID), syncedAt: null },
-    });
-    expect(mockDefinitionUpdateMany).toHaveBeenCalledWith({
-      where: { userId: "user-1", outputChannelId: String(GROUP_ID) },
-      data: { outputChannelId: String(NEW_ID) },
-    });
-    expect(mockRunUpdateMany).toHaveBeenCalledWith({
-      where: { userId: "user-1", outputChannelId: String(GROUP_ID) },
-      data: { outputChannelId: String(NEW_ID) },
     });
   });
 

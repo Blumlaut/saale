@@ -37,7 +37,7 @@ const TOOLS: DiscoverableTool[] = [
     parameters: { type: "object", properties: { folder: { type: "string" } } },
   }),
   tool({
-    name: "watcher_create",
+    name: "automation_create",
     description: "Create a script watcher",
     parameters: {
       type: "object",
@@ -131,7 +131,7 @@ describe("searchTools", () => {
   it("matches a parameter's name and description, not just the tool's own words", async () => {
     const found = (await call("searchTools", "cron expression")) as { name: string }[];
 
-    expect(found[0]?.name).toBe("watcher_create");
+    expect(found[0]?.name).toBe("automation_create");
   });
 
   it("answers a query that matches nothing with an empty list", async () => {

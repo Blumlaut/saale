@@ -27,7 +27,7 @@ export interface SessionLink {
   id: string;
   name: string;
   enabled: boolean;
-  cronExpression: string;
+  cronExpression: string | null;
   lastTickAt: string | null;
   lastFiredAt: string | null;
   lastError: string | null;
@@ -35,7 +35,7 @@ export interface SessionLink {
 }
 
 /**
- * Watchers bound to the open conversation. the data behind the header's
+ * Automations bound to the open conversation. the data behind the header's
  * Linked button and its panel/sheet.
  */
 export function useSessionLinks(sessionId: string) {
@@ -44,11 +44,11 @@ export function useSessionLinks(sessionId: string) {
   const reload = useCallback(async () => {
     try {
       const data = await fetchJson<{ watchers: SessionLink[] }>(
-        `/api/chat/sessions/${sessionId}/watchers`,
+        `/api/chat/sessions/${sessionId}/automations`,
       );
       setLinks(data.watchers);
     } catch (err) {
-      console.error("Failed to load session watchers:", err);
+      console.error("Failed to load session automations:", err);
     }
   }, [sessionId]);
 
@@ -70,7 +70,7 @@ function LinkRow({ link }: { link: SessionLink }) {
         </Badge>
       </div>
       <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-6 text-[11px]">
-        <span className="whitespace-nowrap">{link.cronExpression}</span>
+        <span className="whitespace-nowrap">{link.cronExpression ?? "manual"}</span>
         <span className="whitespace-nowrap">
           · {link.lastTickAt ? formatRelativeDate(link.lastTickAt) : "never"}
         </span>
@@ -95,7 +95,7 @@ function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
   if (links.length === 0) {
     return (
       <div className="px-4 py-6">
-        <p className="text-sm">No watchers are linked to this conversation.</p>
+        <p className="text-sm">No automations are linked to this conversation.</p>
         <p className="text-muted-foreground mt-1 text-xs">
           Create one in Jobs to have its results posted here.
         </p>
@@ -186,7 +186,7 @@ export function SessionLinksSheet({
             <Badge variant="secondary">{links?.length ?? 0}</Badge>
           </div>
           <SheetDescription className="sr-only">
-            Watchers linked to this conversation
+            Automations linked to this conversation
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">

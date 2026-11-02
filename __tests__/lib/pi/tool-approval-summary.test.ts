@@ -8,7 +8,6 @@ vi.mock("@/lib/db", () => ({
     chatSession: { findFirst: vi.fn() },
     emailMessage: { findMany: vi.fn() },
     queueTask: { findFirst: vi.fn() },
-    agentDefinition: { findFirst: vi.fn() },
     infraMachine: { findFirst: vi.fn() },
   },
 }));
@@ -22,7 +21,6 @@ const prisma = db.prisma as unknown as {
   chatSession: { findFirst: ReturnType<typeof vi.fn> };
   emailMessage: { findMany: ReturnType<typeof vi.fn> };
   queueTask: { findFirst: ReturnType<typeof vi.fn> };
-  agentDefinition: { findFirst: ReturnType<typeof vi.fn> };
   infraMachine: { findFirst: ReturnType<typeof vi.fn> };
 };
 
@@ -37,7 +35,6 @@ describe("resolveApprovalSummary", () => {
     prisma.chatSession.findFirst.mockResolvedValue(null);
     prisma.emailMessage.findMany.mockResolvedValue([]);
     prisma.queueTask.findFirst.mockResolvedValue(null);
-    prisma.agentDefinition.findFirst.mockResolvedValue(null);
     prisma.infraMachine.findFirst.mockResolvedValue(null);
   });
 
@@ -154,14 +151,6 @@ describe("resolveApprovalSummary", () => {
     const summary = await resolveApprovalSummary(USER, "job_delete", { id: "qt_1" });
 
     expect(summary).toBe('Delete job "Nightly digest"');
-  });
-
-  it("resolves agent_job_run to the definition name", async () => {
-    prisma.agentDefinition.findFirst.mockResolvedValue({ name: "Summarize inbox" });
-
-    const summary = await resolveApprovalSummary(USER, "agent_job_run", { id: "ad_1" });
-
-    expect(summary).toBe('Run agent job "Summarize inbox" now');
   });
 
   it("resolves infra_exec through the machine name template", async () => {

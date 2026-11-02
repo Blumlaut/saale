@@ -8,7 +8,6 @@ import {
   scheduleCoderSweep,
   COUNCIL_SWEEP_JOB_NAME,
   createWorker,
-  scheduleAllAgentDefinitions,
   scheduleAllJobs,
   scheduleAllWatchers,
   scheduleCouncilSweep,
@@ -101,23 +100,13 @@ async function postToApp(path: string, payload: unknown): Promise<unknown> {
 }
 
 /**
- * Execute a scheduled agent definition run by calling the Next.js app's
- * internal API (the app creates the AgentRun and dispatches the agent).
- */
-async function executeAgentJobViaApp(job: Job): Promise<unknown> {
-  return postToApp("/api/agent-jobs/execute", {
-    definitionId: (job.data as { definitionId?: string }).definitionId,
-  });
-}
-
-/**
  * Execute one watcher tick by calling the Next.js app's internal API.
  *
  * The tick needs the app's tool factories and the user's settings, and the app
  * is where the sandbox already runs for chats. the worker only schedules.
  */
 async function executeWatcherTickViaApp(job: Job): Promise<unknown> {
-  return postToApp("/api/watchers/execute", {
+  return postToApp("/api/automations/execute", {
     watcherId: (job.data as { watcherId?: string }).watcherId,
   });
 }
@@ -163,7 +152,7 @@ async function executeMobilePush(job: Job): Promise<void> {
 
 /** Remove the bot chats whose work is finished and whose window has passed. */
 async function executeWatcherChatCleanupViaApp(): Promise<unknown> {
-  return postToApp("/api/watchers/cleanup", {});
+  return postToApp("/api/automations/cleanup", {});
 }
 
 /**
@@ -178,9 +167,6 @@ function createJobRouter(): Processor {
         console.log(`[worker] Orphan cleanup: removed ${deleted} orphaned file(s)`);
       }
       return;
-    }
-    if (job.name === "agent_execute") {
-      return executeAgentJobViaApp(job);
     }
     if (job.name === WATCHER_TICK_JOB_NAME) {
       return executeWatcherTickViaApp(job);
@@ -257,7 +243,6 @@ async function main() {
   console.log("[worker] Worker started, listening for jobs...");
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
-  await retryUntilSuccess("Schedule agent definitions", scheduleAllAgentDefinitions);
   await retryUntilSuccess("Schedule watchers", scheduleAllWatchers);
   if (isCouncilEnabled()) {
     await retryUntilSuccess("Schedule council sweep", async () => {
