@@ -334,7 +334,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         sessionId: Type.Optional(
           Type.String({
             description:
-              'The conversation a "chat" fire is answered in. Defaults to this conversation, and a "coder" or "silent" watcher ignores it. A watcher that dispatches into a project, or is delivered by its script, has no chat of its own and outlives any chat.',
+              'The conversation a "chat" fire is answered in. Defaults to this conversation. A "silent" or "coder" watcher answers nowhere but keeps this chat as the one its script speaks as, so a message it sends belongs here.',
           }),
         ),
         projectId: Type.Optional(
@@ -379,6 +379,7 @@ export function createWatcherTools(userId: string, sessionId: string): ToolDefin
         try {
           const created = await createWatcher({
             userId,
+            originSessionId: sessionId,
             fields: {
               name: params.name,
               script: params.script,

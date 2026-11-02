@@ -205,6 +205,43 @@ describe("where a fire is delivered", () => {
     expect(writtenChat?.sessionId).toBe("chat-1");
   });
 
+  it("keeps the chat a create came from so its script can speak as that chat", async () => {
+    await createWatcher({
+      userId: "user-1",
+      originSessionId: "chat-1",
+      fields: {
+        name: "Watch the inbox",
+        script,
+        cronExpression,
+        deliver: "silent",
+      },
+    });
+
+    const written = vi.mocked(prisma.scriptWatcher.create).mock.calls.at(-1)?.[0]?.data;
+    expect(written?.originSessionId).toBe("chat-1");
+    // Still no delivery target: nothing is answered in that chat.
+    expect(written?.sessionId).toBeNull();
+  });
+
+  it("refuses an origin chat that is not the caller's own", async () => {
+    vi.mocked(prisma.chatSession.findFirst).mockResolvedValueOnce(null);
+
+    await expect(
+      createWatcher({
+        userId: "user-1",
+        originSessionId: "someone-elses-chat",
+        fields: {
+          name: "Watch the inbox",
+          script,
+          cronExpression,
+          deliver: "silent",
+        },
+      }),
+    ).rejects.toThrow(/Chat not found/);
+
+    expect(prisma.scriptWatcher.create).not.toHaveBeenCalled();
+  });
+
   it("clears the project when the delivery moves away from a project", async () => {
     vi.mocked(prisma.scriptWatcher.findFirst).mockResolvedValueOnce({
       id: "w-1",

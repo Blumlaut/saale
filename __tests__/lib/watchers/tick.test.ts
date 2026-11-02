@@ -65,6 +65,7 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     enabled: true,
     deliver: "chat",
     sessionId: "chat-1",
+    originSessionId: null,
     projectId: null,
     worktreeMode: "per-fire",
     retentionMinutes: 1440,
@@ -155,6 +156,34 @@ describe("runWatcherTick", () => {
     expect(writtenUpdate()?.fireCount).toBeUndefined();
     expect(writtenUpdate()?.lastFiredAt).toBeUndefined();
     expect(writtenTick()?.toolNames).toEqual(["mail_list"]);
+  });
+
+  it("scopes a script to the chat that asked for the watcher", async () => {
+    // A silent watcher answers in no chat, but a tool it calls must still act
+    // as the thread that created it, or the message belongs to nobody.
+    findWatcher.mockResolvedValue(
+      watcher({ deliver: "silent", sessionId: null, originSessionId: "chat-9" }),
+    );
+
+    await runWatcherTick("w-1");
+
+    expect(access).toHaveBeenCalledWith("u-1", "chat-9");
+  });
+
+  it("scopes a chat fire to the chat it reports into", async () => {
+    findWatcher.mockResolvedValue(watcher({ originSessionId: "chat-9" }));
+
+    await runWatcherTick("w-1");
+
+    expect(access).toHaveBeenCalledWith("u-1", "chat-1");
+  });
+
+  it("scopes a watcher with no chat at all to itself", async () => {
+    findWatcher.mockResolvedValue(watcher({ deliver: "silent", sessionId: null }));
+
+    await runWatcherTick("w-1");
+
+    expect(access).toHaveBeenCalledWith("u-1", "watcher:w-1");
   });
 
   it("records which tools delivered a fire", async () => {

@@ -200,16 +200,29 @@ export interface WatcherFieldInput {
   enabled?: unknown;
 }
 
+/** The chat a create came from, when it is the user's own. */
+async function resolveOriginSession(userId: string, value: unknown): Promise<string | null> {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const sessionId = value.trim();
+  await assertOwnsSession(userId, sessionId);
+  return sessionId;
+}
+
 /**
  * Create a watcher.
  *
  * It ticks from the moment it is created, whenever it was written. A tool the
  * script calls that would ask the user in a chat runs here without asking, which
  * is what an unattended script is.
+ *
+ * `originSessionId` is the chat the create came from. A script's chat-aware
+ * tools act as that chat, so a message it sends belongs to the thread that asked
+ * for the watcher instead of whichever chat spoke last.
  */
 export async function createWatcher(params: {
   userId: string;
   fields: WatcherFieldInput;
+  originSessionId?: string | null | undefined;
 }): Promise<{
   id: string;
   name: string;
@@ -217,6 +230,7 @@ export async function createWatcher(params: {
 }> {
   const { userId } = params;
   const fields = await validateFields(userId, params.fields);
+  const originSessionId = await resolveOriginSession(userId, params.originSessionId);
 
   const existing = await prisma.scriptWatcher.findFirst({
     where: { userId, name: fields.name },
@@ -227,7 +241,7 @@ export async function createWatcher(params: {
   }
 
   const watcher = await prisma.scriptWatcher.create({
-    data: { userId, ...fields },
+    data: { userId, ...fields, originSessionId },
   });
 
   await scheduleWatcher(watcher).catch((err) => {

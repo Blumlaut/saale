@@ -75,7 +75,9 @@ function encodeValue(value: unknown): string | null {
  * not).
  */
 async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
-  const scopeId = watcher.sessionId ?? `watcher:${watcher.id}`;
+  // The chat it reports into, or the one that asked for it: a script that
+  // sends a message acts as that chat.
+  const scopeId = watcher.sessionId ?? watcher.originSessionId ?? `watcher:${watcher.id}`;
   const { callable } = await loadWatcherToolAccess(watcher.userId, scopeId);
 
   const store = readStore(watcher.store);
