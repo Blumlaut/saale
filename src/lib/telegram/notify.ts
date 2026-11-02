@@ -2,7 +2,7 @@ import { getTelegramBot } from "./bot";
 import { sendTelegramMessage } from "./client";
 import { resolveTelegramSendTarget, TelegramTargetError, type TelegramSendTarget } from "./chats";
 import { getLinkByUserId, type TelegramLinkInfo } from "./links";
-import { recordOutboundMessage } from "./outbound";
+import { recordOutboundMessage, resolveSourceChat } from "./outbound";
 import { recordOutboundMessages } from "./outbound-messages";
 
 /**
@@ -82,15 +82,17 @@ export async function deliverTelegramMessage(params: {
   }
 
   // Only a message that arrived has something to reply to, so both records
-  // follow the send.
+  // follow the send. The source is resolved first: an id a caller made up must
+  // not become the chat a reply is routed to.
+  const source = await resolveSourceChat(userId, sourceSessionId);
   try {
-    await recordOutboundMessage({ userId, content, sourceSessionId, sentTo });
+    await recordOutboundMessage({ userId, content, sourceSessionId: source, sentTo });
   } catch (err) {
     console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
   }
 
   try {
-    await recordOutboundMessages({ userId, chatId, messageIds, sourceSessionId });
+    await recordOutboundMessages({ userId, chatId, messageIds, sourceSessionId: source });
   } catch (err) {
     console.error(`[telegram] Failed to ledger outbound messages for user ${userId}:`, err);
   }

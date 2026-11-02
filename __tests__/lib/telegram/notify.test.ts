@@ -8,6 +8,7 @@ const {
   mockSendTelegramMessage,
   mockRecordOutboundMessage,
   mockRecordOutboundMessages,
+  mockResolveSourceChat,
   mockResolveTelegramSendTarget,
   TelegramTargetError,
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   mockSendTelegramMessage: vi.fn(),
   mockRecordOutboundMessage: vi.fn(),
   mockRecordOutboundMessages: vi.fn(),
+  mockResolveSourceChat: vi.fn(),
   mockResolveTelegramSendTarget: vi.fn(),
   TelegramTargetError: class TelegramTargetError extends Error {},
 }));
@@ -41,6 +43,7 @@ vi.mock("@/lib/telegram/client", () => ({
 
 vi.mock("@/lib/telegram/outbound", () => ({
   recordOutboundMessage: (...args: unknown[]) => mockRecordOutboundMessage(...args),
+  resolveSourceChat: (...args: unknown[]) => mockResolveSourceChat(...args),
 }));
 
 vi.mock("@/lib/telegram/outbound-messages", () => ({
@@ -93,6 +96,10 @@ beforeEach(() => {
     },
   );
   mockSendTelegramMessage.mockResolvedValue([42]);
+  // The ownership check has its own test in `outbound.test.ts`.
+  mockResolveSourceChat.mockImplementation(
+    async (_userId: string, id: string | null) => id ?? null,
+  );
   mockRecordOutboundMessage.mockResolvedValue(undefined);
   mockRecordOutboundMessages.mockResolvedValue(undefined);
 });
@@ -145,14 +152,14 @@ describe("sendTelegramToUser", () => {
     expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
       userId,
       content: "Dentist in 30 minutes",
-      sourceSessionId: undefined,
+      sourceSessionId: null,
       sentTo: null,
     });
     expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
       userId,
       chatId,
       messageIds: [42],
-      sourceSessionId: undefined,
+      sourceSessionId: null,
     });
   });
 
@@ -179,7 +186,7 @@ describe("sendTelegramToUser", () => {
     expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
       userId,
       content: "Two new CVEs today",
-      sourceSessionId: undefined,
+      sourceSessionId: null,
       sentTo: "CVEs",
     });
   });
@@ -273,7 +280,7 @@ describe("deliverTelegramMessage", () => {
     expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
       userId,
       content: "hello",
-      sourceSessionId: undefined,
+      sourceSessionId: null,
       sentTo: undefined,
     });
   });
@@ -297,6 +304,33 @@ describe("deliverTelegramMessage", () => {
       chatId,
       messageIds: [42],
       sourceSessionId: "sess-9",
+    });
+  });
+
+  it("records a made-up source as no source at all", async () => {
+    // A watcher script with no conversation of its own reaches tools as
+    // `watcher:<id>`. Pointing the link at it would refuse every later message.
+    mockResolveSourceChat.mockResolvedValue(null);
+
+    await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "CVE-2026-1 affects lodash",
+      sourceSessionId: "watcher:w-1",
+    });
+
+    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+      userId,
+      content: "CVE-2026-1 affects lodash",
+      sourceSessionId: null,
+      sentTo: undefined,
+    });
+    expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
+      userId,
+      chatId,
+      messageIds: [42],
+      sourceSessionId: null,
     });
   });
 

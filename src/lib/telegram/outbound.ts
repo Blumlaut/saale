@@ -10,6 +10,32 @@ import { withChatLock } from "./chat-lock";
 const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
 
 /**
+ * The chat a delivery came from, when it exists and belongs to the user.
+ *
+ * A scope id is not proof of a chat: a watcher script with no conversation of
+ * its own reaches chat-aware tools as `watcher:<id>`. Writing that id as the
+ * source would point the link at a chat that does not exist, which then refuses
+ * every message the user sends.
+ */
+export async function resolveSourceChat(
+  userId: string,
+  sourceSessionId: string | null | undefined,
+): Promise<string | null> {
+  if (!sourceSessionId) return null;
+
+  const chat = await prisma.chatSession.findFirst({
+    where: { id: sourceSessionId, userId },
+    select: { id: true },
+  });
+  if (chat) return sourceSessionId;
+
+  console.warn(
+    `[telegram] Outbound message for user ${userId} named an unknown chat ${sourceSessionId}`,
+  );
+  return null;
+}
+
+/**
  * Persist an outbound message into the chat that produced it, so a reply has
  * context.
  *
@@ -24,7 +50,7 @@ const JOB_OUTPUT_CUSTOM_TYPE = "job_output";
  *    model).
  *
  * `sourceSessionId` is the chat that sent the message. Without one (a task
- * reminder, an agent job run) the message lands in the link's home thread,
+ * reminder, an agent job run) the message lands in the chat that spoke last,
  * which is where a reply to it would go anyway.
  *
  * `sentTo` is a group title. A group message is recorded as a one-line
@@ -47,21 +73,9 @@ export async function recordOutboundMessage(params: {
   if (!content.trim()) return;
 
   const link = await getLinkByUserId(userId);
-  const sessionId = sourceSessionId ?? link?.activeSessionId ?? null;
+  const source = await resolveSourceChat(userId, sourceSessionId);
+  const sessionId = source ?? link?.activeSessionId ?? null;
   if (!sessionId) return;
-
-  // Defence in depth: the caller passes a session it resolved, but a session id
-  // is not proof of ownership.
-  const chat = await prisma.chatSession.findFirst({
-    where: { id: sessionId, userId },
-    select: { id: true },
-  });
-  if (!chat) {
-    console.warn(
-      `[telegram] Outbound message for user ${userId} named an unknown chat ${sessionId}`,
-    );
-    return;
-  }
 
   const recorded = sentTo ? buildGroupBreadcrumb(content, sentTo) : content;
 
