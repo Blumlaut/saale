@@ -1,6 +1,6 @@
 import path from "path";
 import type { Bot, Context } from "grammy";
-import type { ImageContent } from "@earendil-works/pi-ai/compat";
+import type { ImageContent } from "@earendil-works/pi-ai";
 import { SHOW_FILE_TOOL_NAME } from "@/lib/pi/tools/chat-tools";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
