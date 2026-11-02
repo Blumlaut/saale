@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
-import { createPullRequest, PullRequestError, readPullRequest } from "@/lib/coder/pull-request";
+import { createPullRequest, PullRequestError, syncPullRequest } from "@/lib/coder/pull-request";
 
 /**
  * GET /api/coder/sessions/:id/pull-request. The pull request the chat's branch
@@ -10,7 +10,8 @@ import { createPullRequest, PullRequestError, readPullRequest } from "@/lib/code
  *
  * Asked on its own, not as part of the status read: `gh` talks to the forge, and
  * a panel that refreshed its changes every 20 seconds must not cost a network
- * round trip for a badge.
+ * round trip for a badge. What the forge answers is also what the landing page
+ * reads, so it is written down on the chat row here.
  */
 export async function GET(
   _request: NextRequest,
@@ -20,7 +21,7 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
 
   const { sessionId } = await context.params;
-  const pullRequest = await readPullRequest(authResult.user.id, sessionId);
+  const pullRequest = await syncPullRequest(authResult.user.id, sessionId);
   return NextResponse.json({ pullRequest });
 }
 

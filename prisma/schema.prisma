@@ -194,6 +194,15 @@ model ChatSession {
   /// Branch its worktree is checked out on. Null derives one from the chat id;
   /// a watcher sets it so the branch names the watcher that made it.
   worktreeBranch   String?
+  /// The pull request this chat's branch is on, as `gh` last reported it. The
+  /// landing page reads these instead of asking the forge for every row.
+  prNumber         Int?
+  /// "OPEN" | "MERGED" | "CLOSED".
+  prState          String?       @db.VarChar(16)
+  prDraft          Boolean?
+  prUrl            String?       @db.VarChar(2048)
+  /// When `gh` last answered, null for a chat nothing has asked about yet.
+  prCheckedAt      DateTime?
 
   @@index([userId, createdAt])
   @@index([projectId, lastActivityAt])

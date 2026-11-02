@@ -38,6 +38,18 @@ export interface CoderProjectChat {
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
   worktree: { path: string; branch: string; status: string } | null;
+  /** What `gh` last said about the branch, null when it never answered. */
+  pullRequest: CoderProjectPullRequest | null;
+}
+
+/** A pull request as the landing page's rows show it. */
+export interface CoderProjectPullRequest {
+  number: number;
+  /** "OPEN" | "MERGED" | "CLOSED". */
+  state: string;
+  draft: boolean;
+  url: string;
+  checkedAt: string;
 }
 
 /** One changed path in a chat's worktree. */

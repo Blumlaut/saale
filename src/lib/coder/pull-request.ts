@@ -11,6 +11,7 @@
 import { checkoutOf } from "./checkout";
 import { loadCoderSession } from "./changes";
 import { runInWorkspace, shellQuote } from "./git";
+import { prisma } from "@/lib/db";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 
 /** A question about a branch: short, and the panel can ask again later. */
@@ -18,6 +19,18 @@ const VIEW_TIMEOUT_SECONDS = 30;
 
 /** Opening a pull request talks to the forge for longer. */
 const CREATE_TIMEOUT_SECONDS = 60;
+
+/** A cached state older than this is worth another question to the forge. */
+const PR_REFRESH_MS = 5 * 60_000;
+
+/** How many rows one list read refreshes, so a big board stays one round trip. */
+const MAX_PR_REFRESHES = 3;
+
+/** A pull request in one of these states cannot move again. */
+const TERMINAL_PR_STATES = new Set(["MERGED", "CLOSED"]);
+
+/** Chats a refresh is already running for, so overlapping reads do not double up. */
+const refreshing = new Set<string>();
 
 /** The check counts a badge shows, whatever kind of check they came from. */
 export interface PullRequestChecks {
@@ -95,8 +108,23 @@ export async function readPullRequest(
   userId: string,
   sessionId: string,
 ): Promise<CoderPullRequest | null> {
+  const read = await readPullRequestState(userId, sessionId);
+  return read.pullRequest;
+}
+
+/**
+ * A read of the forge, and whether it answered about the branch at all.
+ *
+ * `known: false` is a missing checkout, a missing token or a forge the command
+ * could not reach. It is what keeps a cached state from being cleared by a
+ * question nobody answered.
+ */
+async function readPullRequestState(
+  userId: string,
+  sessionId: string,
+): Promise<{ pullRequest: CoderPullRequest | null; known: boolean }> {
   const target = await ghTarget(userId, sessionId);
-  if (!target) return null;
+  if (!target) return { pullRequest: null, known: false };
 
   const result = await runInWorkspace(userId, {
     cwd: target.dir,
@@ -105,16 +133,106 @@ export async function readPullRequest(
     timeoutSeconds: VIEW_TIMEOUT_SECONDS,
   });
   if (result.exitCode !== 0) {
-    // gh says "no pull requests found" here, which is not a failure to report.
     const message = result.stderr.trim();
-    if (!/no pull requests found|not a git repository|no remotes/i.test(message)) {
+    // gh says "no pull requests found" here, which is an answer, not a failure.
+    if (/no pull requests found/i.test(message)) return { pullRequest: null, known: true };
+    if (!/not a git repository|no remotes/i.test(message)) {
       console.warn(`[coder] gh could not read the pull request for ${target.dir}: ${message}`);
     }
-    return null;
+    return { pullRequest: null, known: false };
   }
 
-  const parsed = parsePullRequest(result.stdout);
-  return parsed;
+  return { pullRequest: parsePullRequest(result.stdout), known: true };
+}
+
+/**
+ * What the forge last said about the chat's branch, kept on the chat row.
+ *
+ * The landing page draws a badge for every chat it lists, and a `gh` round trip
+ * per row is not something a list that polls can afford, so the answer is
+ * written down here and refreshed in the background.
+ */
+async function savePullRequest(
+  userId: string,
+  sessionId: string,
+  read: { pullRequest: CoderPullRequest | null; known: boolean },
+): Promise<void> {
+  try {
+    await prisma.chatSession.updateMany({
+      where: { id: sessionId, userId },
+      // A question nobody answered still counts as asked, so the list does not
+      // go on asking it on every poll.
+      data: read.known
+        ? {
+            prNumber: read.pullRequest?.number ?? null,
+            prState: read.pullRequest?.state ?? null,
+            prDraft: read.pullRequest?.draft ?? null,
+            prUrl: read.pullRequest?.url ?? null,
+            prCheckedAt: new Date(),
+          }
+        : { prCheckedAt: new Date() },
+    });
+  } catch (err) {
+    console.error(`Failed to cache the pull request of chat ${sessionId}:`, err);
+  }
+}
+
+/** Ask the forge about the branch and write down what it said. */
+export async function syncPullRequest(
+  userId: string,
+  sessionId: string,
+): Promise<CoderPullRequest | null> {
+  const read = await readPullRequestState(userId, sessionId);
+  await savePullRequest(userId, sessionId, read);
+  return read.pullRequest;
+}
+
+/** A chat row as far as a pull request refresh is concerned. */
+export interface PullRequestCacheRow {
+  id: string;
+  pullRequest: { state: string } | null;
+  /** When `gh` last answered, with a pull request or without one. */
+  pullRequestCheckedAt: Date | null;
+}
+
+/**
+ * Re-ask the forge about the pull requests a list is about to show stale.
+ *
+ * A merged pull request only says so once somebody asks again, and the row that
+ * carries it is the one the user reads. The list route calls this without
+ * waiting for it: the response carries what is cached, and the next poll of the
+ * list carries the answer.
+ */
+export async function refreshStalePullRequests(
+  userId: string,
+  chats: readonly PullRequestCacheRow[],
+): Promise<void> {
+  const now = Date.now();
+  const stale = chats
+    .filter((chat) => {
+      if (refreshing.has(chat.id)) return false;
+      // A chat nobody asked about gets one question, so a badge appears for a
+      // pull request opened outside the app without every row costing a call.
+      if (!chat.pullRequestCheckedAt) return true;
+      // Asked, and the branch had none: nothing to keep asking about.
+      if (!chat.pullRequest) return false;
+      if (TERMINAL_PR_STATES.has(chat.pullRequest.state)) return false;
+      return now - chat.pullRequestCheckedAt.getTime() > PR_REFRESH_MS;
+    })
+    .slice(0, MAX_PR_REFRESHES);
+
+  await Promise.all(
+    stale.map(async (chat) => {
+      refreshing.add(chat.id);
+      try {
+        await syncPullRequest(userId, chat.id);
+      } catch (err) {
+        console.error(`Failed to refresh the pull request of chat ${chat.id}:`, err);
+      } finally {
+        refreshing.delete(chat.id);
+      }
+    }),
+  );
 }
 
 /** `gh pr view --json` output as a pull request, or null when it is not one. */
@@ -179,7 +297,7 @@ export async function createPullRequest(
 
   // `gh pr create` prints the URL it made; the badge reads its state after.
   const url = result.stdout.trim().split("\n").filter(Boolean).pop() ?? "";
-  const pullRequest = await readPullRequest(userId, sessionId);
+  const pullRequest = await syncPullRequest(userId, sessionId);
   return (
     pullRequest ?? {
       number: 0,

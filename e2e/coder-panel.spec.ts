@@ -51,6 +51,13 @@ const FOLDED_CHAT = {
   isGenerating: false,
   origin: "user",
   worktree: { path: WORKTREE, branch: BRANCH, status: "active" },
+  pullRequest: {
+    number: 128,
+    state: "OPEN",
+    draft: false,
+    url: "https://github.com/acme/one/pull/128",
+    checkedAt: NOW,
+  },
 };
 
 const CHAT = {
@@ -321,14 +328,73 @@ test.describe("coder panel", () => {
     const project = page.locator('[data-slot="project-row"]').first();
     await expect(project).toBeVisible();
 
-    // A dev server can hand the page over before the row answers a click.
+    // A dev server can hand the page over before the row answers a click, and a
+    // retry has to start from the board: the click leaves it.
     await expect(async () => {
-      await project.click();
+      if ((await page.locator('[data-slot="project-row"]').count()) === 0) {
+        await page.goto("/dashboard/coder");
+      }
+      await project.getByRole("link").first().click();
       await expect(
         page.getByText("A coder chat with a long title", { exact: false }).first(),
       ).toBeVisible({ timeout: 3_000 });
     }).toPass();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
+
+    await context.close();
+  });
+
+  test("keeps the landing page's rows on one rhythm", async ({ browser }) => {
+    const { context, page } = await openCoder(browser, "/dashboard/coder");
+    await expect(page.locator('[data-slot="session-row"]').first()).toBeVisible();
+
+    const rhythm = await page.evaluate(() => {
+      const project = document.querySelector('[data-slot="project-row"]') as HTMLElement;
+      const chat = document.querySelector('[data-slot="session-row"]') as HTMLElement;
+      const panel = project.closest(".glass-panel") as HTMLElement;
+      const box = (el: HTMLElement) => {
+        const rect = el.getBoundingClientRect();
+        return { height: Math.round(rect.height), left: Math.round(rect.left) };
+      };
+      const cell = (row: HTMLElement, slot: string) => {
+        const el = row.querySelector(`[data-slot="${slot}"]`) as HTMLElement | null;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { left: Math.round(rect.left), right: Math.round(rect.right) };
+      };
+      return {
+        project: box(project),
+        chat: box(chat),
+        // The project line has no branch and no pull request; the chat has both.
+        projectMeta: cell(project, "project-meta"),
+        chatBranch: cell(chat, "chat-branch"),
+        projectTime: cell(project, "row-time"),
+        chatTime: cell(chat, "row-time"),
+        projectActions: cell(project, "row-actions"),
+        chatActions: cell(chat, "row-actions"),
+        band: getComputedStyle(project).backgroundColor,
+        card: getComputedStyle(panel).backgroundColor,
+        chatFill: getComputedStyle(chat).backgroundColor,
+      };
+    });
+
+    // One rhythm: a project line and its chats are the same dense row, and
+    // neither grows into the page-sized 48px list row.
+    expect(rhythm.project.height).toBe(rhythm.chat.height);
+    expect(rhythm.project.height).toBeGreaterThanOrEqual(36);
+    expect(rhythm.project.height).toBeLessThanOrEqual(48);
+
+    // Columns, not gaps: a cell sits in the same place whatever it holds, so a
+    // branch and a chat count share one edge and an empty cell still counts.
+    expect(rhythm.chatBranch).not.toBeNull();
+    expect(rhythm.chatBranch!.left).toBe(rhythm.projectMeta!.left);
+    expect(rhythm.chatTime!.left).toBe(rhythm.projectTime!.left);
+    expect(rhythm.chatTime!.right).toBe(rhythm.projectTime!.right);
+    expect(rhythm.chatActions!.left).toBe(rhythm.projectActions!.left);
+
+    // A project line is a band over the card; a chat row is the card itself.
+    expect(rhythm.band).not.toBe(rhythm.card);
+    expect(rhythm.chatFill).toBe("rgba(0, 0, 0, 0)");
 
     await context.close();
   });

@@ -139,41 +139,74 @@ export function ChatListRow({
       {/* Delete lives behind the row menu: a permanent one-tap delete next to
           every row is too easy to hit while scrolling. */}
       {!selection?.selecting && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={(triggerProps) => (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn("shrink-0", ROW_ACTION)}
-                aria-label={`Actions for ${title}`}
-                {...triggerProps}
-              >
-                {deleting ? <Loader2 className="animate-spin" /> : <MoreVertical />}
-              </Button>
-            )}
-          />
-          <DropdownMenuContent align="end" className="min-w-40">
-            {onTogglePin && (
-              <DropdownMenuItem onClick={onTogglePin}>
-                {pinned ? <PinOff /> : <Pin />}
-                {pinned ? "Unpin chat" : "Pin chat"}
-              </DropdownMenuItem>
-            )}
-            {selection && (
-              <DropdownMenuItem onClick={selection.start}>
-                <CheckSquare />
-                Select chat
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem variant="destructive" disabled={deleting} onClick={onDelete}>
-              <Trash2 />
-              Delete chat
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <ChatRowMenu
+          title={title}
+          pinned={pinned}
+          deleting={deleting}
+          selection={selection}
+          onTogglePin={onTogglePin}
+          onDelete={onDelete}
+        />
       )}
     </div>
+  );
+}
+
+/**
+ * A chat row's menu: pin it, pick it, delete it.
+ *
+ * Every list that draws a chat row offers the same three, so the menu is one
+ * component whether the row is the sidebar's two lines or the coder board's one.
+ */
+export function ChatRowMenu({
+  title,
+  pinned = false,
+  deleting = false,
+  selection,
+  onTogglePin,
+  onDelete,
+}: {
+  title: string;
+  pinned?: boolean | undefined;
+  deleting?: boolean | undefined;
+  selection?: ChatRowSelection | undefined;
+  onTogglePin?: (() => void) | undefined;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={(triggerProps) => (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cn("shrink-0", ROW_ACTION)}
+            aria-label={`Actions for ${title}`}
+            {...triggerProps}
+          >
+            {deleting ? <Loader2 className="animate-spin" /> : <MoreVertical />}
+          </Button>
+        )}
+      />
+      <DropdownMenuContent align="end" className="min-w-40">
+        {onTogglePin && (
+          <DropdownMenuItem onClick={onTogglePin}>
+            {pinned ? <PinOff /> : <Pin />}
+            {pinned ? "Unpin chat" : "Pin chat"}
+          </DropdownMenuItem>
+        )}
+        {selection && (
+          <DropdownMenuItem onClick={selection.start}>
+            <CheckSquare />
+            Select chat
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem variant="destructive" disabled={deleting} onClick={onDelete}>
+          <Trash2 />
+          Delete chat
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

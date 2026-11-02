@@ -11,6 +11,7 @@ import {
   serializeCreatedProject,
   serializeProjectList,
 } from "@/lib/coder/projects";
+import { refreshStalePullRequests } from "@/lib/coder/pull-request";
 
 /**
  * The user's coder projects.
@@ -48,6 +49,14 @@ export async function GET() {
       listProjects(authResult.user.id),
       getActiveSessions(authResult.user.id),
     ]);
+    // A merged pull request only says so once the forge is asked again, and the
+    // list polls. The answer lands on the next poll, not this response.
+    void refreshStalePullRequests(
+      authResult.user.id,
+      projects.flatMap((project) => project.chats),
+    ).catch((err: unknown) => {
+      console.error(`Failed to refresh the pull requests of ${authResult.user.id}:`, err);
+    });
     return NextResponse.json(serializeProjectList(projects, generating));
   } catch (err) {
     console.error("Failed to list coder projects:", err);

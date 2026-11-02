@@ -6,9 +6,10 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 /**
  * The coder landing page.
  *
- * Each project carries the latest chats under it, so reopening the work you
- * were doing is one click. What the fold shows, what the project row still
- * does, and where the rest of a project's chats live are the point of it.
+ * Every project is one foldable line, and the chats it is working on hang under
+ * it with the branch they run on and the pull request that branch is on. What a
+ * line shows, what folds away, and where the rest of a project's chats live are
+ * the point of it.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -33,15 +34,16 @@ import { broadcastSessionsDeleted } from "@/lib/chat/session-events";
 
 const NOW = new Date().toISOString();
 
-function chat(id: string, title: string, pinned = false) {
+function chat(id: string, title: string, extra: { pinned?: boolean; pullRequest?: unknown } = {}) {
   return {
     id,
     title,
     lastActivityAt: NOW,
-    pinned,
+    pinned: extra.pinned ?? false,
     isGenerating: false,
     origin: "user",
-    worktree: { path: `/worktrees/${id}`, branch: `coder/${id}`, status: "active" },
+    worktree: { path: `/worktrees/${id}`, branch: `wt/${id}`, status: "active" },
+    pullRequest: extra.pullRequest ?? null,
   };
 }
 
@@ -53,20 +55,21 @@ function project(id: string, name: string, chats: unknown[], chatCount = chats.l
     repoPath: `projects/${name.toLowerCase()}`,
     defaultBranch: "main",
     chatMode: "worktree",
-    worktreeCount: 1,
+    worktreeCount: chats.length,
     chatCount,
-    lastActivityAt: NOW,
+    lastActivityAt: chats.length > 0 ? NOW : null,
     chats,
   };
 }
 
 const PROJECTS = [
   project("p-1", "Saale Web", [chat("s-1", "Fix the build"), chat("s-2", "Read the logs")]),
-  project("p-2", "Attrition", [], 0),
+  project("p-2", "Attrition", []),
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   mocks.fetchJson.mockResolvedValue({ projects: PROJECTS });
   mocks.deleteJson.mockResolvedValue({ ok: true });
   mocks.patchJson.mockResolvedValue({ ok: true });
@@ -80,7 +83,6 @@ describe("ProjectList", () => {
     expect(await screen.findByText("Fix the build")).toBeInTheDocument();
     expect(screen.getByText("Saale Web")).toBeInTheDocument();
     expect(screen.getByText("Read the logs")).toBeInTheDocument();
-    // A fold, not a section of its own: the chat sits under its project's row.
     const row = screen.getByText("Saale Web").closest("[data-slot=project-row]")!;
     const fold = screen.getByText("Fix the build").closest("[data-slot=session-row]")!;
     expect(row.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
@@ -92,13 +94,62 @@ describe("ProjectList", () => {
     );
   });
 
-  it("shows no fold for a project without chats", async () => {
+  it("leads a chat row with its title, and carries the branch beside it", async () => {
+    render(<ProjectList />);
+
+    const row = (await screen.findByText("Fix the build")).closest("[data-slot=session-row]")!;
+    const title = row.textContent!.indexOf("Fix the build");
+    const branch = row.textContent!.indexOf("wt/s-1");
+    expect(title).toBeGreaterThanOrEqual(0);
+    expect(branch).toBeGreaterThan(title);
+  });
+
+  it("draws the pull request a chat's branch is on", async () => {
+    mocks.fetchJson.mockResolvedValue({
+      projects: [
+        project("p-1", "Saale Web", [
+          chat("s-1", "Fix the build", {
+            pullRequest: {
+              number: 128,
+              state: "MERGED",
+              draft: false,
+              url: "https://github.com/acme/saale/pull/128",
+              checkedAt: NOW,
+            },
+          }),
+        ]),
+      ],
+    });
+
+    render(<ProjectList />);
+
+    const badge = await screen.findByRole("link", { name: /128.*merged/i });
+    expect(badge).toHaveAttribute("href", "https://github.com/acme/saale/pull/128");
+    expect(badge.className).toContain("text-purple");
+  });
+
+  it("folds a project's chats away and back", async () => {
+    render(<ProjectList />);
+    await screen.findByText("Fix the build");
+
+    const toggle = screen.getByRole("button", { name: "Fold Saale Web" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByText("Fix the build")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("saale:ui:coder:collapsedProjects")).toContain("p-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Unfold Saale Web" }));
+    expect(screen.getByText("Fix the build")).toBeInTheDocument();
+  });
+
+  it("says a project has no chats without inventing a row for it", async () => {
     render(<ProjectList />);
 
     await screen.findByText("Attrition");
+    expect(screen.getByText("No chats yet")).toBeInTheDocument();
     const row = screen.getByText("Attrition").closest("[data-slot=project-row]")!;
-    const group = row.parentElement!;
-    expect(group.querySelectorAll("[data-slot=session-row]")).toHaveLength(0);
+    expect(row.parentElement!.querySelectorAll("[data-slot=session-row]")).toHaveLength(0);
   });
 
   it("sends the rest of a project's chats to the project page", async () => {
@@ -123,13 +174,13 @@ describe("ProjectList", () => {
     render(<ProjectList />);
     await screen.findByText("Fix the build");
 
-    mocks.fetchJson.mockResolvedValue({ projects: [project("p-2", "Attrition", [], 0)] });
+    mocks.fetchJson.mockResolvedValue({ projects: [project("p-2", "Attrition", [])] });
     act(() => broadcastSessionsDeleted(["s-1"]));
 
     await waitFor(() => expect(screen.queryByText("Fix the build")).not.toBeInTheDocument());
   });
 
-  it("starts a chat in the project from its row", async () => {
+  it("starts a chat in the project from its line", async () => {
     render(<ProjectList />);
     await screen.findByText("Saale Web");
 
@@ -144,11 +195,21 @@ describe("ProjectList", () => {
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/p-1/s-new"));
   });
 
-  it("opens a folded chat through the row's link", async () => {
+  it("opens the project from its name", async () => {
     render(<ProjectList />);
-    const row = await screen.findByText("Read the logs");
+    await screen.findByText("Saale Web");
 
-    // The row is a link, so a click on it is a navigation, not a fetch.
-    expect(row.closest("a")).toHaveAttribute("href", "/dashboard/coder/p-1/s-2");
+    expect(screen.getByRole("link", { name: /^Saale Web/ })).toHaveAttribute(
+      "href",
+      "/dashboard/coder/p-1",
+    );
+  });
+
+  it("leaves a project with nothing to fold unfolded, and unmarked", async () => {
+    render(<ProjectList />);
+
+    await screen.findByText("Attrition");
+    expect(screen.queryByRole("button", { name: "Fold Attrition" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unfold Attrition" })).not.toBeInTheDocument();
   });
 });

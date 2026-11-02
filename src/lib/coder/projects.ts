@@ -69,6 +69,11 @@ const CHAT_ROW_SELECT = {
   lastActivityAt: true,
   pinned: true,
   origin: true,
+  prNumber: true,
+  prState: true,
+  prDraft: true,
+  prUrl: true,
+  prCheckedAt: true,
   coderWorktree: { select: { path: true, branch: true, status: true } },
 } as const;
 
@@ -125,6 +130,21 @@ export interface CoderProjectChat {
   /** "user", or "watcher" for a chat a watcher fire opened. */
   origin: string;
   worktree: { path: string; branch: string; status: string } | null;
+  /** What `gh` last said about the branch, null when there is none. */
+  pullRequest: CoderPullRequestSummary | null;
+  /** When `gh` last answered, with a pull request or without one. */
+  pullRequestCheckedAt: Date | null;
+}
+
+/** A pull request as a list row shows it. */
+export interface CoderPullRequestSummary {
+  number: number;
+  /** "OPEN" | "MERGED" | "CLOSED". */
+  state: string;
+  draft: boolean;
+  url: string;
+  /** When the forge last answered, so the list can refresh what went stale. */
+  checkedAt: string;
 }
 
 /** The settings the panel edits, and what the detail response carries. */
@@ -343,8 +363,25 @@ type ChatRow = {
   lastActivityAt: Date;
   pinned: boolean;
   origin: string;
+  prNumber: number | null;
+  prState: string | null;
+  prDraft: boolean | null;
+  prUrl: string | null;
+  prCheckedAt: Date | null;
   coderWorktree: { path: string; branch: string; status: string } | null;
 };
+
+/** The pull request on a chat's branch, as the row carries it. */
+function mapPullRequest(row: ChatRow): CoderPullRequestSummary | null {
+  if (row.prNumber === null || !row.prState || !row.prCheckedAt) return null;
+  return {
+    number: row.prNumber,
+    state: row.prState,
+    draft: row.prDraft === true,
+    url: row.prUrl ?? "",
+    checkedAt: row.prCheckedAt.toISOString(),
+  };
+}
 
 /** A chat row, with the worktree it runs in. */
 function mapChat(row: ChatRow): CoderProjectChat {
@@ -355,6 +392,8 @@ function mapChat(row: ChatRow): CoderProjectChat {
     pinned: row.pinned,
     origin: row.origin,
     worktree: row.coderWorktree,
+    pullRequest: mapPullRequest(row),
+    pullRequestCheckedAt: row.prCheckedAt,
   };
 }
 
@@ -626,6 +665,7 @@ function serializeChat(chat: CoderProjectChat, generating: ReadonlySet<string>) 
     isGenerating: generating.has(chat.id),
     origin: chat.origin,
     worktree: chat.worktree,
+    pullRequest: chat.pullRequest,
   };
 }
 

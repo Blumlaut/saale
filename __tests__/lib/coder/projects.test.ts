@@ -401,6 +401,7 @@ describe("listProjects", () => {
             pinned: true,
             origin: "user",
             worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+            pullRequest: null,
           },
         ],
       },
@@ -443,9 +444,16 @@ describe("getProject", () => {
           id: "c1",
           title: "Fix the build",
           lastActivityAt: NOW,
+          prCheckedAt: null,
           coderWorktree: { path: "worktrees/one/c-abc", branch: "wt/c-abc", status: "active" },
         },
-        { id: "c2", title: "New Chat", lastActivityAt: NOW, coderWorktree: null },
+        {
+          id: "c2",
+          title: "New Chat",
+          lastActivityAt: NOW,
+          prCheckedAt: null,
+          coderWorktree: null,
+        },
       ],
     });
 
@@ -459,9 +467,70 @@ describe("getProject", () => {
         title: "Fix the build",
         lastActivityAt: NOW,
         worktree: { path: "worktrees/one/c-abc", branch: "wt/c-abc", status: "active" },
+        pullRequest: null,
+        pullRequestCheckedAt: null,
       },
-      { id: "c2", title: "New Chat", lastActivityAt: NOW, worktree: null },
+      {
+        id: "c2",
+        title: "New Chat",
+        lastActivityAt: NOW,
+        worktree: null,
+        pullRequest: null,
+        pullRequestCheckedAt: null,
+      },
     ]);
+  });
+
+  it("carries the pull request the forge last answered with", async () => {
+    const checkedAt = new Date("2026-10-30T10:00:00.000Z");
+    mockProjectFindFirst.mockResolvedValue({
+      id: "p1",
+      name: "One",
+      slug: "one",
+      repoPath: "projects/one",
+      originUrl: null,
+      defaultBranch: "main",
+      chats: [
+        {
+          id: "c1",
+          title: "Fix the build",
+          lastActivityAt: NOW,
+          pinned: false,
+          origin: "user",
+          prNumber: 128,
+          prState: "MERGED",
+          prDraft: false,
+          prUrl: "https://github.com/acme/one/pull/128",
+          prCheckedAt: checkedAt,
+          coderWorktree: null,
+        },
+        {
+          id: "c2",
+          title: "Never asked about",
+          lastActivityAt: NOW,
+          pinned: false,
+          origin: "user",
+          prNumber: 7,
+          prState: "OPEN",
+          prDraft: false,
+          prUrl: null,
+          prCheckedAt: null,
+          coderWorktree: null,
+        },
+      ],
+    });
+
+    const project = await getProject(USER, "p1");
+
+    expect(project?.chats[0]?.pullRequest).toEqual({
+      number: 128,
+      state: "MERGED",
+      draft: false,
+      url: "https://github.com/acme/one/pull/128",
+      checkedAt: checkedAt.toISOString(),
+    });
+    // A state nobody checked is not a state the page can claim.
+    expect(project?.chats[1]?.pullRequest).toBeNull();
   });
 });
 
@@ -487,6 +556,8 @@ describe("serializeProjectList", () => {
               pinned: false,
               origin: "watcher",
               worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+              pullRequest: null,
+              pullRequestCheckedAt: null,
             },
           ],
         },
@@ -503,6 +574,7 @@ describe("serializeProjectList", () => {
         isGenerating: true,
         origin: "watcher",
         worktree: { path: "worktrees/one/c1", branch: "wt/c1", status: "active" },
+        pullRequest: null,
       },
     ]);
   });

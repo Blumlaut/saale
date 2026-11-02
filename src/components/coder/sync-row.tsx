@@ -12,7 +12,6 @@ import {
   ExternalLink,
   GitBranch,
   GitBranchPlus,
-  GitPullRequest,
   GitPullRequestCreate,
   GitPullRequestDraft,
   Loader2,
@@ -33,37 +32,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { remoteHostName, repoWebUrl } from "@/lib/coder/remote-url";
 import { postJson } from "@/lib/http";
-import { cn } from "@/lib/utils";
 import { NewBranchDialog } from "./branch-dialog";
+import { PullRequestBadge } from "./pull-request-badge";
 import { useBranches, type CoderPullRequest, type CoderSessionState } from "./use-coder-data";
 import type { useGitActions } from "./use-git-actions";
-
-/** The colour a check rollup earns, in token pairs that read in both modes. */
-function checksTone(checks: CoderPullRequest["checks"]): string {
-  if (!checks) return "text-muted-foreground";
-  if (checks.failed > 0) return "text-red-600 dark:text-red-400";
-  if (checks.pending > 0) return "text-amber-600 dark:text-amber-400";
-  return "text-emerald-600 dark:text-emerald-400";
-}
-
-/** The pull request on this branch: a link, because its page is the next stop. */
-function PullRequestBadge({ pullRequest }: { pullRequest: CoderPullRequest }) {
-  const Icon = pullRequest.draft ? GitPullRequestDraft : GitPullRequest;
-  return (
-    <a
-      href={pullRequest.url}
-      target="_blank"
-      rel="noreferrer"
-      title={`${pullRequest.title} · ${pullRequest.state.toLowerCase()}`}
-      className={cn(
-        "hover:bg-accent inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] tabular-nums transition-colors",
-        checksTone(pullRequest.checks),
-      )}
-    >
-      <Icon className="h-3 w-3" />#{pullRequest.number}
-    </a>
-  );
-}
 
 /**
  * The branch this checkout is on, where it stands, and the ways to move it.
