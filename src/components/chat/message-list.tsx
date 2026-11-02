@@ -89,12 +89,8 @@ const TOUCH_SLOP_PX = 4;
  * How long after a scroll input (wheel, touch, key, scrollbar press) the view
  * still counts as the user's.
  *
- * Only the user can re-arm following. Without this, a *layout* clamp counts
- * too: a tool card collapsing or a turn being saved shortens the transcript,
- * the browser clamps the view to the new tail, and the scroll event that
- * reports it looks exactly like someone arriving there on purpose. Following
- * then turns itself back on under a reader who had scrolled away. and every
- * token drags them down again.
+ * The follow waits out a gesture, so a token arriving mid-wheel cannot pull
+ * the view back down under the reader.
  */
 const INPUT_GRACE_MS = 500;
 
@@ -223,10 +219,8 @@ export const MessageList = memo(
     /**
      * Is the view the user's to move right now?
      *
-     * Every scroll input says yes as it happens, and keeps saying it for a
-     * moment afterwards, so a layout clamp in the same breath cannot arm the
-     * follow back up under them. Following is *only* ever re-armed from here:
-     * a position that merely happens to be at the tail is not intent.
+     * A scroll input says yes as it happens, and keeps saying it for a moment
+     * after, so the follow holds off until the gesture is over.
      */
     const userIsDriving = useCallback(
       () => pointerDownRef.current || Date.now() - lastInputAtRef.current < INPUT_GRACE_MS,
@@ -285,14 +279,13 @@ export const MessageList = memo(
         // still the reader's place. A clamp is the browser's, so following
         // keeps whatever state it had.
         if (!clamped) armAutoScroll(false);
-      } else if (userIsDriving() && (atBottom || (movedDown && atTail(el, RETURN_BAND_PX)))) {
-        // On the tail, or moving back down into it: following is what they
-        // want. Requires an input behind the movement. a transcript that a
-        // collapsing tool card shortened clamps to its new tail by itself, and
-        // that must not turn following back on under a reader who left.
+      } else if (!clamped && (atBottom || (movedDown && atTail(el, RETURN_BAND_PX)))) {
+        // On the tail, or moving back down into it. A fling coasts in long
+        // after its last input, so the movement need not be recent; a clamp is
+        // the one arrival that is the browser's doing.
         armAutoScroll(true);
       }
-    }, [windowStart, armAutoScroll, userIsDriving, isAtBottom]);
+    }, [windowStart, armAutoScroll, isAtBottom]);
 
     // Input drives the view, never the other way round: wheel, touch and keys
     // release auto-scroll as they happen, before the follow effect can pull the

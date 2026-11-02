@@ -476,8 +476,8 @@ describe("MessageList auto-scroll", () => {
     const scroller = settleAtTail(container);
     scrollTo(container, tailOf(container) - 400);
 
-    // Reaching the tail is the user's arrival only when their input explains
-    // it: a bare scroll event is the browser's doing (see the clamp test).
+    // Reaching the tail is the user's arrival: their wheel explains it, and
+    // the fling that follows has to come with them.
     fireEvent.wheel(scroller, { deltaY: 120 });
     settleAtTail(container);
     letInputGoStale();
@@ -485,6 +485,46 @@ describe("MessageList auto-scroll", () => {
     layout(container);
     rerender(<MessageList messages={transcript(4)} isLoading />);
     expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
+  it("re-arms when a fling coasts into the tail after the input window", () => {
+    // The last wheel tick can land a long momentum away from the tail, and the
+    // coast that finishes the trip has no input of its own. The view is on the
+    // tail all the same, and the stream that follows has to come with it.
+    const { container, rerender } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scrollTo(container, tailOf(container) - 900);
+
+    letInputGoStale();
+    settleAtTail(container);
+    expect(jumpButton()).not.toBeInTheDocument();
+
+    contentHeight = 6000;
+    layout(container);
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scroller.scrollTop).toBe(tailOf(container));
+  });
+
+  it("hands the view back when the reader wheels up after a coast to the tail", () => {
+    // Following came on by itself at the tail, so it goes off by itself too: a
+    // wheel up takes the view back before the next token can land on it.
+    const { container, rerender } = render(<MessageList messages={transcript(3)} isLoading />);
+    const scroller = settleAtTail(container);
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scrollTo(container, tailOf(container) - 900);
+    letInputGoStale();
+    settleAtTail(container);
+
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    const readingAt = tailOf(container) - 600;
+    scrollTo(container, readingAt);
+    letInputGoStale();
+
+    contentHeight = 6000;
+    layout(container);
+    rerender(<MessageList messages={transcript(4)} isLoading />);
+    expect(scroller.scrollTop).toBe(readingAt);
   });
 
   it("re-arms when the user scrolls down into the tail band", () => {

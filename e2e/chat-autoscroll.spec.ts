@@ -133,6 +133,18 @@ const thinkingRows = (page: Page) => page.getByRole("button", { name: /Thinking|
 
 const jumpButton = (page: Page) => page.getByRole("button", { name: "Jump to the latest message" });
 
+/**
+ * Coast into the tail the way momentum does: the view keeps moving after the
+ * last wheel or touch has been delivered, so the scroll arrives on its own.
+ */
+function coastToTail(page: Page): Promise<void> {
+  return page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>("[data-transcript]");
+    if (!el) throw new Error("the transcript is not on the page");
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
 test.describe("chat auto-scroll", () => {
   test("follows the reflow on every step of a chat list drag", async ({ browser }) => {
     const { page, close } = await openChat(browser);
@@ -204,6 +216,47 @@ test.describe("chat auto-scroll", () => {
       await thinkingRows(page).last().click();
       await expect.poll(() => transcriptHeight(page)).toBeGreaterThan(before);
       await expectTail(page);
+    } finally {
+      await close();
+    }
+  });
+
+  test("follows once a coast reaches the tail with no input left to explain it", async ({
+    browser,
+  }) => {
+    const { page, close } = await openChat(browser);
+    try {
+      await expectTail(page);
+      await page.locator("[data-transcript]").hover();
+      await page.mouse.wheel(0, -2400);
+      await expect(jumpButton(page)).toBeVisible();
+      await thinkingRows(page).first().click();
+      expect(await distanceFromTail(page)).toBeGreaterThan(1000);
+
+      // The wheel that started the fling is past the window that makes it the
+      // reader's by the time the view reaches the tail.
+      await page.mouse.wheel(0, 400);
+      await page.waitForTimeout(800);
+      await coastToTail(page);
+      await expect(jumpButton(page)).toBeHidden();
+
+      const before = await transcriptHeight(page);
+      await thinkingRows(page).last().click();
+      await expect.poll(() => transcriptHeight(page)).toBeGreaterThan(before);
+      await expectTail(page);
+
+      // Control came on by itself, so the reader's next upward scroll must take
+      // it away again: the growth that follows leaves them where they are.
+      await page.mouse.wheel(0, -1200);
+      await expect(jumpButton(page)).toBeVisible();
+      const readingAt = await distanceFromTail(page);
+      expect(readingAt).toBeGreaterThan(1000);
+
+      await thinkingRows(page).nth(4).click();
+      await expect.poll(() => transcriptHeight(page)).toBeGreaterThan(before);
+      await frameSettled(page);
+      expect(await distanceFromTail(page)).toBeGreaterThan(1000);
+      await expect(jumpButton(page)).toBeVisible();
     } finally {
       await close();
     }
