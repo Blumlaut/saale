@@ -17,6 +17,7 @@ import {
   WATCHER_CHAT_CLEANUP_JOB_NAME,
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
+import { processJob } from "@/lib/queue/job-handler";
 import { isCouncilEnabled } from "@/lib/council/flag";
 import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
@@ -98,17 +99,6 @@ async function postToApp(path: string, payload: unknown): Promise<unknown> {
 }
 
 /**
- * Execute a user job by calling the Next.js app's internal API.
- */
-async function executeJobViaApp(job: Job): Promise<unknown> {
-  return postToApp("/api/jobs/execute", {
-    jobId: job.id,
-    name: job.name,
-    data: job.data,
-  });
-}
-
-/**
  * Execute a scheduled agent definition run by calling the Next.js app's
  * internal API (the app creates the AgentRun and dispatches the agent).
  */
@@ -160,7 +150,10 @@ async function executeWatcherChatCleanupViaApp(): Promise<unknown> {
   return postToApp("/api/watchers/cleanup", {});
 }
 
-/** Route jobs: system jobs inline, user jobs via Next.js API. */
+/**
+ * Route jobs: everything that does not need a live chat runs here, and the
+ * app's internal API is left for the work that does.
+ */
 function createJobRouter(): Processor {
   return async (job: Job) => {
     if (job.name === "cleanup_orphaned_images") {
@@ -188,7 +181,9 @@ function createJobRouter(): Processor {
     if (job.name === CALENDAR_REMINDERS_JOB_NAME) {
       return executeCalendarReminders();
     }
-    return executeJobViaApp(job);
+    // QueueTask work (mailbox refresh, AI extraction, …) has no UI to stream
+    // into, so it runs in this process instead of being handed back to the app.
+    return processJob(job);
   };
 }
 

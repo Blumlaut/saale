@@ -1,4 +1,5 @@
 import { syncEmailAccount } from "@/lib/email/sync";
+import { claimEmailSync, releaseEmailSync } from "@/lib/redis";
 import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
 
 export const metadata = {
@@ -21,6 +22,32 @@ export const fields = [
   },
 ];
 
+/** A sync's result, or the reason this run left the account alone. */
+type SyncOutcome = Awaited<ReturnType<typeof syncEmailAccount>> & { skipped?: string };
+
+/**
+ * Sync one account unless a sync already holds it.
+ *
+ * Two jobs can target the same account (a mailbox refresh plus a hand-made
+ * `email_sync`), and a slow run outlives the cron that started it.
+ */
+async function syncWithClaim(accountId: string): Promise<SyncOutcome> {
+  if (!(await claimEmailSync(accountId))) {
+    return {
+      newMessages: 0,
+      updatedMessages: 0,
+      errors: [],
+      skipped: "Another sync is already running for this account",
+    };
+  }
+
+  try {
+    return await syncEmailAccount(accountId);
+  } finally {
+    await releaseEmailSync(accountId);
+  }
+}
+
 export async function handler(params: { config: Record<string, unknown>; userId: string }) {
   const { config, userId } = params;
   const accountIds = await resolveUserEmailAccountIds(
@@ -35,11 +62,11 @@ export async function handler(params: { config: Record<string, unknown>; userId:
     if (!targetId) {
       throw new Error(`Email account ${config.accountId} not found or disabled`);
     }
-    const result = await syncEmailAccount(targetId);
+    const result = await syncWithClaim(targetId);
     return JSON.stringify(result);
   }
 
-  const results = await Promise.all(accountIds.map((id) => syncEmailAccount(id)));
+  const results = await Promise.all(accountIds.map((id) => syncWithClaim(id)));
   return JSON.stringify({
     accounts: results.length,
     results,

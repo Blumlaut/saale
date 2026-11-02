@@ -65,6 +65,25 @@ export async function updateJobRun(
   });
 }
 
+/** Runs kept per task. The runs panel and the job tools read the newest 10–20. */
+export const TASK_RUN_HISTORY_LIMIT = 50;
+
+/** Drop all but the most recent {@link TASK_RUN_HISTORY_LIMIT} runs of a task. */
+export async function pruneTaskRuns(taskId: string): Promise<void> {
+  const keep = await prisma.taskRun.findMany({
+    where: { taskId },
+    orderBy: { createdAt: "desc" },
+    take: TASK_RUN_HISTORY_LIMIT,
+    select: { id: true },
+  });
+
+  if (keep.length < TASK_RUN_HISTORY_LIMIT) return;
+
+  await prisma.taskRun.deleteMany({
+    where: { taskId, id: { notIn: keep.map((run) => run.id) } },
+  });
+}
+
 // ─── Worker creation ─────────────────────────────────────────────────────────
 
 /**

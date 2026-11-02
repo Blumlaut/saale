@@ -2,9 +2,12 @@ import { prisma } from "@/lib/db";
 import { syncQueueTaskSchedule, unscheduleQueueTask } from "@/lib/queue";
 
 /**
- * Cron expression for the auto-created mailbox refresh job (every minute).
+ * Cron expression for the auto-created mailbox refresh job (every five minutes).
+ *
+ * Each run opens an IMAP session and walks every folder, so a tighter cron
+ * spends the time between two ticks repeating the work of the last one.
  */
-export const MAILBOX_REFRESH_CRON = "* * * * *";
+export const MAILBOX_REFRESH_CRON = "*/5 * * * *";
 
 /**
  * Distinguish the auto-created refresh job from user-created email_sync jobs

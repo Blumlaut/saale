@@ -50,7 +50,7 @@ describe("Mailbox refresh auto-sync job", () => {
 
   /* ── create ── */
 
-  it("creates an every-minute email_sync job scoped to the account and schedules it", async () => {
+  it("creates a five-minute email_sync job scoped to the account and schedules it", async () => {
     mockQueueTaskCreate.mockResolvedValue(createdJob);
 
     await createMailboxRefreshJob("user-1", "acc-1");

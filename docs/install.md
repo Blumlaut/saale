@@ -89,15 +89,15 @@ Coder previews need a wildcard host and a certificate of their own: see
 
 ## What runs
 
-| Service        | What it does                                                                |
-| -------------- | --------------------------------------------------------------------------- |
-| `web`          | The app, on port 3630.                                                      |
-| `worker`       | Agent jobs, watchers and background work.                                   |
+| Service        | What it does                                                               |
+| -------------- | -------------------------------------------------------------------------- |
+| `web`          | The app, on port 3630.                                                     |
+| `worker`       | Scheduled jobs: mailbox sync, AI extraction, cleanups and sweeps.          |
 | `sandbox-exec` | Runs every agent command in a per-user container. Holds the Docker socket. |
-| `voice`        | Speech to text for the composer.                                            |
-| `searxng`      | Search backend for the web tools.                                           |
-| `postgres`     | Database.                                                                   |
-| `redis`        | Queue and live session state.                                               |
+| `voice`        | Speech to text for the composer.                                           |
+| `searxng`      | Search backend for the web tools.                                          |
+| `postgres`     | Database.                                                                  |
+| `redis`        | Queue and live session state.                                              |
 
 The image those per-user containers run (`saale-sandbox`) is pulled with the rest of the
 stack, and the containers themselves live outside the compose project, so

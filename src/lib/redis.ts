@@ -562,3 +562,48 @@ export async function claimPendingPrompt(sessionId: string): Promise<string | nu
     return null;
   }
 }
+
+// ─── Email Sync Claim ───────────────────────────────────────────────────────
+
+/**
+ * One sync per account at a time.
+ *
+ * A mailbox refresh fires on a cron, and a first sync of a large mailbox
+ * outlives its interval: without this the next tick opens a second IMAP session
+ * over the same folders and both write the same rows. The TTL is the crash
+ * guard. a process that dies mid-sync leaves the claim to expire instead of
+ * holding the account until someone clears it.
+ *
+ * Key format: `email:sync:{accountId}`.
+ */
+
+const EMAIL_SYNC_CLAIM_PREFIX = "email:sync:";
+/** Longer than any sync: a hung IMAP session stops holding the account. */
+const EMAIL_SYNC_CLAIM_TTL_SECONDS = 30 * 60;
+
+/** Take the account's sync claim. False means a sync already holds it. */
+export async function claimEmailSync(accountId: string): Promise<boolean> {
+  try {
+    const taken = await getRedis().set(
+      `${EMAIL_SYNC_CLAIM_PREFIX}${accountId}`,
+      "1",
+      "EX",
+      EMAIL_SYNC_CLAIM_TTL_SECONDS,
+      "NX",
+    );
+    return taken === "OK";
+  } catch (err) {
+    // A refused sync reads as a broken account, so a missing Redis lets it run.
+    console.error(`Failed to claim the sync for email account ${accountId}:`, err);
+    return true;
+  }
+}
+
+/** Release the account's sync claim. */
+export async function releaseEmailSync(accountId: string): Promise<void> {
+  try {
+    await getRedis().del(`${EMAIL_SYNC_CLAIM_PREFIX}${accountId}`);
+  } catch (err) {
+    console.error(`Failed to release the sync for email account ${accountId}:`, err);
+  }
+}

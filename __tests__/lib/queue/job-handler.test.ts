@@ -23,11 +23,15 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/db", () => ({ prisma: { queueTask: { findUnique: vi.fn() } } }));
+vi.mock("@/lib/db", () => ({
+  prisma: { queueTask: { findUnique: vi.fn(), update: vi.fn() }, taskRun: { update: vi.fn() } },
+}));
+const { mockHandlerMap } = vi.hoisted(() => ({ mockHandlerMap: new Map<string, unknown>() }));
 vi.mock("@/lib/queue", () => ({
   getQueue: vi.fn(),
-  addJobRun: vi.fn(),
+  addJobRun: vi.fn().mockResolvedValue({ id: "run-1" }),
   updateJobRun: vi.fn(),
+  pruneTaskRuns: vi.fn().mockResolvedValue(undefined),
   queueTaskSchedulerId: vi.fn(),
 }));
 vi.mock("@/lib/pi/models", () => ({
@@ -39,9 +43,13 @@ vi.mock("@/lib/pi/model-resolution", () => ({ resolveModelForPurpose: mockResolv
 vi.mock("@/lib/pi/processing-state", () => ({
   createSystemPromptLoader: vi.fn().mockResolvedValue({}),
 }));
-vi.mock("@/lib/queue/jobs/registry", () => ({ handlerMap: {} }));
+vi.mock("@/lib/queue/jobs/registry", () => ({ handlerMap: mockHandlerMap }));
 
-import { dispatchAiJob } from "@/lib/queue/job-handler";
+import { prisma } from "@/lib/db";
+import { addJobRun, pruneTaskRuns, updateJobRun } from "@/lib/queue";
+import { handlerMap } from "@/lib/queue/jobs/registry";
+import { dispatchAiJob, processJob } from "@/lib/queue/job-handler";
+import type { Job } from "bullmq";
 
 type Listener = (event: Record<string, unknown>) => void;
 
@@ -197,5 +205,62 @@ describe("dispatchAiJob", () => {
     await waitForSession();
 
     await expect(outcome).resolves.toEqual({ ok: false, error: "No API key for custom" });
+  });
+});
+
+/**
+ * `processJob` is what the worker runs for a QueueTask now, so its record
+ * keeping (a run row per fire, and the prune that keeps that table bounded) is
+ * the part worth pinning.
+ */
+describe("processJob", () => {
+  const handlers = handlerMap as unknown as Map<string, { handler: unknown }>;
+
+  function queueJob(data: Record<string, unknown>): Job {
+    return { id: "1", name: "execute", data } as unknown as Job;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    handlers.clear();
+    vi.mocked(prisma.queueTask.findUnique).mockResolvedValue({ userId: "user-1" } as never);
+    vi.mocked(prisma.queueTask.update).mockResolvedValue({} as never);
+    vi.mocked(addJobRun).mockResolvedValue({ id: "run-1" });
+    vi.mocked(pruneTaskRuns).mockResolvedValue(undefined);
+  });
+
+  it("records the run and then drops the task's oldest runs", async () => {
+    const handler = vi.fn().mockResolvedValue('{"ok":true}');
+    handlers.set("email_sync", { handler });
+
+    await processJob(queueJob({ taskId: "task-1", type: "email_sync", accountId: "acc-1" }));
+
+    expect(handler).toHaveBeenCalledWith({
+      config: { accountId: "acc-1" },
+      userId: "user-1",
+      modelId: undefined,
+    });
+    expect(updateJobRun).toHaveBeenCalledWith("run-1", {
+      status: "completed",
+      output: '{"ok":true}',
+      completedAt: expect.any(Date),
+    });
+    expect(pruneTaskRuns).toHaveBeenCalledWith("task-1");
+  });
+
+  it("marks the run failed and still prunes", async () => {
+    const handler = vi.fn().mockRejectedValue(new Error("imap down"));
+    handlers.set("email_sync", { handler });
+
+    await expect(processJob(queueJob({ taskId: "task-1", type: "email_sync" }))).rejects.toThrow(
+      "imap down",
+    );
+
+    expect(updateJobRun).toHaveBeenCalledWith("run-1", {
+      status: "error",
+      error: "imap down",
+      completedAt: expect.any(Date),
+    });
+    expect(pruneTaskRuns).toHaveBeenCalledWith("task-1");
   });
 });

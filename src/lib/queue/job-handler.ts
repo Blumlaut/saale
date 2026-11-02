@@ -4,7 +4,13 @@ import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { createSaaleAgentSession } from "@/lib/pi/agent-session";
-import { getQueue, addJobRun, updateJobRun, queueTaskSchedulerId } from "@/lib/queue";
+import {
+  getQueue,
+  addJobRun,
+  updateJobRun,
+  pruneTaskRuns,
+  queueTaskSchedulerId,
+} from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
@@ -196,5 +202,12 @@ export async function processJob(job: Job): Promise<void> {
     }
 
     throw err;
+  } finally {
+    // A job on a one-minute cron grows a run row faster than anyone reads one.
+    if (effectiveRunId) {
+      await pruneTaskRuns(taskId).catch((err) => {
+        console.error(`[queue/job-handler] Failed to prune runs of ${taskId}:`, err);
+      });
+    }
   }
 }
