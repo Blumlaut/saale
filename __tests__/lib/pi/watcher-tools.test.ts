@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({
-  prisma: { scriptWatcher: { findFirst: vi.fn() } },
+  prisma: {
+    scriptWatcher: { findFirst: vi.fn(), create: vi.fn() },
+    chatSession: { findFirst: vi.fn() },
+  },
 }));
 
 vi.mock("@/lib/queue", () => ({
@@ -20,6 +23,8 @@ import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockWatcher = prisma.scriptWatcher as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockChat = prisma.chatSession as any;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getTool = (name: string): any => {
@@ -67,6 +72,30 @@ const storedWatcher = (overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mockWatcher.findFirst.mockResolvedValue(storedWatcher());
+});
+
+describe("watcher_create", () => {
+  it("keeps the calling chat, so the script speaks as the chat that asked", async () => {
+    mockWatcher.findFirst.mockResolvedValue(null);
+    mockChat.findFirst.mockResolvedValue({ id: "chat-1" });
+    mockWatcher.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: "w-2",
+      ...data,
+    }));
+
+    const result = await callExecute(getTool("watcher_create"), {
+      name: "invoices",
+      script: "return undefined;",
+      cronExpression: "*/10 * * * *",
+      deliver: "silent",
+    });
+
+    expect(result.structuredContent).toEqual(expect.objectContaining({ created: true, id: "w-2" }));
+    const written = mockWatcher.create.mock.calls[0][0].data;
+    expect(written.originSessionId).toBe("chat-1");
+    // A silent watcher reports nowhere, so it holds no delivery target.
+    expect(written.sessionId).toBeNull();
+  });
 });
 
 describe("watcher_get", () => {
