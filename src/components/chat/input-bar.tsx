@@ -58,6 +58,8 @@ interface InputBarProps {
   isLoading: boolean;
   onStop: () => void;
   tokenUsage?: TokenUsage | null;
+  /** What the whole session has cost so far (0 when no turn reported usage). */
+  sessionCost?: number;
   isCompacting?: boolean;
   onCompact?: () => void;
   /** Bytes of the batch being sent, while they are still going up. */
@@ -78,6 +80,7 @@ export function InputBar({
   isLoading,
   onStop,
   tokenUsage,
+  sessionCost,
   isCompacting,
   onCompact,
   uploadProgress,
@@ -478,6 +481,7 @@ export function InputBar({
         {/* Context usage indicator */}
         <ContextCircle
           usage={tokenUsage ?? null}
+          sessionCost={sessionCost ?? 0}
           isCompacting={!!isCompacting}
           onCompact={onCompact ?? (() => {})}
         />

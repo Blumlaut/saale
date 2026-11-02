@@ -91,6 +91,30 @@ describe("ContextCircle", () => {
     expect(offset).toBeCloseTo(circumference / 2, 5);
   });
 
+  it("shows the whole session's cost in the tooltip", () => {
+    render(
+      <ContextCircle
+        usage={usage()}
+        sessionCost={0.1234}
+        isCompacting={false}
+        onCompact={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("button")).toHaveAttribute(
+      "title",
+      "Context 32K/128K (25%)\nIn 1K · Out 500\nSession cost $0.1234\nClick to compact",
+    );
+  });
+
+  it("leaves the cost line out when no turn reported usage", () => {
+    render(
+      <ContextCircle usage={usage()} sessionCost={0} isCompacting={false} onCompact={() => {}} />,
+    );
+
+    expect(screen.getByRole("button").getAttribute("title")).not.toContain("Session cost");
+  });
+
   it("says so when Pi has no context size yet", () => {
     render(
       <ContextCircle

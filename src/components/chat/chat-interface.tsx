@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -136,6 +136,13 @@ export function ChatInterface({
   const [pluginStatuses, setPluginStatuses] = useState<PluginStatusData[]>([]);
   const [pluginWidgets, setPluginWidgets] = useState<PluginWidgetData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
+
+  // The session's cost, summed over the turns already on screen (assistant
+  // turns only; a turn Pi reported no usage for adds zero).
+  const sessionCost = useMemo(
+    () => messages.reduce((sum, message) => sum + (message.stats?.cost ?? 0), 0),
+    [messages],
+  );
   const [isCompacting, setIsCompacting] = useState(false);
   // Tool Pi is running right now (from GET /messages. refresh recovery when
   // the SSE buffer replay is unavailable). Cleared when the tool ends.
@@ -1051,6 +1058,7 @@ export function ChatInterface({
             isLoading={isLoading}
             onStop={handleStop}
             tokenUsage={tokenUsage}
+            sessionCost={sessionCost}
             isCompacting={isCompacting}
             onCompact={handleCompact}
             uploadProgress={uploadProgress}

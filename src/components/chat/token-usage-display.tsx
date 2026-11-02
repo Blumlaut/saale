@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatTokens } from "@/lib/format";
+import { formatCost, formatTokens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TokenUsage } from "./types";
 
@@ -35,11 +35,13 @@ export function contextPercent(usage: TokenUsage | null): number | null {
  */
 interface ContextCircleProps {
   usage: TokenUsage | null;
+  /** What the whole session has cost so far. 0 hides the line. */
+  sessionCost?: number;
   isCompacting: boolean;
   onCompact: () => void;
 }
 
-export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleProps) {
+export function ContextCircle({ usage, sessionCost, isCompacting, onCompact }: ContextCircleProps) {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const size = 32; // 8px = h-8 w-8
@@ -77,6 +79,10 @@ export function ContextCircle({ usage, isCompacting, onCompact }: ContextCircleP
     tooltipLines.push(`In ${formatTokens(usage.input)} · Out ${formatTokens(usage.output)}`);
   } else {
     tooltipLines.push("No usage data yet");
+  }
+  const cost = sessionCost ?? 0;
+  if (cost > 0) {
+    tooltipLines.push(`Session cost ${formatCost(cost)}`);
   }
   if (!isCompacting) {
     tooltipLines.push("Click to compact");
