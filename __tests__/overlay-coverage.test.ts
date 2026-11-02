@@ -91,7 +91,11 @@ function bareGridClasses(source: string): string[] {
 
 describe("overlay coverage", () => {
   const components = overlayComponents();
-  const registered = new Set(MODAL_SCENARIOS.flatMap((scenario) => scenario.sources));
+  const registered = new Set(
+    MODAL_SCENARIOS.filter((scenario) => scenario.kind !== "popover").flatMap(
+      (scenario) => scenario.sources,
+    ),
+  );
 
   it("finds overlay components to check", () => {
     expect(components.length).toBeGreaterThan(10);

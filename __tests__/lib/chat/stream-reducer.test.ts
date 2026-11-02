@@ -296,6 +296,23 @@ describe("streamReducer", () => {
     expect(s.messages[0]!.thinking).toBe("thought");
   });
 
+  it("turn_end carries the turn's stats onto the bubble", () => {
+    const stats = {
+      model: { provider: "anthropic", name: "claude-sonnet-4.5", responseModel: null },
+      tokens: { input: 10, output: 2, cacheRead: 0, cacheWrite: 0 },
+      cost: 0.25,
+      costFromProvider: false,
+      context: {
+        tokens: 1000,
+        window: 200000,
+        parts: { systemPrompt: 100, toolResults: 500, userMessages: 100, responses: 300 },
+      },
+    };
+    let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
+    s = streamReducer(s, { type: "turn_end", turnId: "t1", text: "answer", stats });
+    expect(s.messages[0]!.stats).toEqual(stats);
+  });
+
   it("turn_discarded drops the retried turn's bubble", () => {
     let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
     s = streamReducer(s, { type: "token", turnId: "t1", text: "half an answer" });

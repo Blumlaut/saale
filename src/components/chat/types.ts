@@ -1,3 +1,5 @@
+import type { TurnStats } from "@/lib/pi/turn-stats";
+
 export interface ToolCallData {
   id: string;
   name: string;
@@ -119,6 +121,8 @@ export interface Message {
   toolCalls: ToolCallData[] | undefined;
   parentMessageId: string | undefined;
   createdAt: string;
+  /** What the turn cost and how it filled the context (assistant turns only). */
+  stats?: TurnStats | undefined;
   /**
    * The server turn that produced this message (client-side only). Live turns
    * are also identified by their `streaming-{turnId}` id, but `message_saved`

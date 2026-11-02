@@ -11,18 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { formatTokens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TokenUsage } from "./types";
-
-/**
- * Format token count as human-readable string.
- * e.g. 1234 → "1.2K", 1234567 → "1.2M"
- */
-function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-  return count.toString();
-}
 
 /**
  * Percent of the context window in use.

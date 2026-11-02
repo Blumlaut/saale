@@ -41,6 +41,22 @@ export function truncatePath(path: string, max: number): string {
   return `…/${separator === -1 ? cut : cut.slice(separator + 1)}`;
 }
 
+/** Token count at a glance: `840`, `8.4K`, `120K`, `1.2M`. Whole thousands keep no ".0". */
+export function formatTokens(value: number): string {
+  const oneDecimal = (scaled: number) => {
+    const text = scaled.toFixed(1);
+    return text.endsWith(".0") ? text.slice(0, -2) : text;
+  };
+  if (value >= 1_000_000) return `${oneDecimal(value / 1_000_000)}M`;
+  if (value >= 1_000) return `${oneDecimal(value / 1_000)}K`;
+  return String(Math.round(value));
+}
+
+/** Dollar amount: cents above a dollar, four decimals below, so a cheap turn still shows a number. */
+export function formatCost(value: number): string {
+  return `$${value.toFixed(value < 1 ? 4 : 2)}`;
+}
+
 /** Spell a count with its unit. `plural(1, "email", "emails")` → `"1 email"`. */
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;

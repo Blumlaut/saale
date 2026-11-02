@@ -20,6 +20,7 @@ import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
 import { CopyButton } from "./copy-button";
+import { MessageStats } from "./message-stats";
 import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallGroup } from "./tool-call-group";
 import { CompactActivity } from "./compact-activity";
@@ -1133,12 +1134,7 @@ function AssistantGroupImpl({
         {/* Single timestamp + copy action for the group */}
         {timestamp && (
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">
-              {new Date(timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
+            <MessageStats turns={messages.map((message) => message.stats)} createdAt={timestamp} />
             {copyText && (
               <CopyButton
                 text={copyText}

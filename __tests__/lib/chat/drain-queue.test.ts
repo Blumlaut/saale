@@ -22,6 +22,7 @@ function message(id: string, queuedAt = new Date("2026-01-01T00:00:00Z")): Queue
     createdAt: queuedAt,
     editedAt: null,
     queuedAt,
+    stats: null,
     attachments: [],
   };
 }

@@ -20,6 +20,11 @@ export interface ModalScenario {
   path: string;
   /** Component file(s) rendering the overlay  verified by the coverage test. */
   sources: string[];
+  /**
+   * Which primitive the overlay is. A popover is measured like a modal but is
+   * not required to register, since menus and pickers open one on every page.
+   */
+  kind?: "modal" | "popover";
   /** Opens the overlay from a freshly loaded page. */
   open?: (page: Page) => Promise<void>;
   /** Stubs installed before navigation (fixtures the app can't create offline). */
@@ -93,6 +98,7 @@ const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
 const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
 const SETTINGS = settingsSection("profile").href;
+const MESSAGE_STATS = "src/components/chat/message-stats.tsx";
 
 /** Realistic ED25519 public key  the content that used to widen the dialog. */
 const SSH_PUBLIC_KEY =
@@ -582,6 +588,63 @@ async function gotoChatSession(page: Page, sessionId: string) {
   await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
 }
 
+/**
+ * One saved answer carrying the stats a real run writes, so the message card
+ * has numbers to lay out  a model run is not part of a layout check.
+ */
+async function mockMessageStats(page: Page): Promise<void> {
+  const createdAt = "2026-11-02T14:32:00.000Z";
+  await page.route(/\/api\/chat\/sessions\/[^/]+\/messages(\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        messages: [
+          {
+            id: "e2e-stats-user",
+            role: "user",
+            content: "How much does one of these answers cost me?",
+            thinking: null,
+            toolCalls: null,
+            parentMessageId: null,
+            createdAt,
+            attachments: [],
+          },
+          {
+            id: "e2e-stats-assistant",
+            role: "assistant",
+            content:
+              "About three cents a reply, and most of it is the re-sent history rather than the new text.",
+            thinking: null,
+            toolCalls: null,
+            parentMessageId: null,
+            createdAt,
+            attachments: [],
+            stats: {
+              model: {
+                provider: "anthropic",
+                name: "claude-sonnet-4.5",
+                responseModel: null,
+              },
+              tokens: { input: 8412, output: 1204, cacheRead: 41200, cacheWrite: 0 },
+              cost: 0.0312,
+              costFromProvider: true,
+              context: {
+                tokens: 120000,
+                window: 200000,
+                parts: {
+                  systemPrompt: 12400,
+                  toolResults: 68900,
+                  userMessages: 9100,
+                  responses: 29600,
+                },
+              },
+            },
+          },
+        ],
+      },
+    }),
+  );
+}
+
 /** A project list and one project's chats, so the coder overlays have rows. */
 async function mockCoderProjects(page: Page) {
   // The project's chat list reads the chat endpoint, filtered by project.
@@ -1014,6 +1077,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await gotoChatSession(page, await ensureChatSession(page));
       await click(page, 'button[aria-label*="compact" i]');
+    },
+  },
+  {
+    name: "chat · message stats",
+    path: "/dashboard/chat",
+    kind: "popover",
+    sources: [MESSAGE_STATS],
+    mock: mockMessageStats,
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      // A tap opens it, which is also how a phone reaches it.
+      await click(page, 'button[aria-label="Token usage and cost for this response"]');
     },
   },
   {

@@ -1,6 +1,7 @@
 import type { ChatAttachment, ChatMessage } from "@prisma/client";
 import type { AttachmentData, Message } from "@/components/chat/types";
 import { parseStoredToolCalls, redactToolCallsForShare } from "@/lib/chat/redact-tool-calls";
+import { parseTurnStats } from "@/lib/pi/turn-stats";
 
 /**
  * DB row → client message shape.
@@ -84,6 +85,7 @@ export function serializeChatMessage(message: ChatMessageWithAttachments): Messa
       : undefined,
     parentMessageId: message.parentMessageId || undefined,
     createdAt: message.createdAt.toISOString(),
+    ...(message.stats ? { stats: parseTurnStats(message.stats) } : {}),
     attachments: message.attachments.map(serializeAttachment),
     ...(message.role === "compaction"
       ? { compaction: { tokensBefore: message.thinking ? parseInt(message.thinking, 10) : 0 } }

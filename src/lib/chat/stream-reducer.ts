@@ -1,5 +1,6 @@
 import type { Message, ToolCallData } from "@/components/chat/types";
 import { appendTextChunk } from "@/lib/pi/streamed-text";
+import type { TurnStats } from "@/lib/pi/turn-stats";
 import { isStreamingMessage, makeStreamingMessage } from "./message-factories";
 
 /**
@@ -62,7 +63,13 @@ export type StreamAction =
     }
   | { type: "tool_update"; turnId: string; toolCallId: string; partialResult?: string }
   | { type: "tool_end"; turnId: string; toolCallId: string; result?: string; isError?: boolean }
-  | { type: "turn_end"; turnId: string; text?: string; thinking?: string | null }
+  | {
+      type: "turn_end";
+      turnId: string;
+      text?: string;
+      thinking?: string | null;
+      stats?: TurnStats | null;
+    }
   /** `receivedAt` is the client clock when the event arrived (see `Message.savedAt`). */
   | { type: "message_saved"; turnId: string; messageId: string; receivedAt?: number }
   /** The SDK discarded a failed turn to retry it. drop the live bubble. */
@@ -307,6 +314,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
         messages: ensureTurnMessage(state.messages, action.turnId, state.rootMessageId, {
           ...(action.text ? { content: action.text } : {}),
           ...(action.thinking ? { thinking: action.thinking } : {}),
+          ...(action.stats ? { stats: action.stats } : {}),
         }),
       };
 

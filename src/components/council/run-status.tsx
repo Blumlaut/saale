@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatCost, formatTokens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { CouncilRunView } from "@/types/council";
 import type { CouncilRunTotals } from "./use-council-stream";
@@ -80,16 +81,6 @@ function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${Math.round(seconds % 60)}s`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
-function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return String(Math.round(value));
-}
-
-function formatCost(value: number): string {
-  return `$${value.toFixed(value < 1 ? 4 : 2)}`;
 }
 
 /** A ceiling and how much of it is spent. `null` ceiling = unlimited. */

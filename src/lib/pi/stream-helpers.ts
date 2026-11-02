@@ -1,4 +1,7 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db";
+import type { TurnStats } from "./turn-stats";
 
 /** A tool call as persisted on an assistant message. */
 export interface SavedToolCall {
@@ -28,6 +31,8 @@ export interface SaveAssistantMessageInput {
    * row with its save time would sort that message above it.
    */
   createdAt?: Date | undefined;
+  /** Cost and context breakdown for the turn. Absent leaves the column as it is. */
+  stats?: TurnStats | undefined;
 }
 
 /**
@@ -49,6 +54,7 @@ export async function saveAssistantMessage(
     messageId,
     errorMessage,
     createdAt,
+    stats,
   } = input;
 
   const data = {
@@ -56,6 +62,7 @@ export async function saveAssistantMessage(
     thinking: thinking || null,
     toolCalls: toolCalls && toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
     errorMessage: errorMessage || null,
+    ...(stats ? { stats: stats as unknown as Prisma.InputJsonValue } : {}),
   };
 
   if (messageId) {

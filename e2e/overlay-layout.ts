@@ -3,7 +3,7 @@ import { expect, type Page } from "@playwright/test";
 /**
  * Overlay layout contract (enforced by `modal-overflow.spec.ts`).
  *
- * An open overlay (dialog, alert dialog, sheet) must fit inside the viewport
+ * An open overlay (dialog, alert dialog, sheet, popover) must fit inside the viewport
  * and must never scroll horizontally as a whole:
  *
  *   1. The popup itself has no horizontal overflow (`scrollWidth <= clientWidth`)
@@ -25,6 +25,7 @@ export const OVERLAY_SELECTORS = [
   '[data-slot="dialog-content"]',
   '[data-slot="sheet-content"]',
   '[data-slot="alert-dialog-content"]',
+  '[data-slot="popover-content"]',
 ];
 
 /** The same selectors, restricted to visible popups. */

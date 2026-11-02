@@ -284,6 +284,9 @@ model ChatMessage {
   /// was already running). Cleared when it is handed to the agent, which is
   /// also what moves it from the queue strip into the conversation.
   queuedAt        DateTime?
+  /// What the turn cost and how it filled the context, see
+  /// `src/lib/pi/turn-stats.ts`. Null for user turns and rows saved before it.
+  stats           Json?
   session         ChatSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   attachments     ChatAttachment[]
 

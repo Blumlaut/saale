@@ -70,7 +70,7 @@ describe("ContextCircle", () => {
     const ring = screen.getByRole("button");
     expect(ring).toHaveAttribute(
       "title",
-      "Context 32.0K/128.0K (25%)\nIn 1.0K · Out 500\nClick to compact",
+      "Context 32K/128K (25%)\nIn 1K · Out 500\nClick to compact",
     );
     expect(ring).toHaveAttribute("aria-label", expect.stringContaining("25%"));
   });
@@ -102,7 +102,7 @@ describe("ContextCircle", () => {
 
     expect(screen.getByRole("button")).toHaveAttribute(
       "title",
-      "Context usage unavailable\nIn 1.0K · Out 500\nClick to compact",
+      "Context usage unavailable\nIn 1K · Out 500\nClick to compact",
     );
   });
 

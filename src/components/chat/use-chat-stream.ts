@@ -9,6 +9,7 @@ import type {
   TokenUsage,
 } from "./types";
 import { streamReducer, type StreamAction } from "@/lib/chat/stream-reducer";
+import type { TurnStats } from "@/lib/pi/turn-stats";
 
 /**
  * How long the client tolerates silence from the SSE connection before
@@ -484,15 +485,19 @@ export function wireStreamListeners(opts: StreamListenerOpts) {
 
   eventSource.addEventListener("turn_end", (event: MessageEvent) => {
     markLoading();
-    const parsed = parseEvent<{ turnId: string; text?: string; thinking?: string | null }>(
-      event.data,
-    );
+    const parsed = parseEvent<{
+      turnId: string;
+      text?: string;
+      thinking?: string | null;
+      stats?: TurnStats | null;
+    }>(event.data);
     if (parsed) {
       dispatch({
         type: "turn_end",
         turnId: parsed.turnId,
         ...(parsed.text !== undefined ? { text: parsed.text } : {}),
         ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+        ...(parsed.stats ? { stats: parsed.stats } : {}),
       });
     }
   });

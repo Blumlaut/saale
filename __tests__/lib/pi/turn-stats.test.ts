@@ -1,0 +1,228 @@
+import { describe, it, expect } from "vitest";
+import {
+  TURN_STATS_PARTS,
+  buildTurnStats,
+  estimateContextParts,
+  mergeTurnStats,
+  parseTurnStats,
+  scaleContextParts,
+  type TurnStats,
+} from "@/lib/pi/turn-stats";
+
+/**
+ * The card shows Pi's context total and a breakdown it has to measure itself,
+ * so the invariant that matters is that the four parts always add up to the
+ * total printed beside them, whatever the transcript looks like.
+ */
+
+function stats(overrides: Partial<TurnStats> = {}): TurnStats {
+  return {
+    model: { provider: "anthropic", name: "claude-sonnet-4.5", responseModel: null },
+    tokens: { input: 100, output: 20, cacheRead: 0, cacheWrite: 0 },
+    cost: 0.5,
+    costFromProvider: true,
+    context: {
+      tokens: 1000,
+      window: 200000,
+      parts: { systemPrompt: 100, tools: 400, userMessages: 100, responses: 400 },
+    },
+    ...overrides,
+  };
+}
+
+describe("estimateContextParts", () => {
+  it("splits the transcript by role, at roughly four characters per token", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "s".repeat(400),
+      messages: [
+        { role: "user", content: [{ type: "text", text: "u".repeat(400) }] },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "a".repeat(400) },
+            { type: "toolCall", arguments: { query: "x" } },
+          ],
+        },
+        { role: "toolResult", content: [{ type: "text", text: "t".repeat(800) }] },
+      ],
+    });
+
+    expect(parts.systemPrompt).toBe(100);
+    expect(parts.userMessages).toBe(100);
+    // 800 chars of tool result plus the serialized arguments of the call.
+    expect(parts.tools).toBeGreaterThanOrEqual(200);
+    expect(parts.tools).toBeLessThan(230);
+    // The prose only: the arguments went to tools.
+    expect(parts.responses).toBe(100);
+  });
+
+  it("counts thinking and ignores images, which have no text to measure", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "h".repeat(200) },
+            { type: "image", data: "AAAA", mimeType: "image/png" },
+          ],
+        },
+        { role: "toolResult", content: [{ type: "image", data: "AAAA", mimeType: "image/png" }] },
+      ],
+    });
+
+    expect(parts.responses).toBe(50);
+    expect(parts.tools).toBe(0);
+  });
+
+  it("skips messages that carry no content", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [{ role: "bashExecution" }, { role: "user", content: "u".repeat(40) }],
+    });
+    expect(parts.userMessages).toBe(10);
+  });
+});
+
+describe("scaleContextParts", () => {
+  it("scales the parts onto Pi's total and keeps the sum exact", () => {
+    const scaled = scaleContextParts(
+      { systemPrompt: 1, tools: 2, userMessages: 3, responses: 4 },
+      100,
+    );
+    expect(scaled).toEqual({ systemPrompt: 10, tools: 20, userMessages: 30, responses: 40 });
+  });
+
+  it("puts the rounding drift on the largest part, so the sum still matches", () => {
+    const scaled = scaleContextParts(
+      { systemPrompt: 1, tools: 1, userMessages: 1, responses: 1 },
+      10,
+    );
+    expect(TURN_STATS_PARTS.reduce((acc, key) => acc + scaled[key], 0)).toBe(10);
+    expect(Math.max(...TURN_STATS_PARTS.map((key) => scaled[key]))).toBe(3);
+    expect(scaled.responses).toBe(3);
+  });
+
+  it("leaves the estimates alone when the total is unknown or empty", () => {
+    const raw = { systemPrompt: 11, tools: 22, userMessages: 33, responses: 44 };
+    expect(scaleContextParts(raw, null)).toEqual(raw);
+    expect(scaleContextParts(raw, 0)).toEqual(raw);
+    expect(
+      scaleContextParts({ systemPrompt: 0, tools: 0, userMessages: 0, responses: 0 }, 10),
+    ).toEqual({ systemPrompt: 0, tools: 0, userMessages: 0, responses: 0 });
+  });
+});
+
+describe("buildTurnStats", () => {
+  it("reads usage, cost and the model off the assistant message", () => {
+    const built = buildTurnStats({
+      message: {
+        provider: "openrouter",
+        model: "anthropic/claude-sonnet-4.5",
+        responseModel: "claude-sonnet-4.5-20260101",
+        usage: {
+          input: 1200,
+          output: 300,
+          cacheRead: 8000,
+          cacheWrite: 100,
+          cost: { total: 0.0421, totalFromProvider: true },
+        },
+      },
+      systemPrompt: "s".repeat(400),
+      messages: [{ role: "user", content: "u".repeat(400) }],
+      context: { tokens: 9000, contextWindow: 200000 },
+    });
+
+    expect(built.model).toEqual({
+      provider: "openrouter",
+      name: "anthropic/claude-sonnet-4.5",
+      responseModel: "claude-sonnet-4.5-20260101",
+    });
+    expect(built.tokens).toEqual({ input: 1200, output: 300, cacheRead: 8000, cacheWrite: 100 });
+    expect(built.cost).toBeCloseTo(0.0421);
+    expect(built.costFromProvider).toBe(true);
+    expect(built.context.window).toBe(200000);
+    const sum = TURN_STATS_PARTS.reduce((acc, key) => acc + built.context.parts[key], 0);
+    expect(sum).toBe(9000);
+  });
+
+  it("keeps a provider that reports nothing at zero rather than guessing", () => {
+    const built = buildTurnStats({
+      message: { provider: "local", model: "qwen3" },
+      systemPrompt: "",
+      messages: [],
+      context: { tokens: null, contextWindow: 32000 },
+    });
+
+    expect(built.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    expect(built.cost).toBe(0);
+    expect(built.costFromProvider).toBe(false);
+    expect(built.context.tokens).toBeNull();
+    expect(built.context.parts).toEqual({
+      systemPrompt: 0,
+      tools: 0,
+      userMessages: 0,
+      responses: 0,
+    });
+  });
+});
+
+describe("mergeTurnStats", () => {
+  it("adds up a multi-turn answer and takes model and context from its last turn", () => {
+    const merged = mergeTurnStats([
+      stats({ tokens: { input: 10, output: 1, cacheRead: 100, cacheWrite: 0 }, cost: 0.1 }),
+      stats({
+        model: { provider: "openai", name: "gpt-6.1-sol", responseModel: null },
+        tokens: { input: 20, output: 2, cacheRead: 200, cacheWrite: 5 },
+        cost: 0.2,
+        context: {
+          tokens: 5000,
+          window: 400000,
+          parts: { systemPrompt: 1, tools: 2, userMessages: 3, responses: 4 },
+        },
+      }),
+    ]);
+
+    expect(merged?.tokens).toEqual({ input: 30, output: 3, cacheRead: 300, cacheWrite: 5 });
+    expect(merged?.cost).toBeCloseTo(0.3);
+    expect(merged?.model.name).toBe("gpt-6.1-sol");
+    expect(merged?.context.tokens).toBe(5000);
+  });
+
+  it("calls the total estimated when any turn of the group was estimated", () => {
+    expect(mergeTurnStats([stats(), stats({ costFromProvider: false })])?.costFromProvider).toBe(
+      false,
+    );
+    expect(mergeTurnStats([stats(), stats()])?.costFromProvider).toBe(true);
+  });
+
+  it("has nothing to show when no turn recorded stats", () => {
+    expect(mergeTurnStats([])).toBeUndefined();
+    expect(mergeTurnStats([undefined, undefined])).toBeUndefined();
+  });
+});
+
+describe("parseTurnStats", () => {
+  it("reads a stored column back", () => {
+    expect(parseTurnStats(JSON.parse(JSON.stringify(stats())))).toEqual(stats());
+  });
+
+  it("reads a row written before the tool slice was renamed", () => {
+    const legacy = JSON.parse(JSON.stringify(stats())) as Record<string, unknown>;
+    const context = legacy.context as { parts: Record<string, number> };
+    context.parts = { systemPrompt: 100, toolResults: 400, userMessages: 100, responses: 400 };
+
+    expect(parseTurnStats(legacy)?.context.parts).toEqual({
+      systemPrompt: 100,
+      tools: 400,
+      userMessages: 100,
+      responses: 400,
+    });
+  });
+
+  it("drops anything that is not a stats object", () => {
+    expect(parseTurnStats(null)).toBeUndefined();
+    expect(parseTurnStats({ model: { provider: "x" } })).toBeUndefined();
+    expect(parseTurnStats("nonsense")).toBeUndefined();
+  });
+});
