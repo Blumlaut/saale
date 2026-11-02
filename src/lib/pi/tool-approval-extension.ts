@@ -20,7 +20,8 @@
  *    (see `approval-scope.ts`).
  * 4. A call already covered by the script approval the user gave. runs.
  * 5. `auto` on a command-aware tool (`bash`, `infra_exec`). the command decides;
- *    risky ones ask, safe ones run.
+ *    risky ones ask, safe ones run. A coder chat judges the command by the
+ *    workspace instead (see `escapesWorkspace`).
  * 6. `ask`. the user decides.
  * 7. `allow`. runs.
  *
@@ -29,11 +30,17 @@
  * write or reach outside the workspace asks. Unknown stays `ask` — fail closed.
  */
 
-import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  ExtensionFactory,
+  ToolCallEvent,
+  ToolCallEventResult,
+} from "@earendil-works/pi-coding-agent";
 import type { McpToolPolicy } from "@/lib/mcp/shared";
 import { grantApprovalScope, isApprovalScopeGranted, releaseApprovalScope } from "./approval-scope";
 import { isAutoApproveActive } from "./auto-approve";
-import { classifyCommand } from "./command-classifier";
+import { classifyCommand, escapesWorkspace, type WorkspaceScope } from "./command-classifier";
 import { readScriptToolReferences, resolveReferencedTools } from "./codemode-script";
 import {
   APPROVAL_TIMEOUT_MS,
@@ -46,6 +53,9 @@ import { resolveToolPolicy, type ToolPolicyContext } from "./tool-policy";
 /** Tools whose "auto" policy is decided from the command they run. */
 const COMMAND_AWARE_TOOLS = new Set(["infra_exec", "bash"]);
 
+/** The command-aware tools that run inside the workspace, so its scope can be judged. */
+const WORKSPACE_COMMAND_TOOLS = new Set(["bash"]);
+
 export interface ToolApprovalOptions {
   userId: string;
   /** ChatSession/agent session id the approval card is published under. */
@@ -54,6 +64,11 @@ export interface ToolApprovalOptions {
   toolPolicies: Record<string, string> | null | undefined;
   /** Policy per MCP server, keyed by `mcpNameKey(name)`. */
   mcpServerPolicies?: Record<string, McpToolPolicy>;
+  /**
+   * The workspace a coder chat works in. Given, a shell command is judged by
+   * whether it stays inside it instead of by the safety classifier.
+   */
+  commandScope?: WorkspaceScope | undefined;
   /** Where an approval request goes: the web session bus, a Telegram card, … */
   emitApprovalRequest: (request: ApprovalRequest) => void;
 }
@@ -67,64 +82,18 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
 
   return (pi) => {
     pi.on("tool_call", async (event, ctx) => {
-      const toolName = event.toolName;
-      const input = event.input as Record<string, unknown>;
-      const policy = resolveToolPolicy(toolName, policies, {
-        readOnly: isReadOnlyTool(pi, toolName),
-      });
-
-      if (policy === "off") {
-        return { block: true, reason: `Tool "${toolName}" is disabled in the user's settings.` };
+      try {
+        return await decideCall(event, ctx, pi, policies, options);
+      } catch (err) {
+        // A handler that throws takes the whole run down with it. Refusing the
+        // one call is the answer this gate never turns into a yes, and the chat
+        // carries on to whatever the model does next.
+        console.error(`Failed to decide the approval for tool "${event.toolName}":`, err);
+        return {
+          block: true,
+          reason: `Tool call "${event.toolName}" was blocked: Saale could not decide its approval.`,
+        };
       }
-
-      // Accepting everything that would ask; `off` never comes back this way.
-      if (await isAutoApproveActive(options.userId)) return undefined;
-
-      // A script is one decision covering the calls it announces.
-      if (toolName === CODEMODE_TOOL_NAME && !event.parentToolCallId) {
-        return decideScript({
-          policy,
-          toolCallId: event.toolCallId,
-          input,
-          pi,
-          context: policies,
-          gate: options,
-          signal: ctx.signal,
-        });
-      }
-
-      // The user already approved this call as part of the script that
-      // announced it; asking again would undo the one-click decision.
-      if (
-        isApprovalScopeGranted({
-          sessionId: options.sessionId,
-          toolCallId: event.toolCallId,
-          toolName,
-        })
-      ) {
-        return undefined;
-      }
-
-      if (policy === "auto") {
-        // "auto" on a tool whose decision is not made from its arguments is
-        // just "allow".
-        if (!COMMAND_AWARE_TOOLS.has(toolName)) return undefined;
-        const command = typeof input.command === "string" ? input.command : "";
-        const classification = command
-          ? classifyCommand(command)
-          : { safety: "risky" as const, reason: "no command provided" };
-        if (classification.safety !== "risky") return undefined;
-      } else if (policy !== "ask") {
-        return undefined;
-      }
-
-      return ask({
-        toolCallId: event.toolCallId,
-        toolName,
-        input,
-        gate: options,
-        signal: ctx.signal,
-      });
     });
 
     // The script has finished (or was aborted): its approval covers nothing.
@@ -135,6 +104,87 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
       return undefined;
     });
   };
+}
+
+/**
+ * One call's decision.
+ *
+ * Kept in its own function so the handler above can answer a failure anywhere
+ * in it with a block, rather than letting the error reach the run.
+ */
+async function decideCall(
+  event: ToolCallEvent,
+  ctx: ExtensionContext,
+  pi: ExtensionAPI,
+  policies: ToolPolicyContext,
+  options: ToolApprovalOptions,
+): Promise<ToolCallEventResult | undefined> {
+  const toolName = event.toolName;
+  const input = event.input as Record<string, unknown>;
+  const policy = resolveToolPolicy(toolName, policies, {
+    readOnly: isReadOnlyTool(pi, toolName),
+  });
+
+  if (policy === "off") {
+    return { block: true, reason: `Tool "${toolName}" is disabled in the user's settings.` };
+  }
+
+  // Accepting everything that would ask; `off` never comes back this way.
+  if (await isAutoApproveActive(options.userId)) return undefined;
+
+  // A script is one decision covering the calls it announces.
+  if (toolName === CODEMODE_TOOL_NAME && !event.parentToolCallId) {
+    return decideScript({
+      policy,
+      toolCallId: event.toolCallId,
+      input,
+      pi,
+      context: policies,
+      gate: options,
+      signal: ctx.signal,
+    });
+  }
+
+  // The user already approved this call as part of the script that
+  // announced it; asking again would undo the one-click decision.
+  if (
+    isApprovalScopeGranted({
+      sessionId: options.sessionId,
+      toolCallId: event.toolCallId,
+      toolName,
+    })
+  ) {
+    return undefined;
+  }
+
+  if (policy === "auto") {
+    // "auto" on a tool whose decision is not made from its arguments is
+    // just "allow".
+    if (!COMMAND_AWARE_TOOLS.has(toolName)) return undefined;
+    const command = typeof input.command === "string" ? input.command : "";
+
+    // A coder chat's boundary is the workspace, so work inside it runs and
+    // a command that leaves it follows the user's own policy for the tool.
+    if (options.commandScope && WORKSPACE_COMMAND_TOOLS.has(toolName)) {
+      if (command && !escapesWorkspace(command, options.commandScope)) return undefined;
+      if (policies.toolPolicies?.[toolName] === "allow") return undefined;
+    } else {
+      const classification = command
+        ? classifyCommand(command)
+        : { safety: "risky" as const, reason: "no command provided" };
+      if (classification.safety !== "risky") return undefined;
+    }
+  } else if (policy !== "ask") {
+    return undefined;
+  }
+
+  return ask({
+    toolCallId: event.toolCallId,
+    toolName,
+    input,
+    gate: options,
+    signal: ctx.signal,
+  });
 }
 
 /** Put one call to the user, and turn the answer into a block or a pass. */

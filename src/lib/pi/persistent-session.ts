@@ -58,6 +58,12 @@ export async function createPersistentSession(options: {
   /** Approval channel for the tools Pi extensions register; without it they are neither connected nor gated. */
   emitApprovalRequest?: ((request: ApprovalRequest) => void) | undefined;
   toolPolicies?: Record<string, string> | null | undefined;
+  /**
+   * Judge shell commands by the workspace instead of the safety classifier.
+   * Set for a coder chat, whose boundary is the workspace rather than a safe
+   * command's read-only nature.
+   */
+  commandScope?: "workspace" | undefined;
   mcp?: boolean;
 }): Promise<CreateAgentSessionResult> {
   // Ensure session directory exists
@@ -120,6 +126,7 @@ export async function createPersistentSession(options: {
               userId: options.userId,
               sessionId: options.sessionId,
               toolPolicies: options.toolPolicies,
+              ...(options.commandScope ? { commandScope: options.commandScope } : {}),
               emitApprovalRequest: options.emitApprovalRequest,
             },
           }

@@ -5,7 +5,7 @@ import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
 import { buildCoderSystemPrompt } from "./coder-prompt";
-import { resolveCoderToolConfig } from "./coder-tools";
+import { resolveCoderToolConfig, resolveCoderToolPolicies } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import { previewConfig } from "@/lib/preview/config";
 import type { ApprovalRequest } from "./tool-approval-gate";
@@ -169,6 +169,11 @@ export async function createChatAgentSession(
     : stored
       ? { ...stored }
       : {};
+  // A coder chat asks about less: its own policies stand open on the file tools,
+  // and the gate judges its shell commands by the workspace.
+  const toolPolicies = chatSession.projectId
+    ? resolveCoderToolPolicies(options.toolPolicies)
+    : options.toolPolicies;
 
   const result = await createPersistentSession({
     userId,
@@ -181,8 +186,9 @@ export async function createChatAgentSession(
     ...(model ? { modelProvider: model.provider, modelName: model.name } : {}),
     ...(chatSession.thinkingLevel ? { thinkingLevel: chatSession.thinkingLevel } : {}),
     emitApprovalRequest: options.emitApprovalRequest,
-    toolPolicies: options.toolPolicies,
+    toolPolicies,
     mcp: true,
+    ...(chatSession.projectId ? { commandScope: "workspace" as const } : {}),
     systemPrompt: await buildSessionPrompt({
       userId,
       projectId: chatSession.projectId,

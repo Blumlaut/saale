@@ -213,6 +213,50 @@ describe("tool approval gate", () => {
       expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
     });
 
+    it("runs a command inside the workspace in a coder chat", async () => {
+      const { call } = setup({
+        gate: {
+          commandScope: { root: "/w/user-1", cwd: "/w/user-1/projects/shop/worktrees/chat" },
+        },
+      });
+      expect(await call({ toolName: "bash", input: { command: "rm -rf node_modules" } })).toBe(
+        undefined,
+      );
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
+    it("asks about a command that leaves the workspace in a coder chat", async () => {
+      const { call } = setup({
+        gate: {
+          commandScope: { root: "/w/user-1", cwd: "/w/user-1/projects/shop/worktrees/chat" },
+        },
+      });
+      await call({ toolName: "bash", input: { command: "git push origin main" } });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs a command that leaves the workspace when the user allowed the tool", async () => {
+      const { call } = setup({
+        gate: {
+          toolPolicies: { bash: "allow" },
+          commandScope: { root: "/w/user-1", cwd: "/w/user-1/projects/shop/worktrees/chat" },
+        },
+      });
+      expect(await call({ toolName: "bash", input: { command: "git push" } })).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
+    it("judges infra_exec by its own classifier, not by the workspace", async () => {
+      const { call } = setup({
+        gate: {
+          commandScope: { root: "/w/user-1", cwd: "/w/user-1/projects/shop/worktrees/chat" },
+        },
+      });
+      expect(await call({ toolName: "infra_exec", input: { command: "ls" } })).toBeUndefined();
+      await call({ toolName: "infra_exec", input: { command: "rm -rf /var/www" } });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
     it("treats auto on any other tool as allow", async () => {
       const { call } = setup({ gate: { toolPolicies: { write: "auto" } } });
       expect(await call({ toolName: "write", input: { filePath: "a.txt" } })).toBeUndefined();

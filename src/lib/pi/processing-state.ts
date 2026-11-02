@@ -267,6 +267,8 @@ export interface AgentResourceOptions {
     /** ChatSession/agent session id used on approval cards. */
     sessionId: string;
     toolPolicies: Record<string, string> | null | undefined;
+    /** Set for a coder chat: shell commands are judged by the workspace. */
+    commandScope?: "workspace" | undefined;
     emitApprovalRequest: (request: ApprovalRequest) => void;
   };
 }
@@ -300,6 +302,9 @@ export async function createAgentResourceLoader(
         sessionId: interactive.sessionId,
         toolPolicies: interactive.toolPolicies,
         mcpServerPolicies: mcp?.policies ?? {},
+        ...(interactive.commandScope === "workspace" && options.workspace
+          ? { commandScope: { root: options.workspace.root, cwd: options.workspace.cwd } }
+          : {}),
         emitApprovalRequest: interactive.emitApprovalRequest,
       }),
     );

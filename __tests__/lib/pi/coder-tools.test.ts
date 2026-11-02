@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CODER_TOOL_DEFAULTS, resolveCoderToolConfig } from "@/lib/pi/coder-tools";
+import {
+  CODER_TOOL_DEFAULTS,
+  resolveCoderToolConfig,
+  resolveCoderToolPolicies,
+} from "@/lib/pi/coder-tools";
 import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 import { findProperty } from "@/lib/settings/properties";
 
@@ -31,6 +35,21 @@ describe("coder tool config", () => {
     const config = resolveCoderToolConfig({ email: "yes", terminal: null });
     expect(config.email).toBe(false);
     expect(config.terminal).toBe(true);
+  });
+});
+
+describe("coder tool policies", () => {
+  it("leaves the file tools open", () => {
+    const policies = resolveCoderToolPolicies(null);
+    expect(policies.write).toBe("allow");
+    expect(policies.edit).toBe("allow");
+  });
+
+  it("keeps a policy the user set", () => {
+    const policies = resolveCoderToolPolicies({ write: "off", mail_send: "ask" });
+    expect(policies.write).toBe("off");
+    expect(policies.edit).toBe("allow");
+    expect(policies.mail_send).toBe("ask");
   });
 });
 

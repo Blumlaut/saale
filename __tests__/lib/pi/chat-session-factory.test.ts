@@ -167,6 +167,46 @@ describe("chat session factory", () => {
       expect(chatPrompt).not.toContain("Never add a dependency without asking.");
     });
 
+    it("hands a coder chat the workspace scope and its own policies", async () => {
+      const create = (projectId: string | null) =>
+        createChatAgentSession({
+          userId: "user-1",
+          sessionId: `chat-${projectId ?? "plain"}`,
+          chatSession: { ...CHAT, projectId },
+          customInstructions: null,
+          toolPolicies: { bash: "ask" },
+          toolExposure: null,
+          emitApprovalRequest: vi.fn(),
+        });
+
+      await create("project-1");
+      const coder = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
+      // The gate judges a coder chat's commands by the workspace, and writes and
+      // edits stand open: that is the whole difference a coding chat gets.
+      expect(coder.commandScope).toBe("workspace");
+      expect(coder.toolPolicies).toEqual({ bash: "ask", write: "allow", edit: "allow" });
+
+      await create(null);
+      const chat = mockCreatePersistentSession.mock.calls[1]![0] as Record<string, unknown>;
+      expect(chat.commandScope).toBeUndefined();
+      expect(chat.toolPolicies).toEqual({ bash: "ask" });
+    });
+
+    it("keeps a coder chat's file tools off when the user turned them off", async () => {
+      await createChatAgentSession({
+        userId: "user-1",
+        sessionId: "chat-off",
+        chatSession: { ...CHAT, projectId: "project-1" },
+        customInstructions: null,
+        toolPolicies: { write: "off" },
+        toolExposure: null,
+        emitApprovalRequest: vi.fn(),
+      });
+
+      const options = mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>;
+      expect(options.toolPolicies).toEqual({ write: "off", edit: "allow" });
+    });
+
     it("uses the resolved fallback model when the chat has none", async () => {
       await createChatAgentSession({
         userId: "user-1",

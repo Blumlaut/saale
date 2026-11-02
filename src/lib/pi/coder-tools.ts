@@ -8,6 +8,7 @@
  */
 
 import { TOOL_CATEGORIES, type ToolCategoryKey } from "./tool-categories";
+import type { ToolPolicy } from "./tool-infos";
 
 /**
  * Categories a coder chat starts with, on top of the worktree tools.
@@ -22,6 +23,28 @@ const CODER_CATEGORIES_ON: readonly ToolCategoryKey[] = ["terminal", "web", "mem
 export const CODER_TOOL_DEFAULTS: Record<ToolCategoryKey, boolean> = Object.fromEntries(
   TOOL_CATEGORIES.map((category) => [category.key, CODER_CATEGORIES_ON.includes(category.key)]),
 ) as Record<ToolCategoryKey, boolean>;
+
+/**
+ * Approval policies a new coder chat starts from.
+ *
+ * Writing and editing files is what a coder chat is for, so the two tools that
+ * otherwise ask stand open here. A policy the user set still wins, and `off`
+ * stays off.
+ */
+const CODER_POLICY_DEFAULTS: Record<string, ToolPolicy> = {
+  write: "allow",
+  edit: "allow",
+};
+
+/**
+ * A coder chat's approval policies: the coder defaults, with the user's own
+ * choices on top.
+ */
+export function resolveCoderToolPolicies(
+  stored: Record<string, string> | null | undefined,
+): Record<string, string> {
+  return { ...CODER_POLICY_DEFAULTS, ...stored };
+}
 
 /**
  * A coder chat's tool config: the stored setting where it names a category, the

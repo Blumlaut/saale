@@ -250,6 +250,12 @@ export function ToolsSection() {
               Categories a new coder chat starts with. The terminal, web and memory categories are
               on and the rest are off; turn on whatever a project needs.
             </p>
+            <p className="text-muted-foreground mt-2 text-sm">
+              A coder chat treats the whole workspace as its own: writes and shell commands that
+              stay inside it run without asking. A policy you set above still applies, and a command
+              that reaches past the workspace, like <code>git push</code> or <code>gh</code>,
+              follows its tool&apos;s policy.
+            </p>
           </div>
 
           <Separator />
