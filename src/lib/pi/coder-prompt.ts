@@ -8,6 +8,7 @@
  */
 
 import { capabilitySections } from "./processing-state";
+import type { SearchSources } from "@/lib/web/prompt";
 
 const CODER_IDENTITY_PROMPT = `You are Saale's coding agent. You work in one git worktree that belongs to one project inside the user's workspace.
 
@@ -83,6 +84,8 @@ export function buildCoderSystemPrompt(options: {
   previewDomain?: string | null | undefined;
   /** Whether the session has tools behind codemode. See `capabilitySections`. */
   codemodeTools?: boolean | undefined;
+  /** Where search runs. See `capabilitySections`. */
+  searchSources?: SearchSources | undefined;
   /** The checkout the chat runs in: its own worktree, or the project's one. */
   checkout?: "worktree" | "repo" | undefined;
 }): string {
@@ -98,7 +101,7 @@ export function buildCoderSystemPrompt(options: {
     devServerPrompt(options.previewDomain),
     envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
     shared ? SHARED_CHECKOUT_REPORTING_PROMPT : REPORTING_PROMPT,
-    ...capabilitySections(toolConfig, envNames, options.codemodeTools),
+    ...capabilitySections(toolConfig, envNames, options.codemodeTools, options.searchSources),
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

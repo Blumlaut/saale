@@ -2,6 +2,7 @@ import { DAVClient } from "tsdav";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 import { generateICS, type ICSExportEvent } from "./ics-export";
 
 interface PushResult {
@@ -136,7 +137,7 @@ export async function pushEventToCalDAV(
       return { success: false, remoteUrl: null, etag: null, error: result.error };
     }
 
-    const ics = generateICS(event);
+    const ics = generateICS(event, await getWorkspaceName());
     const response = await result.client.createCalendarObject({
       calendar: result.remote,
       iCalString: ics,
@@ -176,7 +177,7 @@ export async function pushUpdateToCalDAV(
       return { success: false, etag: null, error: "No remote URL for event" };
     }
 
-    const ics = generateICS(event);
+    const ics = generateICS(event, await getWorkspaceName());
     const response = await resolved.client.updateCalendarObject({
       calendarObject: {
         url: event.url,

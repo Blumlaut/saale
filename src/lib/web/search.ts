@@ -3,7 +3,14 @@
  * Queries a self-hosted SearXNG instance via its JSON API.
  */
 
+import { DEFAULT_SEARCH_CATEGORY } from "@/lib/web/tools-config";
+
 const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://saale-searxng:8080";
+
+/** The SearXNG instance this deployment searches through, without a trailing slash. */
+export function searchInstanceUrl(): string {
+  return SEARXNG_URL.replace(/\/+$/, "");
+}
 
 export interface SearchResult {
   title: string;
@@ -64,20 +71,23 @@ export async function searchWeb(options: SearchOptions): Promise<SearXNGResponse
   const params = new URLSearchParams({
     q: options.query,
     format: "json",
-    categories: options.categories ?? "general",
     language: options.language ?? "all",
     pageno: String(options.page ?? 1),
     safesearch: String(options.safeSearch ?? 0),
   });
 
+  // SearXNG unions the named engines with those of the named category, so a
+  // call that names engines sends no category.
   if (options.engines) {
     params.set("engines", options.engines);
+  } else {
+    params.set("categories", options.categories ?? DEFAULT_SEARCH_CATEGORY);
   }
   if (options.timeRange) {
     params.set("time_range", options.timeRange);
   }
 
-  const url = `${SEARXNG_URL}/search?${params.toString()}`;
+  const url = `${searchInstanceUrl()}/search?${params.toString()}`;
 
   const response = await fetch(url, {
     signal: AbortSignal.timeout(30_000),

@@ -15,6 +15,7 @@ import { AUTH_ROLES, loadRoleDefinitions } from "@/lib/permissions/role-cache";
 import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 import { destroyUserSandbox } from "@/lib/sandbox/teardown";
 import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
+import { getAccountPolicy, PASSWORD_FIELD_BY_PATH } from "@/lib/auth/password-policy";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
 import {
   USERNAME_MAX_LENGTH,
@@ -23,7 +24,11 @@ import {
   isValidUsername,
   normalizeUsername,
 } from "@/lib/auth/username";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password";
+import {
+  accountPolicyProblem,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password";
 import {
   SESSION_EXPIRES_IN_SECONDS,
   SESSION_REFRESH_WINDOW_SECONDS,
@@ -72,6 +77,19 @@ export const auth = betterAuth({
       // The admin plugin validates role names and authorizes from `AUTH_ROLES`,
       // which is loaded here so a custom role is never "non-existent".
       await loadRoleDefinitions();
+
+      // The instance's minimum sits above better-auth's own, so a password is
+      // measured against it before the endpoint writes it.
+      const passwordField = PASSWORD_FIELD_BY_PATH[ctx.path];
+      if (passwordField) {
+        const password = (ctx.body as Record<string, unknown> | undefined)?.[passwordField];
+        if (typeof password === "string") {
+          const problem = accountPolicyProblem(password, await getAccountPolicy());
+          if (problem) {
+            throw APIError.from("BAD_REQUEST", { code: "PASSWORD_TOO_SHORT", message: problem });
+          }
+        }
+      }
 
       const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
       if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;

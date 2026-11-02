@@ -237,9 +237,9 @@ describe("ics-export", () => {
       expect(ics).toContain("END:VCALENDAR");
     });
 
-    it("uses Saale Calendar Export name for bulk", () => {
-      const ics = generateICSBulk([baseEvent]);
-      expect(ics).toContain("Saale Calendar Export");
+    it("names the calendar after the instance", () => {
+      const ics = generateICSBulk([baseEvent], "Acme Calendar Export");
+      expect(ics).toContain("Acme Calendar Export");
     });
 
     it("handles events with mixed recurrence rules", () => {

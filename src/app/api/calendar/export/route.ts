@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { generateICSBulk } from "@/lib/calendar/ics-export";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 
 /**
  * GET /api/calendar/export. Export events as .ics file
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       status: e.status ?? null,
       transparency: e.transparency ?? null,
     })),
+    `${await getWorkspaceName()} Calendar Export`,
   );
 
   return new NextResponse(icsContent, {

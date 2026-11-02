@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { headers } from "next/headers";
 import { ShareViewer } from "@/components/chat/share-viewer";
 import { getPublicUrl } from "@/lib/public-url";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 import type { Message, ToolCallData } from "@/components/chat/types";
 
 interface SharePageProps {
@@ -55,6 +56,7 @@ export default async function SharePage({ params }: SharePageProps) {
   return (
     <ShareViewer
       token={token}
+      workspaceName={await getWorkspaceName()}
       sessionTitle={data.session.title}
       messages={messages}
       isAuthenticated={isAuthenticated}

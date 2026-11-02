@@ -469,6 +469,10 @@ model TaskRun {
 model AdminSettings {
   id                     String   @id @default("global")
   signupsEnabled         Boolean  @default(true)
+  /// Shortest password the instance accepts, for sign-ups and password changes.
+  minPasswordLength      Int      @default(8)
+  /// Requires every account to set up two-factor sign-in before it can be used.
+  requireTwoFactor       Boolean  @default(false)
   globalModelProvider    String   @default("")
   globalModelName        String   @default("")
   /// Per-provider availability, keyed by provider id:
@@ -498,9 +502,35 @@ model AdminSettings {
   ///   { "light": { "primary": "#2563eb" }, "dark": { "primary": "#3b82f6" } }
   /// A token that is absent keeps the palette in globals.css.
   themeColors            Json?
+  /// Name the instance shows: the wordmark, the page title, the app manifest.
+  /// Empty draws the built-in name.
+  workspaceName          String   @default("")
   /// File name of the uploaded agent avatar under <uploads>/branding. Empty
   /// means the built-in mark is drawn instead.
   brandingAvatar         String   @default("")
+  /// The engines a web search may use, by their SearXNG name. Empty leaves every
+  /// engine the search instance runs on; a populated list is the only set a
+  /// search may draw from.
+  webSearchEngines       String[] @default([])
+  /// Categories a search without a named engine draws from.
+  webSearchCategories    String[] @default(["general"])
+  /// 0 off, 1 moderate, 2 strict.
+  webSearchSafeSearch    Int      @default(0)
+  /// SearXNG language code, `all` for every language.
+  webSearchLanguage      String   @default("all")
+  /// Results one search returns when the model asks for no number.
+  webSearchResultsPerCall Int     @default(10)
+  /// Characters a fetched page is cut to.
+  webFetchMaxChars       Int      @default(50000)
+  webFetchTimeoutMs      Int      @default(15000)
+  webFetchMaxRedirects   Int      @default(5)
+  /// Whether voice input is offered at all. VOICE_ENABLED=0 still turns it off.
+  voiceEnabled           Boolean  @default(true)
+  /// faster-whisper model a transcription names. Null follows VOICE_MODEL.
+  voiceModel             String?
+  /// Language code the server decodes as. Null follows VOICE_LANGUAGE, then the
+  /// server's own detection.
+  voiceLanguage          String?
   updatedAt              DateTime @updatedAt
 
   @@map("admin_settings")

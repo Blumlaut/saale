@@ -7,5 +7,6 @@ export async function GET() {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  return NextResponse.json({ enabled: voiceConfig() !== null });
+  const config = await voiceConfig();
+  return NextResponse.json({ enabled: config !== null });
 }

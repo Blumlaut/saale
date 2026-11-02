@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const config = voiceConfig();
+  const config = await voiceConfig();
   if (!config) {
     return NextResponse.json({ error: "Voice input is off on this instance" }, { status: 404 });
   }

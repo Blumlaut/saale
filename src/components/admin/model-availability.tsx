@@ -16,23 +16,16 @@ import {
   fromGlobalProviderModels,
   setModelsEnabled,
   toGlobalProviderModels,
-  type ProviderModelConfig,
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { Bot, Brain, Loader2, Search, Eye, SlidersHorizontal } from "lucide-react";
+import { Bot, Brain, Loader2, Save, Search, Eye, SlidersHorizontal } from "lucide-react";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
 } from "@/components/providers/model-limits-sheet";
 import type { AvailableModel, AvailableProvider } from "@/app/dashboard/settings/types";
-
-interface AdminSettings {
-  signupsEnabled: boolean;
-  globalModelProvider: string;
-  globalModelName: string;
-  globalProviderModels: Record<string, ProviderModelConfig> | null;
-}
+import { useAdminSettings } from "@/components/admin/admin-settings/use-admin-settings";
 
 /** Which models the instance offers, and where each provider's limits sit. */
 export function ModelAvailability() {
@@ -41,18 +34,20 @@ export function ModelAvailability() {
   const [modelProviders, setModelProviders] = useState<AvailableProvider[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
 
-  const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const {
+    settings: adminSettings,
+    loading: settingsLoading,
+    saving,
+    saveStatus,
+    save,
+  } = useAdminSettings();
+
   const [modelSearch, setModelSearch] = useState("");
   /** The instance's fallback model, as `provider/model`. */
   const [defaultModel, setDefaultModel] = useState("");
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
-
-  // ─── Save status ───
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
   // ─── Capability (vision) status ───
   const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
@@ -64,14 +59,6 @@ export function ModelAvailability() {
   const [endpointLimits, setEndpointLimits] = useState<
     Record<string, { contextWindow: number | null; maxOutputTokens: number | null }>
   >({});
-
-  // Auto-clear save status
-  useEffect(() => {
-    if (saveStatus !== "idle") {
-      const timer = setTimeout(() => setSaveStatus("idle"), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveStatus]);
 
   // Auto-clear capability status
   useEffect(() => {
@@ -102,26 +89,20 @@ export function ModelAvailability() {
     }
   }, []);
 
-  // ─── Load admin settings ───
-  const loadSettings = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ settings: AdminSettings }>("/api/admin/settings");
-      setAdminSettings(data.settings);
-      setDefaultModel(
-        data.settings.globalModelProvider && data.settings.globalModelName
-          ? `${data.settings.globalModelProvider}/${data.settings.globalModelName}`
-          : "",
-      );
-
-      setModelEnabled(fromGlobalProviderModels(data.settings.globalProviderModels));
-    } finally {
-      setSettingsLoading(false);
-    }
-  }, []);
+  // ─── Load the saved selection once ───
+  useEffect(() => {
+    if (!adminSettings) return;
+    setDefaultModel(
+      adminSettings.globalModelProvider && adminSettings.globalModelName
+        ? `${adminSettings.globalModelProvider}/${adminSettings.globalModelName}`
+        : "",
+    );
+    setModelEnabled(fromGlobalProviderModels(adminSettings.globalProviderModels));
+  }, [adminSettings]);
 
   useEffect(() => {
-    Promise.all([loadModels(), loadSettings()]).catch((err) => {
-      console.error("Failed to load admin model data:", err);
+    loadModels().catch((err) => {
+      console.error("Failed to load the admin models:", err);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -172,25 +153,17 @@ export function ModelAvailability() {
 
   const handleSaveModels = useCallback(async () => {
     if (!adminSettings) return;
-    setSaving(true);
 
     const globalProviderModels = toGlobalProviderModels(Object.keys(availableModels), modelEnabled);
     const [provider, ...modelParts] = defaultModel.split("/");
     const modelName = modelParts.join("/");
 
-    try {
-      await patchJson("/api/admin/settings", {
-        globalProviderModels,
-        globalModelProvider: defaultModel ? provider : "",
-        globalModelName: defaultModel ? modelName : "",
-      });
-      setSaveStatus("success");
-    } catch (err) {
-      console.error("Failed to save the admin model settings:", err);
-      setSaveStatus("error");
-    }
-    setSaving(false);
-  }, [adminSettings, availableModels, modelEnabled, defaultModel]);
+    await save({
+      globalProviderModels,
+      globalModelProvider: defaultModel ? (provider ?? "") : "",
+      globalModelName: defaultModel ? modelName : "",
+    });
+  }, [adminSettings, availableModels, modelEnabled, defaultModel, save]);
 
   const isLoading = modelsLoading && settingsLoading;
 
@@ -228,7 +201,7 @@ export function ModelAvailability() {
             }
           >
             <PageStatus status={saveStatus} />
-            <PageAction label="Save" busy={saving} onClick={handleSaveModels} />
+            <PageAction icon={Save} label="Save" busy={saving} onClick={handleSaveModels} />
           </PageActions>
 
           <PageScroll className="space-y-6 p-4">

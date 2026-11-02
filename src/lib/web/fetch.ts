@@ -60,6 +60,8 @@ export interface FetchOptions {
   maxChars?: number | undefined;
   /** Request timeout in milliseconds */
   timeoutMs?: number | undefined;
+  /** Client-side redirects to follow before giving up */
+  maxRedirects?: number | undefined;
   /** Output format */
   format?: FetchFormat | undefined;
   /** Strip image references from output */
@@ -243,6 +245,7 @@ export async function fetchUrl(options: FetchOptions): Promise<FetchOutput> {
   const includeReplies =
     options.includeReplies ?? (options.includeReplies === false ? false : "extractors");
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxRedirects = options.maxRedirects ?? MAX_REDIRECTS;
 
   // Validate URL
   let parsed: URL;
@@ -301,6 +304,7 @@ export async function fetchUrl(options: FetchOptions): Promise<FetchOutput> {
       removeImages,
       includeReplies,
       timeoutMs,
+      maxRedirects,
       headers: options.headers,
       proxy: options.proxy,
     },
@@ -317,6 +321,7 @@ interface ResolvedFetchOptions {
   removeImages: boolean;
   includeReplies: boolean | "extractors";
   timeoutMs: number;
+  maxRedirects: number;
   headers?: Record<string, string> | undefined;
   proxy?: string | undefined;
 }
@@ -334,6 +339,7 @@ async function fetchWithRedirects(
     removeImages,
     includeReplies,
     timeoutMs,
+    maxRedirects,
     headers,
     proxy,
   } = opts;
@@ -416,9 +422,9 @@ async function fetchWithRedirects(
   // Handle client-side redirects
   const clientRedirect = extractClientSideRedirect(rawBody, finalUrl);
   if (clientRedirect) {
-    if (redirectCount >= MAX_REDIRECTS) {
+    if (redirectCount >= maxRedirects) {
       return {
-        error: `Redirect limit (${MAX_REDIRECTS}) exceeded for ${url}.`,
+        error: `Redirect limit (${maxRedirects}) exceeded for ${url}.`,
         code: "too_many_redirects",
         phase: "loading",
         retryable: false,

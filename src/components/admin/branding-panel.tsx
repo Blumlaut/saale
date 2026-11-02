@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useColorMode } from "@/hooks/use-color-mode";
 import { AgentAvatar } from "@/components/brand/agent-avatar";
 import { fetchJson } from "@/lib/http";
+import { DEFAULT_WORKSPACE_NAME, MAX_WORKSPACE_NAME_LENGTH } from "@/lib/branding/workspace-name";
 import {
   accentInk,
   BRAND_COLOR_TOKENS,
@@ -152,6 +153,9 @@ function BrandPreview({ mode, colors }: { mode: BrandMode; colors: BrandColors }
 }
 
 export interface BrandingPanelProps {
+  /** The instance name the form holds, empty for the built-in one. */
+  name: string;
+  onNameChange: (name: string) => void;
   colors: BrandColors;
   onColorsChange: (colors: BrandColors) => void;
   /** File name of the uploaded avatar, empty for the built-in mark. */
@@ -161,8 +165,10 @@ export interface BrandingPanelProps {
   flat?: boolean;
 }
 
-/** Admin branding: the agent avatar and the accent colours, with a live preview. */
+/** Admin branding: the instance name, the agent avatar and the accent colours. */
 export function BrandingPanel({
+  name,
+  onNameChange,
   colors,
   onColorsChange,
   avatar,
@@ -227,12 +233,32 @@ export function BrandingPanel({
   const defaults = (
     <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={resetColors}>
       <RotateCcw className="mr-1 h-3.5 w-3.5" />
-      Defaults
+      Reset colours
     </Button>
   );
 
   const body = (
     <GlassPanelContent className="p-0">
+      <div className="space-y-1.5 px-4 py-3">
+        <Label htmlFor="workspace-name" className="text-sm font-medium">
+          Workspace name
+        </Label>
+        <p className="text-muted-foreground text-xs">
+          Shown in the sidebar, the browser tab, the installed app, shared chats and calendar
+          exports. Leave it empty to use {DEFAULT_WORKSPACE_NAME}.
+        </p>
+        <Input
+          id="workspace-name"
+          value={name}
+          maxLength={MAX_WORKSPACE_NAME_LENGTH}
+          autoComplete="off"
+          placeholder={DEFAULT_WORKSPACE_NAME}
+          onChange={(event) => onNameChange(event.target.value)}
+        />
+      </div>
+
+      <Separator />
+
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <Label className="text-sm font-medium">Agent avatar</Label>

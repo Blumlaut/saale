@@ -30,6 +30,25 @@
 import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
 import { z } from "zod";
 import {
+  clampMinPasswordLength,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/auth/password";
+import {
+  clampSetting,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  DEFAULT_MAX_CHARS,
+  DEFAULT_MAX_REDIRECTS,
+  DEFAULT_RESULTS_PER_CALL,
+  MAX_FETCH_TIMEOUT_MS,
+  MAX_MAX_CHARS,
+  MAX_MAX_REDIRECTS,
+  MAX_RESULTS_PER_CALL,
+  MIN_FETCH_TIMEOUT_MS,
+  MIN_MAX_CHARS,
+  safeSearchLevel,
+} from "@/lib/web/tools-config";
+import {
   isDefaultSidebarNav,
   isSidebarNavPinned,
   normalizeSidebarNav,
@@ -37,6 +56,7 @@ import {
   type SidebarNavEntry,
 } from "@/lib/navigation/sidebar-nav";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
+import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/branding/workspace-name";
 import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
 import {
   BRAND_COLOR_KEYS,
@@ -633,13 +653,39 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     key: "admin.signupsEnabled",
     group: GROUP.admin,
     label: "Sign-ups enabled",
-    description: "Whether new accounts can be created on this Saale instance.",
+    description: "Whether new accounts can be created on this instance.",
     columns: ["signupsEnabled"],
     apply: "none",
     scope: "admin",
     schema: z.boolean(),
     read: (row) => row.signupsEnabled,
     write: (_row, value) => ({ signupsEnabled: Boolean(value) }),
+  },
+  {
+    key: "admin.minPasswordLength",
+    group: GROUP.admin,
+    label: "Minimum password length",
+    description:
+      "Shortest password this instance accepts, checked when an account is created and when a password changes. 8 to 128.",
+    columns: ["minPasswordLength"],
+    apply: "none",
+    scope: "admin",
+    schema: z.number().int().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+    read: (row) => row.minPasswordLength,
+    write: (_row, value) => ({ minPasswordLength: clampMinPasswordLength(value) }),
+  },
+  {
+    key: "admin.requireTwoFactor",
+    group: GROUP.admin,
+    label: "Require two-factor sign-in",
+    description:
+      "Sends an account without two-factor to the page that sets it up, which is the only page it can open until it has.",
+    columns: ["requireTwoFactor"],
+    apply: "none",
+    scope: "admin",
+    schema: z.boolean(),
+    read: (row) => row.requireTwoFactor,
+    write: (_row, value) => ({ requireTwoFactor: Boolean(value) }),
   },
   {
     key: "admin.defaultModel",
@@ -761,6 +807,22 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     },
   },
   {
+    key: "admin.workspaceName",
+    group: GROUP.branding,
+    label: "Workspace name",
+    description:
+      "Name this instance shows: the sidebar wordmark, the browser title, the installed app, shared chats and calendar exports. Up to 40 characters. Empty shows the built-in name.",
+    columns: ["workspaceName"],
+    apply: "none",
+    scope: "admin",
+    schema: z
+      .string()
+      .trim()
+      .max(MAX_WORKSPACE_NAME_LENGTH, `Use ${MAX_WORKSPACE_NAME_LENGTH} characters or fewer.`),
+    read: (row) => row.workspaceName,
+    write: (_row, value) => ({ workspaceName: typeof value === "string" ? value.trim() : "" }),
+  },
+  {
     key: "admin.brandingAvatar",
     group: GROUP.branding,
     label: "Agent avatar",
@@ -777,6 +839,179 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
       ),
     read: (row) => row.brandingAvatar,
     write: (_row, value) => ({ brandingAvatar: value === null ? "" : String(value).trim() }),
+  },
+  {
+    key: "admin.webSearchEngines",
+    group: GROUP.admin,
+    label: "Search engines",
+    description:
+      "Engines a web search may use, by their SearXNG name. An empty list allows every engine the instance runs.",
+    columns: ["webSearchEngines"],
+    apply: "none",
+    scope: "admin",
+    schema: z.array(z.string()),
+    read: (row) => row.webSearchEngines,
+    write: (_row, value) => ({
+      webSearchEngines: Array.isArray(value) ? value.map(String) : [],
+    }),
+  },
+  {
+    key: "admin.webSearchCategories",
+    group: GROUP.admin,
+    label: "Search categories",
+    description:
+      'Categories a search draws from when it names no engine, such as "general" or "news".',
+    columns: ["webSearchCategories"],
+    apply: "none",
+    scope: "admin",
+    schema: z.array(z.string()),
+    read: (row) => row.webSearchCategories,
+    write: (_row, value) => ({
+      webSearchCategories: Array.isArray(value) ? value.map(String) : [],
+    }),
+  },
+  {
+    key: "admin.webSearchSafeSearch",
+    group: GROUP.admin,
+    label: "Safe search",
+    description: "How much adult content a search filters. 0 off, 1 moderate, 2 strict.",
+    columns: ["webSearchSafeSearch"],
+    apply: "none",
+    scope: "admin",
+    schema: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    read: (row) => safeSearchLevel(row.webSearchSafeSearch),
+    write: (_row, value) => {
+      const level = typeof value === "number" ? safeSearchLevel(value) : 0;
+      return { webSearchSafeSearch: level };
+    },
+  },
+  {
+    key: "admin.webSearchLanguage",
+    group: GROUP.admin,
+    label: "Search language",
+    description: 'Language code a search asks in, such as "en", "de" or "all".',
+    columns: ["webSearchLanguage"],
+    apply: "none",
+    scope: "admin",
+    schema: z.string().min(1),
+    read: (row) => row.webSearchLanguage,
+    write: (_row, value) => ({ webSearchLanguage: value === null ? "all" : String(value).trim() }),
+  },
+  {
+    key: "admin.webSearchResultsPerCall",
+    group: GROUP.admin,
+    label: "Results per search",
+    description: `How many results one search returns when the model asks for no number. 1 to ${MAX_RESULTS_PER_CALL}.`,
+    columns: ["webSearchResultsPerCall"],
+    apply: "none",
+    scope: "admin",
+    schema: z.number().int().min(1).max(MAX_RESULTS_PER_CALL),
+    read: (row) => row.webSearchResultsPerCall,
+    write: (_row, value) => ({
+      webSearchResultsPerCall: clampSetting(
+        Number(value ?? DEFAULT_RESULTS_PER_CALL),
+        1,
+        MAX_RESULTS_PER_CALL,
+        DEFAULT_RESULTS_PER_CALL,
+      ),
+    }),
+  },
+  {
+    key: "admin.webFetchMaxChars",
+    group: GROUP.admin,
+    label: "Fetched page length",
+    description: `How many characters a fetched page is cut to. ${MIN_MAX_CHARS} to ${MAX_MAX_CHARS}.`,
+    columns: ["webFetchMaxChars"],
+    apply: "none",
+    scope: "admin",
+    schema: z.number().int().min(MIN_MAX_CHARS).max(MAX_MAX_CHARS),
+    read: (row) => row.webFetchMaxChars,
+    write: (_row, value) => ({
+      webFetchMaxChars: clampSetting(
+        Number(value ?? DEFAULT_MAX_CHARS),
+        MIN_MAX_CHARS,
+        MAX_MAX_CHARS,
+        DEFAULT_MAX_CHARS,
+      ),
+    }),
+  },
+  {
+    key: "admin.webFetchTimeoutMs",
+    group: GROUP.admin,
+    label: "Fetch timeout",
+    description: `How many milliseconds a page fetch may take. ${MIN_FETCH_TIMEOUT_MS} to ${MAX_FETCH_TIMEOUT_MS}.`,
+    columns: ["webFetchTimeoutMs"],
+    apply: "none",
+    scope: "admin",
+    schema: z.number().int().min(MIN_FETCH_TIMEOUT_MS).max(MAX_FETCH_TIMEOUT_MS),
+    read: (row) => row.webFetchTimeoutMs,
+    write: (_row, value) => ({
+      webFetchTimeoutMs: clampSetting(
+        Number(value ?? DEFAULT_FETCH_TIMEOUT_MS),
+        MIN_FETCH_TIMEOUT_MS,
+        MAX_FETCH_TIMEOUT_MS,
+        DEFAULT_FETCH_TIMEOUT_MS,
+      ),
+    }),
+  },
+  {
+    key: "admin.webFetchMaxRedirects",
+    group: GROUP.admin,
+    label: "Fetch redirects",
+    description: `How many redirects a page fetch follows before it gives up. 0 to ${MAX_MAX_REDIRECTS}.`,
+    columns: ["webFetchMaxRedirects"],
+    apply: "none",
+    scope: "admin",
+    schema: z.number().int().min(0).max(MAX_MAX_REDIRECTS),
+    read: (row) => row.webFetchMaxRedirects,
+    write: (_row, value) => ({
+      webFetchMaxRedirects: clampSetting(
+        Number(value ?? DEFAULT_MAX_REDIRECTS),
+        0,
+        MAX_MAX_REDIRECTS,
+        DEFAULT_MAX_REDIRECTS,
+      ),
+    }),
+  },
+  {
+    key: "admin.voiceEnabled",
+    group: GROUP.admin,
+    label: "Voice input",
+    description: "Offer speech input in the composer. VOICE_URL names the transcription server.",
+    columns: ["voiceEnabled"],
+    apply: "none",
+    scope: "admin",
+    schema: z.boolean(),
+    read: (row) => row.voiceEnabled,
+    write: (_row, value) => ({ voiceEnabled: Boolean(value) }),
+  },
+  {
+    key: "admin.voiceModel",
+    group: GROUP.admin,
+    label: "Voice model",
+    description:
+      "The faster-whisper model a transcription names. Null uses VOICE_MODEL, then the built-in small model.",
+    columns: ["voiceModel"],
+    apply: "none",
+    scope: "admin",
+    schema: z.string().min(1),
+    read: (row) => row.voiceModel,
+    write: (_row, value) => ({ voiceModel: value === null ? null : String(value).trim() || null }),
+  },
+  {
+    key: "admin.voiceLanguage",
+    group: GROUP.admin,
+    label: "Voice language",
+    description:
+      "The language code recordings are decoded as. Null uses VOICE_LANGUAGE, then the server's own detection.",
+    columns: ["voiceLanguage"],
+    apply: "none",
+    scope: "admin",
+    schema: z.string().min(1),
+    read: (row) => row.voiceLanguage,
+    write: (_row, value) => ({
+      voiceLanguage: value === null ? null : String(value).trim() || null,
+    }),
   },
 ];
 

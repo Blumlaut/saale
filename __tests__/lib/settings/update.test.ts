@@ -71,6 +71,19 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
   return {
     id: "global",
     signupsEnabled: true,
+    minPasswordLength: 8,
+    requireTwoFactor: false,
+    webSearchEngines: [],
+    webSearchCategories: ["general"],
+    webSearchSafeSearch: 0,
+    webSearchLanguage: "all",
+    webSearchResultsPerCall: 10,
+    webFetchMaxChars: 50_000,
+    webFetchTimeoutMs: 15_000,
+    webFetchMaxRedirects: 5,
+    voiceEnabled: true,
+    voiceModel: null,
+    voiceLanguage: null,
     globalModelProvider: "",
     globalModelName: "",
     globalProviderModels: null,
@@ -80,6 +93,7 @@ function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
     piPluginsUi: false,
     piPluginStates: null,
     themeColors: null,
+    workspaceName: "",
     brandingAvatar: "",
     updatedAt: new Date(0),
     ...overrides,
@@ -353,6 +367,26 @@ describe("applyAdminSettingsPatch", () => {
     await applyAdminSettingsPatch(USER_ID, { piPluginsEnabled: true });
 
     expect(mocks.evictAllSessions).not.toHaveBeenCalled();
+  });
+
+  it("saves the workspace name trimmed", async () => {
+    mocks.findUser.mockResolvedValue({ role: "admin" });
+
+    await applyAdminSettingsPatch(USER_ID, { workspaceName: "  Acme Console  " });
+
+    expect(lastArgs(mocks.updateAdminSettings).data).toEqual({ workspaceName: "Acme Console" });
+    // Renaming touches nothing a running session holds.
+    expect(mocks.evictUserSessions).not.toHaveBeenCalled();
+    expect(mocks.evictAllSessions).not.toHaveBeenCalled();
+  });
+
+  it("rejects a workspace name longer than the wordmark holds", async () => {
+    mocks.findUser.mockResolvedValue({ role: "admin" });
+
+    await expect(
+      applyAdminSettingsPatch(USER_ID, { workspaceName: "x".repeat(41) }),
+    ).rejects.toThrow(SettingsError);
+    expect(mocks.updateAdminSettings).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid admin value", async () => {

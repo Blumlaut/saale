@@ -8,6 +8,9 @@ import { TELEGRAM_MAX_MESSAGE_LENGTH, splitMarkdownV2, splitPlainText } from "./
 /** Webhook endpoint. a single path, since there is a single bot. */
 const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
 
+/** Telegram answers in seconds or not at all; a hung call must not hold a page. */
+const TELEGRAM_REQUEST_TIMEOUT_MS = 10_000;
+
 /** Telegram's caption ceiling; a longer one is rejected along with the file. */
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 
@@ -68,7 +71,9 @@ export function createBot(encryptedToken: string): Bot<Context> {
  */
 export async function validateBotToken(botToken: string) {
   const bot = new Bot(botToken);
-  const me = await bot.api.getMe();
+  // grammy types the signal against Node's polyfill; it takes a plain AbortSignal at runtime.
+  const signal = AbortSignal.timeout(TELEGRAM_REQUEST_TIMEOUT_MS) as never;
+  const me = await bot.api.getMe(signal);
 
   if (!me.is_bot) {
     throw new Error("Invalid bot token. this is not a bot account");

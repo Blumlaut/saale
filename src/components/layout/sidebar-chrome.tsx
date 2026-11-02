@@ -81,15 +81,15 @@ export function SidebarFrame({ children }: { children: React.ReactNode }) {
 }
 
 /** Wordmark, an optional area badge, and the notification bell. */
-export function SidebarBrand({ badge }: { badge?: string }) {
+export function SidebarBrand({ name, badge }: { name: string; badge?: string }) {
   return (
     <>
       <div className="mb-1 flex items-center justify-between px-3 py-2">
-        <Link href="/dashboard/chat" className="flex items-center gap-2">
-          <ChevronRight className="text-primary h-5 w-5" />
-          <span className="text-lg font-bold tracking-tight">Saale</span>
+        <Link href="/dashboard/chat" className="flex min-w-0 flex-1 items-center gap-2">
+          <ChevronRight className="text-primary h-5 w-5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight">{name}</span>
         </Link>
-        <span className="flex items-center gap-1.5">
+        <span className="flex shrink-0 items-center gap-1.5">
           {badge ? (
             <span className="text-muted-foreground bg-muted rounded-full px-2 py-0.5 text-[10px] font-medium">
               {badge}
@@ -263,22 +263,22 @@ export function useRowFlip(order: readonly string[]) {
 }
 
 /** Console footer: version, theme toggle, orange tick. */
-export function SidebarFooter() {
+export function SidebarFooter({ workspaceName }: { workspaceName: string }) {
   const { setTheme } = useTheme();
   const mode = useColorMode();
   const [changelogOpen, setChangelogOpen] = useState(false);
 
   return (
     <div className="border-border/60 mt-4 border-t px-3 pt-3">
-      <div className="flex items-center justify-between">
+      <div className="flex min-w-0 items-center justify-between">
         <Button
           variant="ghost"
-          className="console-label hover:text-foreground -ml-1.5 h-6 px-1.5 font-semibold"
+          className="console-label hover:text-foreground -ml-1.5 h-6 max-w-full min-w-0 overflow-hidden px-1.5 font-semibold"
           onClick={() => setChangelogOpen(true)}
           title="Changelog"
-          aria-label={`Saale ${APP_VERSION}, changelog`}
+          aria-label={`${workspaceName} ${APP_VERSION}, changelog`}
         >
-          Saale{" "}
+          <span className="min-w-0 truncate">{workspaceName}</span>{" "}
           <span className="text-muted-foreground/70 tracking-normal normal-case">
             {APP_VERSION}
           </span>

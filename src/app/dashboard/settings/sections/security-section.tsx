@@ -17,7 +17,8 @@ import {
   PowerOff,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/auth/password";
+import { passwordRules } from "@/lib/auth/password";
+import { useAccountPolicy } from "@/hooks/use-account-policy";
 import { TwoFactorDialog, type TwoFactorDialogMode } from "@/components/auth/two-factor-dialog";
 import { Badge } from "@/components/ui/badge";
 
@@ -28,6 +29,7 @@ interface FormData {
 }
 
 export function SecuritySection() {
+  const policy = useAccountPolicy();
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -159,17 +161,21 @@ export function SecuritySection() {
                 {...register("newPassword", {
                   required: "New password is required",
                   minLength: {
-                    value: PASSWORD_MIN_LENGTH,
-                    message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+                    value: policy.minPasswordLength,
+                    message: `Password must be at least ${policy.minPasswordLength} characters`,
                   },
                   maxLength: {
-                    value: PASSWORD_MAX_LENGTH,
-                    message: `Password must be at most ${PASSWORD_MAX_LENGTH} characters`,
+                    value: policy.maxPasswordLength,
+                    message: `Password must be at most ${policy.maxPasswordLength} characters`,
                   },
                 })}
               />
-              {errors.newPassword && (
+              {errors.newPassword ? (
                 <p className="text-destructive text-xs">{errors.newPassword.message}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  {passwordRules(policy.minPasswordLength)}
+                </p>
               )}
             </div>
 
@@ -229,14 +235,16 @@ export function SecuritySection() {
                     <KeyRound className="h-3.5 w-3.5" />
                     Backup codes
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setTwoFactorDialog("disable")}
-                  >
-                    <PowerOff className="h-3.5 w-3.5" />
-                    Turn off
-                  </Button>
+                  {!policy.requireTwoFactor && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setTwoFactorDialog("disable")}
+                    >
+                      <PowerOff className="h-3.5 w-3.5" />
+                      Turn off
+                    </Button>
+                  )}
                 </>
               ) : (
                 <Button size="sm" onClick={() => setTwoFactorDialog("enable")}>
@@ -245,6 +253,12 @@ export function SecuritySection() {
                 </Button>
               )}
             </div>
+          )}
+
+          {policy.requireTwoFactor && twoFactorEnabled && (
+            <p className="text-muted-foreground text-xs">
+              This instance requires two-factor sign-in. It cannot be turned off here.
+            </p>
           )}
         </div>
 

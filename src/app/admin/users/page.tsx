@@ -29,7 +29,8 @@ import {
 } from "@/lib/permissions/roles";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { USERNAME_RULES, isValidUsername, normalizeUsername } from "@/lib/auth/username";
-import { PASSWORD_RULES, passwordProblem } from "@/lib/auth/password";
+import { passwordProblem, passwordRules } from "@/lib/auth/password";
+import { useAccountPolicy } from "@/hooks/use-account-policy";
 import { Users, Loader2, Plus, Trash2, Pencil, UserCog } from "lucide-react";
 
 interface AdminUser {
@@ -51,6 +52,7 @@ interface UserFeatures {
 
 export default function AdminUsersPage() {
   const access = useSessionPermissions();
+  const policy = useAccountPolicy();
   const { data: session } = authClient.useSession();
   const can = (action: string) => access !== null && hasGrant(access.permissions, "user", action);
   const canRevokeSessions = access !== null && hasGrant(access.permissions, "session", "revoke");
@@ -88,7 +90,7 @@ export default function AdminUsersPage() {
   const editPasswordProblem =
     editPassword === ""
       ? null
-      : (passwordProblem(editPassword) ??
+      : (passwordProblem(editPassword, policy.minPasswordLength) ??
         (editPasswordConfirm !== editPassword ? "Passwords do not match" : null));
 
   // Delete confirm
@@ -136,7 +138,12 @@ export default function AdminUsersPage() {
   }, [saveStatus]);
 
   const handleCreate = async () => {
-    if (!createUsernameValid || !createEmail || passwordProblem(createPassword) !== null) return;
+    if (
+      !createUsernameValid ||
+      !createEmail ||
+      passwordProblem(createPassword, policy.minPasswordLength) !== null
+    )
+      return;
     setCreating(true);
     try {
       await postJson("/api/auth/admin/create-user", {
@@ -447,9 +454,11 @@ export default function AdminUsersPage() {
                 value={createPassword}
                 onChange={(e) => setCreatePassword(e.target.value)}
                 type="password"
-                placeholder={PASSWORD_RULES}
+                placeholder={passwordRules(policy.minPasswordLength)}
               />
-              <p className="text-muted-foreground text-xs">{PASSWORD_RULES}</p>
+              <p className="text-muted-foreground text-xs">
+                {passwordRules(policy.minPasswordLength)}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
@@ -477,7 +486,7 @@ export default function AdminUsersPage() {
                 creating ||
                 !createUsernameValid ||
                 !createEmail ||
-                passwordProblem(createPassword) !== null
+                passwordProblem(createPassword, policy.minPasswordLength) !== null
               }
             >
               {creating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
@@ -524,7 +533,7 @@ export default function AdminUsersPage() {
                 autoComplete="new-password"
                 value={editPassword}
                 onChange={(e) => setEditPassword(e.target.value)}
-                placeholder={PASSWORD_RULES}
+                placeholder={passwordRules(policy.minPasswordLength)}
                 aria-invalid={editPasswordProblem !== null}
                 disabled={!can("set-password")}
               />

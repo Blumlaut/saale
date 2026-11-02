@@ -59,6 +59,7 @@ function renderShare(messages: Message[]) {
   return render(
     <ShareViewer
       token="tok"
+      workspaceName="Saale"
       sessionTitle="Shared run"
       messages={messages}
       isAuthenticated={false}
@@ -77,6 +78,22 @@ function marksOf(toolsButton: HTMLElement): HTMLElement[] {
   const strip = toolsButton.querySelector('span[aria-hidden="true"]');
   return Array.from(strip?.querySelectorAll<HTMLElement>(":scope > span") ?? []);
 }
+
+describe("share viewer branding", () => {
+  it("names the instance in the footer", () => {
+    render(
+      <ShareViewer
+        token="tok"
+        workspaceName="Acme Console"
+        sessionTitle="Shared run"
+        messages={[]}
+        isAuthenticated={false}
+      />,
+    );
+
+    expect(screen.getByText("Acme Console")).toBeInTheDocument();
+  });
+});
 
 describe("share viewer tool calls", () => {
   it("folds a turn's run of steps into one compact activity row", () => {

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import brand from "@/lib/pwa/brand.json";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 
 /**
  * Web app manifest. served at `/manifest.webmanifest` and linked from `<head>`
@@ -12,11 +13,19 @@ import brand from "@/lib/pwa/brand.json";
  * consistent. The in-browser chrome colour is scheme-aware instead. see the
  * `viewport` export in `src/app/layout.tsx`.
  */
-export default function manifest(): MetadataRoute.Manifest {
+// The name comes from the database, so the manifest is rendered per request
+// rather than baked into the build.
+export const dynamic = "force-dynamic";
+
+export const revalidate = 0;
+
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const name = await getWorkspaceName();
+
   return {
     id: "/",
-    name: brand.name,
-    short_name: brand.shortName,
+    name,
+    short_name: name,
     description: brand.description,
     lang: "en",
     start_url: "/",

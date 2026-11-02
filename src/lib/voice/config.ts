@@ -1,19 +1,16 @@
 /**
- * Voice input, decoded by a faster-whisper server (Speaches). The compose file
- * points the app at that server by default, and `VOICE_ENABLED=0` turns the
- * feature off: no mic in the composer, and the routes answer 404.
+ * Voice input, decoded by a faster-whisper server (Speaches). `VOICE_URL` names
+ * the server, and empty means "no server here", which is what a bare
+ * `npm run dev` on a host without the container gets.
  *
- * `VOICE_URL` names a different server, and empty means "no server here", which
- * is what a bare `npm run dev` on a host without the container gets.
+ * The switch, the model and the language come from the admin settings, falling
+ * back to VOICE_ENABLED, VOICE_MODEL and VOICE_LANGUAGE.
  *
  * The server loads a model on the first request and unloads it again after a
  * stretch of idle time, so the memory it costs follows its use.
- *
- * No `node:` imports: the route and the client capability check both read it.
  */
 
-/** Small enough to answer a sentence in about a second on a plain CPU. */
-export const DEFAULT_VOICE_MODEL = "Systran/faster-whisper-small";
+import { readVoiceSettings } from "@/lib/voice/settings";
 
 /** One recording. a couple of minutes of speech, never a file upload. */
 export const MAX_VOICE_BYTES = 10 * 1024 * 1024;
@@ -34,15 +31,16 @@ export interface VoiceConfig {
 }
 
 /** Null when this deployment has no transcription server, or voice is off. */
-export function voiceConfig(): VoiceConfig | null {
-  if (process.env.VOICE_ENABLED === "0") return null;
-
+export async function voiceConfig(): Promise<VoiceConfig | null> {
   const url = process.env.VOICE_URL?.trim();
   if (!url) return null;
 
+  const settings = await readVoiceSettings();
+  if (!settings.enabled) return null;
+
   return {
     url: url.replace(/\/+$/, ""),
-    model: process.env.VOICE_MODEL?.trim() || DEFAULT_VOICE_MODEL,
-    language: process.env.VOICE_LANGUAGE?.trim() || null,
+    model: settings.model,
+    language: settings.language,
   };
 }

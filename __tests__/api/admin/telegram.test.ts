@@ -11,6 +11,7 @@ const {
   mockTelegramLinkCount,
   mockRequirePermission,
   mockGetTelegramLoginStatus,
+  mockReadTelegramBotProfile,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
   mockSaveTelegramBot: vi.fn(),
@@ -19,6 +20,7 @@ const {
   mockTelegramLinkCount: vi.fn(),
   mockRequirePermission: vi.fn(),
   mockGetTelegramLoginStatus: vi.fn(),
+  mockReadTelegramBotProfile: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -27,6 +29,10 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: { telegramLink: { count: (...args: unknown[]) => mockTelegramLinkCount(...args) } },
+}));
+
+vi.mock("@/lib/telegram/profile", () => ({
+  readTelegramBotProfile: (...args: unknown[]) => mockReadTelegramBotProfile(...args),
 }));
 
 vi.mock("@/lib/telegram/oidc", () => ({
@@ -43,6 +49,13 @@ vi.mock("@/lib/telegram/bot", () => ({
 import { DELETE, GET, PATCH, POST } from "@/app/api/admin/telegram/route";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** What Telegram reports about the configured bot. */
+const botProfile = {
+  firstName: "Saale",
+  username: "saale_bot",
+  avatarUrl: "https://t.me/i/userpic/320/saale_bot.jpg",
+};
 
 /** Telegram sign-in's state as the route reports it. */
 const loginStatus = {
@@ -89,6 +102,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockTelegramLinkCount.mockResolvedValue(0);
   mockGetTelegramLoginStatus.mockResolvedValue(loginStatus);
+  mockReadTelegramBotProfile.mockResolvedValue(botProfile);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -134,6 +148,7 @@ describe("GET /api/admin/telegram", () => {
       enabled: true,
       botId: "123456789",
       botUsername: "saale_bot",
+      profile: botProfile,
       linkCount: 3,
       updatedByUserId: "admin-1",
       updatedAt: "2026-01-01T00:00:00.000Z",

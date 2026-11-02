@@ -27,6 +27,7 @@ import {
 } from "./project-context";
 import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
 import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
+import type { SearchSources } from "@/lib/web/prompt";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
 /**
@@ -115,6 +116,23 @@ const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram
  */
 const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create a one-off agent job (\`agent_job_create\` with \`runAt\`) whose output channel is Telegram, and it will reach the user at that time. Do that instead of promising to remember.`;
 
+/** Capability: searching the web, worded with the instance's own names. */
+export function webSearchSection(sources: SearchSources): string {
+  // A model that guesses at a category name gets general results back with no
+  // warning, so the instance's own names are the only ones worth saying.
+  const names =
+    sources.categories.length > 0
+      ? `Its categories: ${sources.categories.join(", ")}.`
+      : "It answers to SearXNG's category names, such as general, news, images and science.";
+  const defaults = `A search that names no category uses ${sources.defaults.join(", ")}.`;
+  const engines =
+    sources.engines.length > 0
+      ? ` Searches are limited to these engines: ${sources.engines.join(", ")}.`
+      : "";
+  return `Web search:
+\`web_search\` searches through this workspace's SearXNG instance. ${names} ${defaults}${engines}`;
+}
+
 /**
  * The capability blocks for the tool categories a session has enabled.
  *
@@ -132,6 +150,11 @@ export function capabilitySections(
    * would be told to go looking for what is already in front of it.
    */
   codemodeTools: boolean = true,
+  /**
+   * Where search runs, for a session with the web tools. Absent leaves the
+   * block out: without the instance there is nothing to name.
+   */
+  searchSources?: SearchSources | undefined,
 ): string[] {
   // Resolve through the category registry, exactly as `resolveTools` does: an
   // absent key means the category sits at its default, not off. Reading the raw
@@ -148,6 +171,7 @@ export function capabilitySections(
     codemodeTools ? TOOLS_PROMPT : null,
     terminalEnabled ? terminalSection(sandboxEnvNames) : null,
     isCategoryEnabled(toolConfig, "memory") ? MEMORY_PROMPT : null,
+    isCategoryEnabled(toolConfig, "web") && searchSources ? webSearchSection(searchSources) : null,
     isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
     telegramEnabled ? TELEGRAM_PROMPT : null,
     telegramEnabled && isCategoryEnabled(toolConfig, "agentJobs") ? TELEGRAM_SCHEDULE_PROMPT : null,
@@ -171,6 +195,8 @@ export function buildAgentSystemPrompt(options: {
   sandboxEnvNames?: string[] | undefined;
   /** Whether the session has tools behind codemode. See `capabilitySections`. */
   codemodeTools?: boolean | undefined;
+  /** Where search runs. See `capabilitySections`. */
+  searchSources?: SearchSources | undefined;
 }): string {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const customInstructions = options.customInstructions?.trim();
@@ -178,7 +204,12 @@ export function buildAgentSystemPrompt(options: {
   const sections = [
     IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
-    ...capabilitySections(toolConfig, options.sandboxEnvNames ?? [], options.codemodeTools),
+    ...capabilitySections(
+      toolConfig,
+      options.sandboxEnvNames ?? [],
+      options.codemodeTools,
+      options.searchSources,
+    ),
   ];
 
   return sections.filter((section): section is string => section !== null).join("\n\n");

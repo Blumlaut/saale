@@ -33,6 +33,7 @@ import {
   type McpOAuthStateStore,
   type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getPublicUrl } from "@/lib/public-url";
@@ -125,15 +126,20 @@ function createOAuthStateStore(server: McpOAuthServer): McpOAuthStateStore {
   };
 }
 
-/** Pi's OAuth client for one server, against Saale's public redirect URI. */
-function createOAuthClientProvider(
+/**
+ * Pi's OAuth client for one server, against this instance's public redirect URI.
+ *
+ * The client name is what the server's consent page shows, so it carries the
+ * instance's own name.
+ */
+async function createOAuthClientProvider(
   server: McpOAuthServer,
   onRedirect: (url: URL) => void,
-): McpOAuthProvider {
+): Promise<McpOAuthProvider> {
   return new McpOAuthProvider({
     serverUrl: server.url,
     redirectUrl: mcpOAuthRedirectUrl(),
-    clientMetadata: { client_name: "Saale" },
+    clientMetadata: { client_name: await getWorkspaceName() },
     store: createOAuthStateStore(server),
     onRedirect,
   });
@@ -276,7 +282,7 @@ export function createMcpAuthProvider(server: McpOAuthServer): AuthProvider {
       const resourceMetadataUrl = challenge?.resourceMetadataUrl ?? cached?.resourceMetadataUrl;
       const scope = challenge?.scope;
 
-      const provider = createOAuthClientProvider(server, () => {});
+      const provider = await createOAuthClientProvider(server, () => {});
       const result = await authorizeMcp(provider, {
         serverUrl: server.url,
         ...(resourceMetadataUrl ? { resourceMetadataUrl: new URL(resourceMetadataUrl) } : {}),
@@ -445,7 +451,7 @@ export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOA
   const scope = challenge?.scope ?? null;
 
   let authorizationUrl: string | null = null;
-  const provider = createOAuthClientProvider(server, (url) => {
+  const provider = await createOAuthClientProvider(server, (url) => {
     authorizationUrl = url.href;
   });
 
@@ -514,7 +520,7 @@ export async function completeMcpOAuthSignIn(
   params: { code: string; iss?: string },
 ): Promise<void> {
   const started = await readStoredFlow(server.id);
-  const provider = createOAuthClientProvider(server, () => {});
+  const provider = await createOAuthClientProvider(server, () => {});
   const result = await authorizeMcp(provider, {
     serverUrl: server.url,
     authorizationCode: params.code,

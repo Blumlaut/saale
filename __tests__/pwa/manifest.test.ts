@@ -1,8 +1,12 @@
 import { statSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
+
+vi.mock("@/lib/branding/workspace", () => ({
+  getWorkspaceName: async () => "Saale Test Workspace",
+}));
 
 import manifest from "@/app/manifest";
 
@@ -17,7 +21,7 @@ import manifest from "@/app/manifest";
 
 const PUBLIC_DIR = join(__dirname, "../../public");
 
-const MANIFEST = manifest();
+const MANIFEST = await manifest();
 const ICONS = MANIFEST.icons ?? [];
 
 function parseSizes(sizes: string | undefined): [number, number] {
@@ -28,8 +32,8 @@ function parseSizes(sizes: string | undefined): [number, number] {
 
 describe("web app manifest", () => {
   it("declares the fields browsers require to offer installation", () => {
-    expect(MANIFEST.name).toBeTruthy();
-    expect(MANIFEST.short_name).toBeTruthy();
+    expect(MANIFEST.name).toBe("Saale Test Workspace");
+    expect(MANIFEST.short_name).toBe("Saale Test Workspace");
     expect(MANIFEST.start_url).toBe("/");
     expect(MANIFEST.display).toBe("standalone");
     expect(MANIFEST.background_color).toMatch(/^#[0-9a-f]{6}$/i);

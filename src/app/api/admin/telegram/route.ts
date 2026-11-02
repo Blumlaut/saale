@@ -10,13 +10,15 @@ import {
   type TelegramBotConfig,
 } from "@/lib/telegram/bot";
 import { getTelegramLoginStatus, type TelegramLoginStatus } from "@/lib/telegram/oidc";
+import { readTelegramBotProfile } from "@/lib/telegram/profile";
 
 /**
  * The shared Telegram bot's configuration.
  *
  * Admin-scoped: the bot is instance infrastructure now, so its token is only
  * reachable here. The token is never echoed back. responses carry the bot's
- * identity and state, which is all the UI needs to render.
+ * identity, its live Telegram profile and its state, which is all the UI needs
+ * to render.
  */
 
 /** Serialize the bot for the admin UI. Never includes the token. */
@@ -30,6 +32,7 @@ async function serializeBot(bot: TelegramBotConfig | null) {
     enabled: bot.enabled,
     botId: bot.botId?.toString() ?? null,
     botUsername: bot.botUsername,
+    profile: await readTelegramBotProfile(bot),
     linkCount,
     updatedByUserId: bot.updatedByUserId,
     updatedAt: bot.updatedAt.toISOString(),

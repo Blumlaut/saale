@@ -36,6 +36,11 @@ vi.mock("@/lib/pi/session", () => ({
   createSandboxScopedTools: vi.fn().mockReturnValue([]),
 }));
 
+const mockPromptSearchSources = vi.fn();
+vi.mock("@/lib/web/prompt", () => ({
+  promptSearchSources: (...args: unknown[]) => mockPromptSearchSources(...args),
+}));
+
 vi.mock("@/lib/pi/processing-state", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/pi/processing-state")>()),
   createSystemPromptLoader: vi.fn().mockResolvedValue({}),
@@ -196,6 +201,24 @@ describe("executeAgentRun  provider failures", () => {
     await result.promise;
   });
 
+  it("names the search instance's categories to a job that can search", async () => {
+    mockPromptSearchSources.mockResolvedValue({
+      categories: ["general", "news"],
+      defaults: ["general"],
+      engines: ["bing"],
+    });
+    const fake = setup();
+    const result = await startRun(fake);
+
+    const prompt = String(vi.mocked(createSystemPromptLoader).mock.calls[0]?.[0] ?? "");
+    expect(prompt).toContain("Its categories: general, news");
+    expect(prompt).toContain("names no category uses general");
+    expect(prompt).toContain("limited to these engines: bing");
+
+    fake.emit({ type: "agent_settled" });
+    await result.promise;
+  });
+
   it("leaves a job's own system prompt alone", async () => {
     const fake = setup();
     const result = track(
@@ -208,6 +231,8 @@ describe("executeAgentRun  provider failures", () => {
     await flush();
 
     expect(vi.mocked(createSystemPromptLoader).mock.calls[0]?.[0]).toBe("Custom job instructions.");
+    // Nothing builds a block for a prompt that replaces the default whole.
+    expect(mockPromptSearchSources).not.toHaveBeenCalled();
 
     fake.emit({ type: "agent_settled" });
     await result.promise;

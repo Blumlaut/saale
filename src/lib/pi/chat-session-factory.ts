@@ -13,6 +13,7 @@ import { hasCodemodeCategory, type ToolConfig, type ToolExposureConfig } from ".
 import { normalizeToolExposure } from "./tool-exposure";
 import { loadUserMcpServers } from "@/lib/mcp/servers";
 import type { ChatMode } from "@/lib/coder/checkout";
+import { promptSearchSources } from "@/lib/web/prompt";
 
 /**
  * The single place a chat session's Pi agent is created.
@@ -117,7 +118,10 @@ async function buildSessionPrompt(options: {
   toolExposure: ToolExposureConfig | null | undefined;
   checkoutMode?: ChatMode | undefined;
 }): Promise<string> {
-  const sandboxEnvNames = await listSandboxEnvNames(options.userId);
+  const [sandboxEnvNames, searchSources] = await Promise.all([
+    listSandboxEnvNames(options.userId),
+    promptSearchSources(options.toolConfig),
+  ]);
   // MCP tools are codemode's by default, so a user with servers needs the hint
   // even when every category they enabled is declared in full.
   const mcpServers = await loadUserMcpServers(options.userId).catch((err: unknown) => {
@@ -136,6 +140,7 @@ async function buildSessionPrompt(options: {
     codemodeTools:
       mcpServers.entries.length > 0 ||
       hasCodemodeCategory(options.toolConfig, options.toolExposure),
+    ...(searchSources ? { searchSources } : {}),
   };
   return options.projectId
     ? buildCoderSystemPrompt({ ...shared, checkout: options.checkoutMode })

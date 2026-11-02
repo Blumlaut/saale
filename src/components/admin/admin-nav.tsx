@@ -41,7 +41,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
  * The admin sidebar. Same frame, rows and footer as the dashboard's: only the
  * items and the badge differ.
  */
-export function AdminNav() {
+export function AdminNav({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
   const access = useSessionPermissions();
   const items = access
@@ -64,7 +64,7 @@ export function AdminNav() {
 
   return (
     <SidebarFrame>
-      <SidebarBrand badge="Admin" />
+      <SidebarBrand name={workspaceName} badge="Admin" />
 
       <div className="space-y-0.5">
         {items.map((item) => {
@@ -113,7 +113,7 @@ export function AdminNav() {
         </Link>
       </div>
 
-      <SidebarFooter />
+      <SidebarFooter workspaceName={workspaceName} />
     </SidebarFrame>
   );
 }

@@ -23,12 +23,19 @@ import type { Message, ToolCallData } from "./types";
 
 interface ShareViewerProps {
   token: string;
+  workspaceName: string;
   sessionTitle: string;
   messages: Message[];
   isAuthenticated: boolean;
 }
 
-export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: ShareViewerProps) {
+export function ShareViewer({
+  token,
+  workspaceName,
+  sessionTitle,
+  messages,
+  isAuthenticated,
+}: ShareViewerProps) {
   const router = useRouter();
   const [isCopied, setIsCopied] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
@@ -117,17 +124,14 @@ export function ShareViewer({ token, sessionTitle, messages, isAuthenticated }: 
       </GlassPanel>
 
       {/* Footer */}
-      <div className="border-border/30 flex shrink-0 items-center justify-between border-t px-4 py-3 md:px-6">
-        <span className="text-muted-foreground text-xs">
-          Powered by{" "}
-          <span className="font-medium">
-            Sa<span className="text-primary">ale</span>
-          </span>
+      <div className="border-border/30 flex shrink-0 items-center justify-between gap-3 border-t px-4 py-3 md:px-6">
+        <span className="text-muted-foreground min-w-0 truncate text-xs">
+          Powered by <span className="text-foreground font-medium">{workspaceName}</span>
         </span>
         {!isAuthenticated && (
           <button
             onClick={() => router.push(`/auth/login?redirect=/share/${token}`)}
-            className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+            className="text-muted-foreground hover:text-foreground shrink-0 text-xs transition-colors"
           >
             Sign in to continue this conversation
           </button>

@@ -3,6 +3,8 @@ import { Type } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { searchWeb } from "@/lib/web/search";
 import { fetchUrl } from "@/lib/web/fetch";
+import { readWebTools } from "@/lib/web/tool-settings";
+import { resolveFetchCall, resolveSearchCall } from "@/lib/web/tools-config";
 
 /** A search hit as a script reads it, plus the snippet the text shows. */
 const webSearchSchema = Type.Object({
@@ -41,7 +43,7 @@ export function createWebTools(): ToolDefinition[] {
       name: "web_search",
       label: "Web Search",
       description:
-        "Search the web using SearXNG. Returns titles, URLs, and snippets from multiple search engines.",
+        "Search the web through the workspace's SearXNG instance. Returns titles, URLs and snippets.",
       parameters: Type.Object({
         query: Type.String({
           description: "Search query.",
@@ -49,18 +51,18 @@ export function createWebTools(): ToolDefinition[] {
         categories: Type.Optional(
           Type.String({
             description:
-              "Search categories (default: 'general'). Examples: 'general', 'images', 'news', 'videos', 'music', 'files', 'it', 'science', 'social media'.",
+              "Category names, comma-separated. Leave out to use the instance's default categories.",
           }),
         ),
         engines: Type.Optional(
           Type.String({
             description:
-              "Comma-separated list of engines to use. Examples: 'google,bing,duckduckgo'.",
+              "Engine names, comma-separated. A name the operator does not allow is dropped.",
           }),
         ),
         language: Type.Optional(
           Type.String({
-            description: "Language code (default: 'all'). Examples: 'en', 'en-US', 'de'.",
+            description: "Language code. Leave out to use the instance's default language.",
           }),
         ),
         timeRange: Type.Optional(
@@ -69,24 +71,23 @@ export function createWebTools(): ToolDefinition[] {
         safeSearch: Type.Optional(Type.Union([Type.Literal(0), Type.Literal(1), Type.Literal(2)])),
         limit: Type.Optional(
           Type.Integer({
-            description: "Maximum number of results. Default: 10.",
+            description: "Maximum number of results. Falls back to the instance's own setting.",
           }),
         ),
       }),
       outputSchema: webSearchSchema,
       execute: async (_toolCallId, params) => {
-        const result = await searchWeb({
-          query: params.query,
-          ...(params.categories !== undefined ? { categories: params.categories } : {}),
-          ...(params.engines !== undefined ? { engines: params.engines } : {}),
-          ...(params.language !== undefined ? { language: params.language } : {}),
-          page: 1,
-          ...(params.timeRange !== undefined ? { timeRange: params.timeRange } : {}),
-          ...(params.safeSearch !== undefined
-            ? { safeSearch: params.safeSearch as 0 | 1 | 2 }
-            : {}),
-          maxResults: params.limit ?? 10,
+        const { search } = await readWebTools();
+        const call = resolveSearchCall(search, {
+          categories: params.categories,
+          engines: params.engines,
+          language: params.language,
+          safeSearch: params.safeSearch as 0 | 1 | 2 | undefined,
+          timeRange: params.timeRange,
+          limit: params.limit,
         });
+
+        const result = await searchWeb({ query: params.query, page: 1, ...call });
 
         const formatted = result.results
           .map(
@@ -157,12 +158,13 @@ export function createWebTools(): ToolDefinition[] {
         ),
         maxChars: Type.Optional(
           Type.Integer({
-            description: "Maximum characters to return. Default: 50000.",
+            description: "Maximum characters to return. Falls back to the instance's own budget.",
           }),
         ),
         timeoutMs: Type.Optional(
           Type.Integer({
-            description: "Request timeout in milliseconds. Default: 15000.",
+            description:
+              "Request timeout in milliseconds. Falls back to the instance's own budget.",
           }),
         ),
         format: Type.Optional(
@@ -182,15 +184,15 @@ export function createWebTools(): ToolDefinition[] {
       }),
       outputSchema: webFetchSchema,
       execute: async (_toolCallId, params) => {
+        const { fetch } = await readWebTools();
         const result = await fetchUrl({
           url: params.url,
           ...(params.browser !== undefined ? { browser: params.browser } : {}),
           ...(params.os !== undefined ? { os: params.os } : {}),
           ...(params.headers !== undefined ? { headers: params.headers } : {}),
-          ...(params.maxChars !== undefined ? { maxChars: params.maxChars } : {}),
-          ...(params.timeoutMs !== undefined ? { timeoutMs: params.timeoutMs } : {}),
           ...(params.format !== undefined ? { format: params.format } : {}),
           ...(params.removeImages !== undefined ? { removeImages: params.removeImages } : {}),
+          ...resolveFetchCall(fetch, { maxChars: params.maxChars, timeoutMs: params.timeoutMs }),
         });
 
         if ("error" in result) {

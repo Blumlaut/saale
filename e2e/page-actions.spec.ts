@@ -41,7 +41,11 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/admin/roles" },
   { path: "/admin/plugins" },
   { path: "/admin/plugins/logs" },
-  { path: "/admin/settings" },
+  { path: "/admin/settings/signups" },
+  { path: "/admin/settings/features" },
+  { path: "/admin/settings/branding" },
+  { path: "/admin/settings/search" },
+  { path: "/admin/settings/voice" },
   // The one settings page with a Save button: it keeps a draft, so the button
   // sits in the panel's first row instead of scrolling with the prompts.
   { path: "/dashboard/settings/personality" },

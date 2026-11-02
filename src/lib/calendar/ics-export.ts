@@ -1,4 +1,5 @@
 import ical from "ical-generator";
+import { DEFAULT_WORKSPACE_NAME } from "@/lib/branding/workspace-name";
 import { isValidTimeZone, toZonedDate } from "./timezone";
 
 export interface ICSExportEvent {
@@ -31,8 +32,11 @@ function toICalDate(date: Date, timeZone: string | null): Date {
 
 /**
  * Create a calendar instance with standard prodId.
+ *
+ * `name` is what the calendar client lists, so it carries the instance's own
+ * name rather than the product's.
  */
-function createBaseCalendar(name = "Saale"): ReturnType<typeof ical> {
+function createBaseCalendar(name: string): ReturnType<typeof ical> {
   const cal = ical();
   cal.prodId("-//Saale//Calendar//EN");
   cal.name(name);
@@ -86,8 +90,8 @@ export function addEventToCalendar(
  * Generate a single .ics string for one event.
  * Used for CalDAV push operations.
  */
-export function generateICS(event: ICSExportEvent): string {
-  const cal = createBaseCalendar();
+export function generateICS(event: ICSExportEvent, name = DEFAULT_WORKSPACE_NAME): string {
+  const cal = createBaseCalendar(name);
   addEventToCalendar(cal, event);
   return cal.toString();
 }
@@ -96,8 +100,8 @@ export function generateICS(event: ICSExportEvent): string {
  * Generate a .ics string for multiple events.
  * Used for bulk export/download.
  */
-export function generateICSBulk(events: ICSExportEvent[]): string {
-  const cal = createBaseCalendar("Saale Calendar Export");
+export function generateICSBulk(events: ICSExportEvent[], name = DEFAULT_WORKSPACE_NAME): string {
+  const cal = createBaseCalendar(name);
 
   for (const evt of events) {
     addEventToCalendar(cal, evt);

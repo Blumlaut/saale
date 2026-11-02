@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 
-export const metadata: Metadata = {
-  title: "Shared Chat. Saale",
-  description: "Viewing a shared conversation",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    title: `Shared Chat. ${await getWorkspaceName()}`,
+    description: "Viewing a shared conversation",
+  };
+}
 
 /**
  * Minimal layout for /share/* pages.

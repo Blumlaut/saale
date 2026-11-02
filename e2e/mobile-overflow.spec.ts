@@ -48,7 +48,12 @@ const ADMIN_PAGES = [
   "/admin/users",
   "/admin/roles",
   "/admin/plugins",
-  "/admin/settings",
+  "/admin/settings/signups",
+  "/admin/settings/features",
+  "/admin/settings/branding",
+  "/admin/settings/telegram",
+  "/admin/settings/search",
+  "/admin/settings/voice",
 ];
 
 /**

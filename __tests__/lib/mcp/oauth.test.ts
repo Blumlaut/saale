@@ -64,6 +64,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/branding/workspace", () => ({
+  getWorkspaceName: async () => "Saale",
+}));
+
 vi.mock("@/lib/redis", () => ({
   getRedis: () => ({
     set: vi.fn(async (key: string, value: string) => {

@@ -1552,7 +1552,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Admin ─────────────────────────────────────────────────────────────────
   {
     name: "admin · telegram bot",
-    path: "/admin/settings",
+    path: "/admin/settings/telegram",
     sources: ["src/components/admin/telegram-bot-panel.tsx"],
     skip: "admin-only surface  the overlay needs a configured bot to render its trigger",
   },

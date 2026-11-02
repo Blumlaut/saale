@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageSection } from "@/components/layout/page";
 import { GlassPanel, GlassPanelHeader, GlassPanelContent } from "@/components/ui/glass-panel";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,12 +23,15 @@ import {
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import { AlertCircle, Check, Copy, ExternalLink, Loader2, MessageCircle } from "lucide-react";
 import type { TelegramLoginStatus } from "@/lib/telegram/oidc";
+import type { TelegramBotProfile } from "@/lib/telegram/profile";
 
 interface AdminTelegramBot {
   configured: boolean;
   enabled?: boolean;
   botId?: string | null;
   botUsername?: string | null;
+  /** What Telegram says the bot is, or null when it did not answer. */
+  profile?: TelegramBotProfile | null;
   /** How many users have linked an account to it. */
   linkCount?: number;
   updatedAt?: string;
@@ -210,6 +214,8 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
     }
   }, []);
 
+  const username = bot?.profile?.username ?? bot?.botUsername ?? null;
+
   const content = (
     <GlassPanelContent className="p-0">
       {loading ? (
@@ -219,26 +225,40 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
       ) : bot?.configured ? (
         <div className="space-y-4 px-4 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Label className="text-sm font-medium">Shared bot</Label>
-                {bot.botUsername && (
-                  <Badge variant="secondary" className="rounded-full">
-                    @{bot.botUsername}
-                  </Badge>
-                )}
-                {!bot.enabled && (
-                  <Badge variant="outline" className="rounded-full">
-                    Disabled
-                  </Badge>
-                )}
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar size="lg">
+                {bot.profile?.avatarUrl && <AvatarImage src={bot.profile.avatarUrl} alt="" />}
+                <AvatarFallback>
+                  <MessageCircle className="h-4 w-4" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-sm font-medium">
+                    {bot.profile?.firstName ?? "Shared bot"}
+                  </span>
+                  {!bot.enabled && (
+                    <Badge variant="outline" className="rounded-full">
+                      Disabled
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-muted-foreground mt-0.5 text-xs break-words">
+                  {username ? `@${username} · ` : ""}
+                  {bot.linkCount ?? 0} linked account{bot.linkCount === 1 ? "" : "s"}
+                  {bot.updatedAt ? ` · saved ${new Date(bot.updatedAt).toLocaleDateString()}` : ""}
+                </p>
               </div>
-              <p className="text-muted-foreground mt-0.5 text-xs break-all">
-                {bot.linkCount ?? 0} linked account{bot.linkCount === 1 ? "" : "s"}
-                {bot.updatedAt ? ` · saved ${new Date(bot.updatedAt).toLocaleDateString()}` : ""}
-              </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {username && (
+                <Button variant="outline" size="sm" className="h-8" asChild>
+                  <a href={`https://t.me/${username}`} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink />
+                    Open in Telegram
+                  </a>
+                </Button>
+              )}
               <span className="text-muted-foreground text-xs">Enabled</span>
               <Switch
                 checked={bot.enabled ?? false}
@@ -247,6 +267,16 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
               />
             </div>
           </div>
+
+          {!bot.profile && (
+            <div className="text-muted-foreground flex items-start gap-2 text-xs">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Telegram did not answer when this page loaded, so the bot&apos;s name and picture
+                are missing. The token may have been revoked.
+              </span>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label className="text-xs">Replace bot token</Label>

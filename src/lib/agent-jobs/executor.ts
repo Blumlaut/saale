@@ -6,12 +6,14 @@ import {
   createSystemPromptLoader,
   startSessionExtensions,
   TOOLS_PROMPT,
+  webSearchSection,
 } from "@/lib/pi/processing-state";
 import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { createSandboxScopedTools } from "@/lib/pi/session";
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadToolExposure } from "@/lib/pi/tool-exposure";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-categories";
+import { promptSearchSources } from "@/lib/web/prompt";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 
@@ -232,9 +234,20 @@ export async function executeAgentRun(
     exposure: await loadToolExposure(userId),
   });
 
+  // A job that carries its own prompt keeps it whole, so the sources are read
+  // for the default prompt only.
+  const searchSources = definition.systemPrompt
+    ? undefined
+    : await promptSearchSources(resolvedToolConfig);
   const systemPrompt =
     definition.systemPrompt ??
-    `You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.\n\n${TOOLS_PROMPT}`;
+    [
+      "You are an AI assistant executing an automated job. Be concise and focus on completing the task effectively.",
+      TOOLS_PROMPT,
+      searchSources ? webSearchSection(searchSources) : null,
+    ]
+      .filter((section): section is string => section !== null)
+      .join("\n\n");
 
   // Create agent session
   const { session } = await createSaaleAgentSession(userId, {

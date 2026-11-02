@@ -44,7 +44,7 @@ interface SearchResult {
   date: string;
 }
 
-export function DashboardNav() {
+export function DashboardNav({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const { visibleItems } = useSidebarNav();
@@ -285,7 +285,7 @@ export function DashboardNav() {
 
   return (
     <SidebarFrame>
-      <SidebarBrand />
+      <SidebarBrand name={workspaceName} />
 
       {/* Search */}
       <div className="px-1 pb-2" ref={searchRef}>
@@ -404,7 +404,7 @@ export function DashboardNav() {
         )}
       </div>
 
-      <SidebarFooter />
+      <SidebarFooter workspaceName={workspaceName} />
     </SidebarFrame>
   );
 }

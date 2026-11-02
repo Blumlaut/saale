@@ -29,6 +29,44 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       description: "The default model and which models users can pick",
     },
   ],
+  "/admin/settings": [
+    {
+      id: "signups",
+      href: "/admin/settings/signups",
+      label: "Sign-ups",
+      description: "Whether new accounts can be created",
+    },
+    {
+      id: "features",
+      href: "/admin/settings/features",
+      label: "Features",
+      description: "What a regular account can use by default",
+    },
+    {
+      id: "branding",
+      href: "/admin/settings/branding",
+      label: "Branding",
+      description: "The agent avatar and the accent colours",
+    },
+    {
+      id: "telegram",
+      href: "/admin/settings/telegram",
+      label: "Telegram",
+      description: "The bot accounts link to and chat through",
+    },
+    {
+      id: "search",
+      href: "/admin/settings/search",
+      label: "Search",
+      description: "The search sources and the page fetch budget",
+    },
+    {
+      id: "voice",
+      href: "/admin/settings/voice",
+      label: "Voice",
+      description: "Speech input, with the model and language it decodes",
+    },
+  ],
   "/admin/plugins": [
     {
       id: "installed",
