@@ -82,6 +82,64 @@ describe("estimateContextParts", () => {
     });
     expect(parts.userMessages).toBe(10);
   });
+
+  it("puts the declared tool schemas in the tools slice", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "s".repeat(400),
+      tools: [
+        {
+          name: "bash",
+          description: "Run a shell command",
+          parameters: { type: "object", properties: { command: { type: "string" } } },
+        },
+      ],
+      messages: [],
+    });
+
+    expect(parts.systemPrompt).toBe(100);
+    expect(parts.tools).toBeGreaterThan(20);
+  });
+
+  /**
+   * A coder chat declares a dozen tools, and their schemas are a fixed cost on
+   * every request. Counting them apart from the prompt is what keeps the
+   * prompt's slice from being inflated by them while the transcript is short.
+   */
+  it("holds the system prompt slice at its real size as the transcript grows", () => {
+    const systemPrompt = "p".repeat(6400);
+    const tools = [
+      {
+        name: "bash",
+        description: "Run a shell command in the worktree",
+        parameters: { type: "object", properties: { command: { type: "string" } } },
+      },
+    ];
+    const toolChars = JSON.stringify(tools[0]).length;
+    const realPrompt = Math.round(systemPrompt.length / 4);
+
+    const shown = [0, 3, 20].map((turns) => {
+      const messages = Array.from({ length: turns }, () => [
+        { role: "user", content: [{ type: "text", text: "x".repeat(400) }] },
+        { role: "assistant", content: [{ type: "text", text: "y".repeat(4000) }] },
+        { role: "toolResult", content: [{ type: "text", text: "z".repeat(8000) }] },
+      ]).flat();
+      const transcriptChars = messages.reduce(
+        (sum, message) => sum + (message.content[0] as { text: string }).text.length,
+        0,
+      );
+      const total = Math.round((systemPrompt.length + toolChars + transcriptChars) / 4);
+
+      return buildTurnStats({
+        message: {},
+        systemPrompt,
+        tools,
+        messages,
+        context: { tokens: total, contextWindow: 200_000 },
+      }).context.parts.systemPrompt;
+    });
+
+    for (const tokens of shown) expect(tokens).toBe(realPrompt);
+  });
 });
 
 describe("scaleContextParts", () => {

@@ -100,6 +100,11 @@ export function createSessionEventTracker(
       return buildTurnStats({
         message: message as Parameters<typeof buildTurnStats>[0]["message"],
         systemPrompt: session.systemPrompt,
+        // The schemas of the tools this turn was declared, which the provider
+        // bills as prompt but no message carries.
+        tools: session
+          .getActiveToolNames()
+          .flatMap((name) => session.getToolDefinition(name) ?? []),
         messages: session.messages,
         context: readContextUsage(session),
       });

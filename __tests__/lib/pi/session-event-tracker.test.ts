@@ -62,10 +62,14 @@ function createFakeSession(
   options: {
     contextTokens?: number | null;
     contextWindow?: number;
+    systemPrompt?: string;
+    messages?: unknown[];
+    tools?: Record<string, unknown>[];
   } = {},
 ) {
   const listeners = new Set<(event: FakeAgentEvent) => void>();
   const contextWindow = options.contextWindow ?? 100_000;
+  const tools = options.tools ?? [];
   return {
     subscribe: (listener: (event: FakeAgentEvent) => void) => {
       listeners.add(listener);
@@ -76,6 +80,11 @@ function createFakeSession(
     },
     model: { contextWindow },
     compact: vi.fn().mockResolvedValue({ tokensBefore: 50 }),
+    // What the turn stats measure besides Pi's total.
+    systemPrompt: options.systemPrompt ?? "",
+    messages: options.messages ?? [],
+    getActiveToolNames: () => tools.map((tool) => String(tool.name)),
+    getToolDefinition: (name: string) => tools.find((tool) => tool.name === name),
     // Pi's own context accounting  the tracker must publish this, not a sum
     // of per-message usage.
     getContextUsage: () => ({
@@ -887,6 +896,41 @@ describe("createSessionEventTracker", () => {
     const usage = published.find((p) => p.event === "token_usage")!;
     expect(usage.data.contextTokens).toBeNull();
     expect(usage.data.contextWindow).toBe(100_000);
+  });
+
+  it("counts the declared tool schemas apart from the system prompt", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    // A coder-shaped session: a big tool catalog beside a prompt and a short
+    // user message. Leaving the schemas out of the breakdown credits their
+    // tokens to the prompt, which then looks ten times its real size.
+    const session = createFakeSession({
+      systemPrompt: "s".repeat(4000),
+      messages: [{ role: "user", content: [{ type: "text", text: "u".repeat(400) }] }],
+      tools: [
+        {
+          name: "bash",
+          description: "d".repeat(40_000),
+          parameters: { type: "object", properties: { command: { type: "string" } } },
+        },
+      ],
+      contextTokens: 11_100,
+    });
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    emitRun(session);
+    await flush();
+    await flush();
+
+    const saved = mockSaveAssistantMessage.mock.calls[0]![0] as {
+      stats?: { context: { parts: Record<string, number> } };
+    };
+    const parts = saved.stats!.context.parts;
+
+    expect(parts.tools).toBeGreaterThan(9_000);
+    expect(parts.systemPrompt).toBeGreaterThan(950);
+    expect(parts.systemPrompt).toBeLessThan(1_050);
   });
 
   it("persists SDK auto-compaction between agent_end and agent_settled, defers done", async () => {

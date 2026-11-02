@@ -5,8 +5,9 @@ import { z } from "zod";
  *
  * Pi reports the context total and the tokens a turn used; it does not say
  * which part of the transcript filled the window. The breakdown is therefore
- * measured from the transcript's own text and scaled onto Pi's total, so the
- * number at the top stays Pi's while the proportions are an estimate.
+ * measured from the prompt, the declared tools and the transcript, and scaled
+ * onto Pi's total, so the number at the top stays Pi's while the proportions
+ * are an estimate.
  */
 
 /** Roughly four characters per token, the same fallback Pi uses for providers that report no usage. */
@@ -84,6 +85,18 @@ function blockChars(block: unknown): number {
   return 0;
 }
 
+/**
+ * Characters a declared tool costs. Its schema travels beside the transcript,
+ * so leaving it out credits its tokens to whichever part has text.
+ */
+function toolChars(tool: unknown): number {
+  if (typeof tool === "string") return tool.length;
+  if (typeof tool !== "object" || tool === null) return 0;
+
+  const { name, description, parameters, promptGuidelines } = tool as Record<string, unknown>;
+  return JSON.stringify({ name, description, parameters, promptGuidelines }).length;
+}
+
 function isToolCall(block: unknown): boolean {
   return (
     typeof block === "object" &&
@@ -95,13 +108,14 @@ function isToolCall(block: unknown): boolean {
 /**
  * Estimate how the transcript splits between the four parts.
  *
- * The system prompt is Saale's own text (persona, rules, tool catalog), so it
- * is the share a user can actually shave. A call's arguments count as tools:
- * a written file body is tool traffic, and it is resent with every turn after
- * it.
+ * The system prompt is Saale's own text (persona, rules), so it is the share a
+ * user can actually shave. A call's arguments count as tools: a written file
+ * body is tool traffic, and it is resent with every turn after it.
  */
 export function estimateContextParts(input: {
   systemPrompt: string;
+  /** The tool definitions sent beside the prompt, as `getToolDefinition` returns them. */
+  tools?: ReadonlyArray<unknown> | undefined;
   messages: ReadonlyArray<{ role: string; content?: unknown }>;
 }): ContextParts {
   const chars: Record<TurnStatsPart, number> = {
@@ -110,6 +124,8 @@ export function estimateContextParts(input: {
     userMessages: 0,
     responses: 0,
   };
+
+  for (const tool of input.tools ?? []) chars.tools += toolChars(tool);
 
   for (const message of input.messages) {
     const blocks = Array.isArray(message.content) ? message.content : [message.content];
@@ -179,12 +195,15 @@ interface AssistantMessageLike {
 export function buildTurnStats(input: {
   message: AssistantMessageLike;
   systemPrompt: string;
+  /** The declared tools: the same list Pi sends on the request this turn answers. */
+  tools?: ReadonlyArray<unknown> | undefined;
   messages: ReadonlyArray<{ role: string; content?: unknown }>;
   context: { tokens: number | null; contextWindow: number };
 }): TurnStats {
   const usage = input.message.usage;
   const estimated = estimateContextParts({
     systemPrompt: input.systemPrompt,
+    tools: input.tools,
     messages: input.messages,
   });
 

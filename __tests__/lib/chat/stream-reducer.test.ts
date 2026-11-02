@@ -305,7 +305,7 @@ describe("streamReducer", () => {
       context: {
         tokens: 1000,
         window: 200000,
-        parts: { systemPrompt: 100, toolResults: 500, userMessages: 100, responses: 300 },
+        parts: { systemPrompt: 100, tools: 500, userMessages: 100, responses: 300 },
       },
     };
     let s = streamReducer(empty, { type: "turn_start", turnId: "t1" });
