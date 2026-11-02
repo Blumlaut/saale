@@ -11,17 +11,18 @@ import {
 /**
  * Model picker overflow guardrail.
  *
- * The model list is capped at 320px (`ScrollArea max-h-[320px]`) and must scroll
- * *inside* the popover. If the ScrollArea regresses (e.g. its viewport stops
- * being clamped), a long model list overflows past the popover's bottom edge
- * and the last options render outside the dropdown bounds.
+ * The model list is capped (`ScrollArea max-h-[340px]`) and must scroll *inside*
+ * the popover. If the ScrollArea regresses (e.g. its viewport stops being
+ * clamped), a long model list overflows past the popover's bottom edge and the
+ * last options render outside the dropdown bounds.
  *
  * The models endpoint is mocked so the picker renders a list tall enough to
  * exceed the cap, without needing a provider configured for the e2e user.
  */
 
 const MODEL_COUNT = 15;
-const MAX_LIST_PX = 320;
+/** The cap on the list's ScrollArea in `model-picker.tsx`. */
+const MAX_LIST_PX = 340;
 
 function mockModelsResponse() {
   const models = {
@@ -59,25 +60,11 @@ test.describe("Model picker overflow", () => {
     try {
       await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
 
-      // Mobile: open the ⚙️ header dropdown, then the model picker inside it.
-      // The page mounts the mobile and desktop shells, so the gear trigger
-      // exists in duplicate (one hidden)  filter to the visible instance.
-      const gear = page
-        .locator('[data-slot="dropdown-menu-trigger"]:visible')
-        .filter({ has: page.locator(".lucide-settings-2") })
-        .first();
-      await gear.waitFor({ state: "visible", timeout: 15_000 });
-      await gear.click();
-
-      const pickerTrigger = page
-        .locator('[data-slot="dropdown-menu-content"]')
-        .filter({ has: page.locator(".lucide-brain") })
-        .first()
-        .locator(".lucide-brain");
-      // The picker mounts when the dropdown opens and shows a spinner until the
-      // (mocked) models load; the brain icon only appears once loaded.
-      await pickerTrigger.waitFor({ state: "visible", timeout: 15_000 });
-      await pickerTrigger.click();
+      // The trigger sits in the header and is the only visible one: a narrow
+      // header keeps its icon and drops the model's name.
+      const trigger = page.locator('[aria-label^="Model:"]:visible').first();
+      await trigger.waitFor({ state: "visible", timeout: 15_000 });
+      await trigger.click();
 
       const popover = page.locator('[data-slot="popover-content"]').first();
       await popover.locator('input[placeholder="Search models..."]').waitFor({ state: "visible" });
@@ -94,7 +81,7 @@ test.describe("Model picker overflow", () => {
         scrollHeight: el.scrollHeight,
       }));
 
-      // The list is tall enough that it *would* overflow the 320px cap…
+      // The list is tall enough that it *would* overflow the cap…
       expect(scrollHeight).toBeGreaterThan(MAX_LIST_PX);
       // …so the viewport must be clamped and scroll internally.
       expect(clientHeight).toBeLessThanOrEqual(MAX_LIST_PX);
