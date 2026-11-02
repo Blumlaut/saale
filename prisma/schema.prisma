@@ -175,7 +175,9 @@ model ChatSession {
   shareAccess      String        @default("public")
   sourceShareToken String?                          // shareToken this session was copied from (idempotency guard)
   messages         ChatMessage[]
-  scriptWatchers   ScriptWatcher[]
+  scriptWatchers   ScriptWatcher[] @relation("ScriptWatcherTarget")
+  /// Watchers created from this chat, whatever they report into.
+  watchersFromHere ScriptWatcher[] @relation("ScriptWatcherOrigin")
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -951,6 +953,10 @@ model ScriptWatcher {
   /// The conversation a `chat` fire is posted into, and the context its script
   /// runs in. Only a `chat` watcher has one, so only it goes with the chat.
   sessionId      String?
+  /// The conversation this watcher was created from. A chat-aware tool its
+  /// script calls acts as this chat, so a message the script sends belongs to
+  /// the thread that asked for the watcher. Survives that chat's deletion.
+  originSessionId String?
   /// The project a `coder` fire dispatches into.
   projectId      String?
   /// "per-fire" | "sticky": a fresh worktree for every fire, or one the watcher
@@ -982,7 +988,8 @@ model ScriptWatcher {
   cooldownMinutes Int       @default(0)
 
   ticks     ScriptWatcherTick[]
-  session   ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session   ChatSession?       @relation("ScriptWatcherTarget", fields: [sessionId], references: [id], onDelete: Cascade)
+  originSession ChatSession?   @relation("ScriptWatcherOrigin", fields: [originSessionId], references: [id], onDelete: SetNull)
   project   CoderProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime           @default(now())
@@ -991,6 +998,7 @@ model ScriptWatcher {
   @@unique([userId, name])
   @@index([userId, enabled])
   @@index([sessionId])
+  @@index([originSessionId])
   @@index([projectId])
   @@map("ScriptWatcher")
 }
