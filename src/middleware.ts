@@ -18,6 +18,9 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000);
 // The e2e suite sends every request from one address, so a run raises this.
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 60);
 
+/** Public JSON for a shared chat, served beside the page that reads it. */
+const SHARE_API_PREFIX = "/api/chat/sessions/share/";
+
 function isRateLimited(key: string): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(key);
@@ -84,6 +87,12 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // The composer records voice input; nothing here opens the camera.
   response.headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
+
+  // A share link is public and unlisted; keep it and its messages out of search
+  // results, and noarchive for the snippet a crawler already holds.
+  if (pathname.startsWith("/share/") || pathname.startsWith(SHARE_API_PREFIX)) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
 
   // Content Security Policy
   response.headers.set(

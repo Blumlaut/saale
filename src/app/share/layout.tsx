@@ -5,6 +5,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `Shared Chat. ${await getWorkspaceName()}`,
     description: "Viewing a shared conversation",
+    // A share link is unlisted, so it stays out of search results.
+    robots: { index: false, follow: false, nocache: true },
   };
 }
 
