@@ -19,6 +19,13 @@ export const VIEWPORTS = [
   { name: "320px", width: 320, height: 667 }, // smallest common phone
 ];
 
+/**
+ * A laptop viewport, for the overlays that live in a desktop-only surface: the
+ * console sidebar's footer is `md:` and up, so its changelog sheet cannot open
+ * on a phone at all.
+ */
+export const DESKTOP_VIEWPORT = { name: "1280px", width: 1280, height: 800 };
+
 /** The page region every dashboard and admin route renders into. */
 const SHELL = "main";
 

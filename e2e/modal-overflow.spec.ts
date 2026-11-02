@@ -3,14 +3,15 @@ import { test } from "@playwright/test";
 import { MODAL_SCENARIOS } from "./modal-scenarios";
 import { expectOverlayFits, waitForOverlay } from "./overlay-layout";
 import { VIEWPORTS, gotoAndSettle, sessionContext } from "./utils";
-
 /**
  * Modal layout guardrails.
  *
- * Opens every overlay in the app at phone widths and enforces the overlay
- * contract from `overlay-layout.ts`: a modal must fit its bounds and must never
- * scroll horizontally. A long unbreakable key/URL/token inflating an auto-width
- * grid track (the "Setup SSH Access" regression) fails these tests.
+ * Opens every overlay in the app at phone widths (or at the viewport a
+ * scenario names, for the ones that live in a desktop-only surface) and
+ * enforces the overlay contract from `overlay-layout.ts`: a modal must fit its
+ * bounds and must never scroll horizontally. A long unbreakable key/URL/token
+ * inflating an auto-width grid track (the "Setup SSH Access" regression) fails
+ * these tests.
  *
  * New overlays are picked up automatically: `__tests__/overlay-coverage.test.ts`
  * fails when a component renders a modal that isn't registered in
@@ -18,8 +19,9 @@ import { VIEWPORTS, gotoAndSettle, sessionContext } from "./utils";
  */
 
 test.describe("modal layout guardrails", () => {
-  for (const { name, width, height } of VIEWPORTS) {
-    for (const scenario of MODAL_SCENARIOS) {
+  for (const scenario of MODAL_SCENARIOS) {
+    // A scenario names its own viewport when the phone widths cannot reach it.
+    for (const { name, width, height } of scenario.viewport ? [scenario.viewport] : VIEWPORTS) {
       const title = `${scenario.name} @ ${name}`;
 
       if (scenario.skip) {

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { gotoAndSettle } from "./utils";
+import { gotoAndSettle, DESKTOP_VIEWPORT } from "./utils";
 import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
 import { FILES_PREVIEW_NAME, mockCouncilFiles, mockCouncilRoom } from "./council-mocks";
 
@@ -31,6 +31,11 @@ export interface ModalScenario {
   mock?: (page: Page) => Promise<void>;
   /** Documented reason this overlay can't be automated  the test is skipped. */
   skip?: string;
+  /**
+   * The viewport this overlay needs, when the phone widths cannot show it at
+   * all. Replaces the default pair for this scenario.
+   */
+  viewport?: { name: string; width: number; height: number };
 }
 
 /**
@@ -1678,6 +1683,9 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "console · changelog",
     path: "/dashboard/chat",
     sources: ["src/components/layout/changelog-sheet.tsx"],
+    // The footer that opens it is desktop-only (`app-shell.tsx` hides the
+    // console sidebar below md), so a phone run has nothing to click.
+    viewport: DESKTOP_VIEWPORT,
     // A long entry is the case that would push the sheet sideways at 320px.
     mock: async (page) => {
       await page.route(/\/api\/changelog$/, (route) =>
