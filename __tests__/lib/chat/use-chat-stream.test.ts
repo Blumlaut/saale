@@ -59,12 +59,12 @@ describe("wireStreamListeners tool_end", () => {
     eventSource.emit("tool_end", {
       turnId: "turn-1",
       toolCallId: "call-1",
-      toolName: "watcher_create",
+      toolName: "automation_create",
       result: "ok",
     });
 
     expect(onToolEnd).toHaveBeenCalledTimes(1);
-    expect(onToolEnd).toHaveBeenCalledWith("watcher_create");
+    expect(onToolEnd).toHaveBeenCalledWith("automation_create");
   });
 
   it("does not call onToolEnd when the payload has no tool name", () => {

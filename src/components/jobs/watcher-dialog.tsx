@@ -18,6 +18,7 @@ import { fetchJson, patchJson, postJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import { getCronLabel } from "@/lib/jobs/cron-label";
+import { THINKING_LEVEL_OPTIONS } from "@/lib/pi/thinking-levels";
 import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Loader2, Play, Radar } from "lucide-react";
@@ -43,13 +44,14 @@ interface WatcherDialogProps {
   watcher?: ScriptWatcher | null;
 }
 
-/** No conversation selected. only a delivery that does not need one may leave it out. */
-const NO_TARGET = "none";
+/** No conversation or project selected. */
+const NO_SELECTION = "none";
 
 /** Where a fire goes, as the dialog offers it. */
 const DELIVERY_OPTIONS = [
   { value: "chat", label: "A conversation" },
-  { value: "silent", label: "Nothing (the script delivers it)" },
+  { value: "none", label: "Nothing automatic (the agent runs on its own)" },
+  { value: "silent", label: "Nothing at all (the script delivers it)" },
   { value: "coder", label: "A project's coder chat" },
 ];
 
@@ -89,19 +91,22 @@ interface TestResult {
 }
 
 /**
- * Create or edit a watcher.
+ * Create or edit an automation.
  *
- * A watcher runs unattended, so the dialog is where the script is read and tried
- * before it is put on a schedule.
+ * An automation runs unattended, so the dialog is where the script is read and
+ * tried before it is put on a schedule. With no script it fires on every tick,
+ * which is what a plain scheduled prompt is.
  */
 export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: WatcherDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [script, setScript] = useState("");
   const [cronExpression, setCronExpression] = useState("*/10 * * * *");
+  const [maxFires, setMaxFires] = useState("");
+  const [thinkingLevel, setThinkingLevel] = useState("default");
   const [deliver, setDeliver] = useState("chat");
-  const [sessionId, setSessionId] = useState<string>(NO_TARGET);
-  const [projectId, setProjectId] = useState<string>(NO_TARGET);
+  const [sessionId, setSessionId] = useState<string>(NO_SELECTION);
+  const [projectId, setProjectId] = useState<string>(NO_SELECTION);
   const [worktreeMode, setWorktreeMode] = useState("per-fire");
   const [retentionMinutes, setRetentionMinutes] = useState("1440");
   // Canonical `provider:model`; empty means the user's default model.
@@ -133,7 +138,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
         setChats(chatData.sessions ?? []);
         setProjects(projectData.projects ?? []);
       } catch (err) {
-        console.error("Failed to load watcher delivery targets:", err);
+        console.error("Failed to load automation delivery targets:", err);
       }
     })();
     return () => {
@@ -150,41 +155,45 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
     if (watcher) {
       setName(watcher.name);
       setDescription(watcher.description ?? "");
-      setScript(watcher.script);
-      setCronExpression(watcher.cronExpression);
+      setScript(watcher.script ?? "");
+      setCronExpression(watcher.cronExpression ?? "");
       setDeliver(watcher.deliver);
-      setSessionId(watcher.sessionId ?? NO_TARGET);
-      setProjectId(watcher.projectId ?? NO_TARGET);
+      setSessionId(watcher.sessionId ?? NO_SELECTION);
+      setProjectId(watcher.projectId ?? NO_SELECTION);
       setWorktreeMode(watcher.worktreeMode);
       setRetentionMinutes(String(watcher.retentionMinutes));
       setModelId(watcher.modelId ?? "");
       setWakePrompt(watcher.wakePrompt);
       setCooldownMinutes(String(watcher.cooldownMinutes));
+      setMaxFires(watcher.maxFires == null ? "" : String(watcher.maxFires));
+      setThinkingLevel(watcher.thinkingLevel);
       setEnabled(watcher.enabled);
     } else {
       setName("");
       setDescription("");
-      setScript(STARTER_SCRIPT);
+      setScript("");
       setCronExpression("*/10 * * * *");
       setDeliver("chat");
-      setSessionId(NO_TARGET);
-      setProjectId(NO_TARGET);
+      setSessionId(NO_SELECTION);
+      setProjectId(NO_SELECTION);
       setWorktreeMode("per-fire");
       setRetentionMinutes("1440");
       setModelId("");
       setWakePrompt("");
       setCooldownMinutes("0");
+      setMaxFires("");
+      setThinkingLevel("default");
       setEnabled(true);
     }
   }, [open, watcher]);
 
   const resolveTarget = useCallback(
-    () => (sessionId === NO_TARGET ? null : sessionId),
+    () => (sessionId === NO_SELECTION ? null : sessionId),
     [sessionId],
   );
 
   const resolveProject = useCallback(
-    () => (projectId === NO_TARGET ? null : projectId),
+    () => (projectId === NO_SELECTION ? null : projectId),
     [projectId],
   );
 
@@ -199,14 +208,14 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
     setTestResult(null);
     setError(null);
     try {
-      const data = await postJson<{ outcome: TestResult }>("/api/watchers", {
+      const data = await postJson<{ outcome: TestResult }>("/api/automations", {
         preview: true,
         script,
         sessionId: resolveTarget(),
       });
       setTestResult(data.outcome);
     } catch (err) {
-      console.error("Failed to test the watcher script:", err);
+      console.error("Failed to test the automation script:", err);
       setError(err instanceof Error ? err.message : "The script could not be run.");
     } finally {
       setTesting(false);
@@ -220,8 +229,8 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
       const payload = {
         name,
         description,
-        script,
-        cronExpression,
+        script: script.trim() ? script : null,
+        cronExpression: cronExpression.trim() || null,
         deliver,
         sessionId: resolveTarget(),
         projectId: resolveProject(),
@@ -230,13 +239,15 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
         modelId: modelId || null,
         wakePrompt,
         cooldownMinutes: Number(cooldownMinutes) || 0,
+        maxFires: maxFires.trim() ? Number(maxFires) : null,
+        thinkingLevel,
         enabled,
       };
 
       if (watcher) {
-        await patchJson(`/api/watchers/${watcher.id}`, payload);
+        await patchJson(`/api/automations/${watcher.id}`, payload);
       } else {
-        await postJson("/api/watchers", payload);
+        await postJson("/api/automations", payload);
       }
 
       // The chat lists mark the conversations a watcher rides along with.
@@ -244,8 +255,8 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {
-      console.error("Failed to save watcher:", err);
-      setError(err instanceof Error ? err.message : "Failed to save the watcher.");
+      console.error("Failed to save automation:", err);
+      setError(err instanceof Error ? err.message : "Failed to save the automation.");
     } finally {
       setSaving(false);
     }
@@ -253,10 +264,8 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
 
   const canSave =
     name.trim().length > 0 &&
-    script.trim().length > 0 &&
-    cronExpression.trim().length > 0 &&
-    (deliver !== "chat" || sessionId !== NO_TARGET) &&
-    (deliver !== "coder" || projectId !== NO_TARGET);
+    (deliver !== "chat" || sessionId !== NO_SELECTION) &&
+    (deliver !== "coder" || projectId !== NO_SELECTION);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -264,7 +273,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Radar className="h-4 w-4" />
-            {isEdit ? "Edit watcher" : "New watcher"}
+            {isEdit ? "Edit automation" : "New automation"}
           </DialogTitle>
         </DialogHeader>
 
@@ -281,12 +290,12 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </div>
 
             <div className="grid grid-cols-1 gap-2">
-              <Label htmlFor="watcher-cron">Check every</Label>
+              <Label htmlFor="watcher-cron">Run every</Label>
               <Input
                 id="watcher-cron"
                 value={cronExpression}
                 onChange={(event) => setCronExpression(event.target.value)}
-                placeholder="*/10 * * * *"
+                placeholder="*/10 * * * * (empty runs only by hand)"
                 className="font-mono"
               />
               <div className="flex flex-wrap gap-1.5">
@@ -325,13 +334,13 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
               <>
                 <Select
                   value={sessionId}
-                  onValueChange={(value) => setSessionId(value ?? NO_TARGET)}
+                  onValueChange={(value) => setSessionId(value ?? NO_SELECTION)}
                 >
                   <SelectTrigger aria-label="Conversation to answer in">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_TARGET}>Pick a conversation</SelectItem>
+                    <SelectItem value={NO_SELECTION}>Pick a conversation</SelectItem>
                     {chats.map((chat) => (
                       <SelectItem key={chat.id} value={chat.id}>
                         {chat.title}
@@ -343,6 +352,52 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
                   When the script reports something, the agent is given it here and answers in this
                   conversation, with the conversation&apos;s own tools and history.
                 </p>
+              </>
+            )}
+
+            {deliver === "none" && (
+              <>
+                <p className="text-muted-foreground text-xs">
+                  The agent runs on its own, with your tools and no conversation. Anything you hear
+                  about has to come from those tools, for example{" "}
+                  <code>await tools.telegram_send({"{ message }"})</code>.
+                </p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    <Label>Model for the run</Label>
+                    <ModelPicker
+                      value={pickerValue}
+                      onChange={(value) => {
+                        const reference = splitModelReference(value);
+                        setModelId(
+                          reference
+                            ? (formatModelReference(reference.provider, reference.name) ?? "")
+                            : "",
+                        );
+                      }}
+                      placeholder="Your default model"
+                      className="rounded border"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <Label htmlFor="watcher-thinking">Thinking</Label>
+                    <Select
+                      value={thinkingLevel}
+                      onValueChange={(value) => setThinkingLevel(value ?? "default")}
+                    >
+                      <SelectTrigger id="watcher-thinking">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {THINKING_LEVEL_OPTIONS.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </>
             )}
 
@@ -359,13 +414,13 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
               <>
                 <Select
                   value={projectId}
-                  onValueChange={(value) => setProjectId(value ?? NO_TARGET)}
+                  onValueChange={(value) => setProjectId(value ?? NO_SELECTION)}
                 >
                   <SelectTrigger aria-label="Project to dispatch into">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_TARGET}>Pick a project</SelectItem>
+                    <SelectItem value={NO_SELECTION}>Pick a project</SelectItem>
                     {projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name}
@@ -467,21 +522,33 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
 
           <div className="grid grid-cols-1 gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label htmlFor="watcher-script">Script</Label>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleTest()}
-                disabled={testing || !script.trim()}
-              >
-                {testing ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Play className="mr-1.5 h-3.5 w-3.5" />
+              <Label htmlFor="watcher-script">Script (optional)</Label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {!script.trim() && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setScript(STARTER_SCRIPT)}
+                  >
+                    Use a starter script
+                  </Button>
                 )}
-                Test run
-              </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleTest()}
+                  disabled={testing || !script.trim()}
+                >
+                  {testing ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Test run
+                </Button>
+              </div>
             </div>
             <Textarea
               id="watcher-script"
@@ -494,7 +561,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             <p className="text-muted-foreground text-xs">
               Runs on a schedule and costs no tokens. Return <code>undefined</code> when there is
               nothing to report. that is the common case. Keep state between checks with{" "}
-              <code>store()</code> and <code>load()</code>.
+              <code>store()</code> and <code>load()</code>. Leave it empty and every tick fires.
             </p>
           </div>
 
@@ -548,6 +615,22 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </div>
 
             <div className="grid grid-cols-1 gap-2">
+              <Label htmlFor="watcher-max-fires">Stop after (fires)</Label>
+              <Input
+                id="watcher-max-fires"
+                type="number"
+                min={1}
+                value={maxFires}
+                onChange={(event) => setMaxFires(event.target.value)}
+                placeholder="No limit"
+              />
+              <p className="text-muted-foreground text-xs">
+                1 makes this a one-off. The automation switches itself off once it has fired this
+                many times; raising the number starts it again.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
               <Label htmlFor="watcher-enabled">Enabled</Label>
               <div className="flex h-9 items-center gap-2">
                 <Switch id="watcher-enabled" checked={enabled} onCheckedChange={setEnabled} />
@@ -594,7 +677,7 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </Button>
             <Button onClick={() => void handleSave()} disabled={saving || !canSave}>
               {saving && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              {isEdit ? "Save" : "Create watcher"}
+              {isEdit ? "Save" : "Create automation"}
             </Button>
           </div>
         </div>

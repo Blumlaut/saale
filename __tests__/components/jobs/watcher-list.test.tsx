@@ -34,7 +34,9 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
     retentionMinutes: 1440,
     wakePrompt: "Check the price.",
     modelId: null,
+    thinkingLevel: "off",
     cooldownMinutes: 0,
+    maxFires: null,
     tickCount: 0,
     fireCount: 0,
     lastTickAt: null,
@@ -49,7 +51,7 @@ function watcher(overrides: Partial<ScriptWatcher> = {}): ScriptWatcher {
 
 async function renderWith(watchers: ScriptWatcher[], expectedName: string) {
   mockFetchJson.mockImplementation(async (url: string) =>
-    url === "/api/watchers" ? { watchers } : { ticks: [] },
+    url === "/api/automations" ? { watchers } : { ticks: [] },
   );
   render(<WatcherList />);
   // The list fetch resolves before the row is interactive.

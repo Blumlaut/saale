@@ -35,7 +35,6 @@ export const FEATURES = [
   "web",
   "memory",
   "chatSearch",
-  "agentJobs",
   "coder",
 ] as const;
 
@@ -100,8 +99,8 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     defaultOn: true,
   },
   watchers: {
-    label: "Watchers",
-    description: "Poll a condition and wake the assistant when it matches.",
+    label: "Automations",
+    description: "Scheduled work that wakes the assistant when its condition matches.",
     toolCategories: ["watchers"],
     defaultOn: true,
   },
@@ -133,12 +132,6 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     label: "Chat history",
     description: "Search, respond in and manage conversations from a tool.",
     toolCategories: ["chatSearch"],
-    defaultOn: true,
-  },
-  agentJobs: {
-    label: "Agent jobs",
-    description: "Job definitions and runs the assistant schedules itself.",
-    toolCategories: ["agentJobs"],
     defaultOn: true,
   },
 };

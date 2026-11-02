@@ -36,16 +36,17 @@ The agent runs in a Linux container, so it installs packages, executes code and 
 web.
 
 Saale itself brings a normal set of productivity tools: mail over SMTP and IMAP, a calendar,
-a to-do list, infrastructure management (SSH connections, notes), memories, agents,
-schedules and watchers.
+a to-do list, infrastructure management (SSH connections, notes), memories, automations and
+schedules.
 
-- **Agents** are prompts that run on a schedule and do the work on their own.
+- **Automations** are work on a schedule, with an optional script in front of it. The script
+  runs in the same sandbox as a chat's `codemode`, with every tool to hand, so an automation
+  watches a repository, a mailbox, a calendar or anything else a tool reaches and acts on
+  what changed. A fire lands in a chat, in a coder chat, or in a run of its own when it has
+  nowhere to report. With no script every tick fires, which is how a plain scheduled prompt
+  is written, and a fire limit turns one into a one-off.
 - **Schedules** are jobs Saale runs on its own: mail and calendar sync, chat titles, tags,
   memory compaction.
-- **Watchers** are a script on a schedule. It runs in the same sandbox as a chat's
-  `codemode`, with every tool to hand, so it watches a repository, a mailbox, a calendar or
-  anything else a tool reaches and acts on what changed. A fire lands in a chat, in a coder
-  chat, or nowhere when the script handles it itself.
 
 Monaco (VS Code's editor) is built in for edits. Connect GitHub under Settings →
 Integrations for private repositories, pushes and pull requests.

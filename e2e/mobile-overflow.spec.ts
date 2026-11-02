@@ -32,7 +32,7 @@ const DASHBOARD_PAGES = [
   "/dashboard/calendar",
   "/dashboard/tasks",
   "/dashboard/jobs",
-  "/dashboard/jobs/watchers",
+  "/dashboard/jobs/automations",
   "/dashboard/infra",
   "/dashboard/settings",
   "/dashboard/settings/models",

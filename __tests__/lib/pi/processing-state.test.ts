@@ -169,22 +169,22 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("telegram_send");
     // Both categories default on, so the agent is told how to send something
     // later rather than only how to send it now.
-    expect(prompt).toContain("agent_job_create");
+    expect(prompt).toContain("automation_create");
   });
 
-  it("omits the scheduling instruction when agent jobs are disabled", () => {
-    // Naming agent_job_create to a session without it would describe a tool the
-    // model cannot call.
-    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: true, agentJobs: false } });
+  it("omits the scheduling instruction when automations are disabled", () => {
+    // Naming automation_create to a session without it would describe a tool
+    // the model cannot call.
+    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: true, watchers: false } });
 
     expect(prompt).toContain("telegram_send");
-    expect(prompt).not.toContain("agent_job_create");
+    expect(prompt).not.toContain("automation_create");
   });
 
   it("omits the scheduling instruction when Telegram is disabled", () => {
-    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: false, agentJobs: true } });
+    const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: false, watchers: true } });
 
-    expect(prompt).not.toContain("agent_job_create");
+    expect(prompt).not.toContain("automation_create");
   });
 
   it("trims user custom instructions", () => {

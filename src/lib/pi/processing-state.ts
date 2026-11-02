@@ -110,11 +110,11 @@ const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram
 /**
  * Capability: giving an outreach message a time to go out.
  *
- * Only composed when agent jobs are available too. a message that must be sent
- * later needs a schedule behind it, and naming `agent_job_create` to a session
+ * Only composed when automations are available too. a message that must be sent
+ * later needs a schedule behind it, and naming `automation_create` to a session
  * without it would describe a tool the model cannot call.
  */
-const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create a one-off agent job (\`agent_job_create\` with \`runAt\`) whose output channel is Telegram, and it will reach the user at that time. Do that instead of promising to remember.`;
+const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create an automation (\`automation_create\`) whose cron names the minute, hour, day and month, with \`maxFires: 1\` and \`deliver: "silent"\`, whose script sends it with \`telegram_send\`. Do that instead of promising to remember.`;
 
 /** Capability: searching the web, worded with the instance's own names. */
 export function webSearchSection(sources: SearchSources): string {
@@ -174,7 +174,7 @@ export function capabilitySections(
     isCategoryEnabled(toolConfig, "web") && searchSources ? webSearchSection(searchSources) : null,
     isCategoryEnabled(toolConfig, "infra") ? INFRA_PROMPT : null,
     telegramEnabled ? TELEGRAM_PROMPT : null,
-    telegramEnabled && isCategoryEnabled(toolConfig, "agentJobs") ? TELEGRAM_SCHEDULE_PROMPT : null,
+    telegramEnabled && isCategoryEnabled(toolConfig, "watchers") ? TELEGRAM_SCHEDULE_PROMPT : null,
   ];
 
   return sections.filter((section): section is string => section !== null);

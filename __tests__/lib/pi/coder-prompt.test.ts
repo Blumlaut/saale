@@ -99,18 +99,18 @@ describe("buildCoderSystemPrompt capability sections", () => {
   });
 
   it("describes the same sections a chat does for the same config", () => {
-    const config = { terminal: true, memory: true, telegram: true, agentJobs: true };
+    const config = { terminal: true, memory: true, telegram: true, watchers: true };
     const prompt = buildCoderSystemPrompt({ toolConfig: config });
     expect(prompt).toContain("`telegram_send`");
-    expect(prompt).toContain("`agent_job_create`");
+    expect(prompt).toContain("`automation_create`");
 
     // `telegram` sits at its registry default when the config omits it, so turn
     // it off explicitly to see the section go.
     const quiet = buildCoderSystemPrompt({
-      toolConfig: { terminal: true, agentJobs: true, telegram: false },
+      toolConfig: { terminal: true, watchers: true, telegram: false },
     });
     expect(quiet).not.toContain("`telegram_send`");
-    expect(quiet).not.toContain("`agent_job_create`");
+    expect(quiet).not.toContain("`automation_create`");
   });
 });
 

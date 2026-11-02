@@ -86,7 +86,6 @@ describe("Tools category toggles", () => {
       web: true,
       memory: true,
       tasks: true,
-      agentJobs: true,
       infra: false,
     };
     const { switches, lastSwitch, update } = renderTab({

@@ -20,8 +20,7 @@ import { createCalendarTools } from "@/lib/pi/tools/calendar-tools";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
 import { createMemoryTools } from "@/lib/pi/tools/memory-tools";
 import { createTaskTools } from "@/lib/pi/tools/task-tools";
-import { createAgentJobTools } from "@/lib/pi/tools/agent-job-tools";
-import { createWatcherTools } from "@/lib/pi/tools/watcher-tools";
+import { createAutomationTools } from "@/lib/pi/tools/automation-tools";
 import { createTelegramTools } from "@/lib/pi/tools/telegram-tools";
 import { createInfraTools } from "@/lib/pi/tools/infra-tools";
 import { createSettingsTools } from "@/lib/settings/tools";
@@ -60,8 +59,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createWebTools(),
     createMemoryTools(userId),
     createTaskTools(userId),
-    createAgentJobTools(userId),
-    createWatcherTools(userId, sessionId),
+    createAutomationTools(userId, sessionId),
     createTelegramTools(userId, sessionId),
     createInfraTools(userId),
     createProjectTools(userId),
@@ -156,9 +154,9 @@ describe("tool catalog ↔ implementation drift", () => {
     const listed = await listedToolNames();
     // The regression this guards: the codemode budget filled with whichever
     // tools had the shortest descriptions, which dropped the entry points and
-    // left `watcher_delete` advertised with no sign of what a watcher is.
+    // left `automation_delete` advertised with no sign of what an automation is.
     expect([...listed].sort()).toEqual([
-      "agent_job_list",
+      "automation_list",
       "calendar_list",
       "chat_search",
       "contacts_list",
@@ -168,7 +166,6 @@ describe("tool catalog ↔ implementation drift", () => {
       "project_list",
       "settings_list",
       "task_list_pending",
-      "watcher_list",
     ]);
   });
 

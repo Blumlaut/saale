@@ -157,33 +157,6 @@ const SUBJECT_RESOLVERS: Record<string, SubjectResolver> = {
     });
     return job ? `Delete job "${job.name ?? job.type}"` : null;
   },
-  agent_job_run: async (userId, args) => {
-    const id = str(args.id);
-    if (!id) return null;
-    const def = await prisma.agentDefinition.findFirst({
-      where: { id, userId },
-      select: { name: true },
-    });
-    return def ? `Run agent job "${def.name}" now` : null;
-  },
-  agent_job_update: async (userId, args) => {
-    const id = str(args.id);
-    if (!id) return null;
-    const def = await prisma.agentDefinition.findFirst({
-      where: { id, userId },
-      select: { name: true },
-    });
-    return def ? `Update agent job "${def.name}"` : null;
-  },
-  agent_job_delete: async (userId, args) => {
-    const id = str(args.id);
-    if (!id) return null;
-    const def = await prisma.agentDefinition.findFirst({
-      where: { id, userId },
-      select: { name: true },
-    });
-    return def ? `Delete agent job "${def.name}" and its runs` : null;
-  },
   infra_remove_machine: async (userId, args) => {
     const id = str(args.id);
     if (!id) return null;

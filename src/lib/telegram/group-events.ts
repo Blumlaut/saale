@@ -139,9 +139,7 @@ async function onBotAdded(params: {
  * A group was upgraded to a supergroup and its id changed.
  *
  * Telegram sends the new id to the old chat and the old id to the new one, so
- * both directions are handled and each is a no-op once the row has moved. The
- * stored send targets follow, or a job would keep posting into an id that no
- * longer exists.
+ * both directions are handled and each is a no-op once the row has moved.
  */
 async function migrateChat(params: { oldChatId: bigint; newChatId: bigint }): Promise<void> {
   const { oldChatId, newChatId } = params;
@@ -150,22 +148,11 @@ async function migrateChat(params: { oldChatId: bigint; newChatId: bigint }): Pr
   const row = await getTelegramChatByChatId(oldChatId);
   if (!row) return;
 
-  const oldTarget = oldChatId.toString();
-  const newTarget = newChatId.toString();
-
   try {
     await prisma.$transaction([
       prisma.telegramChat.update({
         where: { id: row.id },
         data: { chatId: newChatId, syncedAt: null },
-      }),
-      prisma.agentDefinition.updateMany({
-        where: { userId: row.ownerUserId, outputChannelId: oldTarget },
-        data: { outputChannelId: newTarget },
-      }),
-      prisma.agentRun.updateMany({
-        where: { userId: row.ownerUserId, outputChannelId: oldTarget },
-        data: { outputChannelId: newTarget },
       }),
     ]);
   } catch (err) {

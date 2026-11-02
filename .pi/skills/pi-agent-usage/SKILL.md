@@ -365,10 +365,10 @@ loadConfig })`. Never let the MCP extension read the host's Pi directory: it
   one.
 - **Interactive sessions only.** `createAgentResourceLoader` connects MCP for
   web chat and Telegram, which can both present an approval card. Unattended
-  agent jobs pass no `interactive` context: they have no approval channel, so an
-  `ask` server could only block, and running third-party tools unattended is not
-  a decision this code makes for the user. (The same context gates `codemode`,
-  for the same reason.)
+  runs (an automation firing, a watcher script) pass no `interactive` context:
+  they have no approval channel, so an `ask` server could only block, and running
+  third-party tools unattended is not a decision this code makes for the user.
+  (The same context gates `codemode`, for the same reason.)
 
 ```ts
 const resourceLoader = await createAgentResourceLoader({

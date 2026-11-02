@@ -68,8 +68,7 @@ vi.mock("@/lib/pi/tools/task-tools", () => ({
 }));
 
 vi.mock("@/lib/pi/tools/agent-job-tools", () => ({
-  createAgentJobTools: vi.fn((userId: string) => [{ name: "agent_job_list", userId }]),
-}));
+  }));
 
 vi.mock("@/lib/pi/tools/infra-tools", () => ({
   createInfraTools: vi.fn((userId: string) => [
@@ -138,7 +137,6 @@ describe("resolveTools", () => {
     web: false,
     memory: false,
     tasks: false,
-    agentJobs: false,
     infra: false,
   };
 
@@ -237,7 +235,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -256,7 +253,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -278,7 +274,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -299,7 +294,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
       files: true, // legacy key
     } as Required<ToolConfig>;
@@ -322,7 +316,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
       bash: true, // legacy key
     } as Required<ToolConfig>;
@@ -343,7 +336,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -362,13 +354,12 @@ describe("resolveTools", () => {
       web: true,
       memory: true,
       tasks: true,
-      agentJobs: true,
       infra: true,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + agentJobs(1) + infra(12) = 36
-    expect(tools).toHaveLength(36);
+    // email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + infra(12) = 35
+    expect(tools).toHaveLength(35);
     expect(tools.map((t) => t.name)).toEqual([
       "mail_accounts",
       "mail_list",
@@ -393,7 +384,6 @@ describe("resolveTools", () => {
       "memory_delete",
       "task_list",
       "task_create",
-      "agent_job_list",
       "infra_list_machines",
       "infra_add_machine",
       "infra_remove_machine",
@@ -421,13 +411,12 @@ describe("resolveTools", () => {
       web: true,
       memory: true,
       tasks: true,
-      agentJobs: true,
       infra: true,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
 
-    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + agentJobs(1) + infra(12) = 41
-    expect(tools).toHaveLength(41);
+    // terminal(5) + email(3) + jobs(5) + calendar(2) + chatSearch(4) + web(2) + memory(5) + tasks(2) + infra(12) = 40
+    expect(tools).toHaveLength(40);
   });
 
   it("passes userId to all user-scoped factories", async () => {
@@ -440,7 +429,6 @@ describe("resolveTools", () => {
       web: true,
       memory: true,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -469,7 +457,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -492,7 +479,6 @@ describe("resolveTools", () => {
       web: false,
       memory: false,
       tasks: false,
-      agentJobs: false,
       infra: false,
     };
     const tools = await resolveTools(userId, sessionId, config, options);
@@ -517,7 +503,6 @@ describe("resolveTools", () => {
       web: true,
       memory: true,
       tasks: true,
-      agentJobs: true,
       watchers: true,
       infra: true,
       coder: true,
@@ -535,10 +520,10 @@ describe("resolveTools", () => {
       expect(exposureOf(tools, "job_run")).toBe("deferred");
       expect(exposureOf(tools, "settings_list")).toBe("codemode");
       expect(exposureOf(tools, "settings_set")).toBe("deferred");
-      // A watcher is a thing the model must know it can look at  its list is
-      // listed  while creating one is an action it has to go and find.
-      expect(exposureOf(tools, "watcher_list")).toBe("codemode");
-      expect(exposureOf(tools, "watcher_create")).toBe("deferred");
+      // An automation is a thing the model must know it can look at  its list
+      // is listed  while creating one is an action it has to go and find.
+      expect(exposureOf(tools, "automation_list")).toBe("codemode");
+      expect(exposureOf(tools, "automation_create")).toBe("deferred");
       // Projects work the same way: the list is what the model names a project
       // from, and starting a coding chat is an action to go and find.
       expect(exposureOf(tools, "project_list")).toBe("codemode");

@@ -62,10 +62,12 @@ export interface ScriptWatcher {
   id: string;
   name: string;
   description: string | null;
-  script: string;
-  cronExpression: string;
+  /** Null when the automation has no gate and fires on every tick. */
+  script: string | null;
+  /** Null when the automation has no schedule and only runs by hand. */
+  cronExpression: string | null;
   enabled: boolean;
-  /** "chat" (answer in a conversation) | "silent" (the script delivers it) | "coder" (a project). */
+  /** "chat" (answer in a conversation) | "none" (a run of its own) | "silent" (the script delivers it) | "coder" (a project). */
   deliver: string;
   sessionId: string | null;
   sessionTitle: string | null;
@@ -78,7 +80,10 @@ export interface ScriptWatcher {
   retentionMinutes: number;
   wakePrompt: string;
   modelId: string | null;
+  thinkingLevel: string;
   cooldownMinutes: number;
+  /** Null when the automation has no fire limit. */
+  maxFires: number | null;
   tickCount: number;
   fireCount: number;
   lastTickAt: string | null;
@@ -92,75 +97,21 @@ export interface ScriptWatcher {
 /** One recorded tick of a watcher. */
 export interface ScriptWatcherTick {
   id: string;
-  /** "idle" | "fired" | "reported" | "cooldown" | "blocked" | "error" */
+  /** "idle" | "fired" | "reported" | "cooldown" | "finished" | "blocked" | "error" */
   status: string;
   value: string | null;
   error: string | null;
   output: string | null;
+  /** What the woken agent answered, when it had no chat to answer in. */
+  answer: string | null;
+  inputTokens: number;
+  outputTokens: number;
   durationMs: number;
   callCount: number;
   /** The tools the script called, so a tick says what delivered it. */
   toolNames?: string[];
   /** The chat this tick's fire was delivered into. */
   sessionId?: string | null;
-  createdAt: string;
-}
-
-// --- Agent Jobs ---
-
-export interface AgentJobDefinition {
-  id: string;
-  name: string;
-  description: string | null;
-  prompt: string;
-  systemPrompt: string | null;
-  toolConfig: Record<string, boolean> | null;
-  modelId: string | null;
-  thinkingLevel: string;
-  outputChannel: string | null;
-  outputChannelId: string | null;
-  cronExpression: string | null;
-  runAt: string | null;
-  lastRunAt: string | null;
-  enabled: boolean;
-  systemManaged: boolean;
-  runCount: number;
-  latestRun: { status: string; completedAt: string | null } | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AgentJobRun {
-  id: string;
-  status: string;
-  prompt: string;
-  modelId: string | null;
-  inputTokens: number;
-  outputTokens: number;
-  cost: number;
-  error: string | null;
-  /** Set when the run produced output its configured channel could not deliver. */
-  deliveryError: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  messageCount: number;
-  duration: number | null;
-  createdAt: string;
-}
-
-export interface AgentJobMessage {
-  id: string;
-  role: string;
-  content: string;
-  thinking: string | null;
-  toolCalls: Array<{
-    id: string;
-    name: string;
-    args: Record<string, unknown>;
-    result: string | undefined;
-    isError: boolean | undefined;
-  }> | null;
-  parentMessageId: string | null;
   createdAt: string;
 }
 
