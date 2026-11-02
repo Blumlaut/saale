@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.1 - 2026-11-02
+
+- keep sandbox containers until the user is deleted (01cb239e)
+- stop sandbox containers after 12 idle hours (3a0317ce)
+- remove a deleted user's sandbox (283e53fc)
+
 ## 2026.11.0 - 2026-11-01
 
 - show why a download was refused (f26df367)
