@@ -169,7 +169,7 @@ export default function CalendarPage() {
                     <Button variant="outline" size="sm" onClick={() => navigate(1)}>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
-                    <h2 className="min-w-0 truncate text-sm font-semibold md:text-base">
+                    <h2 className="min-w-0 text-sm font-semibold md:truncate md:text-base">
                       {formatDateRange()}
                     </h2>
                   </div>
