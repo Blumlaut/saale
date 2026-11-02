@@ -15,6 +15,7 @@ import { RedactedToolCall } from "./redacted-tool-call";
 import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
+import { loginPath } from "@/lib/auth/redirect";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
 import { dropBlankText } from "@/lib/chat/turn-text";
@@ -89,7 +90,7 @@ export function ShareViewer({
           <Button
             className="ml-4 shrink-0"
             size="sm"
-            onClick={() => router.push(`/auth/login?redirect=/share/${token}`)}
+            onClick={() => router.push(loginPath(`/share/${token}`))}
           >
             Sign in to copy
           </Button>
@@ -130,7 +131,7 @@ export function ShareViewer({
         </span>
         {!isAuthenticated && (
           <button
-            onClick={() => router.push(`/auth/login?redirect=/share/${token}`)}
+            onClick={() => router.push(loginPath(`/share/${token}`))}
             className="text-muted-foreground hover:text-foreground shrink-0 text-xs transition-colors"
           >
             Sign in to continue this conversation

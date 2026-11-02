@@ -1,52 +1,35 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { serializeSharedChatMessage } from "@/lib/chat/serialize-message";
+import { getSession } from "@/lib/auth";
+import { loadSharedChat } from "@/lib/chat/share";
 
 /**
- * GET /api/chat/sessions/share/:token/messages. Public endpoint for shared chats.
+ * GET /api/chat/sessions/share/:token/messages. The JSON a share page renders.
  *
- * No authentication required. Returns session metadata + messages.
- *
- * Every message goes through `serializeSharedChatMessage`, which redacts tool
- * calls: see `@/lib/chat/redact-tool-calls`.
+ * A public chat answers anyone holding the token. A chat shared with signed-in
+ * users only answers a caller with a session, and says nothing about itself to
+ * the others. Tool calls are redacted inside `loadSharedChat`: see
+ * `@/lib/chat/redact-tool-calls`.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
 
-  const session = await prisma.chatSession.findFirst({
-    where: { shareToken: token, shared: true },
-    select: {
-      id: true,
-      title: true,
-      createdAt: true,
-    },
-  });
+  const session = await getSession();
+  const shared = await loadSharedChat(token, session?.user?.id ?? null);
 
-  if (!session) {
+  if (shared.state === "not-found") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId: session.id, queuedAt: null },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      role: true,
-      content: true,
-      thinking: true,
-      errorMessage: true,
-      toolCalls: true,
-      parentMessageId: true,
-      createdAt: true,
-    },
-  });
+  if (shared.state === "needs-auth") {
+    return NextResponse.json({ error: "Sign in to view this chat" }, { status: 401 });
+  }
 
   return NextResponse.json({
     session: {
-      id: session.id,
-      title: session.title,
-      createdAt: session.createdAt.toISOString(),
+      id: shared.session.id,
+      title: shared.session.title,
+      createdAt: shared.session.createdAt.toISOString(),
     },
-    messages: messages.map(serializeSharedChatMessage),
+    messages: shared.messages,
   });
 }

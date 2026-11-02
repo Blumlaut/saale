@@ -12,7 +12,9 @@ import type { Message, ToolCallData } from "@/components/chat/types";
  * ever reveal the server-written summary  never the args or result behind it.
  */
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 beforeAll(() => {
   // jsdom has no layout, so scrollIntoView does not exist.
@@ -78,6 +80,16 @@ function marksOf(toolsButton: HTMLElement): HTMLElement[] {
   const strip = toolsButton.querySelector('span[aria-hidden="true"]');
   return Array.from(strip?.querySelectorAll<HTMLElement>(":scope > span") ?? []);
 }
+
+describe("share viewer sign-in", () => {
+  it("returns a signed-out viewer to the same share page after login", () => {
+    renderShare([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to copy" }));
+
+    expect(push).toHaveBeenCalledWith("/auth/login?next=%2Fshare%2Ftok");
+  });
+});
 
 describe("share viewer branding", () => {
   it("names the instance in the footer", () => {

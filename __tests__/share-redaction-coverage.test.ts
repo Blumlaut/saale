@@ -64,7 +64,7 @@ const TOOL_CALL_READERS: Array<{
   {
     path: "src/app/api/chat/sessions/share/[token]/messages/route.ts",
     access: "public",
-    guardedBy: "serializeSharedChatMessage()",
+    guardedBy: "loadSharedChat() → serializeSharedChatMessage()",
   },
   {
     path: "src/app/api/chat/sessions/share/[token]/copy/route.ts",
@@ -75,6 +75,17 @@ const TOOL_CALL_READERS: Array<{
 
 /** Modules that make a payload safe for an anonymous reader. */
 const SAFE_SERIALIZERS = ["@/lib/chat/serialize-message", "@/lib/chat/redact-tool-calls"];
+
+/**
+ * Helpers an endpoint lets read the column for it. An endpoint that calls one is
+ * a reader all the same, and its redaction lives in the helper.
+ */
+const TOOL_CALL_DELEGATES = ["loadSharedChat"];
+
+/** Whether this module reads the persisted toolCalls column, directly or through a helper. */
+function readsToolCalls(source: string): boolean {
+  return /\btoolCalls\b/.test(source) || TOOL_CALL_DELEGATES.some((name) => source.includes(name));
+}
 
 function walk(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -142,6 +153,26 @@ function reachableFromShare(): Set<string> {
     }
   }
   return seen;
+}
+
+/** Whether `path` imports a safe serializer, directly or through a `src` module. */
+function reachesSafeSerializer(path: string): boolean {
+  const seen = new Set<string>();
+  const queue = [path];
+
+  while (queue.length > 0 && seen.size < 500) {
+    const current = queue.shift() as string;
+    if (seen.has(current)) continue;
+    seen.add(current);
+
+    for (const spec of importsOf(read(current))) {
+      if (SAFE_SERIALIZERS.includes(spec)) return true;
+      const target = resolveSpec(spec, current);
+      if (target && !seen.has(target)) queue.push(target);
+    }
+  }
+
+  return false;
 }
 
 describe("the share surface cannot reach an owner's tool card", () => {
@@ -213,7 +244,7 @@ describe("the share surface cannot reach an owner's tool card", () => {
 describe("every tool-call reader is accounted for", () => {
   const discovered = walk(join(SRC, "app", "api"))
     .map(toRepoPath)
-    .filter((path) => /\btoolCalls\b/.test(read(path)))
+    .filter((path) => readsToolCalls(read(path)))
     .sort();
 
   const registered = TOOL_CALL_READERS.map((reader) => reader.path).sort();
@@ -244,10 +275,9 @@ describe("every tool-call reader is accounted for", () => {
     for (const reader of TOOL_CALL_READERS) {
       if (reader.access !== "public") continue;
 
-      const imports = importsOf(read(reader.path));
       expect(
-        imports.some((spec) => SAFE_SERIALIZERS.includes(spec)),
-        `${reader.path} reads rows owned by another user (${reader.guardedBy}) but does not import a share serializer`,
+        reachesSafeSerializer(reader.path),
+        `${reader.path} reads rows owned by another user (${reader.guardedBy}) but does not reach a share serializer`,
       ).toBe(true);
     }
   });

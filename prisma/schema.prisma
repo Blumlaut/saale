@@ -171,6 +171,8 @@ model ChatSession {
   // Sharing
   shared           Boolean       @default(false) // owner has enabled sharing
   shareToken       String?       @unique          // random 32-char token for /share/[token]
+  /// Who may open the link: "public" (anyone holding it) or "account" (a signed-in viewer).
+  shareAccess      String        @default("public")
   sourceShareToken String?                          // shareToken this session was copied from (idempotency guard)
   messages         ChatMessage[]
   scriptWatchers   ScriptWatcher[]
