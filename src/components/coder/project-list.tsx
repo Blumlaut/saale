@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
+  Folder,
   FolderGit2,
   Loader2,
   MessageSquare,
@@ -49,11 +50,11 @@ import {
 const COLLAPSED_KEY = "coder:collapsedProjects";
 
 /**
- * The board's columns, on every row whether it has a value or not.
+ * The chat columns, on every chat row whether it has a value or not.
  *
- * chevron · name or chat title · branch or counts · pull request · time · new
- * chat · row menu. A row without a branch or a pull request keeps the cell, so
- * everything below a column heading stays in one line down the page.
+ * indent · icon and title · branch · pull request · time · new chat · row menu.
+ * A row without a branch or a pull request keeps the cell, so everything stays
+ * in one line down the page.
  */
 const BOARD_COLUMNS =
   "md:grid md:grid-cols-[1.75rem_minmax(0,1fr)_10rem_7rem_5rem_1.75rem_1.75rem] md:gap-3";
@@ -62,11 +63,14 @@ const BOARD_COLUMNS =
 const BOARD_ROW =
   "group flex min-h-10 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150";
 
+/** A chat starts where its project's name does, one fold column further in. */
+const CHAT_ROW = "pl-10 md:pl-4";
+
 const isString = (value: unknown): value is string => typeof value === "string";
 
 /** What a project's line says beside its name: how much is under it. */
 function projectMeta(project: CoderProjectSummary): string {
-  if (project.chatCount === 0) return "No chats yet";
+  if (project.chatCount === 0) return "no chats";
   return project.chatCount === 1 ? "1 chat" : `${project.chatCount} chats`;
 }
 
@@ -145,15 +149,14 @@ export function ProjectList() {
       <div
         key={chat.id}
         data-slot="session-row"
-        className={cn(BOARD_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
+        className={cn(BOARD_ROW, CHAT_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
       >
-        <span className="flex items-center justify-center">
-          <MessageSquare className="text-muted-foreground h-3.5 w-3.5" />
-        </span>
+        <span aria-hidden className="hidden md:block" />
         <Link
           href={`/dashboard/coder/${project.id}/${chat.id}`}
           className="flex min-w-0 items-center gap-2"
         >
+          <MessageSquare className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           <span className="truncate text-sm">{title}</span>
           {chat.pinned && <Pin className="text-muted-foreground h-3 w-3 shrink-0" />}
           {chat.origin === "watcher" && <WatcherChatBadge />}
@@ -166,7 +169,7 @@ export function ProjectList() {
         </Link>
         <span
           data-slot="chat-branch"
-          className="text-muted-foreground hidden truncate text-xs md:block"
+          className="text-muted-foreground hidden truncate font-mono text-xs md:block"
         >
           {chat.worktree?.branch ?? ""}
         </span>
@@ -241,7 +244,10 @@ export function ProjectList() {
                 >
                   <div
                     data-slot="project-row"
-                    className={cn("bg-muted hover:bg-accent", BOARD_ROW, BOARD_COLUMNS)}
+                    className={cn(
+                      "group flex min-h-11 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150",
+                      "bg-muted hover:bg-accent",
+                    )}
                   >
                     {/* Folding is its own control: the name beside it opens the
                         project, which is what the row has always done. */}
@@ -269,21 +275,16 @@ export function ProjectList() {
                       href={`/dashboard/coder/${project.id}`}
                       className="flex min-w-0 items-center gap-2"
                     >
-                      <span className="truncate text-sm font-medium">{project.name}</span>
+                      <Folder className="text-muted-foreground h-4 w-4 shrink-0" />
+                      <span className="truncate text-base font-semibold">{project.name}</span>
                     </Link>
                     <span
                       data-slot="project-meta"
-                      className="text-muted-foreground hidden truncate text-xs md:block"
+                      className="text-muted-foreground shrink-0 truncate text-xs"
                     >
                       {projectMeta(project)}
                     </span>
-                    <span aria-hidden className="hidden md:block" />
-                    <span
-                      data-slot="row-time"
-                      className="text-muted-foreground hidden text-right text-xs tabular-nums md:block"
-                    >
-                      {project.lastActivityAt ? formatRelativeDate(project.lastActivityAt) : "—"}
-                    </span>
+                    <span aria-hidden className="flex-1" />
                     <span className="flex justify-end">
                       <Button
                         type="button"
@@ -338,7 +339,9 @@ export function ProjectList() {
                         </Fragment>
                       ))}
                       {project.chatCount > project.chats.length && (
-                        <div className={cn(BOARD_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}>
+                        <div
+                          className={cn(BOARD_ROW, CHAT_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
+                        >
                           <span aria-hidden className="hidden md:block" />
                           <Link
                             href={`/dashboard/coder/${project.id}`}

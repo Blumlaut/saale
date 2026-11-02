@@ -147,7 +147,7 @@ describe("ProjectList", () => {
     render(<ProjectList />);
 
     await screen.findByText("Attrition");
-    expect(screen.getByText("No chats yet")).toBeInTheDocument();
+    expect(screen.getByText("no chats")).toBeInTheDocument();
     const row = screen.getByText("Attrition").closest("[data-slot=project-row]")!;
     expect(row.parentElement!.querySelectorAll("[data-slot=session-row]")).toHaveLength(0);
   });
