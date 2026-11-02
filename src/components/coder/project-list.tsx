@@ -244,10 +244,7 @@ export function ProjectList() {
                 >
                   <div
                     data-slot="project-row"
-                    className={cn(
-                      "group flex min-h-11 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150",
-                      "bg-muted hover:bg-accent",
-                    )}
+                    className={cn(BOARD_ROW, BOARD_COLUMNS, "bg-muted hover:bg-accent")}
                   >
                     {/* Folding is its own control: the name beside it opens the
                         project, which is what the row has always done. */}
@@ -280,11 +277,20 @@ export function ProjectList() {
                     </Link>
                     <span
                       data-slot="project-meta"
-                      className="text-muted-foreground shrink-0 truncate text-xs"
+                      className="text-muted-foreground truncate text-xs"
                     >
                       {projectMeta(project)}
                     </span>
-                    <span aria-hidden className="flex-1" />
+                    <span aria-hidden className="hidden md:block" />
+                    <span
+                      data-slot="row-time"
+                      className="text-muted-foreground hidden text-right text-xs tabular-nums md:block"
+                    >
+                      {project.lastActivityAt ? formatRelativeDate(project.lastActivityAt) : ""}
+                    </span>
+                    {/* The row's own actions sit at the end on a phone, in the
+                        new-chat column on the board. */}
+                    <span aria-hidden className="flex-1 md:hidden" />
                     <span className="flex justify-end">
                       <Button
                         type="button"
