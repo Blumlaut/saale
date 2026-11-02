@@ -12,7 +12,9 @@
  *      immutably by Next.js, so it is safe to serve cache-first. This is what
  *      lets the precached offline page render with its real styles and fonts.
  *   3. Push notifications — a message from Saale's server is rendered as a
- *      system notification, and clicking it opens the page it is about.
+ *      system notification, and clicking it opens the page it is about. A
+ *      notification whose page is already on screen is reported as seen there
+ *      instead, which spares the user's phone the same news.
  *
  * The offline page's asset closure is discovered at install time by reading the
  * rendered HTML (and the stylesheets it references), so there is no build-time
@@ -204,12 +206,43 @@ self.addEventListener("fetch", (event) => {
 });
 
 /**
- * Whether the app is on screen right now. A visible window already shows a
- * reply arriving, so a system banner on top of it is noise.
+ * Path of a page, or empty when a URL cannot be read. A notification's target
+ * and a window's URL are compared on the path alone.
  */
-async function appIsVisible() {
+function pathOf(url) {
+  try {
+    return new URL(url, self.location.origin).pathname;
+  } catch (error) {
+    console.error(`Failed to read the path of ${url}:`, error);
+    return "";
+  }
+}
+
+/** Windows of the app on screen right now. */
+async function visibleWindows() {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  return windows.some((client) => client.visibilityState === "visible");
+  return windows.filter((client) => client.visibilityState === "visible");
+}
+
+/**
+ * Say that a notification's page was seen here, so the phone's copy that is
+ * still waiting is dropped.
+ */
+async function reportSeen(url) {
+  if (typeof url !== "string" || url === "") return;
+
+  try {
+    const response = await fetch("/api/push/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) {
+      console.error(`Failed to report ${url} as seen: ${response.status}`);
+    }
+  } catch (error) {
+    console.error(`Failed to report ${url} as seen:`, error);
+  }
 }
 
 async function showPushNotification(payload) {
@@ -218,8 +251,18 @@ async function showPushNotification(payload) {
     return;
   }
 
+  const url = typeof payload.url === "string" ? payload.url : "/";
+  const tag = typeof payload.tag === "string" ? payload.tag : "saale";
+
   try {
-    if (await appIsVisible()) return;
+    // The page this notification is about is already on screen, so the user is
+    // looking at it: a banner would cover what it says, and the phone's copy is
+    // no longer news.
+    const onScreen = (await visibleWindows()).some((client) => pathOf(client.url) === pathOf(url));
+    if (onScreen) {
+      await reportSeen(url);
+      return;
+    }
   } catch (error) {
     // Rendering the notification matters more than the visibility check.
     console.error("Failed to check for a visible window:", error);
@@ -227,8 +270,8 @@ async function showPushNotification(payload) {
 
   await self.registration.showNotification(payload.title, {
     body: typeof payload.body === "string" ? payload.body : "",
-    tag: typeof payload.tag === "string" ? payload.tag : "saale",
-    data: { url: typeof payload.url === "string" ? payload.url : "/" },
+    tag,
+    data: { url, tag },
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
   });
@@ -265,12 +308,15 @@ async function openNotificationTarget(target) {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const path = event.notification.data && event.notification.data.url;
-  const target = new URL(typeof path === "string" ? path : "/", self.location.origin).href;
+  const { url } = event.notification.data ?? {};
+  const target = new URL(typeof url === "string" ? url : "/", self.location.origin).href;
 
   event.waitUntil(
-    openNotificationTarget(target).catch((error) => {
-      console.error("Failed to open the notification target:", error);
-    }),
+    Promise.all([
+      reportSeen(typeof url === "string" ? url : "/"),
+      openNotificationTarget(target).catch((error) => {
+        console.error("Failed to open the notification target:", error);
+      }),
+    ]),
   );
 });

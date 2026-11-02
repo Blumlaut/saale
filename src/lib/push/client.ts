@@ -2,6 +2,7 @@
  * Browser side of Web Push. Everything here needs `navigator`, so it only runs
  * from a client component.
  */
+import type { PushDeviceKind } from "./device";
 
 /** Whether this browser can subscribe at all. */
 export function isPushSupported(): boolean {
@@ -11,6 +12,23 @@ export function isPushSupported(): boolean {
     "PushManager" in window &&
     "Notification" in window
   );
+}
+
+/**
+ * Whether this browser is a phone or a computer.
+ *
+ * A coarse primary pointer is the fallback for browsers without
+ * `userAgentData`: a phone's screen is not driven by a mouse.
+ */
+export function detectDeviceKind(): PushDeviceKind {
+  if (typeof window === "undefined") return "desktop";
+
+  const { userAgentData } = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (typeof userAgentData?.mobile === "boolean") {
+    return userAgentData.mobile ? "mobile" : "desktop";
+  }
+
+  return window.matchMedia("(pointer: coarse)").matches ? "mobile" : "desktop";
 }
 
 /** The browser's notification permission. */
@@ -85,11 +103,12 @@ export async function unsubscribeFromPush(): Promise<string | null> {
 export function serializeSubscription(subscription: PushSubscription): {
   endpoint: string;
   keys: { p256dh: string; auth: string };
+  deviceKind: PushDeviceKind;
 } | null {
   const json = subscription.toJSON();
   const p256dh = json.keys?.p256dh;
   const auth = json.keys?.auth;
   if (!json.endpoint || !p256dh || !auth) return null;
 
-  return { endpoint: json.endpoint, keys: { p256dh, auth } };
+  return { endpoint: json.endpoint, keys: { p256dh, auth }, deviceKind: detectDeviceKind() };
 }

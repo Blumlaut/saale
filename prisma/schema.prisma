@@ -622,6 +622,9 @@ model PushSubscription {
   auth      String
   /// Browser label, so a user can tell their devices apart.
   userAgent String?
+  /// "desktop" or "mobile". A computer hears about a notification at once, a
+  /// phone waits until no computer has shown it.
+  deviceKind String  @default("desktop")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

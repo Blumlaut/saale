@@ -2,6 +2,7 @@
  * Push subscription storage. One row per browser that enabled notifications.
  */
 import { prisma } from "@/lib/db";
+import type { PushDeviceKind } from "./device";
 
 /** What a browser's `PushSubscription` carries that Saale needs. */
 export interface PushSubscriptionInput {
@@ -9,6 +10,7 @@ export interface PushSubscriptionInput {
   p256dh: string;
   auth: string;
   userAgent?: string | null;
+  deviceKind: PushDeviceKind;
 }
 
 /**
@@ -27,6 +29,7 @@ export async function savePushSubscription(
     p256dh: subscription.p256dh,
     auth: subscription.auth,
     userAgent: subscription.userAgent ?? null,
+    deviceKind: subscription.deviceKind,
   };
 
   await prisma.pushSubscription.upsert({
@@ -52,10 +55,10 @@ export async function deleteAllPushSubscriptions(userId: string): Promise<void> 
 /** A user's subscribed devices, newest first. */
 export async function listPushSubscriptions(
   userId: string,
-): Promise<Array<{ id: string; userAgent: string | null; createdAt: Date }>> {
+): Promise<Array<{ id: string; userAgent: string | null; deviceKind: string; createdAt: Date }>> {
   return prisma.pushSubscription.findMany({
     where: { userId },
-    select: { id: true, userAgent: true, createdAt: true },
+    select: { id: true, userAgent: true, deviceKind: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
 }

@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { isPushConfigured } from "@/lib/push/config";
+import { deviceKindFromUserAgent } from "@/lib/push/device";
 import { deletePushSubscription, savePushSubscription } from "@/lib/push/subscriptions";
 
 /**
  * A browser's `PushSubscription.toJSON()`. The keys are base64url, so they are
- * only checked for presence here — the push service is what rejects a bad key.
+ * only checked for presence here. the push service is what rejects a bad key.
+ *
+ * `deviceKind` is the browser's own answer to "phone or computer"; it is
+ * optional because a cached page from before the question existed still
+ * subscribes.
  */
 const subscribeBodySchema = z.object({
   endpoint: z.url().max(2048),
@@ -15,6 +20,7 @@ const subscribeBodySchema = z.object({
     p256dh: z.string().min(1).max(255),
     auth: z.string().min(1).max(255),
   }),
+  deviceKind: z.enum(["desktop", "mobile"]).optional(),
 });
 
 const unsubscribeBodySchema = z.object({
@@ -55,6 +61,7 @@ export async function POST(request: NextRequest) {
       p256dh: parsed.data.keys.p256dh,
       auth: parsed.data.keys.auth,
       userAgent,
+      deviceKind: parsed.data.deviceKind ?? deviceKindFromUserAgent(userAgent),
     });
   } catch (err) {
     console.error(`Failed to save push subscription for user ${authResult.user.id}:`, err);

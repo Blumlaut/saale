@@ -1,6 +1,7 @@
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
+import { PushSeenReporter } from "@/components/providers/push-seen-reporter";
 import { SidebarNavProvider } from "@/components/providers/sidebar-nav-provider";
 
 interface AppShellProps {
@@ -29,6 +30,7 @@ export function AppShell({ nav, children, banner }: AppShellProps) {
   return (
     <KeyboardShortcutsProvider>
       <SidebarNavProvider>
+        <PushSeenReporter />
         <DashboardLayout>
           <div className="shell-frame">
             {/* Desktop sidebar. on phones the bottom bar is the navigation */}

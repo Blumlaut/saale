@@ -201,6 +201,11 @@ export function NotificationsSection() {
               </p>
             )}
 
+            <p className="text-muted-foreground text-sm">
+              Computers get notified right away. A phone gets its copy a few minutes later, unless
+              you have already seen it.
+            </p>
+
             {error && (
               <p className="text-destructive flex items-start gap-2 text-sm">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

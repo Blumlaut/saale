@@ -53,3 +53,19 @@ export function getVapidConfig(): {
 export function getVapidPublicKey(): string | null {
   return getVapidConfig()?.publicKey ?? null;
 }
+
+/**
+ * How long a phone's copy of a notification waits. Long enough for someone at
+ * a computer to see it and spare the phone a buzz, short enough that a phone in
+ * a pocket still tells them promptly.
+ */
+const DEFAULT_MOBILE_PUSH_DELAY_MINUTES = 3;
+
+/** How long a phone notification waits for a computer to see it first, in ms. */
+export function getMobilePushDelayMs(): number {
+  const configured = Number(process.env.PUSH_MOBILE_DELAY_MINUTES?.trim() || NaN);
+  const minutes =
+    Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_MOBILE_PUSH_DELAY_MINUTES;
+
+  return minutes * 60_000;
+}

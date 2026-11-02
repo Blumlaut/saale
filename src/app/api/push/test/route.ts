@@ -9,7 +9,7 @@ import { isRateLimited } from "@/lib/redis";
  *
  * Bypasses the per-category switches: it is the check that the whole path
  * (permission, subscription, keys, service worker) works, so it has to arrive
- * whatever the user turned off.
+ * whatever the user turned off, and on every device at once.
  */
 export async function POST() {
   const authResult = await requireSession();
@@ -27,12 +27,16 @@ export async function POST() {
   }
 
   try {
-    const delivery = await sendPushToUser(authResult.user.id, {
-      title: "Saale",
-      body: "Notifications are working. This is a test.",
-      url: "/dashboard/settings/notifications",
-      tag: "saale-test",
-    });
+    const delivery = await sendPushToUser(
+      authResult.user.id,
+      {
+        title: "Saale",
+        body: "Notifications are working. This is a test.",
+        url: "/dashboard/settings/notifications",
+        tag: "saale-test",
+      },
+      { deferMobile: false },
+    );
 
     if (delivery.sent === 0) {
       return NextResponse.json(

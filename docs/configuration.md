@@ -86,6 +86,7 @@ logs first.
 | `VAPID_PUBLIC_KEY`       | Web Push key pair, from `npx web-push generate-vapid-keys`.                  |
 | `VAPID_PRIVATE_KEY`      | The other half. Rotating it drops every subscription.                        |
 | `VAPID_SUBJECT`          | Contact URI for the push service. Defaults to a `mailto:` on the app's host. |
+| `PUSH_MOBILE_DELAY_MINUTES` | Minutes a phone's copy of a notification waits, so a page you have open can call it off. Default `3`. |
 | `TELEGRAM_OIDC_CLIENT_ID` / `_SECRET` | Enables sign-in with the instance's Telegram bot.               |
 | `TELEGRAM_OUTBOUND_TTL_DAYS` | How long a sent message stays a reply target. Default `90`.              |
 | `SEARXNG_URL`            | Search backend for the web tools.                                            |

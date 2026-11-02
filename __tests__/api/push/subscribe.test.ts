@@ -18,7 +18,11 @@ import { DELETE, POST } from "@/app/api/push/subscribe/route";
 const USER_ID = "user-1";
 const ENDPOINT = "https://push.example.com/device-1";
 
-function request(method: "POST" | "DELETE", body: unknown, userAgent = "Safari/605") {
+function request(
+  method: "POST" | "DELETE",
+  body: unknown,
+  userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari/605",
+) {
   return new NextRequest("http://localhost/api/push/subscribe", {
     method,
     headers: { "Content-Type": "application/json", "user-agent": userAgent },
@@ -51,15 +55,48 @@ describe("push subscription route", () => {
         userId: USER_ID,
         p256dh: "p256dh-key",
         auth: "auth-key",
-        userAgent: "Safari/605",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari/605",
+        deviceKind: "desktop",
       },
       update: {
         userId: USER_ID,
         p256dh: "p256dh-key",
         auth: "auth-key",
-        userAgent: "Safari/605",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari/605",
+        deviceKind: "desktop",
       },
     });
+  });
+
+  it("reads a phone from the user agent when the browser did not say", async () => {
+    const response = await POST(
+      request(
+        "POST",
+        subscription,
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockPushSubscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ deviceKind: "mobile" }) }),
+    );
+  });
+
+  it("trusts the device kind the browser reports", async () => {
+    const response = await POST(request("POST", { ...subscription, deviceKind: "mobile" }));
+
+    expect(response.status).toBe(200);
+    expect(mockPushSubscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ create: expect.objectContaining({ deviceKind: "mobile" }) }),
+    );
+  });
+
+  it("refuses a device kind that is neither", async () => {
+    const response = await POST(request("POST", { ...subscription, deviceKind: "toaster" }));
+
+    expect(response.status).toBe(400);
+    expect(mockPushSubscription.upsert).not.toHaveBeenCalled();
   });
 
   it("refuses a subscription that is missing its keys", async () => {

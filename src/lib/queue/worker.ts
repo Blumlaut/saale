@@ -22,6 +22,8 @@ import { isCouncilEnabled } from "@/lib/council/flag";
 import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { sendCalendarReminders } from "@/lib/notifications/calendar-reminders";
+import { MOBILE_PUSH_JOB_NAME, type PendingMobilePush } from "@/lib/push/deferred";
+import { sendDeferredPush } from "@/lib/push/send";
 import { registerTelegramWebhook } from "@/lib/telegram";
 
 /** How often to look for calendar events that are due a reminder (1 min) */
@@ -145,6 +147,20 @@ async function executeCalendarReminders(): Promise<void> {
   }
 }
 
+/** Deliver a notification's phones' copy once its delay has passed. */
+async function executeMobilePush(job: Job): Promise<void> {
+  const { userId, payload, queuedAt } = job.data as Partial<PendingMobilePush>;
+  if (!userId || !payload) {
+    console.error(`[worker] Mobile push job ${job.id} carries no user or payload`);
+    return;
+  }
+
+  const delivery = await sendDeferredPush(userId, payload, queuedAt);
+  if (delivery.sent > 0) {
+    console.log(`[worker] Deferred phone push for ${userId}: ${delivery.sent} device(s)`);
+  }
+}
+
 /** Remove the bot chats whose work is finished and whose window has passed. */
 async function executeWatcherChatCleanupViaApp(): Promise<unknown> {
   return postToApp("/api/watchers/cleanup", {});
@@ -180,6 +196,9 @@ function createJobRouter(): Processor {
     }
     if (job.name === CALENDAR_REMINDERS_JOB_NAME) {
       return executeCalendarReminders();
+    }
+    if (job.name === MOBILE_PUSH_JOB_NAME) {
+      return executeMobilePush(job);
     }
     // QueueTask work (mailbox refresh, AI extraction, …) has no UI to stream
     // into, so it runs in this process instead of being handed back to the app.
