@@ -137,12 +137,8 @@ export function ChatInterface({
   const [pluginWidgets, setPluginWidgets] = useState<PluginWidgetData[]>([]);
   const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null);
 
-  // The session's cost, summed over the turns already on screen (assistant
-  // turns only; a turn Pi reported no usage for adds zero).
-  const sessionCost = useMemo(
-    () => messages.reduce((sum, message) => sum + (message.stats?.cost ?? 0), 0),
-    [messages],
-  );
+  // The session's turns, for the card the context ring shows on hover.
+  const turnStats = useMemo(() => messages.map((message) => message.stats), [messages]);
   const [isCompacting, setIsCompacting] = useState(false);
   // Tool Pi is running right now (from GET /messages. refresh recovery when
   // the SSE buffer replay is unavailable). Cleared when the tool ends.
@@ -1058,7 +1054,7 @@ export function ChatInterface({
             isLoading={isLoading}
             onStop={handleStop}
             tokenUsage={tokenUsage}
-            sessionCost={sessionCost}
+            turnStats={turnStats}
             isCompacting={isCompacting}
             onCompact={handleCompact}
             uploadProgress={uploadProgress}

@@ -26,6 +26,7 @@ import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
 import type { TokenUsage } from "./types";
 import { ContextCircle } from "./token-usage-display";
+import type { TurnStats } from "@/lib/pi/turn-stats";
 
 export type { TokenUsage };
 
@@ -58,8 +59,8 @@ interface InputBarProps {
   isLoading: boolean;
   onStop: () => void;
   tokenUsage?: TokenUsage | null;
-  /** What the whole session has cost so far (0 when no turn reported usage). */
-  sessionCost?: number;
+  /** The session's turns, for the card the context ring shows on hover. */
+  turnStats?: ReadonlyArray<TurnStats | undefined>;
   isCompacting?: boolean;
   onCompact?: () => void;
   /** Bytes of the batch being sent, while they are still going up. */
@@ -80,7 +81,7 @@ export function InputBar({
   isLoading,
   onStop,
   tokenUsage,
-  sessionCost,
+  turnStats,
   isCompacting,
   onCompact,
   uploadProgress,
@@ -481,7 +482,7 @@ export function InputBar({
         {/* Context usage indicator */}
         <ContextCircle
           usage={tokenUsage ?? null}
-          sessionCost={sessionCost ?? 0}
+          turns={turnStats ?? []}
           isCompacting={!!isCompacting}
           onCompact={onCompact ?? (() => {})}
         />

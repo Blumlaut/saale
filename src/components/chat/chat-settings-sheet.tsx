@@ -10,7 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Separator } from "@/components/ui/separator";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
@@ -60,21 +60,17 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
           <div className="space-y-2">
             <Label>Thinking</Label>
             {/* Every level on the surface: picking one costs a single click. */}
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Thinking level">
-              {levels.map((level) => (
-                <Button
-                  key={level.id}
-                  type="button"
-                  size="xs"
-                  variant={level.id === settings.thinkingLevel ? "default" : "secondary"}
-                  aria-pressed={level.id === settings.thinkingLevel}
-                  title={level.description}
-                  onClick={() => settings.onThinkingChange(level.id)}
-                >
-                  {level.label}
-                </Button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Thinking level"
+              value={settings.thinkingLevel}
+              options={levels.map((level) => ({
+                value: level.id,
+                label: level.label,
+                title: level.description,
+              }))}
+              onChange={settings.onThinkingChange}
+              wrap
+            />
             <p className="text-muted-foreground text-xs">
               {thinking.reasoning === false
                 ? "This model answers straight away."

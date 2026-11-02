@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,9 +11,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { formatCost, formatTokens } from "@/lib/format";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatTokens } from "@/lib/format";
+import type { TurnStats } from "@/lib/pi/turn-stats";
 import { cn } from "@/lib/utils";
+import { TurnStatsCard } from "./turn-stats-card";
 import type { TokenUsage } from "./types";
+
+/** Hover closes after this, so the pointer can cross the gap into the card. */
+const CLOSE_DELAY_MS = 150;
 
 /**
  * Percent of the context window in use.
@@ -35,14 +41,30 @@ export function contextPercent(usage: TokenUsage | null): number | null {
  */
 interface ContextCircleProps {
   usage: TokenUsage | null;
-  /** What the whole session has cost so far. 0 hides the line. */
-  sessionCost?: number;
+  /** The session's turns. when any has stats, hovering shows the same card a message's timestamp does. */
+  turns?: ReadonlyArray<TurnStats | undefined>;
   isCompacting: boolean;
   onCompact: () => void;
 }
 
-export function ContextCircle({ usage, sessionCost, isCompacting, onCompact }: ContextCircleProps) {
+export function ContextCircle({ usage, turns = [], isCompacting, onCompact }: ContextCircleProps) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS);
+  }, [cancelClose]);
+
+  useEffect(() => cancelClose, [cancelClose]);
 
   const size = 32; // 8px = h-8 w-8
   const strokeWidth = 3;
@@ -63,12 +85,16 @@ export function ContextCircle({ usage, sessionCost, isCompacting, onCompact }: C
   }
 
   const handleClick = useCallback(() => {
-    if (!isCompacting) {
-      setShowConfirm(true);
-    }
-  }, [isCompacting]);
+    if (isCompacting) return;
+    cancelClose();
+    setOpen(false);
+    setShowConfirm(true);
+  }, [isCompacting, cancelClose]);
 
-  // Tooltip content. keep it short and scannable.
+  const hasStats = turns.some((turn) => turn !== undefined);
+
+  // Before the first turn has stats there is no card to show, so the native
+  // tooltip stands in for it.
   const tooltipLines: string[] = [];
   if (usage) {
     tooltipLines.push(
@@ -80,10 +106,6 @@ export function ContextCircle({ usage, sessionCost, isCompacting, onCompact }: C
   } else {
     tooltipLines.push("No usage data yet");
   }
-  const cost = sessionCost ?? 0;
-  if (cost > 0) {
-    tooltipLines.push(`Session cost ${formatCost(cost)}`);
-  }
   if (!isCompacting) {
     tooltipLines.push("Click to compact");
   }
@@ -91,44 +113,72 @@ export function ContextCircle({ usage, sessionCost, isCompacting, onCompact }: C
 
   return (
     <>
-      {/* Circular indicator */}
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={isCompacting}
-        title={tooltip}
-        className={cn(
-          "h-8 w-8 shrink-0 rounded-full transition-opacity",
-          "hover:opacity-80",
-          isCompacting ? "cursor-default" : "cursor-pointer",
-        )}
-        aria-label={tooltip}
+      <Popover
+        open={open}
+        onOpenChange={(next, details) => {
+          // The press is the compact action, not a toggle for this card.
+          if (details.reason === "trigger-press") return;
+          setOpen(next);
+        }}
       >
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          {/* Background ring */}
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            className="stroke-white/10"
-            strokeWidth={strokeWidth}
-          />
-          {/* Fill ring */}
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            className={cn(fillColor, "transition-all duration-300", isCompacting && "animate-spin")}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={isCompacting ? circumference : dashOffset}
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          />
-        </svg>
-      </button>
+        <PopoverTrigger
+          onClick={handleClick}
+          disabled={isCompacting}
+          className={cn(
+            "h-8 w-8 shrink-0 rounded-full transition-opacity",
+            "hover:opacity-80",
+            isCompacting ? "cursor-default" : "cursor-pointer",
+          )}
+          aria-label={tooltip}
+          onMouseEnter={() => {
+            cancelClose();
+            setOpen(true);
+          }}
+          onMouseLeave={scheduleClose}
+        >
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {/* Background ring */}
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              className="stroke-white/10"
+              strokeWidth={strokeWidth}
+            />
+            {/* Fill ring */}
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              className={cn(
+                fillColor,
+                "transition-all duration-300",
+                isCompacting && "animate-spin",
+              )}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={isCompacting ? circumference : dashOffset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          </svg>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="top"
+          className={cn("gap-1", hasStats && "w-72 max-w-[calc(100vw-2rem)]")}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          {hasStats ? (
+            <TurnStatsCard turns={turns} />
+          ) : (
+            <p className="text-muted-foreground text-xs leading-5 whitespace-pre-line">{tooltip}</p>
+          )}
+        </PopoverContent>
+      </Popover>
 
       {/* Confirmation dialog */}
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>

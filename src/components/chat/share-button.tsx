@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Copy, CopyCheck, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl, type SegmentedOption } from "@/components/ui/segmented-control";
 import {
   Dialog,
   DialogContent,
@@ -14,14 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+
 import { fetchJson, postJson } from "@/lib/http";
 import {
   DEFAULT_SHARE_ACCESS,
@@ -36,11 +31,21 @@ interface ShareButtonProps {
 
 /** The two audiences a share link can have. */
 const ACCESS_LABELS: Record<ShareAccess, string> = {
+  public: "Anyone",
+  account: "Signed in",
+};
+
+/** Spelled out on the option, which has no room for it. */
+const ACCESS_TITLES: Record<ShareAccess, string> = {
   public: "Anyone with the link",
   account: "Signed-in users",
 };
 
-const ACCESS_OPTIONS = SHARE_ACCESSES.map((value) => ({ value, label: ACCESS_LABELS[value] }));
+const ACCESS_OPTIONS: SegmentedOption<ShareAccess>[] = SHARE_ACCESSES.map((value) => ({
+  value,
+  label: ACCESS_LABELS[value],
+  title: ACCESS_TITLES[value],
+}));
 
 const ACCESS_HINTS: Record<ShareAccess, string> = {
   public: "Anyone holding the link can read this chat.",
@@ -104,13 +109,8 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
     void saveShare({ shared: checked, access });
   };
 
-  const handleAccessChange = (value: string | null) => {
-    if (!isShareAccess(value)) return;
-    if (isShared) {
-      void saveShare({ shared: true, access: value });
-    } else {
-      setAccess(value);
-    }
+  const handleAccessChange = (value: ShareAccess) => {
+    void saveShare({ shared: true, access: value });
   };
 
   // Load current share state when dialog opens
@@ -164,22 +164,20 @@ export function ShareButton({ sessionId }: ShareButtonProps) {
             />
           </div>
 
-          {/* Audience */}
-          <div className="grid grid-cols-1 gap-2">
-            <Label htmlFor="share-access">Who can open the link</Label>
-            <Select value={access} onValueChange={handleAccessChange} disabled={isLoading}>
-              <SelectTrigger id="share-access">
-                <SelectValue>{(value) => ACCESS_LABELS[value as ShareAccess]}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {ACCESS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Audience, only while the chat is shared. one line, like the toggle above. */}
+          {isShared && (
+            <div className="flex items-center justify-between gap-3">
+              <Label className="shrink-0">Link access</Label>
+              <SegmentedControl
+                label="Who can open the link"
+                value={access}
+                options={ACCESS_OPTIONS}
+                onChange={handleAccessChange}
+                disabled={isLoading}
+                className="shrink-0"
+              />
+            </div>
+          )}
 
           {/* Share URL */}
           {isShared && shareUrl && (

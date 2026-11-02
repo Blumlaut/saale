@@ -4,6 +4,35 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ContextCircle, contextPercent } from "@/components/chat/token-usage-display";
 import type { TokenUsage } from "@/components/chat/types";
+import type { TurnStats } from "@/lib/pi/turn-stats";
+
+// The popover shell is not what this test is about: render its parts inline so
+// the card is in the DOM whether or not it is open.
+vi.mock("@/components/ui/popover", () => ({
+  Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverTrigger: ({
+    children,
+    ...props
+  }: { children: React.ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button {...props}>{children}</button>
+  ),
+  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+function stats(overrides: Partial<TurnStats> = {}): TurnStats {
+  return {
+    model: { provider: "anthropic", name: "claude-sonnet-4.5", responseModel: null },
+    tokens: { input: 8412, output: 1204, cacheRead: 41200, cacheWrite: 0 },
+    cost: 0.0312,
+    costFromProvider: true,
+    context: {
+      tokens: 120000,
+      window: 200000,
+      parts: { systemPrompt: 12400, tools: 68900, userMessages: 9100, responses: 29600 },
+    },
+    ...overrides,
+  };
+}
 
 /**
  * The context ring is the only place a user can see how full the context is
@@ -64,15 +93,36 @@ describe("contextPercent", () => {
 });
 
 describe("ContextCircle", () => {
-  it("shows the context fill and absolute tokens in the tooltip", () => {
-    render(<ContextCircle usage={usage()} isCompacting={false} onCompact={() => {}} />);
+  it("shows the session's stats card, like a message's timestamp does", () => {
+    render(
+      <ContextCircle
+        usage={usage()}
+        turns={[
+          stats(),
+          undefined,
+          stats({ cost: 0.02, tokens: { input: 10, output: 1, cacheRead: 0, cacheWrite: 0 } }),
+        ]}
+        isCompacting={false}
+        onCompact={() => {}}
+      />,
+    );
 
-    const ring = screen.getByRole("button");
-    expect(ring).toHaveAttribute(
-      "title",
+    expect(screen.getByTitle("claude-sonnet-4.5")).toBeInTheDocument();
+    // Costs and tokens add up over the turns, the context comes from the last one.
+    expect(screen.getByText("$0.0512")).toBeInTheDocument();
+    expect(screen.getByText("8.4K")).toBeInTheDocument();
+    expect(screen.getByText("120K / 200K · 60%")).toBeInTheDocument();
+    expect(screen.getByText("2 turns")).toBeInTheDocument();
+  });
+
+  it("names the context in the ring before any turn has stats", () => {
+    render(<ContextCircle usage={usage()} turns={[]} isCompacting={false} onCompact={() => {}} />);
+
+    expect(screen.getByRole("button")).toHaveAttribute(
+      "aria-label",
       "Context 32K/128K (25%)\nIn 1K · Out 500\nClick to compact",
     );
-    expect(ring).toHaveAttribute("aria-label", expect.stringContaining("25%"));
+    expect(screen.queryByText("Model")).not.toBeInTheDocument();
   });
 
   it("fills the ring proportionally to the context usage", () => {
@@ -91,30 +141,6 @@ describe("ContextCircle", () => {
     expect(offset).toBeCloseTo(circumference / 2, 5);
   });
 
-  it("shows the whole session's cost in the tooltip", () => {
-    render(
-      <ContextCircle
-        usage={usage()}
-        sessionCost={0.1234}
-        isCompacting={false}
-        onCompact={() => {}}
-      />,
-    );
-
-    expect(screen.getByRole("button")).toHaveAttribute(
-      "title",
-      "Context 32K/128K (25%)\nIn 1K · Out 500\nSession cost $0.1234\nClick to compact",
-    );
-  });
-
-  it("leaves the cost line out when no turn reported usage", () => {
-    render(
-      <ContextCircle usage={usage()} sessionCost={0} isCompacting={false} onCompact={() => {}} />,
-    );
-
-    expect(screen.getByRole("button").getAttribute("title")).not.toContain("Session cost");
-  });
-
   it("says so when Pi has no context size yet", () => {
     render(
       <ContextCircle
@@ -125,16 +151,16 @@ describe("ContextCircle", () => {
     );
 
     expect(screen.getByRole("button")).toHaveAttribute(
-      "title",
+      "aria-label",
       "Context usage unavailable\nIn 1K · Out 500\nClick to compact",
     );
   });
 
   it("reports missing data before the first response", () => {
-    render(<ContextCircle usage={null} isCompacting={false} onCompact={() => {}} />);
+    render(<ContextCircle usage={null} turns={[]} isCompacting={false} onCompact={() => {}} />);
 
     const ring = screen.getByRole("button");
-    expect(ring).toHaveAttribute("title", "No usage data yet\nClick to compact");
+    expect(ring).toHaveAttribute("aria-label", "No usage data yet\nClick to compact");
     const fill = ring.querySelectorAll("circle")[1];
     expect(fill?.getAttribute("strokeDashoffset")).toBe(fill?.getAttribute("strokeDasharray"));
   });
