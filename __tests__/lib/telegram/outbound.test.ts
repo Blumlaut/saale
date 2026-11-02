@@ -156,6 +156,7 @@ describe("recordOutboundMessage", () => {
 
   it("refuses a source chat that belongs to another user", async () => {
     mockChatSession.findFirst.mockResolvedValue(null);
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
 
     await recordOutboundMessage({ userId, content: "hi", sourceSessionId: "someone-elses-chat" });
 
@@ -163,8 +164,11 @@ describe("recordOutboundMessage", () => {
       where: { id: "someone-elses-chat", userId },
       select: { id: true },
     });
-    expect(mockChatMessage.create).not.toHaveBeenCalled();
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown chat"));
+    // It reached Telegram, so it lands where a reply to it would go.
+    expect(mockChatMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sessionId: "sess-active" }),
+    });
   });
 
   it("writes the DB row but skips the transcript while the chat is generating", async () => {
