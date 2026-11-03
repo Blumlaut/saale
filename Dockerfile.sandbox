@@ -50,6 +50,12 @@ RUN ARCH="$(dpkg --print-architecture)" \
       | tar -xJ -C /usr/local --strip-components=1 --no-same-owner \
     && node --version && npm --version
 
+# pnpm stores packages once in $HOME and links them into each checkout, so a
+# worktree's node_modules costs the link tree and nothing more. Installed before
+# NPM_CONFIG_PREFIX moves the global prefix, so it lands in /usr/local/bin.
+RUN npm install -g pnpm \
+    && pnpm --version
+
 # `uv` and `pipx` give an agent a place to install Python tools it needs.
 RUN curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
