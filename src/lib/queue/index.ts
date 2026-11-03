@@ -1,4 +1,4 @@
-import { Queue, Worker, type Processor } from "bullmq";
+import { Queue, Worker, type JobSchedulerJson, type Processor } from "bullmq";
 import { prisma } from "@/lib/db";
 
 // ─── Connection ──────────────────────────────────────────────────────────────
@@ -467,33 +467,65 @@ export async function scheduleCouncilSweep(intervalMinutes: number): Promise<str
  *
  * @returns The scheduler ids that were removed
  */
-async function removeLegacyRepeatableJobs(
+function removeLegacyRepeatableJobs(
   queue: Queue,
   jobName: string,
   keepSchedulerId: string,
+): Promise<string[]> {
+  return removeSchedulers(
+    queue,
+    `the legacy repeatable jobs for ${jobName}`,
+    (scheduler) => scheduler.name === jobName && scheduler.key !== keepSchedulerId,
+  );
+}
+
+/** Scheduler id prefix of the agent job definition that automations replaced. */
+const RETIRED_AGENT_SCHEDULER_PREFIX = "agent-scheduled-";
+
+/**
+ * Remove the schedulers of the retired agent job definitions.
+ *
+ * Nothing reads the `definitionId` they enqueue any more, so they would fail on
+ * every run.
+ *
+ * @returns The scheduler ids that were removed
+ */
+export function removeRetiredAgentSchedulers(): Promise<string[]> {
+  return removeSchedulers(getQueue(), "the retired agent job schedulers", (scheduler) =>
+    scheduler.key.startsWith(RETIRED_AGENT_SCHEDULER_PREFIX),
+  );
+}
+
+/**
+ * Remove every job scheduler the match accepts, keeping none of them.
+ *
+ * The repeat-set member is the scheduler id: `getJobSchedulers()` reports it as
+ * `key` (bullmq 6 leaves `id` unset) and that is what removal takes.
+ *
+ * @returns The scheduler ids that were removed
+ */
+async function removeSchedulers(
+  queue: Queue,
+  label: string,
+  match: (scheduler: JobSchedulerJson) => boolean,
 ): Promise<string[]> {
   let schedulers;
   try {
     schedulers = await queue.getJobSchedulers();
   } catch (err) {
-    console.error(`Failed to list BullMQ job schedulers while pruning ${jobName}:`, err);
+    console.error(`Failed to list BullMQ job schedulers while pruning ${label}:`, err);
     return [];
   }
 
   const removed: string[] = [];
   for (const scheduler of schedulers) {
-    if (scheduler.name !== jobName) continue;
-
-    // The repeat-set member is the scheduler id: `getJobSchedulers()` reports it
-    // as `key` (bullmq 6 leaves `id` unset) and that is what removal takes.
-    const schedulerId = scheduler.key;
-    if (schedulerId === keepSchedulerId) continue;
+    if (!match(scheduler)) continue;
 
     try {
-      await queue.removeJobScheduler(schedulerId);
-      removed.push(schedulerId);
+      await queue.removeJobScheduler(scheduler.key);
+      removed.push(scheduler.key);
     } catch (err) {
-      console.error(`Failed to remove legacy BullMQ repeatable job ${schedulerId}:`, err);
+      console.error(`Failed to remove BullMQ job scheduler ${scheduler.key}:`, err);
     }
   }
 

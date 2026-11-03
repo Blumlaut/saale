@@ -12,6 +12,7 @@ import {
   scheduleAllWatchers,
   scheduleCouncilSweep,
   scheduleOrphanCleanup,
+  removeRetiredAgentSchedulers,
   scheduleWatcherChatCleanup,
   WATCHER_CHAT_CLEANUP_JOB_NAME,
   WATCHER_TICK_JOB_NAME,
@@ -218,6 +219,11 @@ async function main() {
   // Before the first job: a job that runs in a workspace still named by the old
   // scheme would create the new directory beside it. See the sandbox migration.
   await migrateWorkspaceIdentitiesOnBoot("worker");
+
+  // Their job definitions were removed, so these schedulers only produce failures.
+  for (const id of await removeRetiredAgentSchedulers()) {
+    console.log(`[worker] Removed retired agent scheduler ${id}`);
+  }
 
   console.log("[worker] Starting BullMQ worker...");
   console.log("");
