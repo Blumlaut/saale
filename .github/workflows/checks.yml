@@ -5,7 +5,10 @@ name: checks
 # Lint, formatting and tests are file-scoped: only what the PR touches is
 # passed to eslint, prettier and vitest. Typechecking is the one step that
 # cannot be honest per-file (a changed signature breaks callers elsewhere), so
-# it runs project-wide with a build-info cache, which makes a re-run cheap.
+# it runs project-wide with a build-info cache, which makes a re-run cheap. The
+# production dependency check is the other: a runtime import that lives in
+# `devDependencies` only fails once the image runs, so it links the tree the way
+# the image does and looks for every import there.
 #
 # Installing is the expensive part of a cold run, so it is cached twice:
 # `node_modules` itself (keyed on the lockfile) and pnpm's package store. A run
@@ -85,6 +88,8 @@ jobs:
           # eslint's prettier plugin above.
           list format '^src/.*\.md$|^e2e/.*\.(ts|tsx)$'
           list code   '\.(ts|tsx|mts|cts)$'
+          # Changes to these can change which packages the production tree holds.
+          list deps   '^package\.json$|^pnpm-lock\.yaml$|^pnpm-workspace\.yaml$|^patches/'
           # vitest only includes __tests__; e2e specs are Playwright, not vitest.
           list tests  '^__tests__/.*\.(test|spec)\.(ts|tsx)$'
 
@@ -140,6 +145,12 @@ jobs:
       - name: Generate the Prisma client
         if: steps.files.outputs.any == 'true'
         run: pnpm exec prisma generate
+
+      # A dev dependency imported from src/ compiles and then dies in the image,
+      # so the imports are checked against a tree linked the way production links it.
+      - name: Check the production dependency tree
+        if: steps.files.outputs.deps == 'true' || steps.files.outputs.code == 'true'
+        run: pnpm run check:prod-deps
 
       - name: Lint the touched files
         if: steps.files.outputs.lint == 'true'
