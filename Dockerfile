@@ -4,6 +4,13 @@
 # this major only has to be one the app is known to start under.
 FROM node:26-alpine AS base
 RUN apk add --no-cache dumb-init
+
+# ─── Toolchain ───────────────────────────────────────────────────────────────
+#
+# Only the stages that install or build start here. The runtime images stay on
+# `base`, so neither of them ships a package manager.
+
+FROM base AS toolchain
 # pnpm ships as a self-contained binary and its image carries the node-gyp it
 # needs. Copying that beats `npm install -g`, which leans on npm's global layout.
 COPY --from=ghcr.io/pnpm/pnpm:12.16.1-alpine /opt/pnpm /opt/pnpm
@@ -20,7 +27,7 @@ ENV PNPM_CONFIG_STORE_DIR=/pnpm/store
 # pnpm-lock.yaml. Every stage below builds on this one, which is how their
 # installs find the store warm.
 
-FROM base AS fetched
+FROM toolchain AS fetched
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
 # Fetch reads the patch files the lockfile names, so they arrive with it.
