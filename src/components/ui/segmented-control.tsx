@@ -20,6 +20,8 @@ interface SegmentedControlProps<T extends string> {
   disabled?: boolean;
   /** Let the options wrap onto a second line instead of overflowing. */
   wrap?: boolean;
+  /** `xs` sits in a toolbar; `sm` matches a page action's height. */
+  size?: "xs" | "sm";
   className?: string;
 }
 
@@ -34,6 +36,7 @@ export function SegmentedControl<T extends string>({
   label,
   disabled,
   wrap,
+  size = "xs",
   className,
 }: SegmentedControlProps<T>) {
   return (
@@ -48,7 +51,8 @@ export function SegmentedControl<T extends string>({
           <Button
             key={option.value}
             type="button"
-            size="xs"
+            size={size === "sm" ? "icon" : "xs"}
+            className={size === "sm" ? "h-8 w-auto px-2.5 text-xs" : undefined}
             variant={selected ? "default" : "secondary"}
             aria-pressed={selected}
             {...(option.title === undefined ? {} : { title: option.title })}

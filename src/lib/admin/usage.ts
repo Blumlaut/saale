@@ -35,6 +35,8 @@ export interface UsageDay {
   /** `YYYY-MM-DD`. */
   date: string;
   cost: number;
+  globalCost: number;
+  ownCost: number;
   calls: number;
 }
 
@@ -83,6 +85,7 @@ interface GroupedRow {
 
 interface DayRow {
   date: string;
+  scope: string;
   cost: number;
   calls: number;
 }
@@ -122,14 +125,29 @@ function startOf(days: UsageWindow): Date {
 
 /** Every day of the window, so a quiet day reads as zero instead of vanishing. */
 function fillDays(days: UsageWindow, rows: readonly DayRow[]): UsageDay[] {
-  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const byDate = new Map<string, UsageDay>();
+  for (const row of rows) {
+    const day = byDate.get(row.date) ?? {
+      date: row.date,
+      cost: 0,
+      globalCost: 0,
+      ownCost: 0,
+      calls: 0,
+    };
+    const cost = Number(row.cost);
+    day.cost += cost;
+    if (row.scope === "own") day.ownCost += cost;
+    else day.globalCost += cost;
+    day.calls += Number(row.calls);
+    byDate.set(row.date, day);
+  }
+
   const series: UsageDay[] = [];
   const start = startOf(days);
   for (let index = 0; index < days; index += 1) {
     const at = new Date(start.getTime() + index * 24 * 60 * 60 * 1000);
     const date = at.toISOString().slice(0, 10);
-    const row = byDate.get(date);
-    series.push({ date, cost: Number(row?.cost ?? 0), calls: Number(row?.calls ?? 0) });
+    series.push(byDate.get(date) ?? { date, cost: 0, globalCost: 0, ownCost: 0, calls: 0 });
   }
   return series;
 }
@@ -163,11 +181,12 @@ export async function getUsageReport(days: UsageWindow): Promise<UsageReport> {
     `,
     prisma.$queryRaw<DayRow[]>`
       SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS "date",
+             "scope",
              sum("cost")::float8 AS "cost",
              count(*)::int       AS "calls"
       FROM "UsageEvent"
       WHERE "createdAt" >= ${since}
-      GROUP BY 1
+      GROUP BY 1, 2
       ORDER BY 1
     `,
     prisma.user.findMany({ select: { id: true, name: true, email: true, image: true } }),
@@ -249,11 +268,12 @@ export async function getUsageDetail(userId: string, days: UsageWindow): Promise
     `,
     prisma.$queryRaw<DayRow[]>`
       SELECT to_char(date_trunc('day', "createdAt"), 'YYYY-MM-DD') AS "date",
+             "scope",
              sum("cost")::float8 AS "cost",
              count(*)::int       AS "calls"
       FROM "UsageEvent"
       WHERE "createdAt" >= ${since} AND "userId" = ${userId}
-      GROUP BY 1
+      GROUP BY 1, 2
       ORDER BY 1
     `,
   ]);

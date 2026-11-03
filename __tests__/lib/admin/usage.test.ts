@@ -106,16 +106,28 @@ describe("getUsageReport", () => {
 
   it("gives every day of the window a bar, quiet days at zero", async () => {
     mocks.days.mockResolvedValue([
-      { date: day(2), cost: 5, calls: 4 },
-      { date: day(0), cost: 1, calls: 1 },
+      { date: day(2), scope: "global", cost: 5, calls: 4 },
+      { date: day(0), scope: "own", cost: 1, calls: 1 },
     ]);
 
     const report = await getUsageReport(7);
 
     expect(report.daily).toHaveLength(7);
-    expect(report.daily.at(-1)).toEqual({ date: day(0), cost: 1, calls: 1 });
+    expect(report.daily.at(-1)).toEqual({
+      date: day(0),
+      cost: 1,
+      globalCost: 0,
+      ownCost: 1,
+      calls: 1,
+    });
     expect(report.daily.some((entry) => entry.cost === 0)).toBe(true);
-    expect(report.daily.at(-2)).toEqual({ date: day(1), cost: 0, calls: 0 });
+    expect(report.daily.at(-2)).toEqual({
+      date: day(1),
+      cost: 0,
+      globalCost: 0,
+      ownCost: 0,
+      calls: 0,
+    });
   });
 
   it("names an account by its email when it has no name", async () => {
@@ -152,7 +164,7 @@ describe("getUsageDetail", () => {
       total({ provider: "openai", kind: "chat", cost: 1, scope: "own" }),
       total({ provider: "openai", kind: "coder", cost: 4, calls: 6 }),
     ]);
-    mocks.days.mockResolvedValue([{ date: day(1), cost: 7, calls: 9 }]);
+    mocks.days.mockResolvedValue([{ date: day(1), scope: "global", cost: 7, calls: 9 }]);
 
     const detail = await getUsageDetail("user-1", 30);
 
@@ -166,7 +178,13 @@ describe("getUsageDetail", () => {
       { provider: "anthropic", cost: 2, calls: 3 },
     ]);
     expect(detail.daily).toHaveLength(30);
-    expect(detail.daily.at(-2)).toEqual({ date: day(1), cost: 7, calls: 9 });
+    expect(detail.daily.at(-2)).toEqual({
+      date: day(1),
+      cost: 7,
+      globalCost: 7,
+      ownCost: 0,
+      calls: 9,
+    });
   });
 
   it("asks the ledger for that account only", async () => {
