@@ -1,24 +1,5 @@
 import { prisma } from "@/lib/db";
-
-/**
- * Shared shape for serialized task responses.
- * Used by API routes and AI tool responses.
- */
-export interface TaskResponse {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-  tags: string[];
-  order: number;
-  source: string;
-  sourceEmailId: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { Task } from "@/types/shared";
 
 /**
  * Minimal shape accepted by taskToResponse. works with both
@@ -45,7 +26,7 @@ interface TaskLike {
  * Serialize a Prisma Task record (with Date fields) to a flat JSON-ready response.
  * Shared by API routes and AI tool responses.
  */
-export function taskToResponse(t: TaskLike): TaskResponse {
+export function taskToResponse(t: TaskLike): Task {
   return {
     id: t.id,
     title: t.title,

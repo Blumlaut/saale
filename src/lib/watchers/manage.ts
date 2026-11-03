@@ -12,6 +12,7 @@
 
 import { prisma } from "@/lib/db";
 import type { ScriptWatcher } from "@prisma/client";
+import type { ScriptWatcher as WatcherView } from "@/types/shared";
 import {
   DEFAULT_DELIVER,
   DEFAULT_RETENTION_MINUTES,
@@ -432,44 +433,12 @@ export async function deleteWatcher(id: string, userId: string): Promise<void> {
   await unscheduleWatcher(id);
 }
 
-/** The shape every reader of an automation gets. API, tools and UI alike. */
-export interface SerializedWatcher {
-  id: string;
-  name: string;
-  description: string | null;
-  /** Null when the automation has no gate and fires on every tick. */
-  script: string | null;
-  /** Null when the automation has no schedule and only runs by hand. */
-  cronExpression: string | null;
-  enabled: boolean;
-  deliver: string;
-  sessionId: string | null;
-  sessionTitle: string | null;
-  projectId: string | null;
-  projectName: string | null;
-  worktreeMode: string;
-  retentionMinutes: number;
-  wakePrompt: string;
-  modelId: string | null;
-  thinkingLevel: string;
-  cooldownMinutes: number;
-  maxFires: number | null;
-  tickCount: number;
-  fireCount: number;
-  lastTickAt: string | null;
-  lastFiredAt: string | null;
-  lastError: string | null;
-  lastValue: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 type WatcherRow = ScriptWatcher & {
   session?: { title: string } | null;
   project?: { name: string } | null;
 };
 
-export function serializeWatcher(watcher: WatcherRow): SerializedWatcher {
+export function serializeWatcher(watcher: WatcherRow): WatcherView {
   return {
     id: watcher.id,
     name: watcher.name,
