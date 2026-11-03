@@ -1,6 +1,6 @@
 services:
   # One-shot `prisma migrate deploy`, gating web and worker. Reuses the worker
-  # image, so the CLI comes from a real `npm ci` tree rather than a hand-built
+  # image, so the CLI comes from a real `pnpm install` tree rather than a hand-built
   # closure of its dependencies.
   migrate:
     image: saale-worker

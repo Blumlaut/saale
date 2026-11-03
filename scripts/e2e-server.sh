@@ -21,7 +21,7 @@ export AUTH_RATE_LIMIT=off
 export RATE_LIMIT_MAX=100000
 
 if [ "${E2E_SERVER:-prod}" = "dev" ]; then
-  exec npx next dev --turbopack --port "$PORT"
+  exec pnpm exec next dev --turbopack --port "$PORT"
 fi
 
 export NODE_ENV=production
@@ -31,7 +31,7 @@ export NODE_ENV=production
 if [ ! -f .next/BUILD_ID ] ||
   [ -n "$(find src prisma public next.config.ts package.json -newer .next/BUILD_ID -print -quit 2>/dev/null)" ]; then
   printf '▸ Building the production bundle\n'
-  npx next build
+  pnpm exec next build
 fi
 
-exec npx next start --port "$PORT"
+exec pnpm exec next start --port "$PORT"

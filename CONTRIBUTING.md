@@ -24,7 +24,7 @@ claim of ownership over it.
 
 - Write in English.
 - One pull request, one change.
-- Run `npm run check` before you push. It lints, type-checks, checks formatting and runs
+- Run `pnpm run check` before you push. It lints, type-checks, checks formatting and runs
   the tests.
 - Come back with a question instead of a guess, and assume the other person is arguing in
   good faith.

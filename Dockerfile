@@ -2,31 +2,35 @@
 
 FROM node:alpine AS base
 RUN apk add --no-cache dumb-init
+# The store is where pnpm keeps every package it has ever unpacked; each stage
+# mounts it as a cache, so a rebuild links instead of downloading.
+ENV npm_config_store_dir=/pnpm/store
+RUN npm install -g --ignore-scripts pnpm@12
 
 # ─── Development stage — hot reload via docker compose watch ──────────────────
 
 FROM base AS development
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]
 
 # ─── Production dependencies ─────────────────────────────────────────────────
 #
-# Installed apart from `build` so the layer is keyed on package-lock.json alone:
-# an ordinary source change must never re-run `npm ci --omit=dev` (~20s) or
-# rewrite the ~1GB node_modules layer it produces.
+# Installed apart from `build` so the layer is keyed on pnpm-lock.yaml alone: an
+# ordinary source change must never re-run the install or rewrite the node_modules
+# layer it produces.
 
 FROM base AS prod-deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prod --ignore-scripts
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 # Exercise the migrate path offline (config + schema engine, no DB): a Prisma
 # upgrade that changes the CLI's contract fails the build, not the deploy.
 RUN node node_modules/prisma/build/index.js migrate diff \
@@ -36,15 +40,15 @@ RUN node node_modules/prisma/build/index.js migrate diff \
 
 FROM base AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 # The client follows from the schema, not from the app source, so it is generated
 # before `COPY . .` and survives ordinary source edits.
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 COPY . .
 # The release this image carries, inlined by `next build`. The release workflow
 # passes it; a local build falls back to package.json through next.config.ts.
@@ -52,7 +56,7 @@ ARG NEXT_PUBLIC_APP_VERSION=
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 # `.next/cache` holds Turbopack's build cache and the incremental typecheck info
 # — mounted so rebuilds start warm instead of retyping and recompiling everything
-RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
+RUN --mount=type=cache,target=/app/.next/cache,sharing=locked pnpm run build
 
 # ─── Build stage: worker and sandbox bundles ─────────────────────────────────
 #
@@ -62,15 +66,15 @@ RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
 
 FROM base AS build-worker
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
-RUN npx prisma generate
+RUN pnpm exec prisma generate
 COPY . .
-RUN npm run build:worker
-RUN npm run build:sandbox
+RUN pnpm run build:worker
+RUN pnpm run build:sandbox
 
 # ─── Production: Web (Next.js standalone) ─────────────────────────────────────
 
@@ -83,11 +87,10 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 # The console reads this to show what the running release changed.
 COPY --from=build /app/CHANGELOG.md ./CHANGELOG.md
-# The generated client is not traced by Next.js standalone, so copy it. Nothing
-# at runtime reads the schema or prisma.config.mjs in this container: the app
-# builds its client from DATABASE_URL (src/lib/db.ts) and migrations run in the
-# `migrate` service, not in this container.
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# Nothing at runtime reads the schema or prisma.config.mjs in this container: the
+# app builds its client from DATABASE_URL (src/lib/db.ts) and migrations run in
+# the `migrate` service, not in this container. Next traces the generated client
+# out of the pnpm virtual store on its own.
 
 ENTRYPOINT ["dumb-init", "--"]
 EXPOSE 3000
@@ -98,7 +101,7 @@ CMD ["node", "server.js"]
 # ─── Production: Worker (BullMQ, pre-compiled) ──────────────────────────────
 #
 # Also the image the `migrate` service runs: it carries the full production
-# dependency tree — hence a real, npm-installed `prisma` CLI — plus prisma/ and
+# dependency tree — hence a real, installed `prisma` CLI — plus prisma/ and
 # prisma.config.mjs.
 
 FROM base AS production-worker

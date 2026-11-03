@@ -22,7 +22,7 @@ services:
       - saale_workspaces:/w
     environment:
       - NODE_ENV=development
-    command: sh -c "npx prisma generate && npx prisma db push --accept-data-loss && npx next dev --turbopack --port 3000"
+    command: sh -c "pnpm exec prisma generate && pnpm exec prisma db push --accept-data-loss && pnpm exec next dev --turbopack --port 3000"
 
   worker:
     build:

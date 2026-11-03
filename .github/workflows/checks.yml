@@ -8,11 +8,11 @@ name: checks
 # it runs project-wide with a build-info cache, which makes a re-run cheap.
 #
 # Installing is the expensive part of a cold run, so it is cached twice:
-# `node_modules` itself (keyed on the lockfile) and npm's download cache. A run
-# whose lockfile is unchanged skips `npm ci` entirely and only regenerates the
+# `node_modules` itself (keyed on the lockfile) and pnpm's package store. A run
+# whose lockfile is unchanged skips the install entirely and only regenerates the
 # Prisma client, and a diff with nothing to check skips Node altogether.
 #
-# `npm run check` stays the thing to run before a big change; this is the floor
+# `pnpm run check` stays the thing to run before a big change; this is the floor
 # that keeps a one-file fix from merging untested.
 
 on:
@@ -33,10 +33,10 @@ env:
   DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
   NEXT_TELEMETRY_DISABLED: "1"
   # Nothing here reads an audit report or cares who needs funding, and a
-  # restored download cache is good enough without revalidating it.
-  NPM_CONFIG_AUDIT: "false"
-  NPM_CONFIG_FUND: "false"
-  NPM_CONFIG_PREFER_OFFLINE: "true"
+  # restored store is good enough without revalidating it.
+  npm_config_audit: "false"
+  npm_config_fund: "false"
+  npm_config_prefer_offline: "true"
 
 jobs:
   changed:
@@ -80,7 +80,7 @@ jobs:
           }
 
           list lint   '\.(ts|tsx|js|mjs|cjs|mts)$'
-          # Same scope as `npm run format:check`. Loose markdown in docs/ is
+          # Same scope as `pnpm run format:check`. Loose markdown in docs/ is
           # deliberately not held to prettier, and src TS is already formatted by
           # eslint's prettier plugin above.
           list format '^src/.*\.md$|^e2e/.*\.(ts|tsx)$'
@@ -104,46 +104,50 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "major=${major%%.*}" >> "$GITHUB_OUTPUT"
 
-      # The install itself. Restoring the tree beats re-extracting it and
-      # re-running every postinstall (native builds, Prisma engines), and one
-      # cache entry per lockfile is small enough to keep. No `restore-keys`: a
-      # tree that does not match the lockfile is worth less than a fresh
-      # install, and `npm ci` wipes the directory anyway. Restored before Node
-      # is set up because it needs no toolchain.
+      # The install itself. Restoring the tree beats re-linking it and running
+      # every build script (native builds, Prisma engines), and one cache entry
+      # per lockfile is small enough to keep. No `restore-keys`: a tree that does
+      # not match the lockfile is worth less than a fresh install, and a
+      # `--frozen-lockfile` install rewrites the directory anyway. Restored
+      # before Node is set up because it needs no toolchain.
       - name: Restore node_modules
         id: modules
         if: steps.files.outputs.any == 'true'
         uses: actions/cache@v6
         with:
           path: node_modules
-          key: node-modules-${{ runner.os }}-node${{ steps.node.outputs.major }}-${{ hashFiles('package-lock.json') }}
+          key: node-modules-${{ runner.os }}-node${{ steps.node.outputs.major }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # The version comes from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+        if: steps.files.outputs.any == 'true'
 
       - uses: actions/setup-node@v7
         if: steps.files.outputs.any == 'true'
         with:
           node-version: ${{ steps.node.outputs.version }}
-          # npm's download cache, so a miss installs offline. Pointless once the
+          # pnpm's package store, so a miss installs offline. Pointless once the
           # tree is restored, and restoring it costs more than it saves.
-          cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'npm' || '' }}
+          cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'pnpm' || '' }}
 
       - name: Install
         if: steps.files.outputs.any == 'true' && steps.modules.outputs.cache-hit != 'true'
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # A restored tree carries the client that was generated when it was
       # cached, which may be older than the schema in this checkout. Cheap, so
       # it runs either way rather than relying on `prepare` having fired.
       - name: Generate the Prisma client
         if: steps.files.outputs.any == 'true'
-        run: npx prisma generate
+        run: pnpm exec prisma generate
 
       - name: Lint the touched files
         if: steps.files.outputs.lint == 'true'
-        run: xargs -0 -a "$RUNNER_TEMP/lint.txt" npx eslint --max-warnings=0
+        run: xargs -0 -a "$RUNNER_TEMP/lint.txt" pnpm exec eslint --max-warnings=0
 
       - name: Check formatting of the touched files
         if: steps.files.outputs.format == 'true'
-        run: xargs -0 -a "$RUNNER_TEMP/format.txt" npx prettier --check
+        run: xargs -0 -a "$RUNNER_TEMP/format.txt" pnpm exec prettier --check
 
       # Whole-project by necessity. The cache key changes with every push, so
       # the restore-keys prefix always hands over the previous run's build info
@@ -160,11 +164,11 @@ jobs:
 
       - name: Typecheck
         if: steps.files.outputs.code == 'true'
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Test the touched suites
         if: steps.files.outputs.tests == 'true'
-        run: xargs -0 -a "$RUNNER_TEMP/tests.txt" npx vitest run --reporter=dot
+        run: xargs -0 -a "$RUNNER_TEMP/tests.txt" pnpm exec vitest run --reporter=dot
 
       - name: Nothing to check
         if: steps.files.outputs.any == 'false'

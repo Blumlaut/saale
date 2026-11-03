@@ -13,6 +13,12 @@ Production app, live data. Never lose it.
 
 Never edit `prisma.config.mjs` — it loads env; a change breaks deploys.
 
+## Package manager
+
+pnpm, with the version pinned by `packageManager` in `package.json`. Settings live in
+`pnpm-workspace.yaml` and a new dependency's build script needs a line in `allowBuilds`
+there.
+
 ## Investigate before using
 
 Never assume an API, method or type exists: read the source, `dist/`, `index.d.ts`
@@ -24,12 +30,12 @@ the error string.
 - Commit before moving on. Subject ≤50 chars, imperative and descriptive (e.g. `add prisma schema for users and sessions`). Group related changes.
 - **Run only checks relevant to changed code.** Prefer targeted tests over full suites.
   - Run eslint `--fix` on changed files; use `prettier --write` for `.md` and `e2e/` files.
-  - Run `npx vitest run <specific test paths>` for tests covering changed behavior.
-  - Run `npx tsc --noEmit` only when broader type checking is warranted.
+  - Run `pnpm exec vitest run <specific test paths>` for tests covering changed behavior.
+  - Run `pnpm exec tsc --noEmit` only when broader type checking is warranted.
 - Never test untouched code, run the same check twice, or run the full suite just to be safe. Retest only when relevant code changes.
-- Run `npm run check` only for broad or cross-cutting changes (e.g. shared primitives, Prisma schema, agent runtime), or when it's cheap.
+- Run `pnpm run check` only for broad or cross-cutting changes (e.g. shared primitives, Prisma schema, agent runtime), or when it's cheap.
 - CI (`.github/workflows/checks.yml`) checks touched files and runs cached project-wide `tsc`. Add broader checks only when the change warrants them.
-- Run `NODE_ENV=production npm run build` only when build behavior is affected. Development builds may fail prerendering `/_global-error` due to a known [Next.js issue](https://github.com/vercel/next.js/issues/86178).
+- Run `NODE_ENV=production pnpm run build` only when build behavior is affected. Development builds may fail prerendering `/_global-error` due to a known [Next.js issue](https://github.com/vercel/next.js/issues/86178).
 - If a check cannot run, briefly state why.
 
 ## Never swallow errors

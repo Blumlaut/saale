@@ -283,16 +283,16 @@ ensure_secret() { # key
 # ─── Dependencies, schema, account ───────────────────────────────────────────
 
 ensure_dependencies() {
-  if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+  if [ ! -d node_modules ] || [ pnpm-lock.yaml -nt node_modules/.modules.yaml ]; then
     say "Installing dependencies"
-    npm install --no-audit --no-fund
+    pnpm install --frozen-lockfile
   fi
 
   say "Generating the Prisma client"
-  npx prisma generate >/dev/null
+  pnpm exec prisma generate >/dev/null
 
   say "Applying migrations to $DB_NAME"
-  npx prisma migrate deploy >/dev/null
+  pnpm exec prisma migrate deploy >/dev/null
 }
 
 seed_account() {
@@ -378,10 +378,10 @@ start_app() {
   [ -f .env ] || die "No .env in this checkout. Run: sh scripts/dev.sh setup"
 
   say "Starting the dev server on $PORT"
-  start_process app npx next dev --turbopack --port "$PORT" --hostname 0.0.0.0
+  start_process app pnpm exec next dev --turbopack --port "$PORT" --hostname 0.0.0.0
 
   say "Starting the queue worker"
-  start_process worker env HOSTNAME=0.0.0.0 npx tsx --watch src/lib/queue/worker.ts
+  start_process worker env HOSTNAME=0.0.0.0 pnpm exec tsx --watch src/lib/queue/worker.ts
 
   if wait_for app_ready; then
     say "Ready"
