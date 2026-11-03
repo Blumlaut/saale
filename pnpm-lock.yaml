@@ -362,6 +362,9 @@ importers:
       sonner:
         specifier: ^2.0.8
         version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      ssh2:
+        specifier: ^1.17.0
+        version: 1.17.0
       sshpk:
         specifier: ^1.18.0
         version: 1.18.0
@@ -380,6 +383,9 @@ importers:
       typebox:
         specifier: ^1.4.3
         version: 1.4.3
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
       vaul:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -489,9 +495,6 @@ importers:
       shadcn:
         specifier: ^4.21.4
         version: 4.22.1
-      ssh2:
-        specifier: ^1.17.0
-        version: 1.17.0
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -501,9 +504,6 @@ importers:
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
       vite:
         specifier: ^8.3.5
         version: 8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0(patch_hash=f47b8e23240da9119fd501518ef1044e303570955ccad50723d3f879fa9d470a))(tsx@4.23.15)(yaml@2.9.0)
