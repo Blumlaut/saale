@@ -7,14 +7,21 @@ import { z } from "zod";
  * which part of the transcript filled the window. The breakdown is therefore
  * measured from the prompt, the declared tools and the transcript, and scaled
  * onto Pi's total, so the number at the top stays Pi's while the proportions
- * are an estimate.
+ * are an estimate. The prompt keeps its measured size, the rest shares out what
+ * is left.
  */
 
-/** Roughly four characters per token, the same fallback Pi uses for providers that report no usage. */
+/** Roughly four characters per token, the same allowance Pi's own estimator makes. */
 const CHARS_PER_TOKEN = 4;
+
+/** Pi's own allowance for one image, which costs tokens with no text to measure. */
+const IMAGE_CHARS = 4800;
 
 /** The four things that fill a chat's context. */
 export const TURN_STATS_PARTS = ["systemPrompt", "tools", "userMessages", "responses"] as const;
+
+/** The parts beside the prompt, which share out whatever total is left. */
+const TRANSCRIPT_PARTS = ["tools", "userMessages", "responses"] as const;
 
 export type TurnStatsPart = (typeof TURN_STATS_PARTS)[number];
 
@@ -69,12 +76,31 @@ export function parseTurnStats(value: unknown): TurnStats | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** Characters one content block carries, ignoring images (they cost tokens without text to measure). */
+/**
+ * The fields of a transcript message this file reads.
+ *
+ * Pi's transcript holds more than user and assistant rows. A shell execution,
+ * an extension's message and the summary a compaction leaves behind are all
+ * replayed to the model as user content.
+ */
+export interface TranscriptMessageLike {
+  role: string;
+  content?: unknown;
+  /** The text of a `compactionSummary` or `branchSummary` row. */
+  summary?: unknown;
+  /** The command of a `bashExecution` row. */
+  command?: unknown;
+  /** Its output. */
+  output?: unknown;
+}
+
+/** Characters one content block carries. */
 function blockChars(block: unknown): number {
   if (typeof block === "string") return block.length;
   if (typeof block !== "object" || block === null) return 0;
 
   const record = block as Record<string, unknown>;
+  if (record.type === "image") return IMAGE_CHARS;
   if (record.type === "text" && typeof record.text === "string") return record.text.length;
   if (record.type === "thinking" && typeof record.thinking === "string") {
     return record.thinking.length;
@@ -83,6 +109,16 @@ function blockChars(block: unknown): number {
     return JSON.stringify(record.arguments).length;
   }
   return 0;
+}
+
+/** Characters a message's content blocks carry. */
+function contentChars(content: unknown): number {
+  const blocks: unknown[] = Array.isArray(content) ? content : [content];
+  return blocks.reduce<number>((sum, block) => sum + blockChars(block), 0);
+}
+
+function textChars(value: unknown): number {
+  return typeof value === "string" ? value.length : 0;
 }
 
 /**
@@ -116,7 +152,7 @@ export function estimateContextParts(input: {
   systemPrompt: string;
   /** The tool definitions sent beside the prompt, as `getToolDefinition` returns them. */
   tools?: ReadonlyArray<unknown> | undefined;
-  messages: ReadonlyArray<{ role: string; content?: unknown }>;
+  messages: ReadonlyArray<TranscriptMessageLike>;
 }): ContextParts {
   const chars: Record<TurnStatsPart, number> = {
     systemPrompt: input.systemPrompt.length,
@@ -128,14 +164,31 @@ export function estimateContextParts(input: {
   for (const tool of input.tools ?? []) chars.tools += toolChars(tool);
 
   for (const message of input.messages) {
-    const blocks = Array.isArray(message.content) ? message.content : [message.content];
-    for (const block of blocks) {
-      if (message.role === "toolResult") chars.tools += blockChars(block);
-      else if (message.role === "user") chars.userMessages += blockChars(block);
-      else if (message.role === "assistant") {
-        if (isToolCall(block)) chars.tools += blockChars(block);
-        else chars.responses += blockChars(block);
-      }
+    switch (message.role) {
+      case "assistant":
+        for (const block of Array.isArray(message.content) ? message.content : [message.content]) {
+          if (isToolCall(block)) chars.tools += blockChars(block);
+          else chars.responses += blockChars(block);
+        }
+        break;
+      case "toolResult":
+        chars.tools += contentChars(message.content);
+        break;
+      // A shell execution rides in the prompt as a user message, and it is tool
+      // traffic: the command and its output are what the tool returned.
+      case "bashExecution":
+        chars.tools += textChars(message.command) + textChars(message.output);
+        break;
+      case "compactionSummary":
+      case "branchSummary":
+        chars.userMessages += textChars(message.summary);
+        break;
+      case "custom":
+        chars.userMessages += contentChars(message.content);
+        break;
+      case "user":
+        chars.userMessages += contentChars(message.content);
+        break;
     }
   }
 
@@ -149,26 +202,55 @@ export function estimateContextParts(input: {
 
 /**
  * Stretch or shrink the estimates so they add up to the context total Pi
- * reports. The shortfall goes on the largest part, so the four numbers always
- * sum to the total shown beside them.
+ * reports.
+ *
+ * The system prompt is the one part whose size is known: it is exactly the text
+ * the session sends. It keeps that size, and the other three share out what is
+ * left, with the rounding drift on the largest so the four always sum to the
+ * total shown beside them. Scaling every part by the same factor made the
+ * prompt read larger with every turn, since a screenshot or a provider's own
+ * tokenizer is a cost the estimate cannot see.
  */
 export function scaleContextParts(parts: ContextParts, total: number | null): ContextParts {
   const sum = TURN_STATS_PARTS.reduce((acc, key) => acc + parts[key], 0);
   if (total === null || total <= 0 || sum <= 0) return parts;
 
-  const scaled = {} as ContextParts;
-  for (const key of TURN_STATS_PARTS) {
-    scaled[key] = Math.round((parts[key] / sum) * total);
+  // A total below the prompt cannot be split, so scale everything and let the
+  // card keep adding up.
+  if (parts.systemPrompt >= total) {
+    const scaled = {} as ContextParts;
+    for (const key of TURN_STATS_PARTS) scaled[key] = Math.round((parts[key] / sum) * total);
+    return applyDrift(scaled, total, TURN_STATS_PARTS);
   }
 
-  const drift = total - TURN_STATS_PARTS.reduce((acc, key) => acc + scaled[key], 0);
-  if (drift !== 0) {
-    const largest = TURN_STATS_PARTS.reduce((best, key) =>
-      scaled[key] > scaled[best] ? key : best,
-    );
-    scaled[largest] += drift;
+  const budget = total - parts.systemPrompt;
+  const restSum = sum - parts.systemPrompt;
+  const scaled: ContextParts = {
+    systemPrompt: parts.systemPrompt,
+    tools: 0,
+    userMessages: 0,
+    responses: 0,
+  };
+  for (const key of TRANSCRIPT_PARTS) {
+    scaled[key] = restSum > 0 ? Math.round((parts[key] / restSum) * budget) : 0;
   }
-  return scaled;
+  // An empty transcript still has a total to show.
+  if (restSum <= 0) scaled.responses = budget;
+  return applyDrift(scaled, total, TURN_STATS_PARTS);
+}
+
+/** Put the rounding drift on the largest of `keys`, so the parts sum to `total`. */
+function applyDrift(
+  parts: ContextParts,
+  total: number,
+  keys: readonly TurnStatsPart[],
+): ContextParts {
+  const drift = total - TURN_STATS_PARTS.reduce((acc, key) => acc + parts[key], 0);
+  if (drift !== 0) {
+    const largest = keys.reduce((best, key) => (parts[key] > parts[best] ? key : best));
+    parts[largest] += drift;
+  }
+  return parts;
 }
 
 /** The fields of an assistant message this file reads. */
@@ -197,7 +279,7 @@ export function buildTurnStats(input: {
   systemPrompt: string;
   /** The declared tools: the same list Pi sends on the request this turn answers. */
   tools?: ReadonlyArray<unknown> | undefined;
-  messages: ReadonlyArray<{ role: string; content?: unknown }>;
+  messages: ReadonlyArray<TranscriptMessageLike>;
   context: { tokens: number | null; contextWindow: number };
 }): TurnStats {
   const usage = input.message.usage;

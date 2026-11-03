@@ -56,29 +56,53 @@ describe("estimateContextParts", () => {
     expect(parts.responses).toBe(100);
   });
 
-  it("counts thinking and ignores images, which have no text to measure", () => {
+  it("counts thinking, and images at the allowance Pi makes for one", () => {
     const parts = estimateContextParts({
       systemPrompt: "",
       messages: [
-        {
-          role: "assistant",
-          content: [
-            { type: "thinking", thinking: "h".repeat(200) },
-            { type: "image", data: "AAAA", mimeType: "image/png" },
-          ],
-        },
+        { role: "assistant", content: [{ type: "thinking", thinking: "h".repeat(200) }] },
+        { role: "user", content: [{ type: "image", data: "AAAA", mimeType: "image/png" }] },
         { role: "toolResult", content: [{ type: "image", data: "AAAA", mimeType: "image/png" }] },
       ],
     });
 
     expect(parts.responses).toBe(50);
-    expect(parts.tools).toBe(0);
+    // A screenshot costs tokens with no text behind it; 4800 chars is Pi's own
+    // allowance for one.
+    expect(parts.userMessages).toBe(1200);
+    expect(parts.tools).toBe(1200);
+  });
+
+  /**
+   * Pi sends these four as user content, so they are part of the prompt a
+   * provider bills even though none of them has a `content` array. A chat that
+   * was compacted carries a summary from then on.
+   */
+  it("counts the transcript rows Pi replays as user content", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        { role: "bashExecution", command: "ls", output: "o".repeat(400) },
+        { role: "compactionSummary", summary: "s".repeat(400) },
+        { role: "branchSummary", summary: "b".repeat(200) },
+        { role: "custom", content: [{ type: "text", text: "c".repeat(400) }] },
+        { role: "user", content: "u".repeat(40) },
+      ],
+    });
+
+    // A shell execution is tool traffic; the summaries and an extension's
+    // message are replayed as what the user sent.
+    expect(parts.tools).toBe(101);
+    expect(parts.userMessages).toBe(100 + 50 + 100 + 10);
   });
 
   it("skips messages that carry no content", () => {
     const parts = estimateContextParts({
       systemPrompt: "",
-      messages: [{ role: "bashExecution" }, { role: "user", content: "u".repeat(40) }],
+      messages: [
+        { role: "bashExecution", command: "", output: "" },
+        { role: "user", content: "u".repeat(40) },
+      ],
     });
     expect(parts.userMessages).toBe(10);
   });
@@ -140,25 +164,119 @@ describe("estimateContextParts", () => {
 
     for (const tokens of shown) expect(tokens).toBe(realPrompt);
   });
+
+  /**
+   * The chat the report was about: it grows with screenshots in it, and each
+   * one is a thousand tokens the text estimate cannot see. Stretching every
+   * part onto Pi's total credited them to the system prompt, so the prompt read
+   * larger with every screenshot even though its text never changed.
+   */
+  it("leaves the system prompt where it is while screenshots fill the chat", () => {
+    const systemPrompt = "p".repeat(9360);
+    const promptTokens = Math.round(systemPrompt.length / 4);
+    const tools = [
+      {
+        name: "screenshot",
+        description: "Take a screenshot of the page",
+        parameters: { type: "object", properties: { url: { type: "string" } } },
+      },
+    ];
+    const toolChars = JSON.stringify(tools[0]).length;
+
+    const shown = [1, 4, 12].map((shots) => {
+      const messages = [
+        { role: "user", content: [{ type: "text", text: "u".repeat(200) }] },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "a".repeat(800) },
+            { type: "toolCall", arguments: { url: "https://example.test" } },
+          ],
+        },
+        {
+          role: "toolResult",
+          content: [
+            { type: "text", text: "t".repeat(2000) },
+            ...Array.from({ length: shots }, () => ({
+              type: "image",
+              data: "A".repeat(40),
+              mimeType: "image/png",
+            })),
+          ],
+        },
+      ];
+      // What the provider bills: the text and the declared schema, plus a
+      // screenshot's own tokens.
+      const total = Math.round((systemPrompt.length + toolChars) / 4) + 1200 * shots;
+
+      return buildTurnStats({
+        message: {},
+        systemPrompt,
+        tools,
+        messages,
+        context: { tokens: total, contextWindow: 200_000 },
+      }).context;
+    });
+
+    for (const context of shown) {
+      expect(context.parts.systemPrompt).toBe(promptTokens);
+      const sum = TURN_STATS_PARTS.reduce((acc, key) => acc + context.parts[key], 0);
+      expect(sum).toBe(context.tokens);
+    }
+  });
 });
 
 describe("scaleContextParts", () => {
-  it("scales the parts onto Pi's total and keeps the sum exact", () => {
+  const sum = (parts: Record<string, number>) =>
+    Object.values(parts).reduce((acc, n) => acc + n, 0);
+
+  it("shares the total out over the transcript and keeps the sum exact", () => {
     const scaled = scaleContextParts(
       { systemPrompt: 1, tools: 2, userMessages: 3, responses: 4 },
       100,
     );
-    expect(scaled).toEqual({ systemPrompt: 10, tools: 20, userMessages: 30, responses: 40 });
+    expect(scaled.systemPrompt).toBe(1);
+    expect(sum(scaled)).toBe(100);
+  });
+
+  /**
+   * The prompt is the one part whose size is known: it is exactly the text the
+   * session sends. A transcript that is larger than the estimate must not move
+   * it, or a chat with a screenshot in it reads a prompt four times its size.
+   */
+  it("holds the system prompt at its measured size and gives the rest away", () => {
+    const scaled = scaleContextParts(
+      { systemPrompt: 2340, tools: 1000, userMessages: 100, responses: 400 },
+      10_000,
+    );
+
+    expect(scaled.systemPrompt).toBe(2340);
+    expect(sum(scaled)).toBe(10_000);
+    // The three measured parts keep their proportions to each other.
+    expect(scaled.tools).toBeGreaterThan(scaled.responses);
+    expect(scaled.responses).toBeGreaterThan(scaled.userMessages);
   });
 
   it("puts the rounding drift on the largest part, so the sum still matches", () => {
     const scaled = scaleContextParts(
-      { systemPrompt: 1, tools: 1, userMessages: 1, responses: 1 },
+      { systemPrompt: 1, tools: 1, userMessages: 1, responses: 5 },
       10,
     );
     expect(TURN_STATS_PARTS.reduce((acc, key) => acc + scaled[key], 0)).toBe(10);
-    expect(Math.max(...TURN_STATS_PARTS.map((key) => scaled[key]))).toBe(3);
-    expect(scaled.responses).toBe(3);
+    expect(scaled.systemPrompt).toBe(1);
+    // The responses are the largest part of the transcript, so they carry the odd token.
+    expect(scaled.responses).toBe(7);
+  });
+
+  it("scales everything down when the total is smaller than the prompt", () => {
+    const scaled = scaleContextParts(
+      { systemPrompt: 100, tools: 0, userMessages: 0, responses: 0 },
+      50,
+    );
+
+    // The estimate cannot be split, but the card still adds up.
+    expect(scaled.systemPrompt).toBe(50);
+    expect(sum(scaled)).toBe(50);
   });
 
   it("leaves the estimates alone when the total is unknown or empty", () => {
