@@ -12,6 +12,8 @@ RUN npm install -g --ignore-scripts pnpm@12
 FROM base AS development
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The lockfile names these, so the install needs them before it can link.
+COPY patches ./patches
 RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 CMD ["pnpm", "run", "dev"]
@@ -25,6 +27,8 @@ CMD ["pnpm", "run", "dev"]
 FROM base AS prod-deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The lockfile names these, so the install needs them before it can link.
+COPY patches ./patches
 RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prod --ignore-scripts
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
@@ -41,6 +45,8 @@ RUN node node_modules/prisma/build/index.js migrate diff \
 FROM base AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The lockfile names these, so the install needs them before it can link.
+COPY patches ./patches
 RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
@@ -67,6 +73,8 @@ RUN --mount=type=cache,target=/app/.next/cache,sharing=locked pnpm run build
 FROM base AS build-worker
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The lockfile names these, so the install needs them before it can link.
+COPY patches ./patches
 RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
