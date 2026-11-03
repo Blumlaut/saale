@@ -339,7 +339,7 @@ function TerminalPanel({
           value={draft}
           onChange={onChange}
           onKeyDown={onKeyDown}
-          placeholder={running ? "Type into the running command…" : "npm test"}
+          placeholder={running ? "Type into the running command…" : "pnpm test"}
           aria-label="Terminal command"
           autoComplete="off"
           autoCorrect="off"

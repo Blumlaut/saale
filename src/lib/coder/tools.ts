@@ -322,7 +322,7 @@ export function createProjectSettingsTools(userId: string, sessionId?: string): 
         setupScript: Type.Optional(
           Type.Union([Type.String(), Type.Null()], {
             description:
-              'Command run in each new checkout, e.g. "npm install". Null or "" clears it.',
+              'Command run in each new checkout, e.g. "pnpm install". Null or "" clears it.',
           }),
         ),
         defaultBranch: Type.Optional(

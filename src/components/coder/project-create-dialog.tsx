@@ -285,7 +285,7 @@ export function ProjectCreateDialog({
                   id="coder-project-script"
                   value={script}
                   onChange={(event) => setScript(event.target.value)}
-                  placeholder="npm install"
+                  placeholder="pnpm install"
                   rows={2}
                   className="font-mono text-xs"
                   spellCheck={false}
