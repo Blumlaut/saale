@@ -6,6 +6,7 @@ import {
   mergeTurnStats,
   parseTurnStats,
   scaleContextParts,
+  type TranscriptMessageLike,
   type TurnStats,
 } from "@/lib/pi/turn-stats";
 
@@ -14,6 +15,11 @@ import {
  * so the invariant that matters is that the four parts always add up to the
  * total printed beside them, whatever the transcript looks like.
  */
+
+/** A transcript row as Pi writes it, including the fields the breakdown ignores. */
+function row(message: TranscriptMessageLike & Record<string, unknown>): TranscriptMessageLike {
+  return message;
+}
 
 function stats(overrides: Partial<TurnStats> = {}): TurnStats {
   return {
@@ -56,17 +62,15 @@ describe("estimateContextParts", () => {
     expect(parts.responses).toBe(100);
   });
 
-  it("counts thinking, and images at the allowance Pi makes for one", () => {
+  it("counts an image at the allowance Pi makes for one", () => {
     const parts = estimateContextParts({
       systemPrompt: "",
       messages: [
-        { role: "assistant", content: [{ type: "thinking", thinking: "h".repeat(200) }] },
         { role: "user", content: [{ type: "image", data: "AAAA", mimeType: "image/png" }] },
         { role: "toolResult", content: [{ type: "image", data: "AAAA", mimeType: "image/png" }] },
       ],
     });
 
-    expect(parts.responses).toBe(50);
     // A screenshot costs tokens with no text behind it; 4800 chars is Pi's own
     // allowance for one.
     expect(parts.userMessages).toBe(1200);
@@ -74,9 +78,81 @@ describe("estimateContextParts", () => {
   });
 
   /**
-   * Pi sends these four as user content, so they are part of the prompt a
-   * provider bills even though none of them has a `content` array. A chat that
-   * was compacted carries a summary from then on.
+   * Pi's blocks carry opaque signatures beside their text: Anthropic's thinking
+   * signature, a provider's text signature. They are payloads rather than
+   * words, and Pi's own estimator counts only the readable half.
+   */
+  it("counts a block's text, not the signature stored beside it", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "a".repeat(400), textSignature: "s".repeat(4000) },
+            { type: "thinking", thinking: "h".repeat(200), thinkingSignature: "g".repeat(4000) },
+          ],
+        },
+      ],
+    });
+
+    expect(parts.responses).toBe(100 + 50);
+  });
+
+  it("counts a tool call's name and arguments, the fields Pi's estimator counts", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "call-1", name: "bash", arguments: { command: "ls" } },
+            { type: "toolCall", id: "call-2", name: "bash", arguments: {} },
+          ],
+        },
+      ],
+    });
+
+    // Two names, plus `{"command":"ls"}` and `{}`; the id is a reference, not prompt.
+    expect(parts.tools).toBe(Math.round((2 * "bash".length + 16 + 2) / 4));
+  });
+
+  it("measures a tool result's text, not the bookkeeping beside it", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        row({
+          role: "toolResult",
+          toolCallId: "call-1",
+          toolName: "bash",
+          isError: false,
+          details: { stdout: "d".repeat(4000) },
+          nestedCalls: { calls: [{ id: "x", name: "y", status: "ok" }], complete: true },
+          usage: { input: 100, output: 100, cacheRead: 0, cacheWrite: 0 },
+          content: [{ type: "text", text: "t".repeat(400) }],
+        }),
+      ],
+    });
+
+    expect(parts.tools).toBe(100);
+  });
+
+  /** Pi's blocks are text, thinking, images and tool calls; anything else scores zero. */
+  it("ignores a block it has no measure for", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        { role: "user", content: [{ type: "audio", data: "A".repeat(4000) }, "u".repeat(40)] },
+      ],
+    });
+
+    expect(parts.userMessages).toBe(10);
+  });
+
+  /**
+   * Pi's transcript holds rows that are not user or assistant turns. It sends
+   * all four of these as user content, so they are prompt a provider bills; a
+   * chat that was compacted carries a summary from then on.
    */
   it("counts the transcript rows Pi replays as user content", () => {
     const parts = estimateContextParts({
@@ -86,6 +162,7 @@ describe("estimateContextParts", () => {
         { role: "compactionSummary", summary: "s".repeat(400) },
         { role: "branchSummary", summary: "b".repeat(200) },
         { role: "custom", content: [{ type: "text", text: "c".repeat(400) }] },
+        { role: "custom", content: "d".repeat(400) },
         { role: "user", content: "u".repeat(40) },
       ],
     });
@@ -93,7 +170,52 @@ describe("estimateContextParts", () => {
     // A shell execution is tool traffic; the summaries and an extension's
     // message are replayed as what the user sent.
     expect(parts.tools).toBe(101);
-    expect(parts.userMessages).toBe(100 + 50 + 100 + 10);
+    expect(parts.userMessages).toBe(100 + 50 + 100 + 100 + 10);
+  });
+
+  it("leaves out the shell execution Pi keeps out of the request", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [
+        { role: "bashExecution", command: "ls", output: "o".repeat(400), excludeFromContext: true },
+        { role: "bashExecution", command: "pwd", output: "p".repeat(400) },
+      ],
+    });
+
+    expect(parts.tools).toBe(Math.round(("pwd".length + 400) / 4));
+  });
+
+  /**
+   * Pi appends a system row whenever the prompt's sections or tools change mid
+   * chat. The prompt is measured from `session.systemPrompt` already, so those
+   * rows must not add a second copy of it.
+   */
+  it("does not count the transcript's system rows a second time", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "s".repeat(400),
+      messages: [
+        row({
+          role: "system",
+          content: "s".repeat(400),
+          sections: { rules: "r".repeat(400) },
+          toolsAdded: [{ name: "bash", description: "Run a command" }],
+        }),
+        { role: "user", content: "u".repeat(40) },
+      ],
+    });
+
+    expect(parts).toEqual({ systemPrompt: 100, tools: 0, userMessages: 10, responses: 0 });
+  });
+
+  it("survives an extension message with no content at all", () => {
+    // Pi normalizes a missing content array for untyped extensions; the row can
+    // reach the transcript empty.
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      messages: [row({ role: "custom", customType: "note", content: null, display: false })],
+    });
+
+    expect(parts).toEqual({ systemPrompt: 0, tools: 0, userMessages: 0, responses: 0 });
   });
 
   it("skips messages that carry no content", () => {
@@ -122,6 +244,47 @@ describe("estimateContextParts", () => {
 
     expect(parts.systemPrompt).toBe(100);
     expect(parts.tools).toBeGreaterThan(20);
+  });
+
+  it("counts a tool's guidelines and description, not the code behind it", () => {
+    const tool = {
+      name: "bash",
+      description: "Run a shell command",
+      parameters: { type: "object", properties: { command: { type: "string" } } },
+      promptGuidelines: ["Use bash for file operations"],
+      execute: () => "x".repeat(4000),
+    };
+
+    const parts = estimateContextParts({ systemPrompt: "", tools: [tool], messages: [] });
+
+    const declared = JSON.stringify({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      promptGuidelines: tool.promptGuidelines,
+    }).length;
+    expect(parts.tools).toBe(Math.round(declared / 4));
+  });
+
+  it("measures a tool handed over as plain text", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      tools: ["t".repeat(400)],
+      messages: [],
+    });
+
+    expect(parts.tools).toBe(100);
+  });
+
+  it("leaves a tool it cannot read at zero", () => {
+    const parts = estimateContextParts({
+      systemPrompt: "",
+      tools: [null, 42, { name: "bash" }],
+      messages: [],
+    });
+
+    // A definition with no schema is the tool's name alone.
+    expect(parts.tools).toBe(Math.round(JSON.stringify({ name: "bash" }).length / 4));
   });
 
   /**
@@ -268,6 +431,15 @@ describe("scaleContextParts", () => {
     expect(scaled.responses).toBe(7);
   });
 
+  it("gives the whole remainder to the responses when nothing else was measured", () => {
+    const scaled = scaleContextParts(
+      { systemPrompt: 10, tools: 0, userMessages: 0, responses: 0 },
+      100,
+    );
+
+    expect(scaled).toEqual({ systemPrompt: 10, tools: 0, userMessages: 0, responses: 90 });
+  });
+
   it("scales everything down when the total is smaller than the prompt", () => {
     const scaled = scaleContextParts(
       { systemPrompt: 100, tools: 0, userMessages: 0, responses: 0 },
@@ -341,6 +513,79 @@ describe("buildTurnStats", () => {
       responses: 0,
     });
   });
+
+  /**
+   * Pi's usage carries more than the card shows: a total, reasoning tokens that
+   * are already inside `output`, and Anthropic's 1h cache-write split. The row
+   * keeps the four counters a provider reports, so they always add up.
+   */
+  it("keeps the four counters when the provider also reports a total", () => {
+    const built = buildTurnStats({
+      message: {
+        provider: "anthropic",
+        model: "claude-sonnet-4.5",
+        usage: {
+          input: 1200,
+          output: 300,
+          cacheRead: 8000,
+          cacheWrite: 100,
+          cacheWrite1h: 40,
+          reasoning: 120,
+          totalTokens: 9600,
+          cost: {
+            input: 0.01,
+            output: 0.02,
+            cacheRead: 0.001,
+            cacheWrite: 0.0002,
+            total: 0.0312,
+          },
+        },
+      },
+      systemPrompt: "",
+      messages: [],
+      context: { tokens: 9600, contextWindow: 200_000 },
+    });
+
+    expect(built.tokens).toEqual({ input: 1200, output: 300, cacheRead: 8000, cacheWrite: 100 });
+    expect(built.cost).toBeCloseTo(0.0312);
+    expect(built.costFromProvider).toBe(false);
+  });
+
+  it("records a turn Pi cannot size without inventing a split", () => {
+    // A failed or aborted turn leaves `getContextUsage` at null until the next
+    // response arrives; the parts stay the measured ones.
+    const built = buildTurnStats({
+      message: { provider: "anthropic", model: "claude-sonnet-4.5", stopReason: "error" },
+      systemPrompt: "s".repeat(400),
+      messages: [{ role: "user", content: "u".repeat(400) }],
+      context: { tokens: null, contextWindow: 200_000 },
+    });
+
+    expect(built.context.tokens).toBeNull();
+    expect(built.context.parts).toEqual({
+      systemPrompt: 100,
+      tools: 0,
+      userMessages: 100,
+      responses: 0,
+    });
+  });
+
+  it("leaves the response model empty when the provider ran the alias", () => {
+    const built = buildTurnStats({
+      message: { provider: "openrouter", model: "anthropic/claude-sonnet-4.5" },
+      systemPrompt: "",
+      messages: [],
+      // A model that declares no window: Pi reports none either.
+      context: { tokens: null, contextWindow: 0 },
+    });
+
+    expect(built.model).toEqual({
+      provider: "openrouter",
+      name: "anthropic/claude-sonnet-4.5",
+      responseModel: null,
+    });
+    expect(built.context.window).toBe(0);
+  });
 });
 
 describe("mergeTurnStats", () => {
@@ -376,6 +621,27 @@ describe("mergeTurnStats", () => {
     expect(mergeTurnStats([])).toBeUndefined();
     expect(mergeTurnStats([undefined, undefined])).toBeUndefined();
   });
+
+  it("hands back a lone turn as it is", () => {
+    const one = stats();
+    expect(mergeTurnStats([undefined, one, undefined])).toEqual(one);
+  });
+
+  it("keeps the last turn's unknown context unknown", () => {
+    // Compaction wipes the size Pi had; an older turn's number is stale.
+    const merged = mergeTurnStats([
+      stats(),
+      stats({
+        context: {
+          tokens: null,
+          window: 200_000,
+          parts: { systemPrompt: 100, tools: 0, userMessages: 0, responses: 0 },
+        },
+      }),
+    ]);
+
+    expect(merged?.context.tokens).toBeNull();
+  });
 });
 
 describe("parseTurnStats", () => {
@@ -400,5 +666,34 @@ describe("parseTurnStats", () => {
     expect(parseTurnStats(null)).toBeUndefined();
     expect(parseTurnStats({ model: { provider: "x" } })).toBeUndefined();
     expect(parseTurnStats("nonsense")).toBeUndefined();
+  });
+
+  it("prefers the renamed slice when a row carries both", () => {
+    const both = JSON.parse(JSON.stringify(stats())) as Record<string, unknown>;
+    const context = both.context as { parts: Record<string, number> };
+    context.parts = {
+      systemPrompt: 100,
+      tools: 400,
+      toolResults: 900,
+      userMessages: 100,
+      responses: 400,
+    };
+
+    expect(parseTurnStats(both)?.context.parts.tools).toBe(400);
+  });
+
+  it("reads a row whose slices predate tool counting", () => {
+    const legacy = JSON.parse(JSON.stringify(stats())) as Record<string, unknown>;
+    const context = legacy.context as { parts: Record<string, number> };
+    context.parts = { systemPrompt: 100, userMessages: 100, responses: 400 };
+
+    expect(parseTurnStats(legacy)?.context.parts.tools).toBe(0);
+  });
+
+  it("drops a row that lost a part", () => {
+    const partial = JSON.parse(JSON.stringify(stats())) as Record<string, unknown>;
+    delete (partial.context as { parts: Record<string, number> }).parts.userMessages;
+
+    expect(parseTurnStats(partial)).toBeUndefined();
   });
 });
