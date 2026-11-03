@@ -499,7 +499,7 @@ async function seedChats(userId: string, checkout: Awaited<ReturnType<typeof see
       repoPath: projectRepoPath(PROJECT_SLUG),
       defaultBranch: "main",
       chatMode: "worktree",
-      setupScript: "npm install",
+      setupScript: "pnpm install",
     },
   });
 
