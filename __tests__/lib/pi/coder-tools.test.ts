@@ -12,6 +12,8 @@ describe("coder tool config", () => {
     expect(CODER_TOOL_DEFAULTS.terminal).toBe(true);
     expect(CODER_TOOL_DEFAULTS.web).toBe(true);
     expect(CODER_TOOL_DEFAULTS.memory).toBe(true);
+    // A connected MCP server keeps working in a coder chat.
+    expect(CODER_TOOL_DEFAULTS.mcp).toBe(true);
     expect(CODER_TOOL_DEFAULTS.email).toBe(false);
     expect(CODER_TOOL_DEFAULTS.calendar).toBe(false);
     expect(CODER_TOOL_DEFAULTS.jobs).toBe(false);

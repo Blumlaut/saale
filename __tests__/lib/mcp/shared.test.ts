@@ -128,6 +128,8 @@ describe("toMcpServerView", () => {
     encryptedToken: "iv:tag:ciphertext",
     toolPolicy: "allow",
     enabled: true,
+    chatEnabled: true,
+    coderEnabled: true,
     createdAt: new Date("2026-01-01T09:00:00Z"),
     updatedAt: new Date("2026-01-02T09:00:00Z"),
   };

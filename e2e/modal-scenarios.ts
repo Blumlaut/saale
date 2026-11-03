@@ -384,6 +384,9 @@ async function mockMcpServers(page: Page) {
             description: "Control the smart home",
             toolPolicy: "ask",
             enabled: true,
+            // Chat-only, so the sheet and the list badge both show a scope.
+            chatEnabled: true,
+            coderEnabled: false,
             hasToken: true,
             createdAt: NOW,
             updatedAt: NOW,

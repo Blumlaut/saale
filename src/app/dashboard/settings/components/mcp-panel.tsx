@@ -18,6 +18,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
+import { isCategoryEnabled } from "@/lib/pi/tool-categories";
+import { useUserSettings } from "./user-settings-provider";
 import { McpServerSheet } from "./mcp-server-sheet";
 
 const POLICY_LABELS: Record<string, string> = {
@@ -26,11 +28,23 @@ const POLICY_LABELS: Record<string, string> = {
   off: "Blocked",
 };
 
+/** Where a server connects, or null when that is both scopes. */
+function scopeLabel(server: McpServer): string | null {
+  if (server.chatEnabled && server.coderEnabled) return null;
+  if (server.chatEnabled) return "Chat only";
+  if (server.coderEnabled) return "Coder only";
+  return "Nowhere";
+}
+
 /**
- * Settings → MCP. Servers configured here connect to every agent session the
- * user starts, so a configured server "just works" in chat, Telegram and jobs.
+ * Settings → MCP. A server configured here connects to every agent session the
+ * user starts, so it "just works" in chat, Telegram and jobs. The MCP tool
+ * category in Settings → Tools decides whether any of them connect.
  */
 export function McpPanel() {
+  const { settings } = useUserSettings();
+  // The MCP category switch decides whether any of these servers connect.
+  const paused = settings ? !isCategoryEnabled(settings.defaultToolConfig, "mcp") : false;
   const {
     servers,
     loading,
@@ -108,9 +122,14 @@ export function McpPanel() {
                 MCP servers
               </h3>
               <p className="text-muted-foreground mt-1 text-sm">
-                Connect Model Context Protocol servers. Their tools are available in every
-                conversation, so connecting a server is all it takes.
+                Connect Model Context Protocol servers. Each one connects in the chats you switch it
+                on for, and its tools are available there.
               </p>
+              {paused && (
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Paused: the MCP category is off in Tools, so no server connects.
+                </p>
+              )}
             </div>
             <Button size="sm" className="shrink-0" aria-label="Add server" onClick={openAdd}>
               <Plus className="h-4 w-4 md:mr-2" />
@@ -147,6 +166,11 @@ export function McpPanel() {
                         {server.hasOAuth && (
                           <Badge variant="outline" className="shrink-0">
                             OAuth
+                          </Badge>
+                        )}
+                        {server.enabled && scopeLabel(server) && (
+                          <Badge variant="outline" className="shrink-0">
+                            {scopeLabel(server)}
                           </Badge>
                         )}
                         {!server.enabled && (

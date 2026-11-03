@@ -15,9 +15,17 @@ import type { ToolPolicy } from "./tool-infos";
  *
  * `settings` is here for the project's own: a chat runs in one checkout, and the
  * env files every checkout inherits are set on the project, so the agent that
- * finds one missing is the one that should fix it for the next chat.
+ * finds one missing is the one that should fix it for the next chat. `mcp` is
+ * here because a connected server is the user's own tool set: it keeps working
+ * in a coder chat unless they turn it off.
  */
-const CODER_CATEGORIES_ON: readonly ToolCategoryKey[] = ["terminal", "web", "memory", "settings"];
+const CODER_CATEGORIES_ON: readonly ToolCategoryKey[] = [
+  "terminal",
+  "web",
+  "memory",
+  "settings",
+  "mcp",
+];
 
 /** Default on/off per category for a new coder chat. */
 export const CODER_TOOL_DEFAULTS: Record<ToolCategoryKey, boolean> = Object.fromEntries(

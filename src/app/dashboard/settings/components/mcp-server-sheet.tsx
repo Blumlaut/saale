@@ -72,6 +72,8 @@ export function McpServerSheet({
   const [token, setToken] = useState("");
   const [toolPolicy, setToolPolicy] = useState<McpToolPolicy>("ask");
   const [enabled, setEnabled] = useState(true);
+  const [chatEnabled, setChatEnabled] = useState(true);
+  const [coderEnabled, setCoderEnabled] = useState(true);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -111,6 +113,8 @@ export function McpServerSheet({
     setToken("");
     setToolPolicy(server?.toolPolicy ?? "ask");
     setEnabled(server?.enabled ?? true);
+    setChatEnabled(server?.chatEnabled ?? true);
+    setCoderEnabled(server?.coderEnabled ?? true);
     setError(null);
     setFieldError(null);
     setTestResult(null);
@@ -248,6 +252,8 @@ export function McpServerSheet({
         description: description.trim(),
         toolPolicy,
         enabled,
+        chatEnabled,
+        coderEnabled,
         // An empty field leaves an existing token alone; a typed value replaces
         // it. Clearing is offered explicitly below.
         ...(token.trim() ? { token: token.trim() } : {}),
@@ -258,7 +264,18 @@ export function McpServerSheet({
     } finally {
       setSaving(false);
     }
-  }, [description, enabled, name, onOpenChange, onSave, token, toolPolicy, url]);
+  }, [
+    chatEnabled,
+    coderEnabled,
+    description,
+    enabled,
+    name,
+    onOpenChange,
+    onSave,
+    token,
+    toolPolicy,
+    url,
+  ]);
 
   const handleClearToken = useCallback(async () => {
     if (!server) return;
@@ -484,6 +501,39 @@ export function McpServerSheet({
                 </p>
               </div>
               <Switch checked={enabled} onCheckedChange={setEnabled} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Connects in</Label>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm">Chat</p>
+                  <p className="text-muted-foreground text-xs">
+                    Conversations, Telegram and agent jobs.
+                  </p>
+                </div>
+                <Switch
+                  checked={chatEnabled}
+                  onCheckedChange={setChatEnabled}
+                  aria-label="Connect in chat"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm">Coder</p>
+                  <p className="text-muted-foreground text-xs">Coding chats, in a worktree.</p>
+                </div>
+                <Switch
+                  checked={coderEnabled}
+                  onCheckedChange={setCoderEnabled}
+                  aria-label="Connect in coder chats"
+                />
+              </div>
+              {!chatEnabled && !coderEnabled && (
+                <p className="text-muted-foreground text-xs">
+                  This server connects nowhere. Turn on Chat or Coder.
+                </p>
+              )}
             </div>
 
             {error && (

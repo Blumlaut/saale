@@ -118,6 +118,8 @@ function savedServer(overrides: Partial<McpServer> = {}): McpServer {
     description: "",
     toolPolicy: "ask",
     enabled: true,
+    chatEnabled: true,
+    coderEnabled: true,
     hasToken: false,
     hasOAuth: false,
     createdAt: "2026-01-01T09:00:00.000Z",
@@ -158,5 +160,36 @@ describe("McpServerSheet OAuth sign-in", () => {
 
     expect(screen.getByText(/save this server first/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sign in$/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A server is configured for the kinds of session it belongs in: one for chat,
+ * one for coding chats, or both.
+ */
+describe("McpServerSheet scopes", () => {
+  it("saves a server that is coder-only", async () => {
+    const { name, url, onSave } = renderSheet();
+
+    fireEvent.change(name, { target: { value: "worktree" } });
+    fireEvent.change(url, { target: { value: "https://worktree.example/mcp" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Connect in chat" }));
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ chatEnabled: false, coderEnabled: true });
+  });
+
+  it("reads the stored scopes back", () => {
+    renderSheet({ server: savedServer({ chatEnabled: false }) });
+
+    expect(screen.getByRole("switch", { name: "Connect in chat" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Connect in coder chats" })).toBeChecked();
+  });
+
+  it("says so when the server is switched off everywhere", () => {
+    renderSheet({ server: savedServer({ chatEnabled: false, coderEnabled: false }) });
+
+    expect(screen.getByText(/connects nowhere/i)).toBeInTheDocument();
   });
 });

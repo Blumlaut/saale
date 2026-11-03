@@ -12,6 +12,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import { thinkingLevelOptionsFor } from "@/lib/pi/thinking-levels";
@@ -90,8 +91,13 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
                   {index > 0 && <Separator />}
                   <ToolCategoryRow
                     category={category}
-                    checked={isCategoryEnabled(settings.toolConfig, category.key)}
-                    onCheckedChange={() => settings.onToggleTool(category.key)}
+                    controls={
+                      <Switch
+                        checked={isCategoryEnabled(settings.toolConfig, category.key)}
+                        onCheckedChange={() => settings.onToggleTool(category.key)}
+                        aria-label={category.label}
+                      />
+                    }
                   />
                 </div>
               ))}

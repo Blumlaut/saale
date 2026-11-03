@@ -124,7 +124,11 @@ async function buildSessionPrompt(options: {
   ]);
   // MCP tools are codemode's by default, so a user with servers needs the hint
   // even when every category they enabled is declared in full.
-  const mcpServers = await loadUserMcpServers(options.userId).catch((err: unknown) => {
+  const mcpServers = await loadUserMcpServers(options.userId, {
+    scope: options.projectId ? "coder" : "chat",
+    toolConfig: options.toolConfig,
+    exposure: options.toolExposure,
+  }).catch((err: unknown) => {
     console.error(`Failed to load the MCP servers of ${options.userId} for its prompt:`, err);
     return { entries: [] };
   });
@@ -188,6 +192,7 @@ export async function createChatAgentSession(
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies,
     mcp: true,
+    mcpScope: chatSession.projectId ? "coder" : "chat",
     ...(chatSession.projectId ? { commandScope: "workspace" as const } : {}),
     systemPrompt: await buildSessionPrompt({
       userId,

@@ -178,16 +178,19 @@ describe("tool catalog ↔ implementation drift", () => {
     );
     expect(notAList.map((info) => info.name)).toEqual([]);
 
-    const perCategory = TOOL_CATEGORIES.filter(
-      (category) => category.defaultExposure === "codemode",
-    ).map((category) => [
+    // A category whose tools come from elsewhere (an MCP server) has no catalog
+    // entry to list here; Pi's MCP extension lists them itself.
+    const catalogCategories = TOOL_CATEGORIES.filter(
+      (category) =>
+        category.defaultExposure === "codemode" &&
+        ALL_TOOL_INFOS.some((info) => info.category === category.key),
+    );
+    const perCategory = catalogCategories.map((category) => [
       category.key,
       listed.filter((info) => info.category === category.key).length,
     ]);
     expect(perCategory, "Every codemode category lists exactly one tool").toEqual(
-      TOOL_CATEGORIES.filter((category) => category.defaultExposure === "codemode").map(
-        (category) => [category.key, 1],
-      ),
+      catalogCategories.map((category) => [category.key, 1]),
     );
   });
 });

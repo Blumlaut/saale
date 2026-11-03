@@ -11,6 +11,15 @@
 export const MCP_TOOL_POLICIES = ["ask", "allow", "off"] as const;
 export type McpToolPolicy = (typeof MCP_TOOL_POLICIES)[number];
 
+/**
+ * The two kinds of agent session a server can connect in.
+ *
+ * A coder chat works in a worktree and reaches for different things than a
+ * conversation, so a user can keep one server for coding and another for chat.
+ */
+export const MCP_SCOPES = ["chat", "coder"] as const;
+export type McpScope = (typeof MCP_SCOPES)[number];
+
 export function isMcpToolPolicy(value: unknown): value is McpToolPolicy {
   return typeof value === "string" && (MCP_TOOL_POLICIES as readonly string[]).includes(value);
 }
@@ -95,6 +104,10 @@ export interface McpServerView {
   description: string;
   toolPolicy: McpToolPolicy;
   enabled: boolean;
+  /** Whether the server connects in a chat. */
+  chatEnabled: boolean;
+  /** Whether the server connects in a coder chat. */
+  coderEnabled: boolean;
   hasToken: boolean;
   /** Whether an OAuth credential is stored for this server. */
   hasOAuth: boolean;
@@ -111,6 +124,8 @@ export function toMcpServerView(
     encryptedToken: string | null;
     toolPolicy: string;
     enabled: boolean;
+    chatEnabled: boolean;
+    coderEnabled: boolean;
     createdAt: Date;
     updatedAt: Date;
   },
@@ -123,6 +138,8 @@ export function toMcpServerView(
     description: server.description,
     toolPolicy: isMcpToolPolicy(server.toolPolicy) ? server.toolPolicy : "ask",
     enabled: server.enabled,
+    chatEnabled: server.chatEnabled,
+    coderEnabled: server.coderEnabled,
     hasToken: server.encryptedToken !== null,
     hasOAuth,
     createdAt: server.createdAt.toISOString(),

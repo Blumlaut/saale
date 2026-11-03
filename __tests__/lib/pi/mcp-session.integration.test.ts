@@ -85,10 +85,10 @@ describe("MCP servers in an agent session", () => {
         },
       ]);
 
-      const { entries, policies } = await loadUserMcpServers(USER_ID);
+      const { entries, policies } = await loadUserMcpServers(USER_ID, { scope: "chat" });
       expect(entries.map((entry) => entry.name)).toEqual(["fakehome"]);
 
-      const mcp = await createUserMcpExtension(USER_ID);
+      const mcp = await createUserMcpExtension(USER_ID, { scope: "chat" });
       expect(mcp).not.toBeNull();
 
       const loader = new DefaultResourceLoader({
@@ -186,7 +186,7 @@ describe("MCP servers in an agent session", () => {
       ]);
 
       try {
-        const mcp = await createUserMcpExtension(USER_ID);
+        const mcp = await createUserMcpExtension(USER_ID, { scope: "chat" });
         const loader = new DefaultResourceLoader({
           cwd: "/tmp",
           agentDir: "/tmp/saale-mcp-session-test",
@@ -236,6 +236,6 @@ describe("MCP servers in an agent session", () => {
 
   it("builds no MCP extension for a user without servers", async () => {
     mockFindMany.mockResolvedValue([]);
-    expect(await createUserMcpExtension(USER_ID)).toBeNull();
+    expect(await createUserMcpExtension(USER_ID, { scope: "chat" })).toBeNull();
   });
 });

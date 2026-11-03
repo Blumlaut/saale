@@ -81,7 +81,7 @@ export function IntegrationsSection() {
           <div>
             <h3 className="flex items-center gap-2 text-lg font-medium">
               <Plug className="h-5 w-5" />
-              Integrations
+              Integrations &amp; MCP
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">
               Connect external services to your Saale instance

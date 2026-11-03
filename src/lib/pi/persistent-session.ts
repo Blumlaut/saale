@@ -14,6 +14,7 @@ import { buildSessionDeps, type ToolConfig } from "./session";
 import type { ToolExposureConfig } from "./tool-categories";
 import { thinkingLevelOption } from "./thinking-levels";
 import type { ApprovalRequest } from "./tool-approval-gate";
+import type { McpScope } from "@/lib/mcp/shared";
 
 /**
  * Create a Pi agent session with file-based persistence.
@@ -64,6 +65,8 @@ export async function createPersistentSession(options: {
    * command's read-only nature.
    */
   commandScope?: "workspace" | undefined;
+  /** Where the session runs, so only the servers switched on for it connect. */
+  mcpScope: McpScope;
   mcp?: boolean;
 }): Promise<CreateAgentSessionResult> {
   // Ensure session directory exists
@@ -120,12 +123,15 @@ export async function createPersistentSession(options: {
       prompt: options.systemPrompt,
       cwd: options.sessionDir,
       workspace,
+      toolConfig: options.toolConfig,
+      toolExposure: options.toolExposure,
       ...(options.mcp && options.emitApprovalRequest
         ? {
             interactive: {
               userId: options.userId,
               sessionId: options.sessionId,
               toolPolicies: options.toolPolicies,
+              mcpScope: options.mcpScope,
               ...(options.commandScope ? { commandScope: options.commandScope } : {}),
               emitApprovalRequest: options.emitApprovalRequest,
             },

@@ -32,7 +32,14 @@ import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getUploadsDir } from "@/lib/uploads";
 import { createMcpAuthProvider, type McpOAuthServer } from "./oauth";
-import { isMcpToolPolicy, mcpNameKey, type McpToolPolicy } from "./shared";
+import { isMcpToolPolicy, mcpNameKey, type McpScope, type McpToolPolicy } from "./shared";
+import {
+  isCategoryEnabled,
+  resolveCategoryExposure,
+  type ToolConfig,
+  type ToolExposure,
+  type ToolExposureConfig,
+} from "@/lib/pi/tool-categories";
 
 /** The row shape the Pi-config builder needs. */
 export interface McpServerRow {
@@ -60,16 +67,19 @@ export function readMcpToken(server: Pick<McpServerRow, "name" | "encryptedToken
 }
 
 /**
- * Pi's config for one stored server. Tools stay at Pi's default `codemode`
- * exposure: the model reaches them from codemode scripts (which Saale enables
- * by default), so a server with hundreds of tools does not bloat every prompt.
+ * Pi's config for one stored server, at the exposure the user chose for the
+ * `mcp` category. It starts at codemode: a server can bring hundreds of tools,
+ * and a script reaches them without spending the prompt on each one.
  */
-export function toMcpServerConfig(server: McpServerRow): McpServerConfig {
+export function toMcpServerConfig(
+  server: McpServerRow,
+  exposure: ToolExposure = resolveCategoryExposure(null, "mcp"),
+): McpServerConfig {
   const token = readMcpToken(server);
   return {
     type: "http",
     url: server.url,
-    exposure: "codemode",
+    exposure,
     ...(server.description ? { description: server.description } : {}),
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   };
@@ -84,13 +94,39 @@ export interface UserMcpServers {
   oauthServers: Map<string, McpOAuthServer>;
 }
 
+/** The session settings the `mcp` tool category is read from. */
+export interface McpSessionSettings {
+  /** Where the session runs. Only the servers switched on for it connect. */
+  scope: McpScope;
+  /** The session's tool config. The `mcp` category decides whether servers connect. */
+  toolConfig?: ToolConfig | null | undefined;
+  /** Per-category exposure (`AppSettings.toolExposure`). How the tools reach the model. */
+  exposure?: ToolExposureConfig | null | undefined;
+}
+
 /**
  * Load the enabled servers of one user, ready for the MCP extension.
  * Scoped to `userId`. a server row is only reachable through its owner.
+ *
+ * Nothing is loaded while the `mcp` category is off for the session: the switch
+ * is what keeps a configured server out of a conversation. A server also only
+ * connects in the scope it is switched on for.
  */
-export async function loadUserMcpServers(userId: string): Promise<UserMcpServers> {
+export async function loadUserMcpServers(
+  userId: string,
+  settings: McpSessionSettings,
+): Promise<UserMcpServers> {
+  if (!isCategoryEnabled(settings.toolConfig, "mcp")) {
+    return { entries: [], policies: {}, oauthServers: new Map() };
+  }
+
+  const exposure = resolveCategoryExposure(settings.exposure, "mcp");
   const servers = await prisma.mcpServer.findMany({
-    where: { userId, enabled: true },
+    where: {
+      userId,
+      enabled: true,
+      ...(settings.scope === "chat" ? { chatEnabled: true } : { coderEnabled: true }),
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -101,7 +137,7 @@ export async function loadUserMcpServers(userId: string): Promise<UserMcpServers
   for (const server of servers) {
     entries.push({
       name: server.name,
-      config: toMcpServerConfig(server),
+      config: toMcpServerConfig(server, exposure),
       source: "Saale settings",
       scope: "extension",
     });
@@ -181,8 +217,11 @@ export interface UserMcpExtension {
  * change therefore needs the pooled session to be rebuilt (see
  * `evictUserSessions` in `lib/pi/agent-pool.ts`).
  */
-export async function createUserMcpExtension(userId: string): Promise<UserMcpExtension | null> {
-  const { entries, policies, oauthServers } = await loadUserMcpServers(userId);
+export async function createUserMcpExtension(
+  userId: string,
+  settings: McpSessionSettings,
+): Promise<UserMcpExtension | null> {
+  const { entries, policies, oauthServers } = await loadUserMcpServers(userId, settings);
   if (entries.length === 0) return null;
 
   const logPath = await getMcpLogPath(userId);

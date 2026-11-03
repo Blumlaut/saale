@@ -13,6 +13,35 @@ const { settingsState, update } = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 
+// The MCP servers live in their own table; the page only reads the list and
+// writes a server's scope.
+const { mcpState, updateMcpServer } = vi.hoisted(() => ({
+  mcpState: {
+    current: {
+      servers: [] as Array<{
+        id: string;
+        name: string;
+        description: string;
+        enabled: boolean;
+        chatEnabled: boolean;
+        coderEnabled: boolean;
+      }>,
+      loading: false,
+      error: null as string | null,
+    },
+  },
+  updateMcpServer: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/hooks/use-mcp-servers", () => ({
+  useMcpServers: () => ({
+    servers: mcpState.current.servers,
+    loading: mcpState.current.loading,
+    error: mcpState.current.error,
+    updateServer: updateMcpServer,
+  }),
+}));
+
 vi.mock("@/app/dashboard/settings/components/user-settings-provider", () => ({
   useUserSettings: () => ({
     settings: settingsState.current,
@@ -54,13 +83,13 @@ const baseSettings: UserSettings = {
 const lastCategory = TOOL_CATEGORIES[TOOL_CATEGORIES.length - 1]!;
 
 /**
- * The category switches only: the coder section renders one per category too,
- * and it is not what these cases are about.
+ * The chat switches only: every row carries a coder switch too, and that scope
+ * has cases of its own below.
  */
 function categorySwitches(): HTMLElement[] {
   return screen
     .getAllByRole("switch")
-    .filter((element) => !(element.getAttribute("aria-label") ?? "").endsWith("coder chats"));
+    .filter((element) => (element.getAttribute("aria-label") ?? "").endsWith(" in chat"));
 }
 
 function renderTab(settings: UserSettings) {
@@ -195,5 +224,152 @@ describe("Tools always-active tools", () => {
     renderTab({ ...baseSettings, toolPolicies: { codemode: "off" } });
 
     expect(selectedPolicy(screen.getByRole("combobox"))).toBe("Block");
+  });
+});
+
+/**
+ * The MCP category has no tools of its own: its tools come from the servers the
+ * user connected in Integrations. It still carries the two settings every
+ * category has, so a server set can be turned off or moved behind codemode.
+ */
+describe("Tools MCP category", () => {
+  function expandRow(categoryLabel: string) {
+    fireEvent.click(screen.getByRole("button", { name: `Expand ${categoryLabel}` }));
+  }
+
+  it("sets how the MCP tools reach the model", () => {
+    const { update } = renderTab({ ...baseSettings });
+
+    expandRow("MCP servers");
+
+    const availability = screen.getAllByRole("combobox");
+    fireEvent.click(availability[0]!);
+    const option = screen.getByRole("option", { name: "Always available" });
+    // A base-ui item commits on the pointer sequence, not a bare click.
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+
+    expect(update).toHaveBeenCalledWith({ toolExposure: { mcp: "direct" } });
+  });
+
+  it("turns the whole set off with the category switch", () => {
+    const { update } = renderTab({ ...baseSettings });
+
+    fireEvent.click(screen.getByRole("switch", { name: "MCP servers in chat" }));
+
+    expect(update).toHaveBeenCalledWith({
+      defaultToolConfig: expect.objectContaining({ mcp: false }),
+    });
+  });
+});
+
+/**
+ * A category is enabled per scope: what a new conversation starts with, and
+ * what a new coding chat starts with. Both live on one row, and neither writes
+ * the other's column.
+ */
+describe("Tools scopes", () => {
+  it("gives every category a chat switch and a coder switch", () => {
+    renderTab({ ...baseSettings });
+
+    for (const category of TOOL_CATEGORIES) {
+      expect(
+        screen.getByRole("switch", { name: `${category.label} in chat` }),
+        category.key,
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: `${category.label} in coder chats` }),
+        category.key,
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the chat column and the coder column apart", () => {
+    const { update } = renderTab({
+      ...baseSettings,
+      defaultToolConfig: { email: true },
+      coderToolConfig: { email: false },
+    });
+
+    expect(screen.getByRole("switch", { name: "Email in chat" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Email in coder chats" })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Email in coder chats" }));
+
+    const change = update.mock.calls[0]![0] as Partial<UserSettings>;
+    expect(change.coderToolConfig).toMatchObject({ email: true });
+    expect(change).not.toHaveProperty("defaultToolConfig");
+  });
+});
+
+/**
+ * The MCP category has no tools of its own, so its expanded body lists the
+ * servers instead, with the same two switches a category row carries.
+ */
+describe("Tools MCP servers", () => {
+  function server(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "srv-1",
+      name: "homeassistant",
+      description: "Control the smart home",
+      enabled: true,
+      chatEnabled: true,
+      coderEnabled: true,
+      ...overrides,
+    };
+  }
+
+  function expandMcp() {
+    fireEvent.click(screen.getByRole("button", { name: "Expand MCP servers" }));
+  }
+
+  it("lists the servers with a switch per scope", () => {
+    mcpState.current = { servers: [server()], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expect(screen.queryByText("homeassistant")).not.toBeInTheDocument();
+
+    expandMcp();
+
+    expect(screen.getByText("homeassistant")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "homeassistant in chat" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "homeassistant in coder chats" })).toBeChecked();
+  });
+
+  it("writes a server's scope to its own row", () => {
+    updateMcpServer.mockClear();
+    mcpState.current = { servers: [server()], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+    fireEvent.click(screen.getByRole("switch", { name: "homeassistant in coder chats" }));
+
+    expect(updateMcpServer).toHaveBeenCalledWith("srv-1", { coderEnabled: false });
+    // The page's own autosave holds categories, not servers.
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("leaves a switched-off server's scopes alone", () => {
+    mcpState.current = { servers: [server({ enabled: false })], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+
+    expect(screen.getByText("homeassistant").parentElement?.textContent).toContain("off");
+    // Base UI marks a disabled switch with aria-disabled, not the attribute.
+    expect(screen.getByRole("switch", { name: "homeassistant in chat" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("points at the integrations page when no server is configured", () => {
+    mcpState.current = { servers: [], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+
+    expect(screen.getByText(/No servers yet/)).toBeInTheDocument();
   });
 });

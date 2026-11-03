@@ -26,7 +26,13 @@ import {
   type SessionWorkspace,
 } from "./project-context";
 import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
-import { isCategoryEnabled, CODEMODE_INLINE_BUDGET } from "./tool-categories";
+import type { McpScope } from "@/lib/mcp/shared";
+import {
+  isCategoryEnabled,
+  CODEMODE_INLINE_BUDGET,
+  type ToolConfig,
+  type ToolExposureConfig,
+} from "./tool-categories";
 import type { SearchSources } from "@/lib/web/prompt";
 import type { ApprovalRequest } from "./tool-approval-gate";
 
@@ -256,6 +262,13 @@ export interface AgentResourceOptions {
    */
   workspace?: SessionWorkspace | undefined;
   /**
+   * Which categories this session's tools cover (`mcp` among them). The MCP
+   * servers follow the same switches as the tools Saale builds itself.
+   */
+  toolConfig?: ToolConfig | null | undefined;
+  /** How each category's tools reach the model, MCP tools included. */
+  toolExposure?: ToolExposureConfig | null | undefined;
+  /**
    * The user behind the tools a session can call.
    *
    * Passing this connects the user's MCP servers and installs the approval
@@ -267,6 +280,8 @@ export interface AgentResourceOptions {
     /** ChatSession/agent session id used on approval cards. */
     sessionId: string;
     toolPolicies: Record<string, string> | null | undefined;
+    /** Where the session runs: only the MCP servers switched on for it connect. */
+    mcpScope: McpScope;
     /** Set for a coder chat: shell commands are judged by the workspace. */
     commandScope?: "workspace" | undefined;
     emitApprovalRequest: (request: ApprovalRequest) => void;
@@ -288,9 +303,14 @@ export async function createAgentResourceLoader(
   if (options.interactive) {
     const interactive = options.interactive;
     // Without the MCP feature the user's servers are never connected, so no MCP
-    // tool reaches the model through codemode either.
+    // tool reaches the model through codemode either. The `mcp` category switch
+    // and its exposure are read here, with the rest of the session's tools.
     const mcp = (await hasFeature(interactive.userId, "mcp"))
-      ? await createUserMcpExtension(interactive.userId)
+      ? await createUserMcpExtension(interactive.userId, {
+          scope: interactive.mcpScope,
+          toolConfig: options.toolConfig,
+          exposure: options.toolExposure,
+        })
       : null;
 
     // One gate for every tool call the session can make, whichever way the

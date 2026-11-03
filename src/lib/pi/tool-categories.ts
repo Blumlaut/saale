@@ -26,6 +26,7 @@ import {
   Send,
   Users,
   FolderGit2,
+  Plug,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -157,6 +158,15 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     defaultExposure: "codemode",
   },
   {
+    key: "mcp",
+    label: "MCP servers",
+    description: "Tools from the MCP servers you connect under Integrations",
+    icon: Plug,
+    defaultEnabled: true,
+    // A server can bring hundreds of tools, so its tools start behind codemode.
+    defaultExposure: "codemode",
+  },
+  {
     key: "settings",
     label: "Settings",
     description: "Read and change Saale settings and preferences",
@@ -211,6 +221,14 @@ export type ToolExposureConfig = Partial<Record<ToolCategoryKey, ToolExposure>>;
 export const DEFAULT_TOOL_EXPOSURE: Record<ToolCategoryKey, ToolExposure> = Object.fromEntries(
   TOOL_CATEGORIES.map((c) => [c.key, c.defaultExposure]),
 ) as Record<ToolCategoryKey, ToolExposure>;
+
+/** The exposure a category resolves to: the user's choice, else its registry default. */
+export function resolveCategoryExposure(
+  exposure: ToolExposureConfig | null | undefined,
+  key: ToolCategoryKey,
+): ToolExposure {
+  return exposure?.[key] ?? DEFAULT_TOOL_EXPOSURE[key] ?? "direct";
+}
 
 /**
  * How many tokens of the codemode catalog the model is given.

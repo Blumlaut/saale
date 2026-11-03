@@ -45,13 +45,24 @@ describe("MCP server loading", () => {
     process.env.UPLOADS_DIR = "/tmp/saale-mcp-test";
   });
 
-  it("only reads servers that belong to the user and are enabled", async () => {
+  it("only reads the user's enabled servers, in the scope the session runs in", async () => {
     mockFindMany.mockResolvedValue([row()]);
 
-    await loadUserMcpServers(USER_ID);
+    await loadUserMcpServers(USER_ID, { scope: "chat" });
 
     expect(mockFindMany).toHaveBeenCalledWith({
-      where: { userId: USER_ID, enabled: true },
+      where: { userId: USER_ID, enabled: true, chatEnabled: true },
+      orderBy: { createdAt: "asc" },
+    });
+  });
+
+  it("reads only the coder servers for a coder chat", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+
+    await loadUserMcpServers(USER_ID, { scope: "coder" });
+
+    expect(mockFindMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, enabled: true, coderEnabled: true },
       orderBy: { createdAt: "asc" },
     });
   });
@@ -59,7 +70,7 @@ describe("MCP server loading", () => {
   it("builds a codemode-exposed HTTP entry with the bearer token", async () => {
     mockFindMany.mockResolvedValue([row({ encryptedToken: encrypt("ha-token-123") })]);
 
-    const { entries, policies } = await loadUserMcpServers(USER_ID);
+    const { entries, policies } = await loadUserMcpServers(USER_ID, { scope: "chat" });
 
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
@@ -77,7 +88,7 @@ describe("MCP server loading", () => {
 
   it("sends no Authorization header when no token is stored", async () => {
     mockFindMany.mockResolvedValue([row({ encryptedToken: null })]);
-    const { entries } = await loadUserMcpServers(USER_ID);
+    const { entries } = await loadUserMcpServers(USER_ID, { scope: "chat" });
     expect(entries[0]?.config).not.toHaveProperty("headers");
   });
 
@@ -87,7 +98,7 @@ describe("MCP server loading", () => {
       row({ id: "srv-2", name: "docs", toolPolicy: "nonsense" }),
     ]);
 
-    const { policies } = await loadUserMcpServers(USER_ID);
+    const { policies } = await loadUserMcpServers(USER_ID, { scope: "chat" });
 
     expect(policies["home_assistant"]).toBe("allow");
     // An unrecognized stored value must not silently allow a server.
@@ -96,14 +107,14 @@ describe("MCP server loading", () => {
 
   it("skips the Authorization header when the stored token cannot be decrypted", async () => {
     mockFindMany.mockResolvedValue([row({ encryptedToken: "not:valid:ciphertext" })]);
-    const { entries } = await loadUserMcpServers(USER_ID);
+    const { entries } = await loadUserMcpServers(USER_ID, { scope: "chat" });
     expect(entries[0]?.config).not.toHaveProperty("headers");
   });
 
   it("maps servers for OAuth by the key Pi derives tool names from", async () => {
     mockFindMany.mockResolvedValue([row({ name: "home-assistant" })]);
 
-    const { oauthServers } = await loadUserMcpServers(USER_ID);
+    const { oauthServers } = await loadUserMcpServers(USER_ID, { scope: "chat" });
 
     expect(oauthServers.get("home_assistant")).toEqual({
       id: "srv-1",
@@ -111,6 +122,42 @@ describe("MCP server loading", () => {
       name: "home-assistant",
       url: "https://homeassistant.local:8123/api/mcp",
     });
+  });
+
+  it("connects nothing while the mcp category is off", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+
+    const { entries, policies, oauthServers } = await loadUserMcpServers(USER_ID, {
+      scope: "chat",
+      toolConfig: { mcp: false },
+    });
+
+    expect(entries).toEqual([]);
+    expect(policies).toEqual({});
+    expect(oauthServers.size).toBe(0);
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it("connects the servers for a config that predates the category", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+
+    const { entries } = await loadUserMcpServers(USER_ID, {
+      scope: "chat",
+      toolConfig: { email: true },
+    });
+
+    expect(entries).toHaveLength(1);
+  });
+
+  it("uses the exposure the user chose for the mcp category", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+
+    const { entries } = await loadUserMcpServers(USER_ID, {
+      scope: "chat",
+      exposure: { mcp: "deferred" },
+    });
+
+    expect(entries[0]?.config).toMatchObject({ exposure: "deferred" });
   });
 });
 
@@ -144,8 +191,15 @@ describe("toMcpServerConfig", () => {
       encryptedToken: null,
     });
     expect(config).not.toHaveProperty("description");
-    // Tools must stay reachable from codemode  never declared to the model.
     expect(config.exposure).toBe("codemode");
+  });
+
+  it("takes the exposure it is given", () => {
+    const config = toMcpServerConfig(
+      { name: "ha", url: "https://ha/api/mcp", description: "", encryptedToken: null },
+      "direct",
+    );
+    expect(config.exposure).toBe("direct");
   });
 });
 
@@ -158,13 +212,21 @@ describe("createUserMcpExtension", () => {
 
   it("returns null when the user has no enabled servers", async () => {
     mockFindMany.mockResolvedValue([]);
-    expect(await createUserMcpExtension(USER_ID)).toBeNull();
+    expect(await createUserMcpExtension(USER_ID, { scope: "chat" })).toBeNull();
+  });
+
+  it("returns null while the mcp category is off", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+    expect(
+      await createUserMcpExtension(USER_ID, { scope: "chat", toolConfig: { mcp: false } }),
+    ).toBeNull();
+    expect(mockFindMany).not.toHaveBeenCalled();
   });
 
   it("returns the extension and the server policies", async () => {
     mockFindMany.mockResolvedValue([row({ toolPolicy: "off" })]);
 
-    const result = await createUserMcpExtension(USER_ID);
+    const result = await createUserMcpExtension(USER_ID, { scope: "chat" });
 
     expect(result).not.toBeNull();
     expect(typeof result?.extension).toBe("function");

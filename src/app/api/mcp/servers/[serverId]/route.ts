@@ -8,6 +8,7 @@ import { evictUserSessions } from "@/lib/pi/agent-pool";
 import {
   isMcpToolPolicy,
   mcpNameKey,
+  MCP_SCOPES,
   toMcpServerView,
   validateMcpServerName,
   validateMcpUrl,
@@ -80,6 +81,16 @@ export async function PATCH(
       return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
     }
     data.enabled = body.enabled;
+  }
+
+  for (const scope of MCP_SCOPES) {
+    const field = scope === "chat" ? "chatEnabled" : "coderEnabled";
+    const value = body[field];
+    if (value === undefined) continue;
+    if (typeof value !== "boolean") {
+      return NextResponse.json({ error: `${field} must be a boolean` }, { status: 400 });
+    }
+    data[field] = value;
   }
 
   if (body.token !== undefined) {

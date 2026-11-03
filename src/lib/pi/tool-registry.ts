@@ -55,6 +55,8 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   infra: (userId) => createInfraTools(userId),
   coder: (userId, sessionId) => createProjectTools(userId, sessionId),
   settings: (userId, sessionId) => createSettingsTools(userId, sessionId),
+  // MCP tools are registered by Pi's MCP extension when the session starts.
+  mcp: () => [],
 };
 
 // ─── Tool Resolution ─────────────────────────────────────────────────────────

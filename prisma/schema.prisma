@@ -1117,6 +1117,11 @@ model McpServer {
   /// How this server's tool calls are approved: "ask" | "allow" | "off".
   toolPolicy     String   @default("ask")
   enabled        Boolean  @default(true)
+  /// Whether the server connects in a chat. Its own switch, so one server can be
+  /// chat-only while another is coder-only.
+  chatEnabled    Boolean  @default(true)
+  /// Whether the server connects in a coder chat.
+  coderEnabled   Boolean  @default(true)
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   oauthCredential McpOAuthCredential?
   createdAt      DateTime @default(now())

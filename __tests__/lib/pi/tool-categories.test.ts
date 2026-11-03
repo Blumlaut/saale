@@ -9,8 +9,8 @@ import {
 } from "@/lib/pi/tool-categories";
 
 describe("tool categories", () => {
-  it("has 14 tool categories", () => {
-    expect(TOOL_CATEGORIES).toHaveLength(14);
+  it("has 15 tool categories", () => {
+    expect(TOOL_CATEGORIES).toHaveLength(15);
   });
 
   it("has unique keys", () => {
@@ -32,6 +32,7 @@ describe("tool categories", () => {
     expect(keys).toContain("tasks");
     expect(keys).toContain("infra");
     expect(keys).toContain("coder");
+    expect(keys).toContain("mcp");
     expect(keys).toContain("settings");
   });
 
@@ -79,6 +80,7 @@ describe("DEFAULT_TOOL_CONFIG", () => {
     expect(DEFAULT_TOOL_CONFIG.memory).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.tasks).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.infra).toBe(true);
+    expect(DEFAULT_TOOL_CONFIG.mcp).toBe(true);
     expect(DEFAULT_TOOL_CONFIG.settings).toBe(true);
   });
 });

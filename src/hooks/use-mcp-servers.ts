@@ -11,6 +11,10 @@ export interface McpServer {
   description: string;
   toolPolicy: McpToolPolicy;
   enabled: boolean;
+  /** Whether the server connects in a chat. */
+  chatEnabled: boolean;
+  /** Whether the server connects in a coder chat. */
+  coderEnabled: boolean;
   /** Whether a bearer token is stored. The token itself is never sent to the client. */
   hasToken: boolean;
   /** Whether an OAuth credential is stored for this server. */
@@ -27,6 +31,8 @@ export interface McpServerInput {
   token?: string;
   toolPolicy?: McpToolPolicy;
   enabled?: boolean;
+  chatEnabled?: boolean;
+  coderEnabled?: boolean;
 }
 
 /** Result of a connection test: the server identity and the tools it offers. */

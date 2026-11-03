@@ -86,6 +86,8 @@ function serverRow(overrides: Record<string, unknown> = {}) {
     encryptedToken: null,
     toolPolicy: "ask",
     enabled: true,
+    chatEnabled: true,
+    coderEnabled: true,
     createdAt: new Date("2026-01-01T09:00:00Z"),
     updatedAt: new Date("2026-01-01T09:00:00Z"),
     ...overrides,
@@ -202,6 +204,27 @@ describe("/api/mcp/servers/:serverId", () => {
       data: { enabled: false },
     });
     expect(mockEvictUserSessions).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("writes the scope flags it is given, and only those", async () => {
+    mockUpdate.mockResolvedValue(serverRow({ chatEnabled: false }));
+
+    const response = await PATCH(request("PATCH", { chatEnabled: false }), params("srv-1"));
+
+    expect(response.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "srv-1", userId: USER_ID },
+      data: { chatEnabled: false },
+    });
+    const body = await response.json();
+    expect(body.server.chatEnabled).toBe(false);
+    expect(body.server.coderEnabled).toBe(true);
+  });
+
+  it("refuses a scope flag that is not a boolean", async () => {
+    const response = await PATCH(request("PATCH", { coderEnabled: "yes" }), params("srv-1"));
+    expect(response.status).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("clears a stored token when given an empty string", async () => {

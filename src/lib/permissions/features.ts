@@ -95,7 +95,7 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
   mcp: {
     label: "MCP servers",
     description: "The user's own MCP servers, connected to chat sessions.",
-    toolCategories: [],
+    toolCategories: ["mcp"],
     defaultOn: true,
   },
   watchers: {

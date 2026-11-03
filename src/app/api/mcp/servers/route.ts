@@ -51,6 +51,8 @@ export async function POST(request: NextRequest) {
   const token = typeof body.token === "string" ? body.token.trim() : "";
   const toolPolicy = body.toolPolicy;
   const enabled = typeof body.enabled === "boolean" ? body.enabled : true;
+  const chatEnabled = typeof body.chatEnabled === "boolean" ? body.chatEnabled : true;
+  const coderEnabled = typeof body.coderEnabled === "boolean" ? body.coderEnabled : true;
 
   const nameError = validateMcpServerName(name);
   if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
@@ -83,6 +85,8 @@ export async function POST(request: NextRequest) {
       description,
       toolPolicy: isMcpToolPolicy(toolPolicy) ? toolPolicy : "ask",
       enabled,
+      chatEnabled,
+      coderEnabled,
       ...(token ? { encryptedToken: encrypt(token) } : {}),
     },
   });

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import Link from "next/link";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
+import { ScopeSwitches, ToolScopeHeader } from "@/components/shared/tool-scopes";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -12,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wrench, Info, ChevronDown, ChevronRight, Code2, GitBranch } from "lucide-react";
+import { Wrench, Info, ChevronDown, ChevronRight, Code2 } from "lucide-react";
 import { AutosavedPage } from "../components/save-state";
 import { useUserSettings } from "../components/user-settings-provider";
 import type { ToolConfig, ToolExposureConfig } from "../types";
@@ -21,12 +23,15 @@ import {
   DEFAULT_TOOL_CONFIG,
   DEFAULT_TOOL_EXPOSURE,
   isCategoryEnabled,
+  resolveCategoryExposure,
   TOOL_CATEGORIES,
   TOOL_EXPOSURES,
   type ToolExposure,
 } from "@/lib/pi/tool-categories";
 import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
+import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
+import { SETTINGS_ROOT } from "@/lib/navigation/settings-nav";
 
 /** Exposure option descriptions, for the selected value's hint line. */
 const exposureDescriptions = Object.fromEntries(
@@ -40,6 +45,7 @@ export function ToolsSection() {
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
   const toolExposure = (settings?.toolExposure ?? {}) as ToolExposureConfig;
   const uncategorizedTools = getUncategorizedTools();
+  const mcp = useMcpServers();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const toggleExpanded = useCallback((key: string) => {
@@ -66,6 +72,18 @@ export function ToolsSection() {
     });
   };
 
+  /** A server's scope is its own row, so it saves on the click. */
+  const handleMcpScopeChange = async (
+    server: McpServer,
+    patch: { chatEnabled?: boolean; coderEnabled?: boolean },
+  ) => {
+    try {
+      await mcp.updateServer(server.id, patch);
+    } catch (err) {
+      console.error(`Failed to change the scope of MCP server "${server.name}":`, err);
+    }
+  };
+
   const handlePolicyChange = (toolName: string, policy: ToolPolicy) => {
     if (!settings) return;
     update({ toolPolicies: { ...toolPolicies, [toolName]: policy } });
@@ -90,7 +108,7 @@ export function ToolsSection() {
       <GlassPanel>
         <GlassPanelContent className="p-0">
           {/* Header */}
-          <div className="px-6 pt-5 pb-4">
+          <div className="px-4 pt-5 pb-4 md:px-6">
             <h3 className="flex items-center gap-2 text-lg font-medium">
               <Wrench className="h-5 w-5" />
               Tools
@@ -102,27 +120,30 @@ export function ToolsSection() {
             <div className="bg-muted mt-3 flex items-start gap-2 rounded-xl border-0 px-4 py-3">
               <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
               <p className="text-muted-foreground text-xs">
-                Toggle categories on or off, expand one to set how its tools reach the model, and
-                configure per-tool approvals. Always available means the model sees the tools on
-                every message. Via codemode hides them; the model writes a short script to call
-                them. Search only hides them until a tool search finds them. Allow runs
-                automatically, Auto asks for risky commands, Ask requires approval, Block never
-                runs. MCP servers follow their own approval setting.
+                Chat is what a new conversation starts with, Coder what a new coding chat starts
+                with. Expand a category to set how its tools reach the model and to approve each
+                tool. Always available means the model sees the tools on every message. Via codemode
+                hides them; the model writes a short script to call them. Search only hides them
+                until a tool search finds them. Allow runs automatically, Auto asks for risky
+                commands, Ask requires approval, Block never runs. MCP servers connect while the MCP
+                category is on, and their calls follow the approval setting of each server.
               </p>
             </div>
           </div>
 
           <Separator />
 
-          {/* Category sections */}
-          <div className="px-6 py-4">
+          {/* One row per category, with a switch for each scope it applies to. */}
+          <div className="px-4 py-4 md:px-6">
+            <ToolScopeHeader />
+
             <div className="space-y-1">
               {TOOL_CATEGORIES.map((category, index) => {
-                const enabled = isCategoryEnabled(toolConfig, category.key);
+                const chatEnabled = isCategoryEnabled(toolConfig, category.key);
+                const coderEnabled = !!coderToolConfig[category.key];
                 const isExpanded = !!expanded[category.key];
                 const tools = getToolsByCategory(category.key);
-                const exposure =
-                  toolExposure[category.key] ?? DEFAULT_TOOL_EXPOSURE[category.key] ?? "direct";
+                const exposure = resolveCategoryExposure(toolExposure, category.key);
 
                 return (
                   <div key={category.key}>
@@ -130,28 +151,33 @@ export function ToolsSection() {
 
                     <ToolCategoryRow
                       category={category}
-                      checked={enabled}
-                      onCheckedChange={() => handleToggle(category.key)}
+                      controls={
+                        <ScopeSwitches
+                          label={category.label}
+                          chat={chatEnabled}
+                          coder={coderEnabled}
+                          onChatChange={() => handleToggle(category.key)}
+                          onCoderChange={() => handleCoderToggle(category.key)}
+                        />
+                      }
                       trailing={
-                        tools.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(category.key)}
-                            className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0"
-                            aria-label={isExpanded ? "Collapse" : "Expand"}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </button>
-                        ) : null
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(category.key)}
+                          className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0"
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} ${category.label}`}
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
                       }
                     />
 
-                    {/* Per-tool policies. collapsed when category is off or not expanded */}
-                    {!enabled && tools.length > 0 && (
+                    {/* Per-tool policies. collapsed when the category is off everywhere */}
+                    {!chatEnabled && !coderEnabled && tools.length > 0 && (
                       <div className="pb-3 pl-7">
                         <button
                           type="button"
@@ -163,7 +189,7 @@ export function ToolsSection() {
                       </div>
                     )}
 
-                    {isExpanded && tools.length > 0 && (
+                    {isExpanded && (
                       <div className="pb-3 pl-7">
                         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                           <div className="min-w-0">
@@ -191,6 +217,62 @@ export function ToolsSection() {
                           </Select>
                         </div>
 
+                        {/* MCP has no catalog tools: the servers are the rows. */}
+                        {category.key === "mcp" && (
+                          <div className="space-y-1.5">
+                            {mcp.loading ? (
+                              <p className="text-muted-foreground text-xs">Loading servers…</p>
+                            ) : mcp.error ? (
+                              <p className="text-destructive text-xs">{mcp.error}</p>
+                            ) : mcp.servers.length === 0 ? (
+                              <p className="text-muted-foreground text-xs">
+                                No servers yet. Add one under{" "}
+                                <Link
+                                  href={`${SETTINGS_ROOT}/integrations`}
+                                  className="text-foreground underline underline-offset-2"
+                                >
+                                  Integrations
+                                </Link>
+                                .
+                              </p>
+                            ) : (
+                              mcp.servers.map((server) => (
+                                <div
+                                  key={server.id}
+                                  className="flex flex-wrap items-center justify-between gap-3"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <span className="text-sm">{server.name}</span>
+                                    {!server.enabled && (
+                                      <span className="text-muted-foreground text-xs"> - off</span>
+                                    )}
+                                    {server.description && (
+                                      <p className="text-muted-foreground text-xs">
+                                        {server.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-3">
+                                    <ScopeSwitches
+                                      label={server.name}
+                                      chat={server.chatEnabled}
+                                      coder={server.coderEnabled}
+                                      disabled={!server.enabled}
+                                      onChatChange={(checked) =>
+                                        void handleMcpScopeChange(server, { chatEnabled: checked })
+                                      }
+                                      onCoderChange={(checked) =>
+                                        void handleMcpScopeChange(server, { coderEnabled: checked })
+                                      }
+                                    />
+                                    <span className="w-6" aria-hidden />
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+
                         <div className="space-y-1.5">
                           {tools.map((tool) => (
                             <PolicyRow
@@ -212,7 +294,7 @@ export function ToolsSection() {
           {/* Tools no category owns: active whatever the switches above say, so
               they carry a policy and no toggle of their own. */}
           {uncategorizedTools.length > 0 && (
-            <div className="px-6 pb-4">
+            <div className="px-4 pb-4 md:px-6">
               <Separator className="mx-2" />
               <div className="flex items-center gap-3 py-3">
                 <Code2 className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -236,43 +318,6 @@ export function ToolsSection() {
               </div>
             </div>
           )}
-        </GlassPanelContent>
-      </GlassPanel>
-
-      <GlassPanel>
-        <GlassPanelContent className="p-0">
-          <div className="px-4 pt-5 pb-4 md:px-6">
-            <h3 className="flex items-center gap-2 text-lg font-medium">
-              <GitBranch className="h-5 w-5" />
-              Coder
-            </h3>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Categories a new coder chat starts with. The terminal, web and memory categories are
-              on and the rest are off; turn on whatever a project needs.
-            </p>
-            <p className="text-muted-foreground mt-2 text-sm">
-              A coder chat treats the whole workspace as its own: writes and shell commands that
-              stay inside it run without asking. A policy you set above still applies, and a command
-              that reaches past the workspace, like <code>git push</code> or <code>gh</code>,
-              follows its tool&apos;s policy.
-            </p>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-1 px-4 py-4 md:px-6">
-            {TOOL_CATEGORIES.map((category, index) => (
-              <div key={category.key}>
-                {index > 0 && <Separator className="mx-2" />}
-                <ToolCategoryRow
-                  category={category}
-                  checked={!!coderToolConfig[category.key]}
-                  onCheckedChange={() => handleCoderToggle(category.key)}
-                  switchLabel={`${category.label} in coder chats`}
-                />
-              </div>
-            ))}
-          </div>
         </GlassPanelContent>
       </GlassPanel>
     </AutosavedPage>
