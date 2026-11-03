@@ -18,7 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageAction, PageActions, PageScroll, PageTabStrip } from "@/components/layout/page";
 import { fetchJson } from "@/lib/http";
 import { formatCost, formatCostRounded, formatTokens } from "@/lib/format";
-import type { UsageDetail, UsageDay, UsageReport } from "@/lib/admin/usage";
+import type { UsageDay, UsageDetail, UsageKindTotals, UsageReport } from "@/lib/admin/usage";
 import { USAGE_WINDOWS, type UsageWindow } from "@/lib/admin/usage-windows";
 import type { UsageKind } from "@/lib/usage/record";
 import { cn } from "@/lib/utils";
@@ -153,7 +153,7 @@ export function UsageArea() {
 /** The window as a whole: the headline numbers, then spend by day and by type. */
 function GlobalStats({ report }: { report: UsageReport }) {
   return (
-    <div className="border-border/50 grid gap-4 border-b px-4 py-3 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] md:gap-6">
+    <div className="border-border/50 grid gap-4 border-b px-4 py-3 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] md:gap-6 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_minmax(0,24rem)]">
       <div className="space-y-3">
         <FigureRow
           items={[
@@ -172,20 +172,9 @@ function GlobalStats({ report }: { report: UsageReport }) {
         />
       </div>
 
-      <div className="space-y-3">
-        <DailyBars daily={report.daily} />
+      <DailyBars daily={report.daily} />
 
-        <Breakdown
-          total={report.cost}
-          items={report.kinds.map((kind) => ({
-            label: KIND_LABELS[kind.kind],
-            cost: kind.cost,
-            calls: kind.calls,
-            globalCost: kind.globalCost,
-            ownCost: kind.ownCost,
-          }))}
-        />
-      </div>
+      <KindPie kinds={report.kinds} total={report.cost} />
     </div>
   );
 }
@@ -219,7 +208,7 @@ function AccountRow({
         <div className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{row.name}</span>
           <span className="text-muted-foreground block truncate text-xs">{row.email}</span>
-          <div className="mt-2 max-w-56">
+          <div className="mt-2 max-w-56 md:max-w-sm">
             <SplitBar globalCost={row.globalCost} ownCost={row.ownCost} scale={largest} />
           </div>
         </div>
@@ -435,6 +424,61 @@ function LegendItem({
   );
 }
 
+/** One hue, stepped down the list: the biggest kind is the solid slice. */
+const PIE_STEPS = [100, 84, 68, 54, 42, 32];
+
+/** Stepped toward the text colour, so the tail keeps its contrast in both modes. */
+function sliceFill(index: number): string {
+  const step = PIE_STEPS[index % PIE_STEPS.length] ?? 32;
+  return `color-mix(in oklab, var(--chart-1) ${step}%, var(--foreground))`;
+}
+
+/** The window's spend by kind, as a share of the whole. */
+function KindPie({ kinds, total }: { kinds: UsageKindTotals[]; total: number }) {
+  const slices = kinds.filter((kind) => kind.cost > 0);
+  const sweeps = slices.map((slice) => (slice.cost / total) * 360);
+  const stops = sweeps.map((sweep, index) => {
+    const from = sweeps.slice(0, index).reduce((sum, part) => sum + part, 0);
+    return `${sliceFill(index)} ${from}deg ${from + sweep}deg`;
+  });
+
+  return (
+    <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
+      <div
+        className="relative size-28 shrink-0 rounded-full xl:size-32"
+        style={{
+          background: stops.length > 0 ? `conic-gradient(${stops.join(", ")})` : "var(--muted)",
+        }}
+        aria-hidden
+      >
+        <div className="bg-card absolute inset-[26%] rounded-full" />
+      </div>
+
+      <ul className="space-y-1">
+        {slices.map((slice, index) => (
+          <li key={slice.kind} className="flex items-center gap-2 text-xs">
+            <span
+              className="size-2 shrink-0 rounded-sm"
+              style={{ background: sliceFill(index) }}
+              aria-hidden
+            />
+            <span className="w-24 shrink-0 truncate">{KIND_LABELS[slice.kind]}</span>
+            <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[11px] tabular-nums">
+              {share(slice.cost, total)}%
+            </span>
+            <span className="w-16 shrink-0 text-right font-mono tabular-nums">
+              {formatCostRounded(slice.cost)}
+            </span>
+            <span className="text-muted-foreground w-9 shrink-0 text-right font-mono text-[11px] tabular-nums">
+              {slice.calls}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 interface BreakdownItem {
   label: string;
   cost: number;
@@ -537,6 +581,13 @@ function LoadingLine() {
       <Loader2 className="text-muted-foreground size-4 animate-spin" />
     </div>
   );
+}
+
+/** A slice's share, kept to a decimal while it is under a percent. */
+function share(value: number, total: number): string {
+  if (total <= 0) return "0";
+  const part = (value / total) * 100;
+  return part >= 10 ? String(Math.round(part)) : part.toFixed(1);
 }
 
 function percent(value: number, scale: number): number {
