@@ -87,11 +87,13 @@ export interface TranscriptMessageLike {
   role: string;
   content?: unknown;
   /** The text of a `compactionSummary` or `branchSummary` row. */
-  summary?: unknown;
+  summary?: string;
   /** The command of a `bashExecution` row. */
-  command?: unknown;
+  command?: string;
   /** Its output. */
-  output?: unknown;
+  output?: string;
+  /** Set on a `!!` shell execution, which Pi leaves out of the request. */
+  excludeFromContext?: unknown;
 }
 
 /** Characters one content block carries. */
@@ -105,20 +107,23 @@ function blockChars(block: unknown): number {
   if (record.type === "thinking" && typeof record.thinking === "string") {
     return record.thinking.length;
   }
-  if (record.type === "toolCall" && record.arguments !== undefined) {
-    return JSON.stringify(record.arguments).length;
+  if (record.type === "toolCall") {
+    const name = typeof record.name === "string" ? record.name : "";
+    return (
+      name.length + (record.arguments === undefined ? 0 : JSON.stringify(record.arguments).length)
+    );
   }
   return 0;
 }
 
-/** Characters a message's content blocks carry. */
-function contentChars(content: unknown): number {
-  const blocks: unknown[] = Array.isArray(content) ? content : [content];
-  return blocks.reduce<number>((sum, block) => sum + blockChars(block), 0);
+/** The blocks a message's content carries, or the content itself when it is one. */
+function blocksOf(content: unknown): unknown[] {
+  return Array.isArray(content) ? content : [content];
 }
 
-function textChars(value: unknown): number {
-  return typeof value === "string" ? value.length : 0;
+/** Characters a message's content blocks carry. */
+function contentChars(content: unknown): number {
+  return blocksOf(content).reduce<number>((sum, block) => sum + blockChars(block), 0);
 }
 
 /**
@@ -166,7 +171,7 @@ export function estimateContextParts(input: {
   for (const message of input.messages) {
     switch (message.role) {
       case "assistant":
-        for (const block of Array.isArray(message.content) ? message.content : [message.content]) {
+        for (const block of blocksOf(message.content)) {
           if (isToolCall(block)) chars.tools += blockChars(block);
           else chars.responses += blockChars(block);
         }
@@ -175,13 +180,15 @@ export function estimateContextParts(input: {
         chars.tools += contentChars(message.content);
         break;
       // A shell execution rides in the prompt as a user message, and it is tool
-      // traffic: the command and its output are what the tool returned.
+      // traffic: the command and its output are what the tool returned. A `!!`
+      // execution never reaches the model.
       case "bashExecution":
-        chars.tools += textChars(message.command) + textChars(message.output);
+        if (message.excludeFromContext === true) break;
+        chars.tools += (message.command?.length ?? 0) + (message.output?.length ?? 0);
         break;
       case "compactionSummary":
       case "branchSummary":
-        chars.userMessages += textChars(message.summary);
+        chars.userMessages += message.summary?.length ?? 0;
         break;
       case "custom":
         chars.userMessages += contentChars(message.content);
@@ -253,17 +260,31 @@ function applyDrift(
   return parts;
 }
 
-/** The fields of an assistant message this file reads. */
+/** The fields of an assistant message this file reads, from a message that carries more. */
 interface AssistantMessageLike {
   provider?: string;
   model?: string;
   responseModel?: string;
+  /** `error` and `aborted` turns leave Pi without a context size. */
+  stopReason?: string;
   usage?: {
     input?: number;
     output?: number;
     cacheRead?: number;
     cacheWrite?: number;
-    cost?: { total?: number; totalFromProvider?: boolean };
+    /** Pi also reports a total, a reasoning count inside `output`, and Anthropic's 1h cache split. */
+    totalTokens?: number;
+    reasoning?: number;
+    cacheWrite1h?: number;
+    cost?: {
+      /** Pi splits the bill per counter; the row keeps only the provider's total. */
+      input?: number;
+      output?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+      total?: number;
+      totalFromProvider?: boolean;
+    };
   };
 }
 
