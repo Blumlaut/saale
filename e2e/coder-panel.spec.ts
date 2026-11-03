@@ -1,4 +1,10 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Browser,
+  type BrowserContextOptions,
+  type Page,
+} from "@playwright/test";
 
 import { gotoAndSettle, sessionContext, VIEWPORTS } from "./utils";
 
@@ -314,8 +320,13 @@ async function mockCoder(page: Page, options: CoderMockOptions = {}) {
 }
 
 /** A coder page with the API stubbed, on the route this test measures. */
-async function openCoder(browser: Browser, path: string, options: CoderMockOptions = {}) {
-  const context = await sessionContext(browser);
+async function openCoder(
+  browser: Browser,
+  path: string,
+  options: CoderMockOptions = {},
+  contextOptions: BrowserContextOptions = {},
+) {
+  const context = await sessionContext(browser, contextOptions);
   const page = await context.newPage();
   await mockCoder(page, options);
   await gotoAndSettle(page, path);
@@ -423,6 +434,45 @@ test.describe("coder panel", () => {
     // A project line is a band over the card; a chat row is the card itself.
     expect(rhythm.band).not.toBe(rhythm.panel);
     expect(rhythm.chatFill).toBe("rgba(0, 0, 0, 0)");
+
+    await context.close();
+  });
+
+  test("gives a phone the row's whole width and height to tap", async ({ browser }) => {
+    const phone = VIEWPORTS[0]!;
+    const { context, page } = await openCoder(
+      browser,
+      "/dashboard/coder",
+      {},
+      { viewport: { width: phone.width, height: phone.height }, hasTouch: true },
+    );
+    const row = shown(page, '[data-slot="session-row"]');
+    await expect(row).toBeVisible();
+
+    const geometry = (await row.evaluate((el) => {
+      const rowBox = el.getBoundingClientRect();
+      const menuBox = el.querySelector('[data-slot="row-actions"] button')!.getBoundingClientRect();
+      return {
+        row: { right: rowBox.right, top: rowBox.top, bottom: rowBox.bottom },
+        menu: { right: menuBox.right },
+      };
+    })) as { row: { right: number; top: number; bottom: number }; menu: { right: number } };
+
+    // The row's menu closes the row, it does not trail the title.
+    expect(geometry.row.right - geometry.menu.right).toBeLessThanOrEqual(12);
+
+    // The strip beside the menu opens the chat, and so does the row's padding
+    // above the title. Only the menu itself belongs to the menu.
+    const middle = (geometry.row.top + geometry.row.bottom) / 2;
+    await page.touchscreen.tap((geometry.menu.right + geometry.row.right) / 2, middle);
+    await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${FOLDED_CHAT.id}$`));
+
+    await page.goBack();
+    const edge = shown(page, '[data-slot="session-row"]');
+    await expect(edge).toBeVisible();
+    const top = await edge.evaluate((el) => el.getBoundingClientRect().top);
+    await page.touchscreen.tap(40, top + 3);
+    await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${FOLDED_CHAT.id}$`));
 
     await context.close();
   });
