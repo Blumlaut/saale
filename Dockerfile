@@ -1,11 +1,17 @@
 # ─── Base ─────────────────────────────────────────────────────────────────────
 
-FROM node:alpine AS base
+# The exact runtime comes from `devEngines.runtime`, which pnpm installs itself;
+# this major only has to be one the app is known to start under.
+FROM node:26-alpine AS base
 RUN apk add --no-cache dumb-init
+# pnpm ships as a self-contained binary and its image carries the node-gyp it
+# needs. Copying that beats `npm install -g`, which leans on npm's global layout.
+COPY --from=ghcr.io/pnpm/pnpm:12.16.1-alpine /opt/pnpm /opt/pnpm
+RUN for bin in pnpm pn pnpx pnx; do ln -s "/opt/pnpm/$bin" "/usr/local/bin/$bin"; done
 # The store is where pnpm keeps every package it has ever unpacked; each stage
-# mounts it as a cache, so a rebuild links instead of downloading.
-ENV npm_config_store_dir=/pnpm/store
-RUN npm install -g --ignore-scripts pnpm@12
+# mounts it as a cache, so a rebuild links instead of downloading. pnpm 12 reads
+# no `npm_config_*`, so the store dir has to be named in pnpm's own prefix.
+ENV PNPM_CONFIG_STORE_DIR=/pnpm/store
 
 # ─── Development stage — hot reload via docker compose watch ──────────────────
 
