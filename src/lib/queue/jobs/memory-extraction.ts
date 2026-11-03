@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { aiResultList, readAiJson } from "@/lib/pi/ai-json";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
 import { titleWordOverlap } from "./_helpers";
 
@@ -202,19 +203,22 @@ Output JSON:
       ...(modelId ? { modelId } : {}),
     });
 
-    let parsed;
-    try {
-      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
-      parsed = JSON.parse(jsonMatch[1].trim());
-    } catch {
-      parsed = { add: [], remove: [], summary: session.memorySummary ?? "" };
-    }
-
-    const candidates = (parsed.add ?? []).filter(
-      (m: { collection: string; title: string; content: string }) =>
-        m.collection && m.title && m.content,
-    );
-    const removals = (parsed.remove ?? []).filter((id: string) => typeof id === "string");
+    const parsed = readAiJson(response, "job/memory-extraction");
+    const candidates = aiResultList(parsed, "add")
+      .filter(
+        (entry) => Boolean(entry.collection) && Boolean(entry.title) && Boolean(entry.content),
+      )
+      .map((entry) => ({
+        collection: String(entry.collection),
+        title: String(entry.title),
+        content: String(entry.content),
+        tags: Array.isArray(entry.tags)
+          ? entry.tags.filter((tag): tag is string => typeof tag === "string")
+          : [],
+      }));
+    const removals = Array.isArray(parsed.remove)
+      ? parsed.remove.filter((id): id is string => typeof id === "string")
+      : [];
     const newSummary =
       typeof parsed.summary === "string" ? parsed.summary : (session.memorySummary ?? "");
 

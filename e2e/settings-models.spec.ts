@@ -56,23 +56,23 @@ test.describe("settings · models", () => {
       const providerSwitch = page.getByRole("switch", {
         name: `Show or hide every model of ${PROVIDER_NAME}`,
       });
-      const modelSwitches = MODEL_IDS.map((_, index) =>
-        page.getByRole("switch", { name: new RegExp(`Fixture [AB]`) }).nth(index),
-      );
+      const models = page.getByRole("switch", { name: /Fixture [AB]/ });
+      const firstModel = models.first();
+      const secondModel = models.last();
 
-      await expect(modelSwitches[0]).toBeVisible();
+      await expect(firstModel).toBeVisible();
       await expect(providerSwitch).toHaveAttribute("aria-checked", "true");
 
       // Off hides the group: every model the row covers loses its switch.
       await providerSwitch.click();
-      await expect(modelSwitches[0]).toHaveAttribute("aria-checked", "false");
-      await expect(modelSwitches[1]).toHaveAttribute("aria-checked", "false");
+      await expect(firstModel).toHaveAttribute("aria-checked", "false");
+      await expect(secondModel).toHaveAttribute("aria-checked", "false");
       await expect(providerSwitch).toHaveAttribute("aria-checked", "false");
 
       // ...and on brings them back.
       await providerSwitch.click();
-      await expect(modelSwitches[0]).toHaveAttribute("aria-checked", "true");
-      await expect(modelSwitches[1]).toHaveAttribute("aria-checked", "true");
+      await expect(firstModel).toHaveAttribute("aria-checked", "true");
+      await expect(secondModel).toHaveAttribute("aria-checked", "true");
       await expect(providerSwitch).toHaveAttribute("aria-checked", "true");
     } finally {
       // The switches write the shared account's settings; leave them as found.

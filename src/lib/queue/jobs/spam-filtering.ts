@@ -2,8 +2,7 @@ import { prisma } from "@/lib/db";
 import { batchSizeField, emailAccountField, maxEmailAgeField, modelField } from "./_helpers";
 import type { FieldDef } from "@/lib/queue/job-schemas";
 import { moveMessage, deleteMessage } from "@/lib/email/imap";
-import { dispatchAiJob } from "@/lib/queue/job-handler";
-import { resolveUserEmailAccountIds } from "@/lib/queue/user-isolation";
+import { runEmailAiJob, type PromptableEmail } from "./email-ai";
 
 export const metadata = {
   type: "spam_filtering",
@@ -46,132 +45,90 @@ export const fields: FieldDef[] = [
   modelField(),
 ];
 
+interface ScannableEmail extends PromptableEmail {
+  uid: number;
+  folder: string;
+  accountId: string;
+}
+
 export async function handler(params: {
   config: Record<string, unknown>;
   userId: string;
   modelId?: string | null;
 }) {
-  const { config, userId, modelId } = params;
-  const spamThreshold = (config.spamThreshold as number) ?? 0.85;
-  const accountIds = await resolveUserEmailAccountIds(
-    userId,
-    config.accountId as string | undefined,
-  );
+  const { config } = params;
+  const spamThreshold = Number(config.spamThreshold ?? 0.85);
+  const spamAction = (config.spamAction as string) ?? "move_to_spam";
+  const movedToSpam: string[] = [];
+  const deleted: string[] = [];
 
-  const whereClause: Record<string, unknown> = {
-    accountId: { in: accountIds },
-    ...(config.accountId ? { accountId: config.accountId } : {}),
-    folder: "INBOX",
-    spamScore: null,
-  };
-  if (config.maxEmailAge && (config.maxEmailAge as number) > 0) {
-    whereClause.date = {
-      gte: new Date(Date.now() - (config.maxEmailAge as number) * 60 * 60 * 1000),
-    };
-  }
-  const emails = await prisma.emailMessage.findMany({
-    where: whereClause,
-    orderBy: { date: "desc" },
-    take: (config.limit as number) ?? 20,
+  const { batch, accountIds, results, applied } = await runEmailAiJob<
+    ScannableEmail,
+    { id: string; spamScore: number }
+  >({
+    ...params,
+    context: "job/spam-filtering",
+    where: { folder: "INBOX", spamScore: null },
     select: {
       id: true,
       subject: true,
       fromEmail: true,
       bodyPreview: true,
       bodyText: true,
+      uid: true,
+      folder: true,
+      accountId: true,
     },
-  });
-
-  if (emails.length === 0) {
-    return JSON.stringify({ processed: 0, results: [] });
-  }
-
-  const prompt = JSON.stringify({
+    defaultLimit: 20,
     task: "spam_analysis",
     instructions:
       "For each email, evaluate whether it is likely spam. Return a JSON object with a 'results' array where each item has 'id', 'spamScore' (0-1 float, higher = more likely spam), and 'reason' (brief explanation).",
-    emails: emails.map((e) => ({
-      id: e.id,
-      from: e.fromEmail,
-      subject: e.subject,
-      preview: (e.bodyText ?? e.bodyPreview)?.slice(0, 3000),
-    })),
-  });
+    resultKey: "results",
+    accept: (entry) => Boolean(entry.id) && typeof entry.spamScore === "number",
+    apply: async (email, entry) => {
+      const isSpam = entry.spamScore > spamThreshold;
 
-  const response = await dispatchAiJob(userId, prompt, ...(modelId ? [{ modelId }] : []));
-
-  let parsed;
-  try {
-    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
-    parsed = JSON.parse(jsonMatch[1].trim());
-  } catch {
-    parsed = { results: [] };
-  }
-
-  const spamResults = (parsed.results ?? []).filter(
-    (r: { id: string; spamScore: number }) => r.id && typeof r.spamScore === "number",
-  );
-
-  const spamAction = (config.spamAction as string) ?? "move_to_spam";
-
-  // Guard: only update emails from the scanned batch (defense against AI hallucination)
-  const scannedIds = new Set(emails.map((e) => e.id));
-  const movedToSpam: string[] = [];
-  const deleted: string[] = [];
-
-  for (const result of spamResults) {
-    if (!scannedIds.has(result.id)) continue;
-    const isSpam = result.spamScore > spamThreshold;
-
-    if (isSpam && spamAction === "delete") {
-      // Delete: push to IMAP first, then remove from DB
-      const msg = await prisma.emailMessage.findFirst({
-        where: { id: result.id, accountId: { in: accountIds } },
-        select: { id: true, uid: true, folder: true, accountId: true },
-      });
-      if (msg) {
-        deleteMessage(msg.accountId, msg.folder, msg.uid).catch((err) => {
-          console.error(`Failed to delete UID ${msg.uid} from IMAP:`, err);
+      if (isSpam && spamAction === "delete") {
+        // Delete: push to IMAP first, then remove from DB
+        const message = await prisma.emailMessage.findFirst({
+          where: { id: email.id, accountId: { in: accountIds } },
+          select: { id: true, uid: true, folder: true, accountId: true },
         });
-        await prisma.emailMessage.delete({
-          where: { id: result.id },
+        if (!message) return;
+
+        deleteMessage(message.accountId, message.folder, message.uid).catch((err) => {
+          console.error(`Failed to delete UID ${message.uid} from IMAP:`, err);
         });
-        deleted.push(result.id);
+        await prisma.emailMessage.delete({ where: { id: email.id } });
+        deleted.push(email.id);
+        return;
       }
-    } else {
+
       const updated = await prisma.emailMessage.update({
-        where: { id: result.id },
+        where: { id: email.id },
         data: {
-          spamScore: Math.min(Math.max(result.spamScore, 0), 1),
-          ...(isSpam
-            ? {
-                folder: "Spam",
-                tags: { push: "filtered" },
-              }
-            : {}),
+          spamScore: Math.min(Math.max(entry.spamScore, 0), 1),
+          ...(isSpam ? { folder: "Spam", tags: { push: "filtered" } } : {}),
         },
-        select: {
-          accountId: true,
-          uid: true,
-          folder: true,
-        },
+        select: { accountId: true, uid: true, folder: true },
       });
 
       // Sync move to IMAP server (best-effort, fire-and-forget)
       if (isSpam && updated.folder !== "Spam") {
-        movedToSpam.push(result.id);
+        movedToSpam.push(email.id);
         moveMessage(updated.accountId, updated.folder, updated.uid, "Spam").catch((err) => {
           console.error(`Failed to move UID ${updated.uid} to Spam on IMAP:`, err);
         });
       }
-    }
-  }
+    },
+  });
 
   return JSON.stringify({
-    processed: emails.length,
-    analyzed: spamResults.length,
+    processed: batch.length,
+    analyzed: results.length,
+    flagged: applied,
     movedToSpam: movedToSpam.length,
     deleted: deleted.length,
-    results: spamResults,
+    results,
   });
 }

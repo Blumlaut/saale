@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { readAiJson } from "@/lib/pi/ai-json";
 import { dispatchAiJob } from "@/lib/queue/job-handler";
 
 export const metadata = {
@@ -112,15 +113,10 @@ Output JSON only:
       ...(modelId ? { modelId } : {}),
     });
 
+    const parsed = readAiJson(response, "job/chat-title");
     let newTitle: string | null = null;
-    try {
-      const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, response];
-      const parsed = JSON.parse(jsonMatch[1].trim());
-      if (parsed.title && typeof parsed.title === "string") {
-        newTitle = parsed.title.replace(/\0/g, "").slice(0, 50).trim();
-      }
-    } catch {
-      // Parse failed. skip
+    if (typeof parsed.title === "string" && parsed.title) {
+      newTitle = parsed.title.replace(/\0/g, "").slice(0, 50).trim();
     }
 
     if (newTitle && newTitle !== session.title) {
