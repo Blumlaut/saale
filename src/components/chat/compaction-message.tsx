@@ -1,19 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { formatTokens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ChevronDown, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import type { Message } from "./types";
-
-/**
- * Format token count as human-readable string.
- */
-function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
-  return count.toString();
-}
 
 /**
  * Compaction message. shows a collapsible summary of what was condensed.

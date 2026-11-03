@@ -24,6 +24,7 @@ import {
 import { getAllPurposes, type ModelPurpose } from "@/lib/pi/purposes";
 import { DEFAULT_THINKING_LEVEL_SETTING, thinkingLevelOptionsFor } from "@/lib/pi/thinking-levels";
 import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
+import { formatTokens } from "@/lib/format";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Brain, ChevronDown, Eye, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
@@ -57,16 +58,6 @@ function splitModelValue(value: string): { provider: string; model: string } | n
   const [provider, ...modelParts] = value.split("/");
   const model = modelParts.join("/");
   return provider && model ? { provider, model } : null;
-}
-
-function formatContextWindow(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`;
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(tokens % 1_000 === 0 ? 0 : 1)}K`;
-  }
-  return String(tokens);
 }
 
 /**
@@ -174,14 +165,14 @@ export function ModelsSection() {
     update({ disabledModels: updated.length > 0 ? updated : null });
   };
 
-  /** Hide or show a provider's models: the ones on screen when a search is on. */
-  const toggleProviderShown = (provider: string, modelIds: string[], shown: boolean) => {
+  /** Show or hide a provider's models: the ones on screen when a search is on. */
+  const setProviderShown = (provider: string, modelIds: string[], shown: boolean) => {
     if (!settings) return;
     const keys = modelIds.map((modelId) => `${provider}:${modelId}`);
     const current = settings.disabledModels ?? [];
     const updated = shown
-      ? [...new Set([...current.filter((entry) => !keys.includes(entry)), ...keys])]
-      : current.filter((entry) => !keys.includes(entry));
+      ? current.filter((entry) => !keys.includes(entry))
+      : [...new Set([...current, ...keys])];
 
     update({ disabledModels: updated.length > 0 ? updated : null });
   };
@@ -441,7 +432,7 @@ export function ModelsSection() {
                                       : `Show or hide every model of ${group.name}`
                                   }
                                   onCheckedChange={(next) =>
-                                    toggleProviderShown(providerKey, shownIds, next)
+                                    setProviderShown(providerKey, shownIds, next)
                                   }
                                 />
                               </div>
@@ -482,7 +473,7 @@ export function ModelsSection() {
                                       </div>
                                       <span className="text-muted-foreground text-xs">
                                         {model.contextWindow
-                                          ? `${formatContextWindow(model.contextWindow)} context`
+                                          ? `${formatTokens(model.contextWindow)} context`
                                           : model.id}
                                       </span>
                                     </div>
@@ -542,7 +533,9 @@ export function ModelsSection() {
                                       ) : null}
                                       <Switch
                                         checked={!isHidden}
-                                        aria-label={`Show ${model.name}`}
+                                        aria-label={
+                                          isHidden ? `Show ${model.name}` : `Hide ${model.name}`
+                                        }
                                         onCheckedChange={() =>
                                           toggleModelShown(providerKey, model.id)
                                         }
