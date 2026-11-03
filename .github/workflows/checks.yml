@@ -11,9 +11,10 @@ name: checks
 # the image does and looks for every import there.
 #
 # Installing is the expensive part of a cold run, so it is cached twice:
-# `node_modules` itself (keyed on the lockfile) and pnpm's package store. A run
+# `node_modules` itself (keyed on the lockfile) and pnpm's store along with the
+# cache that holds registry metadata and the lockfile verification log. A run
 # whose lockfile is unchanged skips the install entirely and only regenerates the
-# Prisma client, and a diff with nothing to check skips Node altogether.
+# Prisma client, and a diff with nothing to check runs no pnpm at all.
 #
 # `pnpm run check` stays the thing to run before a big change; this is the floor
 # that keeps a one-file fix from merging untested.
@@ -35,11 +36,12 @@ env:
   # prisma.config.mjs. Nothing connects, so any parseable URL will do.
   DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
   NEXT_TELEMETRY_DISABLED: "1"
-  # Nothing here reads an audit report or cares who needs funding, and a
-  # restored store is good enough without revalidating it.
-  npm_config_audit: "false"
-  npm_config_fund: "false"
-  npm_config_prefer_offline: "true"
+  # pnpm 12 reads its own prefix only, so npm_config_* would be ignored here.
+  # Nothing reads an audit report or cares who needs funding, and a restored
+  # store is good enough without revalidating it.
+  PNPM_CONFIG_AUDIT: "false"
+  PNPM_CONFIG_FUND: "false"
+  PNPM_CONFIG_PREFER_OFFLINE: "true"
 
 jobs:
   changed:
@@ -95,46 +97,49 @@ jobs:
 
           echo "any=$any" >> "$GITHUB_OUTPUT"
 
-      # Node is not pinned: the runner takes the newest release. Its major goes
-      # into the node_modules cache key, so a new major installs from scratch
-      # instead of restoring a tree built for the one before it.
-      - name: Resolve the latest Node version
-        id: node
-        if: steps.files.outputs.any == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(curl -fsSL https://nodejs.org/dist/index.json | jq -r '.[0].version')"
-          major="${version#v}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "major=${major%%.*}" >> "$GITHUB_OUTPUT"
-
       # The install itself. Restoring the tree beats re-linking it and running
       # every build script (native builds, Prisma engines), and one cache entry
       # per lockfile is small enough to keep. No `restore-keys`: a tree that does
       # not match the lockfile is worth less than a fresh install, and a
-      # `--frozen-lockfile` install rewrites the directory anyway. Restored
-      # before Node is set up because it needs no toolchain.
+      # `--frozen-lockfile` install rewrites the directory anyway. The runtime
+      # pnpm installs for `devEngines.runtime` lives in there too, which is why
+      # the key needs no Node version of its own.
       - name: Restore node_modules
         id: modules
         if: steps.files.outputs.any == 'true'
         uses: actions/cache@v6
         with:
           path: node_modules
-          key: node-modules-${{ runner.os }}-node${{ steps.node.outputs.major }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: node-modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       # The version comes from `packageManager` in package.json.
       - uses: pnpm/action-setup@v4
         if: steps.files.outputs.any == 'true'
 
-      - uses: actions/setup-node@v7
-        if: steps.files.outputs.any == 'true'
-        with:
-          node-version: ${{ steps.node.outputs.version }}
-          # pnpm's package store, so a miss installs offline. Pointless once the
-          # tree is restored, and restoring it costs more than it saves.
-          cache: ${{ steps.modules.outputs.cache-hit != 'true' && 'pnpm' || '' }}
+      - name: Locate the pnpm caches
+        id: pnpmdirs
+        if: steps.files.outputs.any == 'true' && steps.modules.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "store=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+          echo "cache=$(pnpm cache path)" >> "$GITHUB_OUTPUT"
 
+      # The store holds the packages; the cache holds registry metadata and the
+      # lockfile verification log, which is what the supply-chain policies look
+      # at. Only needed when something has to be installed.
+      - name: Restore the pnpm store and metadata cache
+        if: steps.files.outputs.any == 'true' && steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.pnpmdirs.outputs.store }}
+            ${{ steps.pnpmdirs.outputs.cache }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      # Every step below runs through pnpm, which reads `devEngines.runtime` and
+      # downloads the pinned Node itself, so the job ships no Node of its own.
       - name: Install
         if: steps.files.outputs.any == 'true' && steps.modules.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile

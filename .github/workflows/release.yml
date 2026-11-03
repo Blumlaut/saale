@@ -82,19 +82,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The same newest Node the pull-request checks run on, so a release cannot
-      # disagree with them about the toolchain.
-      - name: Resolve the latest Node version
-        id: node
-        shell: bash
-        run: echo "version=$(curl -fsSL https://nodejs.org/dist/index.json | jq -r '.[0].version')" >> "$GITHUB_OUTPUT"
-
+      # pnpm installs the Node that `devEngines.runtime` pins, so the release
+      # checks run whatever the pull-request checks run.
       - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ steps.node.outputs.version }}
-          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
