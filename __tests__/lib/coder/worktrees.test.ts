@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => {
     recordSetupFailure: vi.fn(),
     clearSetupFailure: vi.fn(),
     updateProject: vi.fn(),
+    sweepOnUse: vi.fn(),
   };
 });
 
@@ -81,6 +82,10 @@ vi.mock("@/lib/coder/git", () => ({
   runGit: (...args: unknown[]) => mocks.runGit(...args),
   runInWorkspace: (...args: unknown[]) => mocks.runInWorkspace(...args),
   shellQuote: (value: string) => `'${value}'`,
+}));
+
+vi.mock("@/lib/coder/sweep", () => ({
+  sweepUserWorktreesOnUse: async (...args: unknown[]) => mocks.sweepOnUse(...args),
 }));
 
 vi.mock("@/lib/coder/provisioning", () => ({
@@ -163,11 +168,31 @@ beforeEach(async () => {
   mocks.recordSetupFailure.mockResolvedValue(undefined);
   mocks.clearSetupFailure.mockResolvedValue(undefined);
   mocks.updateProject.mockResolvedValue({});
+  mocks.sweepOnUse.mockResolvedValue(undefined);
 });
 
 afterEach(async () => {
   vi.unstubAllEnvs();
   await fs.rm(workspaceRoot, { recursive: true, force: true });
+});
+
+describe("ensureWorktree: the user's other checkouts", () => {
+  it("reconciles them while this chat provisions", async () => {
+    await ensureWorktree(USER, "chat-reconcile");
+
+    expect(mocks.sweepOnUse).toHaveBeenCalledWith(USER, "chat-reconcile");
+  });
+
+  it("builds the checkout even when the pass fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.sweepOnUse.mockRejectedValueOnce(new Error("git is not there"));
+
+    const worktree = await ensureWorktree(USER, "chat-reconcile-fail");
+
+    expect(worktree.path).toContain("c-chatreco");
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });
 
 describe("ensureWorktree: refreshing the repo", () => {

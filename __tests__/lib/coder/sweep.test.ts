@@ -31,7 +31,7 @@ vi.mock("@/lib/coder/git", () => ({
   pruneWorktrees: mocks.pruneWorktrees,
 }));
 
-import { sweepWorktrees } from "@/lib/coder/sweep";
+import { sweepUserWorktrees } from "@/lib/coder/sweep";
 import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "u1";
@@ -71,9 +71,9 @@ afterEach(async () => {
   await fs.rm(workspaceDir, { recursive: true, force: true });
 });
 
-describe("sweepWorktrees", () => {
+describe("sweepUserWorktrees", () => {
   it("books a row whose checkout is gone as removed", async () => {
-    const result = await sweepWorktrees();
+    const result = await sweepUserWorktrees(USER);
 
     expect(result.forgotten).toBe(1);
     expect(mocks.updateWorktree).toHaveBeenCalledTimes(1);
@@ -84,7 +84,7 @@ describe("sweepWorktrees", () => {
   });
 
   it("leaves a row whose checkout is there alone", async () => {
-    await sweepWorktrees();
+    await sweepUserWorktrees(USER);
 
     expect(mocks.updateWorktree).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: { sessionId: "chat-live" } }),
@@ -92,7 +92,7 @@ describe("sweepWorktrees", () => {
   });
 
   it("never asks git about a repo whose directory is missing", async () => {
-    await sweepWorktrees();
+    await sweepUserWorktrees(USER);
 
     expect(mocks.listWorktrees).toHaveBeenCalledTimes(1);
     expect(mocks.listWorktrees).toHaveBeenCalledWith(USER, "projects/live");
@@ -101,7 +101,7 @@ describe("sweepWorktrees", () => {
   it("reports a directory no row claims and removes nothing", async () => {
     const orphan = path.join(workspaceDir, IDENTITY, "worktrees/live/c-orphan");
 
-    const result = await sweepWorktrees();
+    const result = await sweepUserWorktrees(USER);
 
     expect(result.orphans).toEqual([orphan]);
     expect((await fs.stat(orphan)).isDirectory()).toBe(true);
@@ -116,8 +116,51 @@ describe("sweepWorktrees", () => {
       },
     ]);
 
-    const result = await sweepWorktrees();
+    const result = await sweepUserWorktrees(USER);
 
     expect(result.orphans).toEqual([]);
+  });
+
+  it("asks for the projects of that user only", async () => {
+    await sweepUserWorktrees(USER);
+
+    expect(mocks.findProjects).toHaveBeenCalledWith({
+      where: { userId: USER },
+      select: { id: true, slug: true, repoPath: true },
+    });
+  });
+
+  it("leaves the row of the chat that is provisioning", async () => {
+    const result = await sweepUserWorktrees(USER, { exceptSessionId: "chat-dead" });
+
+    expect(result.forgotten).toBe(0);
+    expect(mocks.updateWorktree).not.toHaveBeenCalled();
+  });
+});
+
+describe("sweepUserWorktreesOnUse", () => {
+  /** A fresh module, since the pass remembers who it looked at. */
+  async function loadOnUse(): Promise<(userId: string, sessionId: string) => Promise<void>> {
+    vi.resetModules();
+    return (await import("@/lib/coder/sweep")).sweepUserWorktreesOnUse;
+  }
+
+  it("reconciles the user once, then leaves the next chat to it", async () => {
+    const sweepUserWorktreesOnUse = await loadOnUse();
+
+    await sweepUserWorktreesOnUse(USER, "chat-a");
+    await sweepUserWorktreesOnUse(USER, "chat-b");
+
+    expect(mocks.listWorktrees).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps each user's pass to itself", async () => {
+    const sweepUserWorktreesOnUse = await loadOnUse();
+    mocks.findProjects.mockResolvedValue([]);
+
+    await sweepUserWorktreesOnUse(USER, "chat-a");
+    await sweepUserWorktreesOnUse("user-2", "chat-b");
+
+    expect(mocks.findProjects).toHaveBeenCalledTimes(2);
   });
 });

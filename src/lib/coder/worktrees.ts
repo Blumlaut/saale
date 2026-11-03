@@ -42,6 +42,7 @@ import {
 } from "./project-config";
 import { withLockRetry, withRepoLock } from "./lock";
 import { clearProvisioning, setProvisioningStep } from "./provisioning";
+import { sweepUserWorktreesOnUse } from "./sweep";
 import { clearSetupFailure, recordSetupFailure } from "./setup-failure";
 import { coderBranchName, coderChatSlug, isWorktreeBranch } from "./slug";
 import { normalizeChatMode, type ChatMode } from "./checkout";
@@ -253,6 +254,11 @@ export async function ensureWorktree(userId: string, sessionId: string): Promise
     },
   });
   if (!project) throw new Error(`Project not found: ${chat.projectId}`);
+
+  // This chat is starting its container, so the pass wakes nothing.
+  await sweepUserWorktreesOnUse(userId, sessionId).catch((err: unknown) => {
+    console.error(`[coder] could not reconcile the worktrees of ${userId}:`, err);
+  });
 
   try {
     if (normalizeChatMode(project.chatMode) === "repo") {

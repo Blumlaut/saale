@@ -7,12 +7,12 @@
  * chat id no row answers to has no panel: this sweep is the last thing that can
  * reach them.
  *
- * Only users with a coder project are swept. A container is created on a
- * user's first command, and the sweep is not a good reason to make one.
+ * Only containers that are already running are swept: a stopped one holds no
+ * processes, and starting it to look is work nobody asked for.
  */
 
 import { prisma } from "@/lib/db";
-import { canExec } from "@/lib/sandbox/client";
+import { userIdentity } from "@/lib/sandbox/identity";
 import { listRunningChatIds, stopChatProcessesById } from "./processes";
 
 /** What one process sweep did. */
@@ -28,11 +28,15 @@ export interface ProcessSweepResult {
  *
  * Scoped per user: a process is only ever matched against the chats of the
  * account whose container it runs in.
+ *
+ * @param runningIdentities - Workspaces whose container is running now
  */
-export async function sweepOrphanProcesses(): Promise<ProcessSweepResult> {
+export async function sweepOrphanProcesses(
+  runningIdentities: ReadonlySet<string>,
+): Promise<ProcessSweepResult> {
   const stopped: string[] = [];
   let live = 0;
-  if (!canExec()) return { stopped, live };
+  if (runningIdentities.size === 0) return { stopped, live };
 
   const projects = await prisma.coderProject.findMany({
     select: { userId: true },
@@ -40,6 +44,7 @@ export async function sweepOrphanProcesses(): Promise<ProcessSweepResult> {
   });
 
   for (const { userId } of projects) {
+    if (!runningIdentities.has(userIdentity(userId))) continue;
     let running: string[];
     try {
       running = await listRunningChatIds(userId);

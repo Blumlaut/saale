@@ -34,8 +34,8 @@ const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
 /** How often to look for council runs abandoned by a restarted app (2 min) */
 const COUNCIL_SWEEP_INTERVAL_MINUTES = 2;
 
-/** How often to reconcile coder worktree rows with their checkouts (daily) */
-const CODER_SWEEP_INTERVAL_MINUTES = 24 * 60;
+/** Daily: the sweep repairs bookkeeping, and a day of drift costs nothing */
+const CODER_SWEEP_PATTERN = "0 4 * * *";
 
 /** How often to remove finished bot chats past their retention window (hourly) */
 const WATCHER_CHAT_CLEANUP_INTERVAL_MINUTES = 60;
@@ -47,7 +47,7 @@ const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
 
 /** Register the coder worktree sweep, reporting pruned v5 repeatable jobs. */
 async function registerCoderSweep(): Promise<void> {
-  const removed = await scheduleCoderSweep(CODER_SWEEP_INTERVAL_MINUTES);
+  const removed = await scheduleCoderSweep(CODER_SWEEP_PATTERN);
   for (const id of removed) {
     console.log(`[worker] Removed legacy repeatable job ${id}`);
   }

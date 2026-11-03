@@ -11,7 +11,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   findProjects: vi.fn(),
   findChats: vi.fn(),
-  canExec: vi.fn(),
   listRunningChatIds: vi.fn(),
   stopChatProcessesById: vi.fn(),
 }));
@@ -23,23 +22,27 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/sandbox/client", () => ({ canExec: mocks.canExec }));
-
 vi.mock("@/lib/coder/processes", () => ({
   listRunningChatIds: mocks.listRunningChatIds,
   stopChatProcessesById: mocks.stopChatProcessesById,
 }));
 
 import { sweepOrphanProcesses } from "@/lib/coder/process-sweep";
+import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
 const OTHER_USER = "user-2";
+
+/** The workspaces whose container is up: only the first user's, by default. */
+const RUNNING = new Set([userIdentity(USER)]);
+
+/** Both users' workspaces running. */
+const BOTH_RUNNING = new Set([userIdentity(USER), userIdentity(OTHER_USER)]);
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.findProjects.mockResolvedValue([{ userId: USER }]);
   mocks.findChats.mockResolvedValue([]);
-  mocks.canExec.mockReturnValue(true);
   mocks.listRunningChatIds.mockResolvedValue([]);
   mocks.stopChatProcessesById.mockResolvedValue(undefined);
 });
@@ -49,7 +52,7 @@ describe("sweepOrphanProcesses", () => {
     mocks.listRunningChatIds.mockResolvedValue(["chat-live", "chat-deleted"]);
     mocks.findChats.mockResolvedValue([{ id: "chat-live" }]);
 
-    const result = await sweepOrphanProcesses();
+    const result = await sweepOrphanProcesses(RUNNING);
 
     expect(result).toEqual({ stopped: ["chat-deleted"], live: 1 });
     expect(mocks.stopChatProcessesById).toHaveBeenCalledTimes(1);
@@ -59,7 +62,7 @@ describe("sweepOrphanProcesses", () => {
   it("asks only for the chats the user owns", async () => {
     mocks.listRunningChatIds.mockResolvedValue(["chat-live"]);
 
-    await sweepOrphanProcesses();
+    await sweepOrphanProcesses(RUNNING);
 
     expect(mocks.findChats).toHaveBeenCalledWith({
       where: { userId: USER, id: { in: ["chat-live"] } },
@@ -72,7 +75,7 @@ describe("sweepOrphanProcesses", () => {
     mocks.listRunningChatIds.mockResolvedValue(["chat-of-user-1"]);
     mocks.findChats.mockResolvedValue([]);
 
-    const result = await sweepOrphanProcesses();
+    const result = await sweepOrphanProcesses(BOTH_RUNNING);
 
     expect(result.stopped).toEqual(["chat-of-user-1"]);
     expect(mocks.stopChatProcessesById).toHaveBeenCalledWith(OTHER_USER, "chat-of-user-1");
@@ -85,7 +88,7 @@ describe("sweepOrphanProcesses", () => {
       .mockRejectedValueOnce(new Error("no such container"))
       .mockResolvedValueOnce(["chat-deleted"]);
 
-    const result = await sweepOrphanProcesses();
+    const result = await sweepOrphanProcesses(BOTH_RUNNING);
 
     expect(result.stopped).toEqual(["chat-deleted"]);
     expect(mocks.stopChatProcessesById).toHaveBeenCalledWith(OTHER_USER, "chat-deleted");
@@ -100,25 +103,32 @@ describe("sweepOrphanProcesses", () => {
       .mockRejectedValueOnce(new Error("sandbox is down"))
       .mockResolvedValueOnce(undefined);
 
-    const result = await sweepOrphanProcesses();
+    const result = await sweepOrphanProcesses(RUNNING);
 
     expect(result.stopped).toEqual(["chat-b"]);
     expect(error).toHaveBeenCalled();
     error.mockRestore();
   });
 
-  it("does nothing at all without a sandbox to ask", async () => {
-    mocks.canExec.mockReturnValue(false);
-
-    const result = await sweepOrphanProcesses();
+  it("asks nothing when no container is running", async () => {
+    const result = await sweepOrphanProcesses(new Set());
 
     expect(result).toEqual({ stopped: [], live: 0 });
     expect(mocks.findProjects).not.toHaveBeenCalled();
     expect(mocks.listRunningChatIds).not.toHaveBeenCalled();
   });
 
+  it("leaves a user whose container is stopped alone", async () => {
+    mocks.findProjects.mockResolvedValue([{ userId: USER }, { userId: OTHER_USER }]);
+
+    await sweepOrphanProcesses(RUNNING);
+
+    expect(mocks.listRunningChatIds).toHaveBeenCalledTimes(1);
+    expect(mocks.listRunningChatIds).toHaveBeenCalledWith(USER);
+  });
+
   it("skips a user with nothing running", async () => {
-    const result = await sweepOrphanProcesses();
+    const result = await sweepOrphanProcesses(RUNNING);
 
     expect(result).toEqual({ stopped: [], live: 0 });
     expect(mocks.findChats).not.toHaveBeenCalled();

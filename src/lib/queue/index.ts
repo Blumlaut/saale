@@ -332,16 +332,12 @@ export const CODER_SWEEP_SCHEDULER_ID = "coder-worktree-sweep";
 export const CODER_SWEEP_JOB_NAME = "coder_worktree_sweep";
 
 /**
- * Register the sweep that reconciles coder worktree rows with their checkouts,
- * and stops what a deleted chat left running.
+ * Register the sweep that stops what a deleted chat left running.
  *
- * Runs once a day: it only fixes bookkeeping after a crash or a manual delete,
- * and the directories it reports are never removed for us.
- *
- * @param intervalMinutes - How often to reconcile
+ * @param pattern - Cron pattern for the pass
  * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
  */
-export async function scheduleCoderSweep(intervalMinutes: number): Promise<string[]> {
+export async function scheduleCoderSweep(pattern: string): Promise<string[]> {
   const queue = getQueue();
   const removed = await removeLegacyRepeatableJobs(
     queue,
@@ -351,7 +347,7 @@ export async function scheduleCoderSweep(intervalMinutes: number): Promise<strin
 
   await queue.upsertJobScheduler(
     CODER_SWEEP_SCHEDULER_ID,
-    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
+    { pattern, tz: "UTC" },
     { name: CODER_SWEEP_JOB_NAME, data: {} },
   );
 
