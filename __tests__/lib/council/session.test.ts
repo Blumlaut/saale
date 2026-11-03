@@ -218,9 +218,9 @@ describe("createCouncilMemberSession", () => {
   });
 
   it("uses the member's model reference and reports it", async () => {
-    const { modelLabel } = await createCouncilMemberSession(OPTIONS);
+    const { model } = await createCouncilMemberSession(OPTIONS);
     expect(resolveModelForPurpose).toHaveBeenCalledWith("user_123", "chat", "anthropic:claude-x");
-    expect(modelLabel).toBe("anthropic:claude-x");
+    expect(model).toEqual({ provider: "anthropic", name: "claude-x" });
   });
 
   it("lets a member's own tool selection override the council's", async () => {

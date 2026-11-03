@@ -51,6 +51,7 @@ model User {
   coderProjects      CoderProject[]
   prompts            Prompt[]
   pushSubscriptions  PushSubscription[]
+  usageEvents        UsageEvent[]
   createdAt          DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1365,4 +1366,38 @@ model CouncilMemberTurn {
   @@index([runId, createdAt])
   @@index([memberId, createdAt])
   @@map("CouncilMemberTurn")
+}
+
+// ─── Usage ledger ──────────────────────────────────────────────
+
+/// One model call's bill. Append-only: the admin usage page adds these up per
+/// account, and `scope` is what splits our provider keys from a user's own.
+/// `ChatMessage.stats` carries the same numbers for the per-turn card; this row
+/// is the one place that covers chat, councils, jobs, automations and drafts.
+model UsageEvent {
+  id     String @id @default(cuid())
+  userId String
+  /// What ran the call: "chat" | "coder" | "council" | "job" | "automation" | "email_draft".
+  kind     String @db.VarChar(20)
+  provider String @db.VarChar(100)
+  model    String @db.VarChar(200)
+  /// "global" (a workspace key, we pay) | "own" (the user's own key).
+  scope        String @db.VarChar(10)
+  inputTokens  Int    @default(0)
+  outputTokens Int    @default(0)
+  cacheRead    Int    @default(0)
+  cacheWrite   Int    @default(0)
+  /// USD, as the provider billed it or the catalog estimated it.
+  cost Float @default(0)
+  /// True when the provider reported the amount rather than a catalog estimate.
+  billed Boolean @default(false)
+  /// The chat, council run, job run or watcher the call belongs to.
+  refId     String?  @db.VarChar(40)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("UsageEvent")
 }

@@ -17,6 +17,7 @@
  */
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { UsageKind } from "@/lib/usage/record";
 import { createSessionEventTracker, type SessionEventTracker } from "./session-event-tracker";
 
 /** Per-session persistence state (one entry per pooled session). */
@@ -41,11 +42,13 @@ const persistenceMap = new Map<string, PersistenceState>();
  * @param sessionId - ChatSession.id from DB
  * @param userId - Authenticated user ID
  * @param session - The AgentSession to subscribe to
+ * @param usageKind - Which bucket the run's spend lands in
  */
 export function wireSessionPersistence(
   sessionId: string,
   userId: string,
   session: AgentSession,
+  usageKind: UsageKind,
 ): void {
   const existing = persistenceMap.get(sessionId);
   if (existing) {
@@ -67,6 +70,7 @@ export function wireSessionPersistence(
     sessionId,
     userId,
     session,
+    usageKind,
     onDone: () => {
       // A later run may already have wired its own tracker. only clear ours.
       if (persistenceMap.get(sessionId) !== state) return;

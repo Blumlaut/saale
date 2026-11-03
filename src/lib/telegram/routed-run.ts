@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { isSessionBusy } from "@/lib/redis";
 import { get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "@/lib/chat/agent-run";
+import { chatUsageKind } from "@/lib/usage/record";
 import { promptTitleFields } from "@/lib/chat/derive-title";
 import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import type { ImageContent } from "@/lib/pi/message-replay";
@@ -75,6 +76,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       thinkingLevel: true,
       toolConfig: true,
       projectId: true,
+      origin: true,
     },
   });
   if (!chat) {
@@ -176,7 +178,12 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
     const unsubscribe = session.subscribe((event) => renderer.onEvent(event));
 
     try {
-      await beginChatRun({ userId, sessionId: chat.id, session: entry.session });
+      await beginChatRun({
+        userId,
+        sessionId: chat.id,
+        session: entry.session,
+        usageKind: chatUsageKind(chat),
+      });
     } catch (err) {
       unsubscribe();
       throw err;

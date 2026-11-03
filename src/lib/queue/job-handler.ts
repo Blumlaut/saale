@@ -12,6 +12,7 @@ import {
   queueTaskSchedulerId,
 } from "@/lib/queue";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { recordUsage, usageFromSession } from "@/lib/usage/record";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { handlerMap } from "./jobs/registry";
@@ -59,6 +60,22 @@ export async function dispatchAiJob(
     thinkingLevel: "off",
   });
 
+  /** Bill the run once it settled: the session ran one prompt, so its totals are the call's. */
+  const recordRunUsage = () => {
+    try {
+      void recordUsage(
+        usageFromSession(session.getSessionStats(), {
+          userId,
+          kind: "job",
+          provider: modelInfo?.provider ?? "",
+          model: modelInfo?.name ?? "",
+        }),
+      );
+    } catch (err) {
+      console.error(`[queue/ai-job] Failed to read the run's usage for ${userId}:`, err);
+    }
+  };
+
   return new Promise((resolve, reject) => {
     // Idle timeout. fires only if the session goes completely silent
     // (hung model, dead connection). Every agent event resets the window.
@@ -102,6 +119,7 @@ export async function dispatchAiJob(
       if (event.type === "agent_settled") {
         idleTimeout.clear();
         unsubscribe();
+        recordRunUsage();
         if (providerError && !text) {
           reject(new Error(providerError));
         } else {

@@ -57,6 +57,7 @@ import { buildCouncilTurnPrompt } from "./prompt";
 import type { RoomMessageView } from "./room";
 import type { createCouncilMemberSession } from "./session";
 import { type CouncilMemberConfig, type CouncilMemberSession } from "./session";
+import { recordUsage } from "@/lib/usage/record";
 import type { CouncilToolContext, StopVoteKind } from "./tools";
 
 /** Why a run ended. Stored on `CouncilRun.stopReason`. */
@@ -685,6 +686,17 @@ export async function runCouncilLoop(
     totals.cost += delta.cost;
     totals.turnCount += 1;
     state.turns += 1;
+
+    void recordUsage({
+      userId: plan.userId,
+      kind: "council",
+      provider: session.model.provider,
+      model: session.model.name,
+      inputTokens: delta.inputTokens,
+      outputTokens: delta.outputTokens,
+      cost: delta.cost,
+      refId: plan.runId,
+    });
 
     await deps.store.finishTurn(turnId, {
       status: failure ? "error" : preempted && !stop ? "preempted" : "completed",

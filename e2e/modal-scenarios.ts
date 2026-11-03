@@ -1570,8 +1570,8 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "admin · user dialogs",
-    path: "/admin/users",
-    sources: ["src/app/admin/users/page.tsx"],
+    path: "/admin/users/accounts",
+    sources: ["src/components/admin/users-area.tsx"],
     skip: "not automated yet  the admin overlays need their own `open` steps",
   },
   {
@@ -1646,7 +1646,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   },
   {
     name: "workspaces · delete orphaned directory",
-    path: "/admin/workspaces",
+    path: "/admin/users/workspaces",
     sources: ["src/components/admin/workspaces-area.tsx"],
     // CI has no mounted volume, so the row this dialog hangs off is stubbed.
     mock: async (page) => {

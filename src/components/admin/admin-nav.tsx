@@ -4,19 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
-import { hasGrant } from "@/lib/permissions/roles";
 import type { AdminAction } from "@/lib/permissions/statements";
+import { Bot, Users, Settings, KeyRound, ArrowLeft, Puzzle, type LucideIcon } from "lucide-react";
 import {
-  Bot,
-  Users,
-  Settings,
-  KeyRound,
-  ArrowLeft,
-  Puzzle,
-  HardDrive,
-  type LucideIcon,
-} from "lucide-react";
-import { adminSections, isAdminItemPath } from "@/lib/navigation/admin-sections";
+  adminSections,
+  canOpenAdminItem,
+  isAdminItemPath,
+  matchAdminSection,
+  visibleAdminSections,
+} from "@/lib/navigation/admin-sections";
 import {
   SidebarBrand,
   SidebarFooter,
@@ -41,7 +37,6 @@ export interface AdminNavItem {
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
   { href: "/admin/users", label: "Users", icon: Users, action: "users" },
-  { href: "/admin/workspaces", label: "Workspaces", icon: HardDrive, action: "workspaces" },
   { href: "/admin/roles", label: "Roles", icon: KeyRound, action: "roles" },
   { href: "/admin/plugins", label: "Plugins", icon: Puzzle, action: "plugins" },
   { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },
@@ -55,7 +50,7 @@ export function AdminNav({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
   const access = useSessionPermissions();
   const items = access
-    ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
+    ? ADMIN_NAV_ITEMS.filter((item) => canOpenAdminItem(item.href, item.action, access.permissions))
     : [];
 
   // One item's sections are open at a time: the area you are in opens them, and
@@ -78,11 +73,9 @@ export function AdminNav({ workspaceName }: { workspaceName: string }) {
 
       <div className="space-y-0.5">
         {items.map((item) => {
-          const sections = adminSections(item.href);
+          const sections = access ? visibleAdminSections(item.href, access.permissions) : [];
           const expanded = expandedHref === item.href;
-          const activeId = sections.find(
-            (section) => pathname === section.href || pathname.startsWith(`${section.href}/`),
-          )?.id;
+          const activeId = matchAdminSection(sections, pathname)?.id;
 
           return (
             <div key={item.href}>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PageAction, PageActions } from "@/components/layout/page";
+import { Hint } from "@/components/shared/hint";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   PluginInstallDialog,
   PluginUninstallDialog,
@@ -35,7 +35,6 @@ import {
   CloudDownload,
   FolderOpen,
   GitBranch,
-  Info,
   Loader2,
   MoreHorizontal,
   PackagePlus,
@@ -72,21 +71,6 @@ function formatDate(iso: string | null): string | null {
 }
 
 /** Panel toolbar button: icon-only on a phone, icon and label from `md` up. */
-/** A one-line explanation behind an info icon. */
-function Hint({ text }: { text: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        className="text-muted-foreground hover:text-foreground inline-flex"
-        aria-label={text}
-      >
-        <Info className="h-3.5 w-3.5" />
-      </TooltipTrigger>
-      <TooltipContent>{text}</TooltipContent>
-    </Tooltip>
-  );
-}
-
 export type PluginsSection = "installed" | "configuration" | "logs";
 
 /** One page of the Plugins area. The section is the route, not a tab. */

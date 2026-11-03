@@ -27,6 +27,7 @@ import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import { publishSessionEvent } from "@/lib/pi/session-events";
 import { waitForPersistenceTeardown } from "@/lib/pi/session-persistence";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "./agent-run";
+import { chatUsageKind } from "@/lib/usage/record";
 
 export interface RespondInChatOptions {
   userId: string;
@@ -108,7 +109,12 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
     });
     entry.lastPromptedMessageId = userMessage.id;
 
-    await beginChatRun({ userId, sessionId: chatSession.id, session: entry.session });
+    await beginChatRun({
+      userId,
+      sessionId: chatSession.id,
+      session: entry.session,
+      usageKind: chatUsageKind(chatSession),
+    });
 
     // Let any client that has this chat open show the posted message right
     // away; the assistant's reply streams through the same bus as it arrives.

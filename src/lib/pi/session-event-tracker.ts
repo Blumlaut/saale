@@ -65,11 +65,14 @@ import { buildFinalAssistantMessage } from "./stream-logic";
 import { nextTextStep } from "./streamed-text";
 import { saveAssistantMessage } from "./stream-helpers";
 import { buildTurnStats, type TurnStats } from "./turn-stats";
+import { recordUsage, usageFromSession, type UsageKind } from "@/lib/usage/record";
 
 export interface SessionEventTrackerOptions {
   sessionId: string;
   userId: string;
   session: AgentSession;
+  /** What kind of work the session does, for the usage ledger. A plain chat by default. */
+  usageKind?: UsageKind;
   /** Called once after the run settles and the `done` event has been published. */
   onDone?: () => void;
 }
@@ -89,7 +92,7 @@ interface ToolCallResult {
 export function createSessionEventTracker(
   options: SessionEventTrackerOptions,
 ): SessionEventTracker {
-  const { sessionId, userId, session } = options;
+  const { sessionId, userId, session, usageKind = "chat" } = options;
 
   /**
    * Cost and context breakdown for one turn, read off the assistant message
@@ -117,6 +120,21 @@ export function createSessionEventTracker(
   const log = (tag: string, ...args: unknown[]) =>
     // eslint-disable-next-line no-console
     console.log(`[tracker:${sessionId}] ${tag}`, ...args);
+
+  /** Bill a turn that was saved as a new message to the usage ledger. */
+  const recordTurnUsage = (stats: TurnStats | undefined) => {
+    if (!stats) return;
+    void recordUsage({
+      ...usageFromSession(stats, {
+        userId,
+        kind: usageKind,
+        provider: stats.model.provider,
+        model: stats.model.name,
+        refId: sessionId,
+      }),
+      billed: stats.costFromProvider,
+    });
+  };
 
   // ── Turn state ───────────────────────────────────────────────────────────
   let turnIndex = 0;
@@ -643,6 +661,9 @@ export function createSessionEventTracker(
         // so whether this attempt is a reported failure is only known at
         // agent_end (see the willRetry branch).
         const turnStats = turnStatsFor(event.message);
+        // The row this turn becomes is new, so it is billed here and nowhere
+        // else: agent_end updates this same row when the run had one turn.
+        recordTurnUsage(turnStats);
         const turnSavePromise = saveAssistantMessage({
           sessionId,
           content: currentTurnText,
@@ -831,6 +852,10 @@ export function createSessionEventTracker(
               basePromise
                 .then((turnResult) => {
                   const existingMessageId = turnResult?.id ?? rootMessageId ?? undefined;
+                  const endStats = turnStatsFor(lastAssistant);
+                  // A run without a turn_end has no row of its own yet; one that
+                  // had a turn_end updated that row, which is already billed.
+                  if (!existingMessageId) recordTurnUsage(endStats);
                   return saveAssistantMessage({
                     sessionId,
                     content: text,
@@ -839,7 +864,7 @@ export function createSessionEventTracker(
                     messageId: existingMessageId,
                     errorMessage,
                     createdAt: currentTurnStartedAt ?? undefined,
-                    stats: turnStatsFor(lastAssistant),
+                    stats: endStats,
                   }).then((msg) => ({ msg, existingMessageId }));
                 })
                 .then(({ msg, existingMessageId }) => {

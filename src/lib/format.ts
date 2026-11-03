@@ -57,6 +57,11 @@ export function formatCost(value: number): string {
   return `$${value.toFixed(value < 1 ? 4 : 2)}`;
 }
 
+/** Dollar amount at two decimals, for a share read beside its total. */
+export function formatCostRounded(value: number): string {
+  return `$${value.toFixed(2)}`;
+}
+
 /** Spell a count with its unit. `plural(1, "email", "emails")` → `"1 email"`. */
 export function plural(count: number, one: string, many: string): string {
   return `${count} ${count === 1 ? one : many}`;

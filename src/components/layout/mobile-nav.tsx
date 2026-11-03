@@ -9,6 +9,7 @@ import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { ADMIN_NAV_ITEMS } from "@/components/admin/admin-nav";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
 import { hasGrant } from "@/lib/permissions/roles";
+import { canOpenAdminItem } from "@/lib/navigation/admin-sections";
 
 interface MobileNavItem {
   href: string;
@@ -37,7 +38,7 @@ export function MobileNav() {
   const inAdminPanel = pathname.startsWith("/admin");
 
   const adminItems = access
-    ? ADMIN_NAV_ITEMS.filter((item) => hasGrant(access.permissions, "admin", item.action))
+    ? ADMIN_NAV_ITEMS.filter((item) => canOpenAdminItem(item.href, item.action, access.permissions))
     : [];
 
   const items: MobileNavItem[] = inAdminPanel

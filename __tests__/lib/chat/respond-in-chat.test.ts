@@ -133,6 +133,7 @@ describe("respondInChat", () => {
       userId: USER_ID,
       sessionId: TARGET,
       session: entry.session,
+      usageKind: "chat",
     });
     // The posted message must show up in a chat that is open elsewhere.
     expect(mockPublish).toHaveBeenCalledWith(TARGET, "messages_changed", {});

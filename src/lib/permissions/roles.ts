@@ -52,6 +52,10 @@ export const ADMIN_SECTION_DEFINITIONS: Record<string, { label: string; descript
     label: "Workspaces",
     description: "Disk usage and what each workspace is running.",
   },
+  usage: {
+    label: "Usage",
+    description: "What each account's model calls cost, and who paid.",
+  },
 };
 
 export const USER_ACTION_DEFINITIONS: Record<string, { label: string; description: string }> = {

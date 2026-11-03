@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { SectionPicker, type SectionPickerItem } from "@/components/layout/section-picker";
+import { matchAdminSection } from "@/lib/navigation/admin-sections";
 
 /**
  * Frame for an area whose sections sit in the desktop sidebar: on a phone the
@@ -20,10 +21,7 @@ export function SectionedAreaShell({
   const fallback = sections[0];
   if (!fallback) throw new Error(`${areaLabel} has no sections`);
 
-  const currentSection =
-    sections.find(
-      (section) => pathname === section.href || pathname.startsWith(`${section.href}/`),
-    ) ?? fallback;
+  const currentSection = matchAdminSection(sections, pathname) ?? fallback;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">

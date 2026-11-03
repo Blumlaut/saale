@@ -255,11 +255,11 @@ describe("beginChatRun", () => {
 
   it("registers the generation and wires persistence", async () => {
     const session = { id: "agent-session" } as unknown as AgentSession;
-    await beginChatRun({ userId: USER_ID, sessionId: SESSION_ID, session });
+    await beginChatRun({ userId: USER_ID, sessionId: SESSION_ID, session, usageKind: "chat" });
 
     expect(mockClearToolState).toHaveBeenCalledWith(SESSION_ID, USER_ID);
     expect(mockRegister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
-    expect(mockWirePersistence).toHaveBeenCalledWith(SESSION_ID, USER_ID, session);
+    expect(mockWirePersistence).toHaveBeenCalledWith(SESSION_ID, USER_ID, session, "chat");
     // Persistence must be wired only after the previous run tore down, or the
     // run would go unpersisted and double-publish events.
     expect(mockWaitTeardown.mock.invocationCallOrder[0]!).toBeLessThan(
@@ -274,6 +274,7 @@ describe("beginChatRun", () => {
       userId: USER_ID,
       sessionId: SESSION_ID,
       session: {} as unknown as AgentSession,
+      usageKind: "chat",
     });
 
     expect(mockWirePersistence).toHaveBeenCalled();

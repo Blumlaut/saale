@@ -9,6 +9,7 @@ import {
   unregisterActiveSession,
 } from "@/lib/redis";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { chatUsageKind } from "@/lib/usage/record";
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { get as getPoolEntry, getDispatcher, getPoolKey } from "@/lib/pi/agent-pool";
@@ -354,7 +355,12 @@ export async function GET(
 
     // Publish the generation, clear stale buffered events, and wire DB
     // persistence. shared with the `chat_respond` tool's server-side runs.
-    await beginChatRun({ userId: authResult.userId, sessionId, session: entry.session });
+    await beginChatRun({
+      userId: authResult.userId,
+      sessionId,
+      session: entry.session,
+      usageKind: chatUsageKind(chatSession),
+    });
 
     const images = await loadPromptImages(target.attachments);
     log("prompt", `claimed prompt for message ${target.id}`);

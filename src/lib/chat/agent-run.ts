@@ -35,6 +35,7 @@ import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/ses
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import { notifyChatFinished } from "@/lib/notifications/chat-finished";
+import type { UsageKind } from "@/lib/usage/record";
 
 /** A pooled chat agent, as the agent pool hands it out. */
 export type PooledChatSession = Awaited<ReturnType<typeof createAndPool>>;
@@ -117,8 +118,9 @@ export async function beginChatRun(options: {
   userId: string;
   sessionId: string;
   session: AgentSession;
+  usageKind: UsageKind;
 }): Promise<void> {
-  const { userId, sessionId, session } = options;
+  const { userId, sessionId, session, usageKind } = options;
 
   // This run starts with no tool in flight. A previous run that died left its
   // tool bookkeeping in the DB. clearing it keeps a refresh from showing a
@@ -134,7 +136,7 @@ export async function beginChatRun(options: {
   // unsubscribing. Wait for it: wiring a fresh tracker mid-teardown would
   // leave this run unpersisted (and double-publish its events).
   await waitForPersistenceTeardown(sessionId);
-  wireSessionPersistence(sessionId, userId, session);
+  wireSessionPersistence(sessionId, userId, session, usageKind);
 }
 
 /**

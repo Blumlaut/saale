@@ -89,8 +89,8 @@ export interface CouncilMemberSessionOptions {
 export interface CouncilMemberSession {
   session: AgentSession;
   sandbox: CouncilSandbox;
-  /** The model the member will answer with, for the run log. */
-  modelLabel: string;
+  /** The model the member answers with, so the run can bill what it spent. */
+  model: { provider: string; name: string };
 }
 
 /**
@@ -187,7 +187,7 @@ export async function createCouncilMemberSession(
   // Pi only emits `session_start` here, which is what activates codemode.
   await startSessionExtensions(session);
 
-  return { session, sandbox, modelLabel: `${resolved.provider}:${resolved.name}` };
+  return { session, sandbox, model: { provider: resolved.provider, name: resolved.name } };
 }
 
 export type { CouncilSandbox };

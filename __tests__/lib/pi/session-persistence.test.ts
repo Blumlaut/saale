@@ -50,7 +50,7 @@ beforeEach(() => {
 
 describe("wireSessionPersistence", () => {
   it("wires a tracker for the session", () => {
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
 
     expect(mockCreateTracker).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: SESSION_ID, userId: "user-1" }),
@@ -58,8 +58,8 @@ describe("wireSessionPersistence", () => {
   });
 
   it("replaces (and disposes) the previous run's tracker", () => {
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
 
     expect(trackers).toHaveLength(2);
     expect(trackers[0]!.dispose).toHaveBeenCalledTimes(1);
@@ -67,15 +67,15 @@ describe("wireSessionPersistence", () => {
   });
 
   it("ignores `done` from a tracker that was already replaced", () => {
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
     const stale = trackers[0]!;
 
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
     stale.onDone?.(); // the old run finishes its teardown late
 
     expect(mockCreateTracker).toHaveBeenCalledTimes(2);
     // The new registration survives, so the next run still wires a tracker.
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
     expect(mockCreateTracker).toHaveBeenCalledTimes(3);
     expect(trackers[1]!.dispose).toHaveBeenCalledTimes(1);
   });
@@ -87,7 +87,7 @@ describe("waitForPersistenceTeardown", () => {
   });
 
   it("waits until the run published done and unsubscribed", async () => {
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
     let released = false;
     const waiting = waitForPersistenceTeardown(SESSION_ID).then(() => {
       released = true;
@@ -102,7 +102,7 @@ describe("waitForPersistenceTeardown", () => {
   });
 
   it("does not hang when the tracker is disposed instead of settling", async () => {
-    wireSessionPersistence(SESSION_ID, "user-1", fakeSession);
+    wireSessionPersistence(SESSION_ID, "user-1", fakeSession, "chat");
     const waiting = waitForPersistenceTeardown(SESSION_ID);
 
     unwireSessionPersistence(SESSION_ID);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   runCouncilLoop,
   type CouncilRunPlan,
@@ -8,6 +8,10 @@ import {
 import { createCouncilTools, type StopVoteKind } from "@/lib/council/tools";
 import type { RoomMessageView } from "@/lib/council/room";
 import type { CouncilMemberPlan } from "@/lib/council/orchestrator";
+
+// The loop bills every member turn; a unit test has no database to write to.
+const usage = vi.hoisted(() => ({ recordUsage: vi.fn(async () => {}) }));
+vi.mock("@/lib/usage/record", () => ({ recordUsage: usage.recordUsage }));
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -240,7 +244,11 @@ function harness(options: {
         });
       };
 
-      return { session, sandbox: { home: "/home/fake" }, modelLabel: "test:model" };
+      return {
+        session,
+        sandbox: { home: "/home/fake" },
+        model: { provider: "test", name: "model" },
+      };
     }) as any,
     publish: async (event: string, data: unknown) => {
       events.push({ event, data });
@@ -352,6 +360,27 @@ describe("runCouncilLoop  parallel", () => {
     const outcome = await h.run();
     expect(outcome.stopReason).toBe("no-pending-work");
     expect(h.sessions.has("b")).toBe(false);
+  });
+
+  it("bills every member turn to the council run", async () => {
+    usage.recordUsage.mockClear();
+    const h = harness({
+      members: [MEMBER("a", "acorn")],
+      openingMemberIds: null,
+      behaviours: { a: async () => {} },
+    });
+
+    await h.run();
+
+    expect(usage.recordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        kind: "council",
+        provider: "test",
+        model: "model",
+        refId: "run-1",
+      }),
+    );
   });
 
   it("ends a run with nothing left to do", async () => {

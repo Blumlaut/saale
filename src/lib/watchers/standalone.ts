@@ -24,6 +24,7 @@ import {
 } from "@/lib/pi/processing-state";
 import { thinkingLevelOption } from "@/lib/pi/thinking-levels";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
+import { recordUsage, usageFromSession } from "@/lib/usage/record";
 
 /** How long a run may sit silent before it is treated as stalled. */
 const WAKE_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -139,6 +140,15 @@ export async function runStandaloneWake(options: {
       stop();
 
       const stats = session.getSessionStats();
+      void recordUsage(
+        usageFromSession(stats, {
+          userId,
+          kind: "automation",
+          provider: modelInfo.provider,
+          model: modelInfo.name,
+          refId: watcher.id,
+        }),
+      );
       resolve({
         answer: answers.filter((part) => part.trim()).join("\n\n"),
         toolNames: [...toolNames],

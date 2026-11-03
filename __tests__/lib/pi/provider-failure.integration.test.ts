@@ -40,6 +40,12 @@ const store = vi.hoisted(() => {
   };
 });
 
+// The tracker bills every saved turn; this suite's database is the fake below.
+vi.mock("@/lib/usage/record", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/usage/record")>()),
+  recordUsage: async () => {},
+}));
+
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatMessage: {

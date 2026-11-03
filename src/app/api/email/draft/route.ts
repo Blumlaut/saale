@@ -7,6 +7,7 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { createSystemPromptLoader } from "@/lib/pi/processing-state";
 import { createSaaleAgentSession } from "@/lib/pi/agent-session";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
+import { recordUsage, usageFromSession } from "@/lib/usage/record";
 import { createAgentIdleTimeout } from "@/lib/pi/agent-idle-timeout";
 import { extractProviderError, type ProviderErrorSource } from "@/lib/pi/provider-error";
 import { isClosedControllerError } from "@/lib/pi/sse-controller";
@@ -173,6 +174,26 @@ Rules:
       const IDLE_TIMEOUT_MS = 10 * 60_000;
       let finished = false;
 
+      /** Bill the draft once, whichever way it ends. */
+      let billed = false;
+      const billDraft = () => {
+        if (billed) return;
+        billed = true;
+        try {
+          void recordUsage(
+            usageFromSession(piSession.getSessionStats(), {
+              userId: authResult.user.id,
+              kind: "email_draft",
+              provider: modelInfo?.provider ?? "",
+              model: modelInfo?.name ?? "",
+              refId: messageId,
+            }),
+          );
+        } catch (err) {
+          console.error(`[email:${messageId}] Failed to read the draft's usage:`, err);
+        }
+      };
+
       /**
        * End the response exactly once, whatever the outcome. The listener, the
        * idle timer and the session must all go: a disposed session aborts the
@@ -183,6 +204,7 @@ Rules:
         finished = true;
         idleTimeout.clear();
         unsubscribe();
+        billDraft();
         piSession.dispose();
         // Failed enqueue means the client is gone: nothing to close.
         if (!sendEvent(controller, event, data)) return;
@@ -275,6 +297,7 @@ Rules:
         piSession.abort().catch((err) => {
           console.error(`[email:${messageId}] Failed to abort draft on disconnect:`, err);
         });
+        billDraft();
         piSession.dispose();
         try {
           controller.close();

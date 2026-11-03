@@ -47,6 +47,13 @@ vi.mock("@/lib/chat/compaction", () => ({
   saveCompactionMessage: (...args: unknown[]) => mockSaveCompactionMessage(...args),
 }));
 
+const mockRecordUsage = vi.fn();
+vi.mock("@/lib/usage/record", async (importOriginal) => ({
+  // The row shaping stays real; only the write is stubbed.
+  ...(await importOriginal<typeof import("@/lib/usage/record")>()),
+  recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+}));
+
 import { createSessionEventTracker } from "@/lib/pi/session-event-tracker";
 import { requestSessionAbort, wasSessionAbortRequested } from "@/lib/pi/abort-request";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -118,6 +125,7 @@ function setup() {
   mockChatSessionUpdate.mockResolvedValue({});
   mockChatMessageDeleteMany.mockResolvedValue({ count: 1 });
   mockSaveCompactionMessage.mockResolvedValue(undefined);
+  mockRecordUsage.mockResolvedValue(undefined);
   return { published };
 }
 
@@ -1429,6 +1437,46 @@ describe("createSessionEventTracker", () => {
     expect(finalSave.errorMessage).toBe('400: {"message":"Invalid max_tokens value"}');
     // The mark is consumed by the run it was meant for.
     expect(wasSessionAbortRequested("u1", "s1")).toBe(false);
+  });
+
+  it("bills a turn once, to the chat that ran it", async () => {
+    setup();
+    mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session, usageKind: "coder" });
+
+    const message = {
+      role: "assistant",
+      provider: "anthropic",
+      model: "claude-x",
+      content: [{ type: "text", text: "Hello" }],
+      usage: { input: 1200, output: 300, cost: { total: 0.02, totalFromProvider: true } },
+    };
+    session.emit({ type: "agent_start" });
+    session.emit({ type: "message_update", message });
+    session.emit({ type: "turn_end", message, toolResults: [] });
+    // agent_end updates the row turn_end wrote, so it bills nothing more.
+    session.emit({ type: "agent_end", messages: [message] });
+    session.emit({ type: "agent_settled" });
+
+    await flush();
+    await flush();
+
+    expect(mockRecordUsage).toHaveBeenCalledTimes(1);
+    expect(mockRecordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u1",
+        kind: "coder",
+        provider: "anthropic",
+        model: "claude-x",
+        inputTokens: 1200,
+        outputTokens: 300,
+        cost: 0.02,
+        billed: true,
+        refId: "s1",
+      }),
+    );
   });
 
   it("publishes the end of a retry sequence", async () => {

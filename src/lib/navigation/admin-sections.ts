@@ -6,15 +6,43 @@
  * the item a page belongs to expands into them.
  */
 
+import { hasGrant, type RolePermissions } from "@/lib/permissions/roles";
+import type { AdminAction } from "@/lib/permissions/statements";
+
 export interface AdminSection {
   id: string;
   href: string;
   label: string;
   /** One line explaining the page, for the phone section picker. */
   description: string;
+  /** The admin slice this section needs, when it has one of its own. */
+  action?: AdminAction;
 }
 
 export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> = {
+  "/admin/users": [
+    {
+      id: "accounts",
+      href: "/admin/users/accounts",
+      label: "Accounts",
+      description: "Who can sign in, and what each account may do",
+      action: "users",
+    },
+    {
+      id: "workspaces",
+      href: "/admin/users/workspaces",
+      label: "Workspaces",
+      description: "Disk usage and what each workspace is running",
+      action: "workspaces",
+    },
+    {
+      id: "usage",
+      href: "/admin/users/usage",
+      label: "Usage",
+      description: "What each account's model calls cost, and who paid",
+      action: "usage",
+    },
+  ],
   "/admin/models": [
     {
       id: "providers",
@@ -94,7 +122,49 @@ export function adminSections(itemHref: string): readonly AdminSection[] {
   return ADMIN_SECTIONS[itemHref] ?? [];
 }
 
+/** The sections the account may open. A section without an action is always shown. */
+export function visibleAdminSections(
+  itemHref: string,
+  permissions: RolePermissions,
+): readonly AdminSection[] {
+  return adminSections(itemHref).filter(
+    (section) => !section.action || hasGrant(permissions, "admin", section.action),
+  );
+}
+
+/**
+ * Whether the account may open an admin item: its own slice, or one of the
+ * sections that stands on a slice of its own.
+ */
+export function canOpenAdminItem(
+  itemHref: string,
+  action: AdminAction,
+  permissions: RolePermissions,
+): boolean {
+  return (
+    hasGrant(permissions, "admin", action) || visibleAdminSections(itemHref, permissions).length > 0
+  );
+}
+
 /** Whether a pathname belongs to an admin item's route (or one of its sections). */
 export function isAdminItemPath(itemHref: string, pathname: string): boolean {
   return pathname === itemHref || pathname.startsWith(`${itemHref}/`);
+}
+
+/**
+ * The section a pathname is in, or null when it is in none of them.
+ *
+ * The longest match wins: `/admin/users` is a prefix of every section under it,
+ * and it must not answer for `/admin/users/workspaces`.
+ */
+export function matchAdminSection<T extends { href: string }>(
+  sections: readonly T[],
+  pathname: string,
+): T | null {
+  let best: T | null = null;
+  for (const section of sections) {
+    if (!isAdminItemPath(section.href, pathname)) continue;
+    if (!best || section.href.length > best.href.length) best = section;
+  }
+  return best;
 }

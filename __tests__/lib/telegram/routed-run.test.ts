@@ -145,7 +145,12 @@ describe("runRoutedTelegramMessage", () => {
     expect(mockChatMessage.create).toHaveBeenCalledWith({
       data: { sessionId, role: "user", content: "what did that alert mean?" },
     });
-    expect(mockBeginChatRun).toHaveBeenCalledWith({ userId, sessionId, session: pooledSession });
+    expect(mockBeginChatRun).toHaveBeenCalledWith({
+      userId,
+      sessionId,
+      session: pooledSession,
+      usageKind: "chat",
+    });
     expect(mockDispatchChatRun).toHaveBeenCalledWith(
       expect.objectContaining({ userId, sessionId, entry, content: "what did that alert mean?" }),
     );
