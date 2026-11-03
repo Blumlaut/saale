@@ -8,8 +8,8 @@ import { middleware } from "@/middleware";
 /**
  * A share link opens without an account, so anyone holding it can read the
  * conversation. Search engines must not add it to their index: `robots.txt`
- * keeps them out of the app while letting them fetch a share link, and the
- * page carries its own noindex for the crawler that does.
+ * keeps them out of the whole app, share links included, and the page carries
+ * its own noindex for a crawler that reaches one anyway.
  */
 
 async function headersFor(path: string) {
@@ -36,11 +36,11 @@ describe("share links and crawlers", () => {
     expect((await headersFor("/dashboard/chat")).get("X-Robots-Tag")).toBeNull();
   });
 
-  it("blocks the app and still lets a crawler fetch a share link", () => {
+  it("blocks crawlers from the whole app, share links included", () => {
     const { rules } = robots();
     const rule = Array.isArray(rules) ? rules[0] : rules;
 
     expect(rule?.disallow).toBe("/");
-    expect(rule?.allow).toBe("/share/");
+    expect(rule?.allow).toBeUndefined();
   });
 });
