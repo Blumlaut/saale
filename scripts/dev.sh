@@ -244,7 +244,7 @@ write_env_block() {
   if [ ! -f .env ]; then
     say "Creating .env"
     if [ -f .env.example ]; then
-      grep -Ev '^(PORT|BETTER_AUTH_URL|DATABASE_URL|REDIS_URL)=' .env.example >.env
+      grep -Ev '^(PORT|BETTER_AUTH_URL|WORKER_APP_URL|DATABASE_URL|REDIS_URL)=' .env.example >.env
     else
       : >.env
     fi
@@ -260,6 +260,7 @@ write_env_block() {
     printf '# Rewritten by scripts/dev.sh on every run.\n'
     printf 'PORT=%s\n' "$PORT"
     printf 'BETTER_AUTH_URL="http://localhost:%s"\n' "$PORT"
+    printf 'WORKER_APP_URL="http://localhost:%s"\n' "$PORT"
     printf 'DATABASE_URL="%s"\n' "$DATABASE_URL"
     printf 'REDIS_URL="%s"\n' "$REDIS_URL"
     printf '%s\n' "$MARKER_END"
