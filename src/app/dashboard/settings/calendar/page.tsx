@@ -1,12 +1,10 @@
-import { Page, PageScroll } from "@/components/layout/page";
+import { SettingsPage } from "../components/settings-page";
 import { CalendarSection } from "../sections/calendar-section";
 
 export default function SettingsCalendarPage() {
   return (
-    <Page>
-      <PageScroll className="space-y-6">
-        <CalendarSection />
-      </PageScroll>
-    </Page>
+    <SettingsPage>
+      <CalendarSection />
+    </SettingsPage>
   );
 }

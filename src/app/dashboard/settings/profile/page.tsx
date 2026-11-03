@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { Page, PageScroll } from "@/components/layout/page";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { SettingsPage } from "../components/settings-page";
 import { ProfileSection } from "../sections/profile-section";
 
 // The account details come from the row, not the session: a session carries the
@@ -18,18 +18,16 @@ export default async function SettingsProfilePage() {
   if (!user) redirect("/auth/login");
 
   return (
-    <Page>
-      <PageScroll className="space-y-6">
-        <ProfileSection
-          user={{
-            name: user.name,
-            username: user.username,
-            email: user.email,
-            image: user.image,
-            createdAt: user.createdAt.toISOString(),
-          }}
-        />
-      </PageScroll>
-    </Page>
+    <SettingsPage>
+      <ProfileSection
+        user={{
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          image: user.image,
+          createdAt: user.createdAt.toISOString(),
+        }}
+      />
+    </SettingsPage>
   );
 }

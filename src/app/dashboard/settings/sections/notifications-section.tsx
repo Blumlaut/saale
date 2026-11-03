@@ -22,6 +22,7 @@ import {
   type NotificationPreferences,
 } from "@/lib/notifications/preferences";
 import { SettingsError } from "../components/settings-error";
+import { AutosavedPage } from "../components/save-state";
 import { useUserSettings } from "../components/user-settings-provider";
 
 interface PushConfig {
@@ -140,7 +141,7 @@ export function NotificationsSection() {
   };
 
   return (
-    <div className="space-y-6">
+    <AutosavedPage state={saveState}>
       <GlassPanel>
         <GlassPanelContent className="space-y-6">
           <div>
@@ -233,6 +234,6 @@ export function NotificationsSection() {
           </div>
         </GlassPanelContent>
       </GlassPanel>
-    </div>
+    </AutosavedPage>
   );
 }

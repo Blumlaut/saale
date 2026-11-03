@@ -35,10 +35,18 @@ const DASHBOARD_PAGES = [
   "/dashboard/jobs/automations",
   "/dashboard/infra",
   "/dashboard/settings",
+  "/dashboard/settings/appearance",
+  "/dashboard/settings/calendar",
+  "/dashboard/settings/email",
+  "/dashboard/settings/integrations",
+  "/dashboard/settings/memories",
   "/dashboard/settings/models",
-  "/dashboard/settings/tools",
+  "/dashboard/settings/notifications",
   "/dashboard/settings/personality",
+  "/dashboard/settings/profile",
   "/dashboard/settings/prompts",
+  "/dashboard/settings/security",
+  "/dashboard/settings/tools",
 ];
 
 const ADMIN_PAGES = [

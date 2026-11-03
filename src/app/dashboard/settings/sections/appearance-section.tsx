@@ -9,6 +9,7 @@ import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { InstallAppCard } from "@/components/pwa/install-app-card";
 import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
 import { SidebarNavEditor } from "../components/sidebar-nav-editor";
+import { AutosavedPage } from "../components/save-state";
 import { useUserSettings } from "../components/user-settings-provider";
 
 export function AppearanceSection() {
@@ -18,7 +19,7 @@ export function AppearanceSection() {
   const compactActivity = settings?.compactActivity ?? true;
 
   return (
-    <div className="space-y-6">
+    <AutosavedPage state={saveState}>
       <GlassPanel>
         <GlassPanelContent className="space-y-6">
           <div>
@@ -83,6 +84,6 @@ export function AppearanceSection() {
       />
 
       <InstallAppCard />
-    </div>
+    </AutosavedPage>
   );
 }
