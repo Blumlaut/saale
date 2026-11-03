@@ -13,14 +13,32 @@ RUN for bin in pnpm pn pnpx pnx; do ln -s "/opt/pnpm/$bin" "/usr/local/bin/$bin"
 # no `npm_config_*`, so the store dir has to be named in pnpm's own prefix.
 ENV PNPM_CONFIG_STORE_DIR=/pnpm/store
 
+# ─── Store ───────────────────────────────────────────────────────────────────
+#
+# `pnpm fetch` fills the store from the lockfile without touching node_modules,
+# so a manifest edit alone never re-fetches and the layer is keyed on
+# pnpm-lock.yaml. Every stage below builds on this one, which is how their
+# installs find the store warm.
+
+FROM base AS fetched
+WORKDIR /app
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+# Fetch reads the patch files the lockfile names, so they arrive with it.
+COPY patches ./patches
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm fetch
+
 # ─── Development stage — hot reload via docker compose watch ──────────────────
 
-FROM base AS development
+FROM fetched AS development
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# The lockfile names these, so the install needs them before it can link.
-COPY patches ./patches
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
+COPY package.json ./
+# `prepare` regenerates the Prisma client during the install, so the schema goes
+# in first. Dummy URL so `prisma generate` can resolve env("DATABASE_URL") —
+# build-time only.
+ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
+COPY prisma ./prisma
+COPY prisma.config.mjs ./prisma.config.mjs
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prefer-offline
 COPY . .
 CMD ["pnpm", "run", "dev"]
 
@@ -28,14 +46,13 @@ CMD ["pnpm", "run", "dev"]
 #
 # Installed apart from `build` so the layer is keyed on pnpm-lock.yaml alone: an
 # ordinary source change must never re-run the install or rewrite the node_modules
-# layer it produces.
+# layer it produces. `--prod` skips `prepare`, so the client is generated here by
+# hand.
 
-FROM base AS prod-deps
+FROM fetched AS prod-deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# The lockfile names these, so the install needs them before it can link.
-COPY patches ./patches
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prod --ignore-scripts
+COPY package.json ./
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prod --prefer-offline
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
@@ -48,19 +65,16 @@ RUN node node_modules/prisma/build/index.js migrate diff \
 
 # ─── Build stage: web ────────────────────────────────────────────────────────
 
-FROM base AS build
+FROM fetched AS build
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# The lockfile names these, so the install needs them before it can link.
-COPY patches ./patches
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
+COPY package.json ./
 # Dummy URL so `prisma generate` can resolve env("DATABASE_URL") — build-time only
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
-# The client follows from the schema, not from the app source, so it is generated
-# before `COPY . .` and survives ordinary source edits.
+# The client follows from the schema, not from the app source, so the install that
+# generates it runs before `COPY . .` and survives ordinary source edits.
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
-RUN pnpm exec prisma generate
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prefer-offline
 COPY . .
 # The release this image carries, inlined by `next build`. The release workflow
 # passes it; a local build falls back to package.json through next.config.ts.
@@ -76,16 +90,13 @@ RUN --mount=type=cache,target=/app/.next/cache,sharing=locked pnpm run build
 # bundles and none of `.next`, so a release should not pay for a Next build on
 # both of its two legs.
 
-FROM base AS build-worker
+FROM fetched AS build-worker
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# The lockfile names these, so the install needs them before it can link.
-COPY patches ./patches
-RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --ignore-scripts
+COPY package.json ./
 ENV DATABASE_URL="postgresql://prisma:prisma@localhost:5432/prisma"
 COPY prisma ./prisma
 COPY prisma.config.mjs ./prisma.config.mjs
-RUN pnpm exec prisma generate
+RUN --mount=type=cache,target=/pnpm/store,sharing=locked pnpm install --frozen-lockfile --prefer-offline
 COPY . .
 RUN pnpm run build:worker
 RUN pnpm run build:sandbox
