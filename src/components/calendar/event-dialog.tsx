@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { postJson } from "@/lib/http";
 import type { CalendarAccountSummary } from "@/types/shared";
 import {
@@ -28,9 +35,19 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const enabledCalendars = accounts
-    .flatMap((a) => a.calendars.filter((c) => c.enabled))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // Stable across renders: the sheet's effect seeds the form from these, and a
+  // fresh array each render would re-run it forever.
+  const enabledCalendars = useMemo(
+    () =>
+      accounts
+        .flatMap((a) => a.calendars.filter((c) => c.enabled))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [accounts],
+  );
+  const calendarItems = useMemo(
+    () => enabledCalendars.map((cal) => ({ value: cal.id, label: cal.name })),
+    [enabledCalendars],
+  );
 
   const resetForm = useCallback(() => {
     setDraft(EMPTY_EVENT_DRAFT);
@@ -46,10 +63,11 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
 
     if (date) {
       setDraft((current) => ({ ...current, ...draftForDate(date) }));
-      const firstCalendar = enabledCalendars[0];
-      if (firstCalendar) {
-        setCalendarId(firstCalendar.id);
-      }
+    }
+
+    const firstCalendar = enabledCalendars[0];
+    if (firstCalendar) {
+      setCalendarId(firstCalendar.id);
     }
   }, [open, date, enabledCalendars, resetForm]);
 
@@ -92,19 +110,22 @@ export function EventDialog({ open, onOpenChange, accounts, date, onSuccess }: E
               calendarField={
                 <div className="space-y-2">
                   <Label className="text-xs">Calendar</Label>
-                  <div className="rounded-2xl border-0 bg-transparent px-2 py-1 shadow-none">
-                    <select
-                      className="border-border w-full rounded-full border bg-transparent px-3 py-2 text-sm focus-visible:outline-none"
-                      value={calendarId}
-                      onChange={(e) => setCalendarId(e.target.value)}
-                    >
+                  <Select
+                    items={calendarItems}
+                    value={calendarId}
+                    onValueChange={(value) => setCalendarId(value ?? "")}
+                  >
+                    <SelectTrigger aria-label="Calendar to write to" className="w-full">
+                      <SelectValue placeholder="No calendar connected" />
+                    </SelectTrigger>
+                    <SelectContent>
                       {enabledCalendars.map((cal) => (
-                        <option key={cal.id} value={cal.id}>
+                        <SelectItem key={cal.id} value={cal.id}>
                           {cal.name}
-                        </option>
+                        </SelectItem>
                       ))}
-                    </select>
-                  </div>
+                    </SelectContent>
+                  </Select>
                 </div>
               }
               error={error}

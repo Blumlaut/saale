@@ -32,7 +32,6 @@ export function EventFormFields({
       <div className="space-y-2">
         <Label className="text-xs">Title</Label>
         <Input
-          className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
           placeholder="Meeting title"
           value={draft.summary}
           onChange={(e) => onFieldChange("summary", e.target.value)}
@@ -41,11 +40,10 @@ export function EventFormFields({
 
       {calendarField}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
           <Label className="text-xs">Start</Label>
           <Input
-            className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
             type={draft.allDay ? "date" : "datetime-local"}
             value={draft.dtStart}
             onChange={(e) => onFieldChange("dtStart", e.target.value)}
@@ -54,7 +52,6 @@ export function EventFormFields({
         <div className="space-y-2">
           <Label className="text-xs">End</Label>
           <Input
-            className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
             type={draft.allDay ? "date" : "datetime-local"}
             value={draft.dtEnd}
             onChange={(e) => onFieldChange("dtEnd", e.target.value)}
@@ -79,7 +76,6 @@ export function EventFormFields({
           Location
         </Label>
         <Input
-          className="h-10 rounded-full border-0 bg-transparent px-4 shadow-none"
           placeholder="Room, address, or video link"
           value={draft.location}
           onChange={(e) => onFieldChange("location", e.target.value)}
@@ -89,7 +85,7 @@ export function EventFormFields({
       <div className="space-y-2">
         <Label className="text-xs">Description</Label>
         <Textarea
-          className="min-h-[80px] rounded-2xl border-0 bg-transparent px-4 pt-3 shadow-none"
+          className="min-h-[80px]"
           placeholder="Notes, agenda, etc."
           rows={3}
           value={draft.description}
