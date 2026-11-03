@@ -153,35 +153,39 @@ export function UsageArea() {
 /** The window as a whole: the headline numbers, then spend by day and by type. */
 function GlobalStats({ report }: { report: UsageReport }) {
   return (
-    <div className="border-border/50 space-y-3 border-b px-4 py-3">
-      <FigureRow
-        items={[
-          { label: "Spend", value: formatCost(report.cost) },
-          { label: "Calls", value: String(report.calls) },
-          { label: "In", value: formatTokens(report.inputTokens) },
-          { label: "Out", value: formatTokens(report.outputTokens) },
-        ]}
-      />
+    <div className="border-border/50 grid gap-4 border-b px-4 py-3 md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] md:gap-6">
+      <div className="space-y-3">
+        <FigureRow
+          items={[
+            { label: "Spend", value: formatCost(report.cost) },
+            { label: "Calls", value: String(report.calls) },
+            { label: "In", value: formatTokens(report.inputTokens) },
+            { label: "Out", value: formatTokens(report.outputTokens) },
+          ]}
+        />
 
-      <SplitBar
-        globalCost={report.globalCost}
-        ownCost={report.ownCost}
-        scale={report.cost}
-        legend
-      />
+        <SplitBar
+          globalCost={report.globalCost}
+          ownCost={report.ownCost}
+          scale={report.cost}
+          legend
+        />
+      </div>
 
-      <DailyBars daily={report.daily} />
+      <div className="space-y-3">
+        <DailyBars daily={report.daily} />
 
-      <Breakdown
-        total={report.cost}
-        items={report.kinds.map((kind) => ({
-          label: KIND_LABELS[kind.kind],
-          cost: kind.cost,
-          calls: kind.calls,
-          globalCost: kind.globalCost,
-          ownCost: kind.ownCost,
-        }))}
-      />
+        <Breakdown
+          total={report.cost}
+          items={report.kinds.map((kind) => ({
+            label: KIND_LABELS[kind.kind],
+            cost: kind.cost,
+            calls: kind.calls,
+            globalCost: kind.globalCost,
+            ownCost: kind.ownCost,
+          }))}
+        />
+      </div>
     </div>
   );
 }
@@ -290,51 +294,49 @@ function AccountDetail({
   }
 
   return (
-    <div className="border-border/50 bg-muted/20 space-y-3 border-t px-4 py-3">
-      <FigureRow
-        items={[
-          { label: "Spend", value: formatCost(detail.cost) },
-          { label: "Calls", value: String(detail.calls) },
-          { label: "In", value: formatTokens(detail.inputTokens) },
-          { label: "Out", value: formatTokens(detail.outputTokens) },
-        ]}
-      />
+    <div className="px-3 pb-3">
+      <div className="border-border/50 bg-muted/20 space-y-3 rounded-lg border p-3">
+        <SplitBar
+          globalCost={detail.globalCost}
+          ownCost={detail.ownCost}
+          scale={detail.cost}
+          legend
+          paidBy="user"
+        />
 
-      <SplitBar
-        globalCost={detail.globalCost}
-        ownCost={detail.ownCost}
-        scale={detail.cost}
-        legend
-        paidBy="user"
-      />
+        <p className="text-muted-foreground font-mono text-[11px] tabular-nums">
+          {detail.calls} calls · {formatTokens(detail.inputTokens)} in ·{" "}
+          {formatTokens(detail.outputTokens)} out
+        </p>
 
-      <DailyBars daily={detail.daily} height="h-10" />
+        <DailyBars daily={detail.daily} height="h-10" />
 
-      <Breakdown
-        total={detail.cost}
-        items={detail.kinds.map((kind) => ({
-          label: KIND_LABELS[kind.kind],
-          cost: kind.cost,
-          calls: kind.calls,
-          globalCost: kind.globalCost,
-          ownCost: kind.ownCost,
-          tokens: { input: kind.inputTokens, output: kind.outputTokens },
-        }))}
-      />
+        <Breakdown
+          total={detail.cost}
+          items={detail.kinds.map((kind) => ({
+            label: KIND_LABELS[kind.kind],
+            cost: kind.cost,
+            calls: kind.calls,
+            globalCost: kind.globalCost,
+            ownCost: kind.ownCost,
+            tokens: { input: kind.inputTokens, output: kind.outputTokens },
+          }))}
+        />
 
-      <div className="space-y-1">
-        <span className="console-label">Providers</span>
-        {detail.providers.map((provider) => (
-          <div key={provider.provider} className="flex items-center gap-2 text-xs">
-            <span className="min-w-0 flex-1 truncate font-mono">{provider.provider}</span>
-            <span className="shrink-0 font-mono tabular-nums">
-              {formatCostRounded(provider.cost)}
-            </span>
-            <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[11px] tabular-nums">
-              {provider.calls}
-            </span>
-          </div>
-        ))}
+        <div className="space-y-1">
+          <span className="console-label">Providers</span>
+          {detail.providers.map((provider) => (
+            <div key={provider.provider} className="flex items-center gap-2 text-xs">
+              <span className="min-w-0 flex-1 truncate font-mono">{provider.provider}</span>
+              <span className="shrink-0 font-mono tabular-nums">
+                {formatCostRounded(provider.cost)}
+              </span>
+              <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[11px] tabular-nums">
+                {provider.calls}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -468,7 +470,7 @@ function BreakdownRow({ item, scale }: { item: BreakdownItem; scale: number }) {
       <div className="w-20 shrink-0 md:w-24">
         <div className="truncate text-xs">{label}</div>
         {tokens ? (
-          <div className="text-muted-foreground truncate text-[10px] tabular-nums">
+          <div className="text-muted-foreground text-[10px] leading-tight tabular-nums">
             {formatTokens(tokens.input)} in · {formatTokens(tokens.output)} out
           </div>
         ) : null}
