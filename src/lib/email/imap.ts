@@ -110,8 +110,8 @@ export async function syncMessageFlags(
     try {
       await mailbox.mailboxClose();
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to close the IMAP client:", err);
     }
   }
 }
@@ -198,8 +198,8 @@ export async function moveMessage(
     try {
       await mailbox.mailboxClose();
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to close the IMAP client:", err);
     }
   }
 }
@@ -229,8 +229,8 @@ export async function deleteMessage(
     try {
       await mailbox.mailboxClose();
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to close the IMAP client:", err);
     }
   }
 }
@@ -299,8 +299,8 @@ export async function syncMessagesBatch(
   } finally {
     try {
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to close the IMAP client:", err);
     }
   }
 }
@@ -354,8 +354,8 @@ export async function fetchMessageBody(messageId: string): Promise<{
     try {
       await mailbox.mailboxClose();
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to close the IMAP client:", err);
     }
   }
 }

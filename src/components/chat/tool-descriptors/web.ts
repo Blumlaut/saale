@@ -153,6 +153,7 @@ function parse(pageUrl: string): URL | null {
   try {
     return new URL(pageUrl);
   } catch {
+    // The tool reports whatever the page called itself, which need not be a URL.
     return null;
   }
 }

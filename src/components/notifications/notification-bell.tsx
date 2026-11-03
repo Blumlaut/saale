@@ -27,8 +27,8 @@ export function NotificationBell() {
     try {
       const data = await fetchJson<{ notifications: Notification[] }>("/api/notifications");
       setNotifications(data.notifications || []);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
     } finally {
       setLoading(false);
     }
@@ -42,8 +42,8 @@ export function NotificationBell() {
     try {
       await patchJson("/api/notifications", { ids: [id] });
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to mark the notification as read:", err);
     }
   };
 
@@ -51,8 +51,8 @@ export function NotificationBell() {
     try {
       await patchJson("/api/notifications", { all: true });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to mark every notification as read:", err);
     }
   };
 

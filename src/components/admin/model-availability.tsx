@@ -82,8 +82,8 @@ export function ModelAvailability() {
       setAvailableModels(data.models ?? {});
       setModelProviders(data.providers ?? []);
       setEndpointLimits(data.endpointLimits ?? {});
-    } catch {
-      // No models available yet
+    } catch (err) {
+      console.error("Failed to load the model list:", err);
     } finally {
       setModelsLoading(false);
     }

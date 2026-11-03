@@ -139,8 +139,8 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
           `/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`,
         );
         setSearchResults(data.results);
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.error("Failed to search:", err);
       } finally {
         setSearchLoading(false);
       }

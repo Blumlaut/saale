@@ -160,7 +160,8 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
       await fetchJson(`/api/jobs/${jobId}`, { method: "POST" });
       // Don't clear runningId here. the next silent poll will clear it
       // once the job is no longer in "running" status
-    } catch {
+    } catch (err) {
+      console.error("Failed to start the job:", err);
       setRunningId(null);
     }
   };

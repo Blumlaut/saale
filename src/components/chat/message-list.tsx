@@ -649,8 +649,9 @@ function UserMessageItem({
     try {
       await onEdit(message.id, editDraft.trim());
       setIsEditing(false);
-    } catch {
-      // The edit did not land. keep the draft on screen so it is not lost.
+    } catch (err) {
+      // The draft stays on screen so the edit is not lost.
+      console.error("Failed to save the edited message:", err);
     } finally {
       setIsSaving(false);
     }

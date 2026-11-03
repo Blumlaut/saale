@@ -354,8 +354,8 @@ export async function syncEmailAccount(accountId: string): Promise<{
       } finally {
         try {
           await mailbox.mailboxClose();
-        } catch {
-          // Ignore close errors
+        } catch (err) {
+          console.error(`Failed to close mailbox ${folder}:`, err);
         }
       }
     }
@@ -370,8 +370,8 @@ export async function syncEmailAccount(accountId: string): Promise<{
   } finally {
     try {
       await mailbox.logout();
-    } catch {
-      // Ignore cleanup errors
+    } catch (err) {
+      console.error("Failed to log out of IMAP:", err);
     }
   }
 

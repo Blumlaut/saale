@@ -27,8 +27,9 @@ export async function createChatSession(options?: {
   try {
     const data = await fetchJson<{ settings: UserSettings }>("/api/settings");
     settings = data.settings ?? null;
-  } catch {
-    // Ignore. session will be created without model info
+  } catch (err) {
+    // The chat still opens; it just takes the server's defaults.
+    console.error("Failed to read the settings for a new chat:", err);
   }
 
   const data = await postJson<{ session: { id: string } }>("/api/chat/sessions", {

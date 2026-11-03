@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Bell, BellOff, Loader2, Send } from "lucide-react";
+import { Bell, BellOff, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import {
   type NotificationCategory,
   type NotificationPreferences,
 } from "@/lib/notifications/preferences";
+import { SettingsError } from "../components/settings-error";
 import { useUserSettings } from "../components/user-settings-provider";
 
 interface PushConfig {
@@ -206,12 +207,7 @@ export function NotificationsSection() {
               you have already seen it.
             </p>
 
-            {error && (
-              <p className="text-destructive flex items-start gap-2 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                {error}
-              </p>
-            )}
+            <SettingsError>{error}</SettingsError>
 
             <div className="space-y-4 border-t pt-4">
               {NOTIFICATION_CATEGORIES.map((category) => (

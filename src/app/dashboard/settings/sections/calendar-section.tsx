@@ -18,6 +18,7 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { CalendarsExpandable } from "../components/calendars-expandable";
+import { SettingsError } from "../components/settings-error";
 import { SyncResult } from "../components/sync-result";
 import {
   DropdownMenu,
@@ -65,6 +66,7 @@ export function CalendarSection() {
     type: "account" | "subscription";
   } | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [syncResult, setSyncResult] = useState<{
     id: string;
@@ -98,8 +100,10 @@ export function CalendarSection() {
       );
       setAccounts(accountsList);
       setSubscriptions(subsRes.subscriptions ?? []);
-    } catch {
-      // Ignore
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load the calendar accounts:", err);
+      setError("Could not load your calendars.");
     }
   };
 
@@ -226,8 +230,9 @@ export function CalendarSection() {
     try {
       await patchJson(`/api/calendar/accounts/${accountId}`, { enabled });
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to change whether the calendar account is on:", err);
+      setError("Could not change that calendar account.");
     }
   };
 
@@ -235,8 +240,9 @@ export function CalendarSection() {
     try {
       await patchJson(`/api/calendar/subscriptions/${subscriptionId}`, { enabled });
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to change whether the subscription is on:", err);
+      setError("Could not change that subscription.");
     }
   };
 
@@ -251,8 +257,9 @@ export function CalendarSection() {
         .map((sub) => postJson(`/api/calendar/subscriptions/${sub.id}`, {}));
       await Promise.all([...promises, ...subPromises]);
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to sync the calendars:", err);
+      setError("Could not sync every calendar. Try one at a time.");
     } finally {
       setActionLoading(null);
     }
@@ -304,6 +311,8 @@ export function CalendarSection() {
               </Button>
             </div>
           </div>
+
+          <SettingsError>{error}</SettingsError>
 
           {loading ? (
             <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />

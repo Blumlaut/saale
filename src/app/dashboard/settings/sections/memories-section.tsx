@@ -51,6 +51,7 @@ import {
   Database,
 } from "lucide-react";
 import { MemoryForm } from "../components/memory-form";
+import { SettingsError } from "../components/settings-error";
 
 interface Memory {
   id: string;
@@ -126,6 +127,7 @@ export function MemoriesSection() {
     name: string;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Load data
   const loadMemories = useCallback(async () => {
@@ -139,8 +141,10 @@ export function MemoriesSection() {
         `/api/memories?${params}`,
       );
       setMemories(data.memories ?? []);
-    } catch {
-      // Ignore
+      setError(null);
+    } catch (err) {
+      console.error("Failed to load memories:", err);
+      setError("Could not load your memories.");
     }
   }, [filterCollection, searchQuery]);
 
@@ -151,8 +155,9 @@ export function MemoriesSection() {
       );
       setCollections(data.collections ?? []);
       setTotalCount(data.total ?? 0);
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to load memory collections:", err);
+      setError("Could not load your memories.");
     }
   }, []);
 
@@ -197,8 +202,9 @@ export function MemoriesSection() {
       });
       setEditOpen(false);
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to save the memory:", err);
+      setError("Could not save that memory.");
     }
     setSaving(false);
   };
@@ -221,8 +227,9 @@ export function MemoriesSection() {
       setNewTags([]);
       setNewTagInput("");
       await loadData();
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.error("Failed to create the memory:", err);
+      setError("Could not add that memory.");
     }
     setCreating(false);
   };
@@ -283,6 +290,8 @@ export function MemoriesSection() {
               Add Memory
             </Button>
           </div>
+
+          <SettingsError>{error}</SettingsError>
 
           {/* Collections overview */}
           {collections.length > 0 && (

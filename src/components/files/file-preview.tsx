@@ -139,6 +139,7 @@ function decodePathSegments(path: string): string {
       try {
         return decodeURIComponent(segment);
       } catch {
+        // A stray "%" in a file name is not an error: show the segment as written.
         return segment;
       }
     })

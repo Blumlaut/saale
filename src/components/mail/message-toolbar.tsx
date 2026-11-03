@@ -45,7 +45,8 @@ export function MessageToolbar({
       await patchJson(`/api/email/messages/${message.id}`, { action: "trash" });
       toast.success("Email moved to trash");
       onRefresh();
-    } catch {
+    } catch (err) {
+      console.error("Failed to trash the email:", err);
       toast.error("Failed to trash email");
     }
   };
@@ -55,7 +56,8 @@ export function MessageToolbar({
       await patchJson(`/api/email/messages/${message.id}`, { action: "archive" });
       toast.success("Email archived");
       onRefresh();
-    } catch {
+    } catch (err) {
+      console.error("Failed to archive the email:", err);
       toast.error("Failed to archive email");
     }
   };
@@ -65,7 +67,8 @@ export function MessageToolbar({
       await patchJson(`/api/email/messages/${message.id}`, { isRead: !message.isRead });
       toast.success(message.isRead ? "Marked as unread" : "Marked as read");
       onRefresh();
-    } catch {
+    } catch (err) {
+      console.error("Failed to change whether the email is read:", err);
       toast.error("Failed to update read status");
     }
   };
@@ -146,7 +149,8 @@ export function MessageToolbar({
               try {
                 await patchJson(`/api/email/messages/${message.id}`, { isStarred: newStarred });
                 onRefresh();
-              } catch {
+              } catch (err) {
+                console.error("Failed to change whether the email is starred:", err);
                 toast.error("Failed to update star");
               }
             }}

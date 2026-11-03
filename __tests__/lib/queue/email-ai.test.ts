@@ -83,7 +83,7 @@ describe("runEmailAiJob", () => {
       data: { aiSummary: "A bill" },
     });
 
-    const prompt = JSON.parse(mockDispatch.mock.calls[0][1] as string);
+    const prompt = JSON.parse(String(mockDispatch.mock.calls[0]?.[1]));
     expect(prompt.task).toBe("summarize");
     expect(prompt.emails).toEqual([
       { id: "email-1", from: "billing@example.com", subject: "Invoice", preview: "Your invoice" },
@@ -144,12 +144,15 @@ describe("runEmailAiJob", () => {
 
     await run({ config: { accountId: "account-1", limit: 5, maxEmailAge: 24 } });
 
-    const query = findMany.mock.calls[0][0];
+    const query = findMany.mock.calls[0]?.[0] as {
+      take: number;
+      where: { accountId: string; aiSummary: null; date: { gte: Date } };
+    };
     expect(query.take).toBe(5);
     expect(query.where.accountId).toBe("account-1");
     expect(query.where.aiSummary).toBeNull();
-    const since = (query.where.date as { gte: Date }).gte;
-    expect(Date.now() - since.getTime()).toBeGreaterThan(23 * 60 * 60 * 1000);
+    const hoursAgo = (Date.now() - query.where.date.gte.getTime()) / (60 * 60 * 1000);
+    expect(hoursAgo).toBeCloseTo(24, 1);
   });
 
   it("skips the model when the batch is empty", async () => {
