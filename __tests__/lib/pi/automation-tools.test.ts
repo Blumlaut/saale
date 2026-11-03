@@ -138,9 +138,9 @@ describe("automation_get", () => {
   it("only reads the caller's own watchers", async () => {
     mockWatcher.findFirst.mockResolvedValue(null);
 
-    await expect(
-      callExecute(getTool("automation_get"), { automationId: "w-1" }),
-    ).rejects.toThrow("Automation not found");
+    await expect(callExecute(getTool("automation_get"), { automationId: "w-1" })).rejects.toThrow(
+      "Automation not found",
+    );
     expect(mockWatcher.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "w-1", userId: "user-1" } }),
     );

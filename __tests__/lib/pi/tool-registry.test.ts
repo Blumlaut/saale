@@ -67,8 +67,7 @@ vi.mock("@/lib/pi/tools/task-tools", () => ({
   ]),
 }));
 
-vi.mock("@/lib/pi/tools/agent-job-tools", () => ({
-  }));
+vi.mock("@/lib/pi/tools/agent-job-tools", () => ({}));
 
 vi.mock("@/lib/pi/tools/infra-tools", () => ({
   createInfraTools: vi.fn((userId: string) => [

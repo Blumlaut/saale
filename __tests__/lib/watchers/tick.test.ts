@@ -276,7 +276,10 @@ describe("runWatcherTick", () => {
     // No script ran, so there is nothing to report and nothing was spent on one.
     expect(access).toHaveBeenCalled();
     expect(wake).toHaveBeenCalledWith(
-      expect.objectContaining({ watcher: expect.objectContaining({ deliver: "none" }), gated: false }),
+      expect.objectContaining({
+        watcher: expect.objectContaining({ deliver: "none" }),
+        gated: false,
+      }),
     );
     expect(writtenTick()?.callCount).toBe(0);
   });
