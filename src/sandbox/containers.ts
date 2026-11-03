@@ -63,6 +63,17 @@ export interface ContainerSummary {
   Id: string;
   Labels?: Record<string, string> | undefined;
   State?: string | undefined;
+  /** Unix seconds, which is how Docker reports a creation time. */
+  Created?: number | undefined;
+}
+
+/** One sandbox container, as an operator sees it. */
+export interface SandboxContainerInfo {
+  identity: string;
+  /** Docker's own word: `running`, `exited`, `created`, `paused`, `dead`. */
+  state: string;
+  /** Unix milliseconds, null when Docker did not report one. */
+  createdAt: number | null;
 }
 
 /** The Docker API surface, structural so a fake can stand in. */
@@ -173,6 +184,8 @@ export interface ContainerManager {
   reapIdle(): Promise<{ stopped: number; removed: number }>;
   /** The workspace a preview hostname's slug stands for, or null. */
   identityForSlug(slug: string): Promise<string | null>;
+  /** Every sandbox container that exists, running or not. */
+  list(): Promise<SandboxContainerInfo[]>;
 }
 
 export interface ContainerManagerOptions {
@@ -745,7 +758,17 @@ export function createContainerManager(options: ContainerManagerOptions): Contai
     return { stopped, removed };
   }
 
-  return { ensure, run, kill, write, resize, remove, stop, sweep, reapIdle, identityForSlug };
+  /** Every sandbox container, whatever its state. A workspace with no command run yet has none. */
+  async function list(): Promise<SandboxContainerInfo[]> {
+    return (await labelled()).map(({ identity, summary }) => ({
+      identity,
+      state: summary.State ?? "unknown",
+      createdAt:
+        typeof summary.Created === "number" && summary.Created > 0 ? summary.Created * 1000 : null,
+    }));
+  }
+
+  return { ensure, run, kill, write, resize, remove, stop, sweep, reapIdle, identityForSlug, list };
 }
 
 export function isAlreadyStarted(err: unknown): boolean {

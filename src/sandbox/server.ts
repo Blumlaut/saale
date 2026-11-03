@@ -5,6 +5,7 @@
  * `POST /exec` streams output as server-sent events, `DELETE /exec/:id` stops a
  * command, `POST /exec/:id/input` types into one started with `interactive`,
  * `POST /exec/:id/resize` sets the terminal of one started with `tty`,
+ * `GET /containers` lists every sandbox container the host has,
  * `GET /ports` lists what a workspace is listening on and `POST /ports/:port/kill`
  * stops one of them. All of them are keyed on an identity, never on a path.
  *
@@ -337,6 +338,11 @@ export function createSandboxServer(options: SandboxServerOptions): http.Server 
             throw err;
           }
           json(res, 200, { killed: true });
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/containers") {
+          json(res, 200, { containers: await manager.list() });
           return;
         }
 

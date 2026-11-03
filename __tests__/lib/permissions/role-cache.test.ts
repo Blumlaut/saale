@@ -96,6 +96,33 @@ describe("role cache", () => {
     expect(AUTH_ROLES.helpdesk).toBeUndefined();
   });
 
+  it("gives the built-in roles the grants this build ships, whatever the row holds", async () => {
+    // A section added in a later release reaches an existing deployment through
+    // the code, so the stored row can be older than the app.
+    mocks.findMany.mockResolvedValue([
+      {
+        name: "admin",
+        label: "Admin",
+        description: "",
+        permissions: { admin: ["access"], user: [], session: [] },
+        builtin: true,
+      },
+      {
+        ...reviewerRow,
+        name: "user",
+        builtin: true,
+        permissions: { admin: [], user: [], session: [] },
+      },
+    ]);
+
+    const roles = await loadRoleDefinitions();
+
+    expect(roles.find((role) => role.name === "admin")?.permissions.admin).toEqual([
+      ...BUILTIN_ROLES[0]!.permissions.admin,
+    ]);
+    expect(AUTH_ROLES.admin?.authorize({ user: ["delete"] }).success).toBe(true);
+  });
+
   it("falls back to the built-in seeds when the table cannot be read", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.findMany.mockRejectedValue(new Error("db down"));

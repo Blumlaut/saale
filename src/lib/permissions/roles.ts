@@ -48,6 +48,10 @@ export const ADMIN_SECTION_DEFINITIONS: Record<string, { label: string; descript
   settings: { label: "Settings", description: "Instance settings and the Telegram bot." },
   plugins: { label: "Plugins", description: "Global Pi plugins: states, updates and logs." },
   telegram: { label: "Telegram", description: "The shared Telegram bot." },
+  workspaces: {
+    label: "Workspaces",
+    description: "Disk usage and what each workspace is running.",
+  },
 };
 
 export const USER_ACTION_DEFINITIONS: Record<string, { label: string; description: string }> = {

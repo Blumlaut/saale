@@ -46,6 +46,10 @@ interface RoleRow {
 }
 
 function toDefinition(row: RoleRow): RoleDefinition {
+  // The two anchors are seeded from code and cannot be edited, so the code
+  // holds their grants.
+  const builtin = row.builtin ? BUILTIN_ROLES.find((role) => role.name === row.name) : undefined;
+  if (builtin) return builtin;
   return {
     name: row.name,
     label: row.label,

@@ -6,7 +6,16 @@ import { useEffect, useState } from "react";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
 import { hasGrant } from "@/lib/permissions/roles";
 import type { AdminAction } from "@/lib/permissions/statements";
-import { Bot, Users, Settings, KeyRound, ArrowLeft, Puzzle, type LucideIcon } from "lucide-react";
+import {
+  Bot,
+  Users,
+  Settings,
+  KeyRound,
+  ArrowLeft,
+  Puzzle,
+  HardDrive,
+  type LucideIcon,
+} from "lucide-react";
 import { adminSections, isAdminItemPath } from "@/lib/navigation/admin-sections";
 import {
   SidebarBrand,
@@ -32,6 +41,7 @@ export interface AdminNavItem {
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/models", label: "Models", icon: Bot, action: "models" },
   { href: "/admin/users", label: "Users", icon: Users, action: "users" },
+  { href: "/admin/workspaces", label: "Workspaces", icon: HardDrive, action: "workspaces" },
   { href: "/admin/roles", label: "Roles", icon: KeyRound, action: "roles" },
   { href: "/admin/plugins", label: "Plugins", icon: Puzzle, action: "plugins" },
   { href: "/admin/settings", label: "Settings", icon: Settings, action: "settings" },

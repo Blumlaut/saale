@@ -25,6 +25,7 @@ export const ADMIN_ACTIONS = [
   "settings",
   "plugins",
   "telegram",
+  "workspaces",
 ] as const;
 
 export type AdminAction = (typeof ADMIN_ACTIONS)[number];

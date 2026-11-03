@@ -1641,4 +1641,37 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
     open: (page) => click(page, 'button[title="Changelog"]'),
   },
+  {
+    name: "workspaces · delete orphaned directory",
+    path: "/admin/workspaces",
+    sources: ["src/components/admin/workspaces-area.tsx"],
+    // CI has no mounted volume, so the row this dialog hangs off is stubbed.
+    mock: async (page) => {
+      await page.route(/\/api\/admin\/workspaces$/, (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        return route.fulfill({
+          json: {
+            rows: [
+              {
+                identity: "user-9f2c1b7d4e88",
+                kind: "orphan",
+                owner: null,
+                bytes: 3_550_000_000,
+                container: "stopped",
+                running: 0,
+              },
+            ],
+            volume: { total: 271_432_994_816, free: 59_989_630_976 },
+            measuredAt: Date.now(),
+            measuring: false,
+            error: null,
+          },
+        });
+      });
+    },
+    open: async (page) => {
+      await click(page, '[aria-label="Actions for user-9f2c1b7d4e88"]');
+      await click(page, '[role="menuitem"]:has-text("Delete directory")');
+    },
+  },
 ];

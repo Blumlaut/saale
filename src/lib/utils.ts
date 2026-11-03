@@ -14,8 +14,10 @@ export function cn(...inputs: ClassValue[]) {
 export const ROW_ACTION =
   "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 data-popup-open:opacity-100";
 
-/** Format a byte count for display (e.g. 1536 → "1.5 KB"). */
+/** Format a byte count for display (e.g. 1536 → "1.5 KB", 20 GB → "20.1 GB"). */
 export function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(1)} TB`;
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
   if (bytes > 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes > 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${bytes} B`;

@@ -81,12 +81,12 @@ function serviceUrl(): string {
   return url.replace(/\/+$/, "");
 }
 
-function authHeaders(identity: string): Record<string, string> {
+function authHeaders(identity?: string): Record<string, string> {
   const { apiKey } = sandboxConfig();
   if (!apiKey) throw new Error("SANDBOX_API_KEY is not set");
   return {
     Authorization: `Bearer ${apiKey}`,
-    "X-Identity": identity,
+    ...(identity ? { "X-Identity": identity } : {}),
     "Content-Type": "application/json",
   };
 }
@@ -282,6 +282,22 @@ export interface SandboxPort {
   pid: number | null;
   command: string | null;
   cwd: string | null;
+}
+
+/** One sandbox container that exists, running or not. */
+export interface SandboxContainer {
+  identity: string;
+  /** Docker's word: `running`, `exited`, `created`, `paused`, `dead`. */
+  state: string;
+  createdAt: number | null;
+}
+
+/** Every sandbox container on the host, whatever its state. */
+export async function listContainers(): Promise<SandboxContainer[]> {
+  const response = await fetch(`${serviceUrl()}/containers`, { headers: authHeaders() });
+  if (!response.ok) throw await failure(response);
+  const body = (await response.json()) as { containers?: unknown };
+  return Array.isArray(body.containers) ? (body.containers as SandboxContainer[]) : [];
 }
 
 /** What a workspace is listening on right now. */

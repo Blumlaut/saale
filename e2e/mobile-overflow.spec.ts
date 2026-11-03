@@ -46,6 +46,7 @@ const ADMIN_PAGES = [
   "/admin/models/availability",
   "/admin/plugins/logs",
   "/admin/users",
+  "/admin/workspaces",
   "/admin/roles",
   "/admin/plugins",
   "/admin/settings/signups",

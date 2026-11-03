@@ -37,6 +37,7 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/admin/models/providers" },
   { path: "/admin/models/availability" },
   { path: "/admin/users" },
+  { path: "/admin/workspaces" },
   { path: "/admin/roles" },
   { path: "/admin/plugins" },
   { path: "/admin/plugins/logs" },

@@ -70,6 +70,9 @@ function fakeManager(script: (request: SandboxExecRequest) => SandboxChunk[]): C
     async identityForSlug() {
       return null;
     },
+    async list() {
+      return [];
+    },
   };
 }
 
