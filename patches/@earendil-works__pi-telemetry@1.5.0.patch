@@ -1,0 +1,28 @@
+diff --git a/package.json b/package.json
+index eeb30b234231eb4059358e098c3989ff2ccaa8f9..59ab9418593e539bea3bf16c476dc21befb32c4d 100644
+--- a/package.json
++++ b/package.json
+@@ -9,17 +9,20 @@
+ 		".": {
+ 			"source": "./src/index.ts",
+ 			"types": "./dist/index.d.ts",
+-			"import": "./dist/index.js"
++			"import": "./dist/index.js",
++			"default": "./dist/index.js"
+ 		},
+ 		"./render": {
+ 			"source": "./src/render.ts",
+ 			"types": "./dist/render.d.ts",
+-			"import": "./dist/render.js"
++			"import": "./dist/render.js",
++			"default": "./dist/render.js"
+ 		},
+ 		"./testing": {
+ 			"source": "./src/testing/index.ts",
+ 			"types": "./dist/testing/index.d.ts",
+-			"import": "./dist/testing/index.js"
++			"import": "./dist/testing/index.js",
++			"default": "./dist/testing/index.js"
+ 		}
+ 	},
+ 	"files": [

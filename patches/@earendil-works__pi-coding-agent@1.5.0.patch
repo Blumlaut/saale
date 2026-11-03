@@ -1,0 +1,19 @@
+diff --git a/package.json b/package.json
+index 705be3d3de78a185a556c1c6ed504a7de5ee84d5..ab72855460630204f8fe557c80613c46b7ddea35 100644
+--- a/package.json
++++ b/package.json
+@@ -14,10 +14,12 @@
+ 	"exports": {
+ 		".": {
+ 			"types": "./dist/index.d.ts",
+-			"import": "./dist/index.js"
++			"import": "./dist/index.js",
++			"default": "./dist/index.js"
+ 		},
+ 		"./rpc-entry": {
+-			"import": "./dist/bundle/rpc-entry.js"
++			"import": "./dist/bundle/rpc-entry.js",
++			"default": "./dist/bundle/rpc-entry.js"
+ 		}
+ 	},
+ 	"files": [

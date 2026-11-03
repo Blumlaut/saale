@@ -1,0 +1,27 @@
+diff --git a/package.json b/package.json
+index 51823a976a33717cd88cec862081484947e5b854..2d4c2d2620e06af9e839078190964b0984e3c7d9 100644
+--- a/package.json
++++ b/package.json
+@@ -25,16 +25,19 @@
+ 		".": {
+ 			"types": "./dist/index.d.ts",
+ 			"import": "./dist/index.js",
+-			"require": "./dist/index.js"
++			"require": "./dist/index.js",
++			"default": "./dist/index.js"
+ 		},
+ 		"./full": {
+ 			"types": "./dist/index.full.d.ts",
+ 			"import": "./dist/index.full.js",
+-			"require": "./dist/index.full.js"
++			"require": "./dist/index.full.js",
++			"default": "./dist/index.full.js"
+ 		},
+ 		"./node": {
+ 			"types": "./dist/node.d.ts",
+-			"import": "./dist/node.js"
++			"import": "./dist/node.js",
++			"default": "./dist/node.js"
+ 		}
+ 	},
+ 	"scripts": {

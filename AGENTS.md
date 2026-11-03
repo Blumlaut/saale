@@ -16,8 +16,9 @@ Never edit `prisma.config.mjs` — it loads env; a change breaks deploys.
 ## Package manager
 
 pnpm, with the version pinned by `packageManager` in `package.json`. Settings live in
-`pnpm-workspace.yaml` and a new dependency's build script needs a line in `allowBuilds`
-there.
+`pnpm-workspace.yaml`: a new dependency's build script needs a line in `allowBuilds`, and
+`patchedDependencies` holds the patches in `patches/` that make the pi packages loadable
+from tsx. Bumping a patched package means regenerating its patch with `pnpm patch`.
 
 ## Investigate before using
 

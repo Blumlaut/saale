@@ -1,0 +1,28 @@
+diff --git a/package.json b/package.json
+index 8a9bac6630685b37f2bb87c31c64a26702546fc0..b669e34d303298055859ed9570e65d1d5427a813 100644
+--- a/package.json
++++ b/package.json
+@@ -9,17 +9,20 @@
+ 		".": {
+ 			"source": "./src/index.ts",
+ 			"types": "./dist/index.d.ts",
+-			"import": "./dist/index.js"
++			"import": "./dist/index.js",
++			"default": "./dist/index.js"
+ 		},
+ 		"./oauth": {
+ 			"source": "./src/oauth/index.ts",
+ 			"types": "./dist/oauth/index.d.ts",
+-			"import": "./dist/oauth/index.js"
++			"import": "./dist/oauth/index.js",
++			"default": "./dist/oauth/index.js"
+ 		},
+ 		"./testing": {
+ 			"source": "./src/testing/index.ts",
+ 			"types": "./dist/testing/index.d.ts",
+-			"import": "./dist/testing/index.js"
++			"import": "./dist/testing/index.js",
++			"default": "./dist/testing/index.js"
+ 		}
+ 	},
+ 	"sideEffects": false,

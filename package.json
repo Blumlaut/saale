@@ -39,7 +39,6 @@
     "check": "pnpm run lint && pnpm run typecheck && pnpm run format:check && pnpm run test:run",
     "dup": "jscpd src/",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
-    "postinstall": "node scripts/fix-esm-exports.js",
     "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml watch",
     "docker:prod": "docker compose up"
   },
