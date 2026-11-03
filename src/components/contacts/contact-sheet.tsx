@@ -24,8 +24,6 @@ interface ContactSheetProps {
   onSaved: (contact: Contact) => void;
 }
 
-const INPUT_CLASS = "h-9 rounded-full border-0 bg-transparent shadow-none";
-
 export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSheetProps) {
   const isEdit = contact !== null;
   const [saving, setSaving] = useState(false);
@@ -117,7 +115,6 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   onChange={(e) => update({ name: e.target.value })}
                   placeholder="Jane Doe"
                   autoComplete="off"
-                  className={INPUT_CLASS}
                 />
               </div>
 
@@ -133,7 +130,6 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   placeholder="jane@example.com"
                   autoComplete="off"
                   spellCheck={false}
-                  className={INPUT_CLASS}
                 />
               </div>
 
@@ -147,7 +143,6 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   onChange={(e) => update({ company: e.target.value })}
                   placeholder="Acme Corp"
                   autoComplete="off"
-                  className={INPUT_CLASS}
                 />
               </div>
 
@@ -161,7 +156,7 @@ export function ContactSheet({ open, onOpenChange, contact, onSaved }: ContactSh
                   onChange={(e) => update({ notes: e.target.value })}
                   placeholder="How you met, context, preferences…"
                   rows={4}
-                  className="min-h-24 rounded-xl border-0 bg-transparent shadow-none"
+                  className="min-h-24"
                 />
               </div>
 

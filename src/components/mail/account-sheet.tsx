@@ -298,7 +298,7 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                       value={email}
                       onChange={handleEmailChange}
                       placeholder="you@example.com"
-                      className="rounded-full border-0 bg-transparent pr-10 shadow-none"
+                      className="pr-10"
                     />
                     {discovering && (
                       <Loader2 className="text-muted-foreground absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin" />
@@ -343,7 +343,6 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="rounded-full border-0 bg-transparent shadow-none"
                   />
                   {isEdit && (
                     <p className="text-muted-foreground text-xs">
@@ -387,7 +386,6 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                             setImapHost(e.target.value);
                           }}
                           placeholder="imap.example.com"
-                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
@@ -400,7 +398,6 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                           inputMode="numeric"
                           value={imapPort}
                           onChange={(e) => setImapPort(e.target.value)}
-                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="flex items-end gap-2 pb-1">
@@ -436,7 +433,6 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                             setSmtpHost(e.target.value);
                           }}
                           placeholder="smtp.example.com"
-                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="space-y-2">
@@ -449,7 +445,6 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                           inputMode="numeric"
                           value={smtpPort}
                           onChange={(e) => setSmtpPort(e.target.value)}
-                          className="rounded-full border-0 bg-transparent shadow-none"
                         />
                       </div>
                       <div className="flex items-end gap-2 pb-1">
