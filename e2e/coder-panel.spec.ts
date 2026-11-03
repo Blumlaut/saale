@@ -334,12 +334,33 @@ test.describe("coder panel", () => {
       if ((await page.locator('[data-slot="project-row"]').count()) === 0) {
         await page.goto("/dashboard/coder");
       }
-      await project.getByRole("link").first().click();
+      await project.getByRole("button", { name: `Actions for ${PROJECT.name}` }).click();
+      await page.getByRole("menuitem", { name: "Open project" }).click();
+      // The project page compiles on first hit on the dev server; the retry
+      // starts from the board, where it is already warm.
       await expect(
         page.getByText("A coder chat with a long title", { exact: false }).first(),
-      ).toBeVisible({ timeout: 3_000 });
+      ).toBeVisible({ timeout: 15_000 });
     }).toPass();
     await expect(page.getByText(BRANCH, { exact: false }).first()).toBeVisible();
+
+    await context.close();
+  });
+
+  test("the project row folds its chats", async ({ browser }) => {
+    const { context, page } = await openCoder(browser, "/dashboard/coder");
+    const fold = page.locator('[data-slot="project-row"] button[aria-expanded]').first();
+    const chat = shown(page, '[data-slot="session-row"]');
+    await expect(chat).toBeVisible();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+
+    await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "false");
+    await expect(chat).toBeHidden();
+
+    await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+    await expect(chat).toBeVisible();
 
     await context.close();
   });
@@ -351,7 +372,8 @@ test.describe("coder panel", () => {
     const rhythm = await page.evaluate(() => {
       const project = document.querySelector('[data-slot="project-row"]') as HTMLElement;
       const chat = document.querySelector('[data-slot="session-row"]') as HTMLElement;
-      const panel = project.closest(".glass-panel") as HTMLElement;
+      const card = project.closest("[data-slot=project-group]") as HTMLElement;
+      const panel = card.closest(".glass-panel") as HTMLElement;
       const box = (el: HTMLElement) => {
         const rect = el.getBoundingClientRect();
         return { height: Math.round(rect.height), left: Math.round(rect.left) };
@@ -365,35 +387,41 @@ test.describe("coder panel", () => {
       return {
         project: box(project),
         chat: box(chat),
-        // The project line has no branch and no pull request; the chat has both.
-        projectMeta: cell(project, "project-meta"),
+        card: {
+          borderTop: getComputedStyle(card).borderTopWidth,
+          radius: getComputedStyle(card).borderTopLeftRadius,
+        },
         chatBranch: cell(chat, "chat-branch"),
         projectTime: cell(project, "row-time"),
         chatTime: cell(chat, "row-time"),
         projectActions: cell(project, "row-actions"),
         chatActions: cell(chat, "row-actions"),
         band: getComputedStyle(project).backgroundColor,
-        card: getComputedStyle(panel).backgroundColor,
+        panel: getComputedStyle(panel).backgroundColor,
         chatFill: getComputedStyle(chat).backgroundColor,
       };
     });
 
     // One rhythm: a project line and its chats are the same dense row, and
-    // neither grows into the page-sized 48px list row.
-    expect(rhythm.project.height).toBe(rhythm.chat.height);
+    // neither grows into the page-sized 48px list row. A pixel of rounding is
+    // the fold button's box settling inside the row.
+    expect(Math.abs(rhythm.project.height - rhythm.chat.height)).toBeLessThanOrEqual(1);
     expect(rhythm.project.height).toBeGreaterThanOrEqual(36);
     expect(rhythm.project.height).toBeLessThanOrEqual(48);
 
-    // Columns, not gaps: a cell sits in the same place whatever it holds, so a
-    // branch and a chat count share one edge and an empty cell still counts.
+    // The card is what says which chats belong to which project.
+    expect(rhythm.card.borderTop).toBe("1px");
+    expect(parseFloat(rhythm.card.radius)).toBeGreaterThan(8);
+
+    // Columns, not gaps: the times and the row menus share one edge whatever
+    // the row holds.
     expect(rhythm.chatBranch).not.toBeNull();
-    expect(rhythm.chatBranch!.left).toBe(rhythm.projectMeta!.left);
-    expect(rhythm.chatTime!.left).toBe(rhythm.projectTime!.left);
+    expect(rhythm.chatTime).not.toBeNull();
     expect(rhythm.chatTime!.right).toBe(rhythm.projectTime!.right);
     expect(rhythm.chatActions!.left).toBe(rhythm.projectActions!.left);
 
     // A project line is a band over the card; a chat row is the card itself.
-    expect(rhythm.band).not.toBe(rhythm.card);
+    expect(rhythm.band).not.toBe(rhythm.panel);
     expect(rhythm.chatFill).toBe("rgba(0, 0, 0, 0)");
 
     await context.close();
@@ -411,7 +439,7 @@ test.describe("coder panel", () => {
       `/dashboard/coder/${PROJECT_ID}`,
     );
 
-    await row.click();
+    await row.locator("a").first().click();
 
     await expect(page).toHaveURL(new RegExp(`/dashboard/coder/${PROJECT_ID}/${FOLDED_CHAT.id}$`));
     // The chat itself, not just its URL: its worktree panel is beside it.

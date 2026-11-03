@@ -1,12 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronDown,
   Folder,
   FolderGit2,
+  FolderOpen,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -25,7 +25,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Page, PageAction, PageActions } from "@/components/layout/page";
-import { Separator } from "@/components/ui/separator";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { ChatRowMenu, WatcherChatBadge } from "@/components/chat/chat-list";
 import { startChatSession } from "@/lib/chat-session";
@@ -50,38 +49,44 @@ import {
 const COLLAPSED_KEY = "coder:collapsedProjects";
 
 /**
- * The chat columns, on every chat row whether it has a value or not.
+ * The board's columns, on every row whether it has a value or not.
  *
- * indent · icon and title · branch · pull request · time · new chat · row menu.
+ * icon and title · branch · pull request · time · new chat · row menu.
  * A row without a branch or a pull request keeps the cell, so everything stays
  * in one line down the page.
  */
 const BOARD_COLUMNS =
-  "md:grid md:grid-cols-[1.75rem_minmax(0,1fr)_10rem_7rem_5rem_1.75rem_1.75rem] md:gap-3";
+  "md:grid md:grid-cols-[minmax(0,1fr)_10rem_7rem_5rem_1.75rem_1.75rem] md:gap-3";
 
 /** A row of the board: dense height, hover fill, the shared columns. */
 const BOARD_ROW =
   "group flex min-h-10 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150";
 
-/** A chat starts where its project's name does, one fold column further in. */
-const CHAT_ROW = "pl-10 md:pl-4";
+/** A chat row inside its project's card, edges matched to the row above. */
+const CHAT_ROW = "border-border/40 border-t px-3 md:pl-4 md:pr-2";
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
-/** What a project's line says beside its name: how much is under it. */
-function projectMeta(project: CoderProjectSummary): string {
-  if (project.chatCount === 0) return "no chats";
-  return project.chatCount === 1 ? "1 chat" : `${project.chatCount} chats`;
+/** How much is under a project: a compact count chip beside its name. */
+function ProjectCount({ project }: { project: CoderProjectSummary }) {
+  return (
+    <span
+      data-slot="project-meta"
+      className="bg-background border-border flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5"
+    >
+      <MessageSquare className="text-muted-foreground h-3 w-3" />
+      <span className="text-xs tabular-nums">{project.chatCount}</span>
+    </span>
+  );
 }
 
 /**
  * Coder's landing page: every project, with the chats it is working on under it.
  *
- * The board is the work in flight. A project is one foldable line, and its chats
- * hang under it with the branch they run on and the pull request that branch is
- * on, so the page answers what is moving and where it stands. Opening a chat is
- * one click; opening the project, its settings or a new chat are the buttons on
- * the line itself.
+ * The board is the work in flight. A project is a card: its header row folds
+ * the chats, which carry the branch they run on and the pull request that branch
+ * is on, so the page answers what is moving and where it stands. A chatless card
+ * opens the project instead; the row's menu carries the rest.
  */
 export function ProjectList() {
   const router = useRouter();
@@ -151,7 +156,6 @@ export function ProjectList() {
         data-slot="session-row"
         className={cn(BOARD_ROW, CHAT_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
       >
-        <span aria-hidden className="hidden md:block" />
         <Link
           href={`/dashboard/coder/${project.id}/${chat.id}`}
           className="flex min-w-0 items-center gap-2"
@@ -212,7 +216,7 @@ export function ProjectList() {
             <PageAction icon={Plus} label="New project" onClick={() => setCreating(true)} />
           </PageActions>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2 md:p-3">
             {error && <p className="text-destructive p-4 text-sm break-words">{error}</p>}
 
             {!error && !loading && projects.length === 0 && (
@@ -234,63 +238,45 @@ export function ProjectList() {
               </div>
             )}
 
-            {projects.map((project, index) => {
+            {projects.map((project) => {
               const isFolded = folded.has(project.id);
               return (
                 <section
                   key={project.id}
                   data-slot="project-group"
-                  className={cn(index > 0 && "border-border/30 border-t")}
+                  className="border-border shrink-0 overflow-hidden rounded-xl border"
                 >
                   <div
                     data-slot="project-row"
                     className={cn(BOARD_ROW, BOARD_COLUMNS, "bg-muted hover:bg-accent")}
                   >
-                    {/* Folding is its own control: the name beside it opens the
-                        project, which is what the row has always done. */}
-                    <span className="flex items-center justify-center">
-                      {project.chatCount > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleFold(project.id)}
-                          aria-expanded={!isFolded}
-                          aria-label={`${isFolded ? "Unfold" : "Fold"} ${project.name}`}
-                          className="inline-flex h-6 w-6 items-center justify-center rounded-md"
-                        >
-                          <ChevronDown
-                            className={cn(
-                              "text-muted-foreground h-3.5 w-3.5 transition-transform",
-                              isFolded && "-rotate-90",
-                            )}
-                          />
-                        </button>
-                      ) : (
-                        <span aria-hidden className="h-6 w-6" />
-                      )}
-                    </span>
-                    <Link
-                      href={`/dashboard/coder/${project.id}`}
-                      className="flex min-w-0 items-center gap-2"
+                    {/* The whole row folds; a chatless card opens the project, since
+                        there is nothing to fold. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        project.chatCount > 0
+                          ? toggleFold(project.id)
+                          : router.push(`/dashboard/coder/${project.id}`)
+                      }
+                      aria-expanded={project.chatCount > 0 ? !isFolded : undefined}
+                      aria-label={
+                        project.chatCount > 0
+                          ? `${isFolded ? "Unfold" : "Fold"} ${project.name}`
+                          : `Open ${project.name}`
+                      }
+                      className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none md:col-span-4"
                     >
                       <Folder className="text-muted-foreground h-4 w-4 shrink-0" />
                       <span className="truncate text-base font-semibold">{project.name}</span>
-                    </Link>
-                    <span
-                      data-slot="project-meta"
-                      className="text-muted-foreground truncate text-xs"
-                    >
-                      {projectMeta(project)}
-                    </span>
-                    <span aria-hidden className="hidden md:block" />
-                    <span
-                      data-slot="row-time"
-                      className="text-muted-foreground hidden text-right text-xs tabular-nums md:block"
-                    >
-                      {project.lastActivityAt ? formatRelativeDate(project.lastActivityAt) : ""}
-                    </span>
-                    {/* The row's own actions sit at the end on a phone, in the
-                        new-chat column on the board. */}
-                    <span aria-hidden className="flex-1 md:hidden" />
+                      <ProjectCount project={project} />
+                      <span
+                        data-slot="row-time"
+                        className="text-muted-foreground ml-auto hidden text-xs tabular-nums md:block"
+                      >
+                        {project.lastActivityAt ? formatRelativeDate(project.lastActivityAt) : ""}
+                      </span>
+                    </button>
                     <span className="flex justify-end">
                       <Button
                         type="button"
@@ -320,6 +306,12 @@ export function ProjectList() {
                           )}
                         />
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/dashboard/coder/${project.id}`)}
+                          >
+                            <FolderOpen className="mr-2 h-3.5 w-3.5" />
+                            Open project
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => setSettingsFor(project.id)}>
                             <Settings className="mr-2 h-3.5 w-3.5" />
                             Project settings
@@ -338,17 +330,11 @@ export function ProjectList() {
 
                   {!isFolded && (
                     <>
-                      {project.chats.map((chat, chatIndex) => (
-                        <Fragment key={chat.id}>
-                          {chatRow(project, chat)}
-                          {chatIndex < project.chats.length - 1 && <Separator />}
-                        </Fragment>
-                      ))}
+                      {project.chats.map((chat) => chatRow(project, chat))}
                       {project.chatCount > project.chats.length && (
                         <div
                           className={cn(BOARD_ROW, CHAT_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
                         >
-                          <span aria-hidden className="hidden md:block" />
                           <Link
                             href={`/dashboard/coder/${project.id}`}
                             className="text-muted-foreground hover:text-foreground min-w-0 truncate text-xs transition-colors duration-150"
