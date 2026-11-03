@@ -1,3 +1,9 @@
+# pnpm reads settings from this file, not from package.json. An `overrides` block
+# next to the dependencies is npm's shape and pnpm ignores it without a word.
+overrides:
+  'monaco-editor>dompurify': ^3.4.17
+  '@earendil-works/pi-ai>undici': ^8.12.3
+  '@earendil-works/pi-coding-agent>undici': ^8.12.3
 allowBuilds:
   '@google/genai': true
   '@prisma/engines': true
