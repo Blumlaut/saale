@@ -60,7 +60,18 @@ const BOARD_COLUMNS =
 
 /** A row of the board: dense height, hover fill, the shared columns. */
 const BOARD_ROW =
-  "group flex min-h-10 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150";
+  "group relative flex min-h-10 items-center gap-2 py-2 pr-2 pl-4 transition-colors duration-150";
+
+/**
+ * The row's hit area: a tap anywhere on it opens the row, not only on its title.
+ *
+ * A pseudo-element rather than padding, so a phone gets the full row height
+ * without the desktop columns moving.
+ */
+const ROW_TARGET = "after:absolute after:inset-0";
+
+/** Holds a row's action above that hit area, so its own tap still lands. */
+const ROW_TRAILING = "relative flex justify-end";
 
 /** A chat row inside its project's card, edges matched to the row above. */
 const CHAT_ROW = "border-border/40 border-t px-3 md:pl-4 md:pr-2";
@@ -158,7 +169,7 @@ export function ProjectList() {
       >
         <Link
           href={`/dashboard/coder/${project.id}/${chat.id}`}
-          className="flex min-w-0 items-center gap-2"
+          className={cn("flex min-w-0 flex-1 items-center gap-2", ROW_TARGET)}
         >
           <MessageSquare className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           <span className="truncate text-sm">{title}</span>
@@ -190,7 +201,7 @@ export function ProjectList() {
         </span>
         {/* The new-chat column belongs to a project's own line. */}
         <span aria-hidden className="hidden md:block" />
-        <span data-slot="row-actions" className="flex justify-end">
+        <span data-slot="row-actions" className={ROW_TRAILING}>
           <ChatRowMenu
             title={title}
             pinned={chat.pinned}
@@ -265,7 +276,10 @@ export function ProjectList() {
                           ? `${isFolded ? "Unfold" : "Fold"} ${project.name}`
                           : `Open ${project.name}`
                       }
-                      className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none md:col-span-4"
+                      className={cn(
+                        "focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none md:col-span-4",
+                        ROW_TARGET,
+                      )}
                     >
                       <Folder className="text-muted-foreground h-4 w-4 shrink-0" />
                       <span className="truncate text-base font-semibold">{project.name}</span>
@@ -277,7 +291,7 @@ export function ProjectList() {
                         {project.lastActivityAt ? formatRelativeDate(project.lastActivityAt) : ""}
                       </span>
                     </button>
-                    <span className="flex justify-end">
+                    <span className={ROW_TRAILING}>
                       <Button
                         type="button"
                         variant="ghost"
@@ -289,7 +303,7 @@ export function ProjectList() {
                         <MessageSquarePlus className="h-4 w-4" />
                       </Button>
                     </span>
-                    <span data-slot="row-actions" className="flex justify-end">
+                    <span data-slot="row-actions" className={ROW_TRAILING}>
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={(triggerProps) => (
@@ -337,7 +351,10 @@ export function ProjectList() {
                         >
                           <Link
                             href={`/dashboard/coder/${project.id}`}
-                            className="text-muted-foreground hover:text-foreground min-w-0 truncate text-xs transition-colors duration-150"
+                            className={cn(
+                              "text-muted-foreground hover:text-foreground min-w-0 truncate text-xs transition-colors duration-150",
+                              ROW_TARGET,
+                            )}
                           >
                             All {project.chatCount} chats
                           </Link>
