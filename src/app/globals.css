@@ -157,6 +157,11 @@
   color: var(--muted-foreground);
 }
 
+/* The one glow in the console: a release this instance could move to. */
+.glow-primary {
+  filter: drop-shadow(0 0 3px color-mix(in oklab, var(--primary) 75%, transparent));
+}
+
 /* ===== Responsive scale ===== */
 
 /* Mobile adjustments */
