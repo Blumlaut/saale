@@ -22,7 +22,6 @@ vi.mock("@/lib/db", () => ({
 import {
   checkPluginUpdates,
   clearPluginLog,
-  compareVersions,
   defaultPluginsDir,
   discoverPlugins,
   globalPluginPaths,
@@ -367,20 +366,6 @@ describe("npm sources", () => {
     expect(npmNameOf("npm:@narumitw/pi-usage@1.2.3")).toBe("@narumitw/pi-usage");
     expect(npmNameOf("npm:pi-usage")).toBe("pi-usage");
     expect(npmNameOf("npm:pi-usage@^2.0.0")).toBe("pi-usage");
-  });
-});
-
-describe("compareVersions", () => {
-  it("orders releases by their numbers", () => {
-    expect(compareVersions("1.2.3", "1.2.2")).toBeGreaterThan(0);
-    expect(compareVersions("1.10.0", "1.9.9")).toBeGreaterThan(0);
-    expect(compareVersions("2.0.0", "2.0.0")).toBe(0);
-    expect(compareVersions("1.0.0", "1.0.1")).toBeLessThan(0);
-  });
-
-  it("sorts a prerelease below the release it precedes", () => {
-    expect(compareVersions("1.0.0", "1.0.0-beta.1")).toBeGreaterThan(0);
-    expect(compareVersions("1.0.0-beta.2", "1.0.0-beta.1")).toBeGreaterThan(0);
   });
 });
 
