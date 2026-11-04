@@ -33,7 +33,8 @@ export const COMMAND_CATALOG = [
   },
   {
     name: "stfu",
-    description: "Auto-accept tool approvals for 2 hours",
+    aliases: ["yolo"],
+    description: "Auto-accept tool approvals for 2 hours or permanently",
     surfaces: ["web", "telegram"],
     icon: ShieldCheck,
   },
@@ -49,9 +50,16 @@ export type CommandName = (typeof COMMAND_CATALOG)[number]["name"];
 
 const BY_NAME = new Map<string, CommandMeta>(COMMAND_CATALOG.map((meta) => [meta.name, meta]));
 
-/** Look up a command by name, case-insensitively. */
+const BY_ALIAS = new Map<string, CommandName>(
+  COMMAND_CATALOG.flatMap((meta) =>
+    ("aliases" in meta ? meta.aliases : []).map((alias) => [alias, meta.name] as const),
+  ),
+);
+
+/** Look up a command by name or alias, case-insensitively. */
 export function getCommandMeta(name: string): CommandMeta | undefined {
-  return BY_NAME.get(name.toLowerCase());
+  const wanted = name.toLowerCase();
+  return BY_NAME.get(BY_ALIAS.get(wanted) ?? wanted);
 }
 
 /** Commands offered on a surface, in catalog order. */
@@ -63,16 +71,21 @@ export function listCommands(surface: CommandSurface): readonly CommandMeta[] {
 
 /**
  * Commands a surface offers that match a `/`-prefixed query.
- * Name matches rank above description matches; catalog order within each.
+ * Name and alias matches rank above description matches; catalog order within each.
  */
 export function searchCommands(surface: CommandSurface, query: string): readonly CommandMeta[] {
   const wanted = query.trim().toLowerCase();
   const available = listCommands(surface);
   if (!wanted) return available;
 
-  const byName = available.filter((meta) => meta.name.startsWith(wanted));
+  const byName = available.filter((meta) => matchesName(meta, wanted));
   const byDescription = available.filter(
-    (meta) => !meta.name.startsWith(wanted) && meta.description.toLowerCase().includes(wanted),
+    (meta) => !matchesName(meta, wanted) && meta.description.toLowerCase().includes(wanted),
   );
   return [...byName, ...byDescription];
+}
+
+function matchesName(meta: CommandMeta, wanted: string): boolean {
+  const names = [meta.name, ...(meta.aliases ?? [])];
+  return names.some((name) => name.startsWith(wanted));
 }

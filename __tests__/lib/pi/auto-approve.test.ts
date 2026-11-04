@@ -9,7 +9,7 @@ import {
   enableAutoApprove,
   disableAutoApprove,
   isAutoApproveActive,
-  getAutoApproveExpiry,
+  getAutoApproveStatus,
   STFU_DURATION_MS,
 } from "@/lib/pi/auto-approve";
 
@@ -67,10 +67,10 @@ describe("auto-approve (/stfu) module", () => {
   });
 
   it("reports an expiry and clears the flag early", async () => {
-    expect(await getAutoApproveExpiry("user-1")).toBeNull();
+    expect(await getAutoApproveStatus("user-1")).toBeNull();
     const expiry = await enableAutoApprove("user-1");
     expect(await isAutoApproveActive("user-1")).toBe(true);
-    expect(await getAutoApproveExpiry("user-1")).toBe(expiry);
+    expect(await getAutoApproveStatus("user-1")).toEqual({ expiresAt: expiry });
 
     await disableAutoApprove("user-1");
     expect(await isAutoApproveActive("user-1")).toBe(false);
@@ -79,6 +79,17 @@ describe("auto-approve (/stfu) module", () => {
   it("expires on its own", async () => {
     await enableAutoApprove("user-1");
     await vi.advanceTimersByTimeAsync(STFU_DURATION_MS + 1_000);
+    expect(await isAutoApproveActive("user-1")).toBe(false);
+  });
+
+  it("stays on without a TTL when enabled permanently", async () => {
+    expect(await enableAutoApprove("user-1", null)).toBeNull();
+    expect(await getAutoApproveStatus("user-1")).toEqual({ expiresAt: null });
+
+    await vi.advanceTimersByTimeAsync(STFU_DURATION_MS * 100);
+    expect(await isAutoApproveActive("user-1")).toBe(true);
+
+    await disableAutoApprove("user-1");
     expect(await isAutoApproveActive("user-1")).toBe(false);
   });
 

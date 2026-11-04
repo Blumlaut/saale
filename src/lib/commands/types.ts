@@ -44,6 +44,8 @@ export interface CommandOutcome {
 /** Command metadata. everything a surface needs to list or offer a command. */
 export interface CommandMeta {
   name: string;
+  /** Extra names the same command answers to. surfaces never list these. */
+  aliases?: readonly string[];
   description: string;
   surfaces: readonly CommandSurface[];
   icon: LucideIcon;

@@ -43,9 +43,29 @@ describe("command catalog", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
+  it("uses aliases Telegram accepts that collide with no other name", () => {
+    const names: readonly string[] = COMMAND_CATALOG.map((meta) => meta.name);
+    const aliases = COMMAND_CATALOG.flatMap((meta) => ("aliases" in meta ? meta.aliases : []));
+
+    for (const alias of aliases) {
+      expect(alias, `"${alias}" is not a legal Telegram command name`).toMatch(
+        /^[a-z][a-z0-9_]{0,31}$/,
+      );
+    }
+    expect(new Set(aliases).size).toBe(aliases.length);
+    expect(aliases.filter((alias) => names.includes(alias))).toEqual([]);
+  });
+
   it("looks commands up case-insensitively", () => {
     expect(getCommandMeta("MODEL")?.name).toBe("model");
     expect(getCommandMeta("nope")).toBeUndefined();
+  });
+
+  it("resolves an alias to the command it stands for", () => {
+    expect(getCommandMeta("yolo")?.name).toBe("stfu");
+    expect(getCommandMeta("YOLO")?.name).toBe("stfu");
+    // An alias is not a surface entry of its own.
+    expect(listCommands("web").map((meta) => meta.name)).not.toContain("yolo");
   });
 
   it("lists commands per surface", () => {
@@ -81,6 +101,9 @@ describe("command catalog", () => {
     const ranked = searchCommands("web", "s").map((meta) => meta.name);
     expect(ranked.slice(0, 2)).toEqual(["stfu", "stop"]);
     expect(ranked).toHaveLength(listCommands("web").length);
+
+    // An alias finds its command by name, not by description.
+    expect(searchCommands("web", "yolo").map((meta) => meta.name)).toEqual(["stfu"]);
 
     expect(searchCommands("web", "zzz")).toEqual([]);
   });

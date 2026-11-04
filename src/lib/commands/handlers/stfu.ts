@@ -1,32 +1,40 @@
 import {
   STFU_DURATION_MS,
+  autoApproveState,
   disableAutoApprove,
   enableAutoApprove,
-  getAutoApproveExpiry,
+  getAutoApproveStatus,
 } from "@/lib/pi/auto-approve";
 import type { CommandHandler } from "../types";
 
 /**
- * `/stfu`. auto-accept every tool approval for a time box.
+ * `/stfu` (also `/yolo`). auto-accept every tool approval.
  *
  * The flag is per user and lives in Redis, so it applies to web *and* Telegram
- * runs from the moment it is set.
+ * runs from the moment it is set. It can be a two-hour window or permanent.
  */
 export const stfuHandler: CommandHandler = {
   prepare: async (ctx) => {
-    const expiry = await getAutoApproveExpiry(ctx.userId);
-    const active = expiry !== null && expiry > Date.now();
+    const state = autoApproveState(await getAutoApproveStatus(ctx.userId));
 
     return {
       title: "Tool approvals",
-      description: active
-        ? `STFU mode is on until ${formatTime(expiry)}. Tool approvals are auto-accepted.`
-        : "Auto-accept every tool approval for 2 hours. Tools you disabled stay off.",
+      description:
+        state.kind === "window"
+          ? `STFU mode is on until ${formatTime(state.until)}. Tool approvals are auto-accepted.`
+          : state.kind === "permanent"
+            ? "STFU mode is on until you turn it off. Tool approvals are auto-accepted."
+            : "Auto-accept every tool approval for 2 hours, permanently, or not at all. Tools you disabled stay off.",
       options: [
-        { value: "on", label: "Enable for 2 hours", current: !active },
+        { value: "on", label: "Enable for 2 hours", current: state.kind === "off" },
+        {
+          value: "permanent",
+          label: "Leave on until turned off",
+          current: state.kind === "permanent",
+        },
         // "stop" is the value the old Telegram argument used. keep it so
         // `/stfu stop` keeps working for anyone who learned it.
-        { value: "stop", label: "Turn off", current: active },
+        { value: "stop", label: "Turn off", current: state.kind === "window" },
       ],
     };
   },
@@ -34,10 +42,12 @@ export const stfuHandler: CommandHandler = {
   run: async (ctx, value) => {
     if (value === "on") {
       const until = await enableAutoApprove(ctx.userId, STFU_DURATION_MS);
-      return {
-        message: `STFU mode ON until ${formatTime(until)}. tool approvals are auto-accepted.`,
-        tone: "success",
-      };
+      return { message: enabledMessage(until), tone: "success" };
+    }
+
+    if (value === "permanent") {
+      const until = await enableAutoApprove(ctx.userId, null);
+      return { message: enabledMessage(until), tone: "success" };
     }
 
     if (value === "stop") {
@@ -49,6 +59,13 @@ export const stfuHandler: CommandHandler = {
     return { message: `Unknown option for /stfu: ${value}`, tone: "error" };
   },
 };
+
+/** Confirmation for a mode that was just switched on. */
+function enabledMessage(until: number | null): string {
+  return until === null
+    ? "STFU mode ON permanently. tool approvals are auto-accepted until you turn it off."
+    : `STFU mode ON until ${formatTime(until)}. tool approvals are auto-accepted.`;
+}
 
 /** Local wall-clock time for an expiry timestamp. */
 function formatTime(timestamp: number): string {

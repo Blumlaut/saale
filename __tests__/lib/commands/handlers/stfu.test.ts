@@ -24,12 +24,13 @@ describe("/stfu", () => {
     resetMockRedis();
   });
 
-  it("offers enabling and turning off, with 'enable' current while it is off", async () => {
+  it("offers a window, a permanent mode and turning off, with 'enable' current while it is off", async () => {
     const prompt = await stfuHandler.prepare!(ctx("u1"));
 
-    expect(prompt.options.map((option) => option.value)).toEqual(["on", "stop"]);
+    expect(prompt.options.map((option) => option.value)).toEqual(["on", "permanent", "stop"]);
     expect(prompt.options[0]!.current).toBe(true);
     expect(prompt.options[1]!.current).toBe(false);
+    expect(prompt.options[2]!.current).toBe(false);
   });
 
   it("enables a two-hour window and says until when", async () => {
@@ -52,7 +53,30 @@ describe("/stfu", () => {
 
     const prompt = await stfuHandler.prepare!(ctx("u1"));
 
+    expect(prompt.options[2]!.current).toBe(true);
+    expect(prompt.options[1]!.current).toBe(false);
+    expect(prompt.description).toMatch(/is on until/);
+  });
+
+  it("keeps auto-approve on with no expiry when permanent is chosen", async () => {
+    const outcome = await stfuHandler.run(ctx("u1"), "permanent");
+
+    expect(outcome.tone).toBe("success");
+    expect(outcome.message).toMatch(/permanently/);
+
+    const prompt = await stfuHandler.prepare!(ctx("u1"));
     expect(prompt.options[1]!.current).toBe(true);
+    expect(prompt.options[2]!.current).toBe(false);
+    expect(prompt.description).toMatch(/until you turn it off/);
+  });
+
+  it("switches a permanent mode back to a window", async () => {
+    await stfuHandler.run(ctx("u1"), "permanent");
+
+    await stfuHandler.run(ctx("u1"), "on");
+
+    const prompt = await stfuHandler.prepare!(ctx("u1"));
+    expect(prompt.options[1]!.current).toBe(false);
     expect(prompt.description).toMatch(/is on until/);
   });
 
@@ -64,7 +88,7 @@ describe("/stfu", () => {
     expect(outcome.tone).toBe("success");
     expect(await getRedis().get("saale:auto-approve:u1")).toBeNull();
     const prompt = await stfuHandler.prepare!(ctx("u1"));
-    expect(prompt.options[1]!.current).toBe(false);
+    expect(prompt.options[2]!.current).toBe(false);
   });
 
   it("keeps one user's window invisible to another", async () => {
@@ -73,7 +97,7 @@ describe("/stfu", () => {
     const other = await stfuHandler.prepare!(ctx("u2"));
 
     expect(other.options[0]!.current).toBe(true);
-    expect(other.options[1]!.current).toBe(false);
+    expect(other.options[2]!.current).toBe(false);
   });
 
   it("refuses an unrecognised value instead of changing the approval posture", async () => {
