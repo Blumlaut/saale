@@ -36,10 +36,10 @@ export interface RoutedTelegramRunParams {
   telegramChatId: bigint;
   /** The chat the message continues. */
   sessionId: string;
-  /** The user's own words, stored as the message. */
+  /** The user's own words, which name an unnamed chat. */
   promptText: string;
-  /** The prompt the agent reads: `promptText` plus any quoted context. */
-  agentPrompt: string;
+  /** What the message stores and the agent reads: `promptText`, plus any quoted context. */
+  content: string;
   /** Base64 image from the message, already ready for the vision model. */
   imageData?: ImageContent | undefined;
   /** A document that was saved to the workspace and is named in the prompt. */
@@ -151,7 +151,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
   let settled = false;
   try {
     const userMessage = await prisma.chatMessage.create({
-      data: { sessionId: chat.id, role: "user", content: params.promptText },
+      data: { sessionId: chat.id, role: "user", content: params.content },
     });
     await prisma.chatSession.update({
       where: { id: chat.id, userId },
@@ -193,7 +193,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       userId,
       sessionId: chat.id,
       entry,
-      content: params.agentPrompt,
+      content: params.content,
       images: params.imageData ? [params.imageData] : undefined,
     });
     unsubscribe();

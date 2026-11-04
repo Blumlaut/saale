@@ -112,7 +112,7 @@ const params = {
   telegramChatId: chatId,
   sessionId,
   promptText: "what did that alert mean?",
-  agentPrompt: "what did that alert mean?",
+  content: "what did that alert mean?",
   messageSeq: 3,
   donePromise: Promise.resolve(),
 };

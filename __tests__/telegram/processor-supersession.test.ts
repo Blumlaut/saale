@@ -107,7 +107,7 @@ describe("processTelegramMessage  routing", () => {
         telegramChatId: chatId,
         sessionId: "sess-active",
         promptText: "hello",
-        agentPrompt: "hello",
+        content: "hello",
         replyToMessageId: 11,
       }),
     );
@@ -117,6 +117,49 @@ describe("processTelegramMessage  routing", () => {
     await processTelegramMessage(params(nextChatId()));
 
     expect(h.setActiveTelegramSession).toHaveBeenCalledWith(USER, "sess-active");
+  });
+
+  it("quotes the replied-to message into the transcript", async () => {
+    const chatId = nextChatId();
+
+    await processTelegramMessage(
+      params(chatId, {
+        messageText: "why did that fail?",
+        replyToQuoted: { messageId: 9, text: "Deploy failed", fromBot: true, fromName: "Saale" },
+      }),
+    );
+
+    expect(h.resolveOrStartTelegramTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ replyToMessageId: BigInt(9) }),
+    );
+
+    const call = h.runRoutedTelegramMessage.mock.calls[0]![0] as {
+      promptText: string;
+      content: string;
+    };
+    // The chat is named from the user's words, the message keeps the quote.
+    expect(call.promptText).toBe("why did that fail?");
+    expect(call.content).toBe(
+      "Replying to Saale in Telegram:\n> Deploy failed\n\nwhy did that fail?",
+    );
+  });
+
+  it("keeps the quote when the reply routes into the chat that sent it", async () => {
+    h.resolveOrStartTelegramTarget.mockResolvedValue({ sessionId: "sess-source", via: "reply" });
+
+    await processTelegramMessage(
+      params(nextChatId(), {
+        messageText: "why did that fail?",
+        replyToQuoted: { messageId: 9, text: "Deploy failed", fromBot: true, fromName: "Saale" },
+      }),
+    );
+
+    expect(h.runRoutedTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sess-source",
+        content: "Replying to Saale in Telegram:\n> Deploy failed\n\nwhy did that fail?",
+      }),
+    );
   });
 
   it("runs in the chat a message started when it continues none", async () => {

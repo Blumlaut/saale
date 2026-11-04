@@ -131,10 +131,10 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     promptText = promptText ? `${promptText}\n${filePromptText}` : filePromptText;
   }
 
-  // The agent prompt adds any quote-reply context; the stored user message
-  // stays the user's own text so the web UI mirrors the Telegram thread.
+  // A quote joins the message, so the transcript shows what the user answered
+  // and the agent reads it as context.
   const quotedContext = buildQuotedContext(replyToQuoted);
-  const agentPrompt = quotedContext ? `${quotedContext}\n\n${promptText}` : promptText;
+  const content = quotedContext ? `${quotedContext}\n\n${promptText}` : promptText;
 
   // 3. Run it on that chat's own pooled agent, the same one the web UI
   //    prompts, so both surfaces share one transcript and one set of settings.
@@ -144,7 +144,7 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
     telegramChatId,
     sessionId: target.sessionId,
     promptText,
-    agentPrompt,
+    content,
     ...(processedFile?.imageData ? { imageData: processedFile.imageData } : {}),
     ...(processedFile?.filePath ? { document: processedFile } : {}),
     ...(replyToMessageId != null ? { replyToMessageId } : {}),

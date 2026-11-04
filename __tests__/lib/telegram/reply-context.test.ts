@@ -53,7 +53,7 @@ describe("buildQuotedContext", () => {
     expect(buildQuotedContext(undefined)).toBeNull();
   });
 
-  it("labels a bot message as sent by the assistant", () => {
+  it("labels a bot message as sent by Saale", () => {
     const context = buildQuotedContext({
       messageId: 99,
       text: "Task due today: call the dentist",
@@ -61,9 +61,7 @@ describe("buildQuotedContext", () => {
       fromName: "Saale",
     });
 
-    expect(context).toContain("message #99");
-    expect(context).toContain("you (the assistant)");
-    expect(context).toContain("Task due today: call the dentist");
+    expect(context).toBe("Replying to Saale in Telegram:\n> Task due today: call the dentist");
   });
 
   it("labels another user's message by name", () => {
@@ -74,7 +72,18 @@ describe("buildQuotedContext", () => {
       fromName: "alice",
     });
 
-    expect(context).toContain("the user's contact alice");
+    expect(context).toContain("Replying to alice in Telegram");
+  });
+
+  it("quotes every line, so a multi-line message stays one block", () => {
+    const context = buildQuotedContext({
+      messageId: 5,
+      text: "first\nsecond",
+      fromBot: true,
+      fromName: "Saale",
+    });
+
+    expect(context).toBe("Replying to Saale in Telegram:\n> first\n> second");
   });
 
   it("truncates a long quoted message to keep the prompt bounded", () => {

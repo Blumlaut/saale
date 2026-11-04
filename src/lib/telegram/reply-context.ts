@@ -2,10 +2,10 @@
  * Quote-reply context for Telegram messages.
  *
  * Telegram includes the full replied-to message in the update, so when the
- * user quote-replies we can hand the agent the exact context. even when the
- * original was sent by a job (which lives outside the chat's Pi session) or
- * before a session rollover. Without this, replying to a job's message reads
- * to the agent as amnesia.
+ * user quote-replies we keep that message with the one they sent. The agent
+ * reads it as context, and the chat's transcript keeps it, so the web UI shows
+ * what the user was answering even when the original was sent by a job (which
+ * lives outside the chat's Pi session) or before a session rollover.
  */
 
 export interface QuotedMessageContext {
@@ -39,18 +39,21 @@ export function extractQuotedMessage(reply: unknown): QuotedMessageContext | und
 }
 
 /**
- * Build the prompt preamble that names the quoted message. Returns null when
- * there is nothing quoted, so callers can leave the prompt untouched.
+ * Build the blockquote that names the quoted message. Returns null when there
+ * is nothing quoted, so callers can leave the prompt untouched.
  */
 export function buildQuotedContext(quoted: QuotedMessageContext | undefined): string | null {
   if (!quoted) return null;
+
   const truncated =
     quoted.text.length > MAX_QUOTED_CHARS
       ? `${quoted.text.slice(0, MAX_QUOTED_CHARS)}…`
       : quoted.text;
-  const source = quoted.fromBot ? "you (the assistant)" : `the user's contact ${quoted.fromName}`;
-  return (
-    `[The user is quote-replying to message #${quoted.messageId} in this Telegram chat, ` +
-    `sent by ${source}]:\n<quoted_message>\n${truncated}\n</quoted_message>`
-  );
+  const source = quoted.fromBot ? "Saale" : quoted.fromName;
+  const quote = truncated
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+
+  return `Replying to ${source} in Telegram:\n${quote}`;
 }
