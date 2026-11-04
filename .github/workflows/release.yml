@@ -171,6 +171,8 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+
       - name: Bump, commit and tag
         env:
           VERSION: ${{ needs.plan.outputs.version }}
@@ -179,7 +181,9 @@ jobs:
           set -euo pipefail
           node scripts/changelog.mjs --version "$VERSION" --write
           node scripts/changelog.mjs --version "$VERSION" --notes "$RUNNER_TEMP/notes.md"
-          pnpm version "$VERSION" --no-git-tag-version > /dev/null
+          # The changelog write leaves the tree dirty, which pnpm version refuses
+          # unless the git checks are off.
+          pnpm version "$VERSION" --no-git-tag-version --no-git-checks > /dev/null
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "release $VERSION"
