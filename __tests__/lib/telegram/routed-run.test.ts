@@ -168,6 +168,34 @@ describe("runRoutedTelegramMessage", () => {
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
 
+  it("stores the quoted message while naming the chat from the user's words", async () => {
+    // `content` is what the chat shows and the agent reads; `promptText` is the
+    // user's own words, which is all a title may be taken from.
+    await runRoutedTelegramMessage({
+      ...params,
+      promptText: "does that reach us?",
+      content: "Replying to Saale in Telegram:\n> CVE-2026-1 affects lodash\n\ndoes that reach us?",
+    });
+
+    expect(mockChatMessage.create).toHaveBeenCalledWith({
+      data: {
+        sessionId,
+        role: "user",
+        content:
+          "Replying to Saale in Telegram:\n> CVE-2026-1 affects lodash\n\ndoes that reach us?",
+      },
+    });
+    expect(mockDispatchChatRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content:
+          "Replying to Saale in Telegram:\n> CVE-2026-1 affects lodash\n\ndoes that reach us?",
+      }),
+    );
+    // The quote never reaches the title: it names the chat from the question.
+    const update = mockChatSession.update.mock.calls[0]![0] as { data: { title: string } };
+    expect(update.data.title).toBe("does that reach us?");
+  });
+
   it("names an unnamed chat from the message", async () => {
     // The phone has no browser tab open: the chat is named by the run itself.
     await runRoutedTelegramMessage({ ...params, promptText: "fix the flaky e2e test" });

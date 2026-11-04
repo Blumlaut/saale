@@ -140,6 +140,74 @@ describe("createTelegramApprovalChannel", () => {
     await vi.waitFor(() => expect(h.deleteMessage).toHaveBeenCalledWith(777, 555));
   });
 
+  it("deletes the card of an approval the run cancelled", async () => {
+    await openChannel();
+
+    listener!(approvalRequest());
+    await vi.waitFor(() => expect(h.redis.setex).toHaveBeenCalled());
+
+    listener!({
+      event: "tool_approval_resolved",
+      data: {
+        sessionId: SESSION,
+        toolCallId: "tool-1",
+        toolName: "createDirectory",
+        approved: false,
+        cancelled: true,
+      },
+    });
+
+    await vi.waitFor(() => expect(h.deleteMessage).toHaveBeenCalledWith(777, 555));
+  });
+
+  it("ignores events that are not about approvals", async () => {
+    await openChannel();
+
+    listener!({ event: "message_update", data: { content: "thinking" } });
+    listener!({ event: "tool_execution_start", data: { toolCallId: "tool-1" } });
+    await Promise.resolve();
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(h.redis.setex).not.toHaveBeenCalled();
+  });
+
+  it("deletes a card that lands after the run ended", async () => {
+    // The send is slower than the run: the card must not sit on the phone for
+    // the rest of its five minutes, approving nothing.
+    let release!: (value: { message_id: number }) => void;
+    sendMessage.mockImplementation(
+      () =>
+        new Promise<{ message_id: number }>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const channel = await openChannel();
+    listener!(approvalRequest());
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
+
+    channel.stop();
+    release({ message_id: 556 });
+
+    await vi.waitFor(() => expect(h.deleteMessage).toHaveBeenCalledWith(777, 556));
+  });
+
+  it("logs a card that could not be sent", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    sendMessage.mockRejectedValue(new Error("bot was blocked by the user"));
+
+    await openChannel();
+    listener!(approvalRequest());
+    await vi.waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to send a Telegram approval card:",
+        expect.any(Error),
+      ),
+    );
+
+    errorSpy.mockRestore();
+  });
+
   it("sends nothing when the user has no linked chat", async () => {
     h.getEnabledTelegramBot.mockResolvedValue(null);
 

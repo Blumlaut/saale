@@ -16,6 +16,7 @@ const {
   mockInterruptTelegramChat,
   mockNextMessageSeq,
   mockHandleGroupServiceMessage,
+  mockTakePluginDialogReply,
 } = vi.hoisted(() => ({
   fakeBot: {
     api: {
@@ -34,6 +35,7 @@ const {
   mockInterruptTelegramChat: vi.fn(),
   mockNextMessageSeq: vi.fn(),
   mockHandleGroupServiceMessage: vi.fn(),
+  mockTakePluginDialogReply: vi.fn(),
 }));
 
 // Keep the real message builders (their text is what the user reads) and stub
@@ -53,6 +55,13 @@ vi.mock("@/lib/telegram/links", () => ({
   consumeLinkCode: (...args: unknown[]) => mockConsumeLinkCode(...args),
   getLinkByTelegramUserId: (...args: unknown[]) => mockGetLinkByTelegramUserId(...args),
   updateLinkDisplayName: (...args: unknown[]) => mockUpdateLinkDisplayName(...args),
+}));
+
+// The dialog path has its own test. Here it must answer "nothing to take", and
+// it must not reach Redis from this file.
+vi.mock("@/lib/telegram/plugin-dialogs", () => ({
+  handlePluginDialogCallback: async () => ({ handled: false }),
+  takePluginDialogReply: (...args: unknown[]) => mockTakePluginDialogReply(...args),
 }));
 
 vi.mock("@/lib/telegram/group-events", () => ({
@@ -150,6 +159,7 @@ beforeEach(() => {
   mockHandleGroupServiceMessage.mockResolvedValue(undefined);
   mockHandleApprovalCallback.mockResolvedValue({ handled: false });
   mockHandleCommandPromptCallback.mockResolvedValue({ handled: false });
+  mockTakePluginDialogReply.mockResolvedValue({ consumed: false });
   mockHandleCommandPromptCallback.mockResolvedValue({ handled: false });
   fakeBot.api.sendMessage.mockResolvedValue({ message_id: 1 });
   fakeBot.api.answerCallbackQuery.mockResolvedValue(true);
@@ -419,6 +429,39 @@ describe("message routing", () => {
       expect.objectContaining({ userId: "user-1", name: "stop" }),
     );
     expect(mockProcessTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("hands the message a reply answers to the processor", async () => {
+    await POST(
+      update(
+        messageUpdate({
+          reply_to_message: {
+            message_id: 90,
+            text: "CVE-2026-1 affects lodash",
+            from: { first_name: "Saale", is_bot: true },
+          },
+        }),
+      ),
+    );
+
+    expect(mockProcessTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replyToQuoted: {
+          messageId: 90,
+          text: "CVE-2026-1 affects lodash",
+          fromBot: true,
+          fromName: "Saale",
+        },
+      }),
+    );
+  });
+
+  it("passes no quote when the message answers nothing", async () => {
+    await POST(update(messageUpdate()));
+
+    expect(mockProcessTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ replyToQuoted: undefined }),
+    );
   });
 
   it("sends an unknown slash command to the agent rather than swallowing it", async () => {
