@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026.11.3 - 2026-11-04
+
+- install pnpm before the release bump (aba9c534)
+- add a permanent /stfu and a /yolo alias (4eae576c)
+- Bump the production-dependencies group across 1 directory with 10 updates (7782d041)
+- Bump the dev-dependencies group with 6 updates (d9f0d47b)
+- drop the second copy of the watcher and task shapes (d78e73af)
+- give every settings route the same frame (3ac42568)
+- say when a settings load fails (7808b746)
+- share one pipeline across the email ai jobs (4e9dedd5)
+- make the provider switch hide its models (8323b856)
+- keep pnpm out of the runtime images (856ecfa9)
+- fill the docker store with pnpm fetch (62843f92)
+- take pnpm from its official image (23655213)
+- cache the pnpm store and metadata cache (ee30db0b)
+- check src imports against a prod install (06b546fe)
+- pin node 26 with devEngines runtime (da6c41ae)
+- declare ssh2 and unified as dependencies (4dea9c73)
+- move pnpm overrides into pnpm-workspace.yaml (47c06b35)
+- cover the phone row's tap area (87440dc3)
+- let a coder row be tapped across its width (d39c2746)
+- rework the usage page as a chart dashboard (96d8f41a)
+- show the spend by type as a donut (a6ba0020)
+- split the usage summary and inset the account detail (63fc9852)
+- add the usage ledger and its admin page (b8e7926a)
+- drop schedulers left by retired agent jobs (4237a470)
+- point the queue worker at the dev server's port (e64acdec)
+- copy the patches before installing in docker (3712c73b)
+- seed the demo project with pnpm (46c91564)
+- patch the pi packages' export conditions (fc2946b7)
+- use pnpm in docker, ci and scripts (6795ac47)
+- switch the app to pnpm (197316a8)
+- stop the coder sweep starting idle containers (a405690a)
+- point setup script hints at pnpm (c7c831a9)
+- install pnpm in the sandbox image (0e84ab65)
+- manage mcp servers and tools per chat and coder (229221f4)
+- add a workspace audit page to the admin panel (9ecf59ff)
+
 ## 2026.11.2 - 2026-11-03
 
 - restore bordered fields in two sheets (bc24d687)
