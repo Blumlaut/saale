@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { commitUrl, type ChangelogItem, type ChangelogRelease } from "@/lib/changelog/parse";
 import type { AppUpdate } from "@/hooks/use-app-update";
 import { fetchJson } from "@/lib/http";
+import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 
 interface ChangelogResponse {
@@ -21,16 +23,37 @@ const UPGRADE_COMMANDS = [
   "docker compose -f docker-compose.prod.yml up -d",
 ].join("\n");
 
+/** A release's version and date, with whatever marks it out from the others. */
+function ReleaseHeader({
+  version,
+  date,
+  marker,
+}: {
+  version: string;
+  date: string;
+  marker?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="font-mono text-sm font-medium">{version}</span>
+        {marker}
+      </div>
+      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{date}</span>
+    </div>
+  );
+}
+
 /** One release's commits. Both the newest release and the shipped history use it. */
 function ReleaseItems({ items }: { items: ChangelogItem[] }) {
   return (
-    <ul className="space-y-1.5">
+    <ul className="mt-2 space-y-1">
       {items.map((item) => (
-        <li key={item.commit ?? item.text} className="flex gap-2 text-sm">
-          <span aria-hidden className="text-muted-foreground/50 select-none">
+        <li key={item.commit ?? item.text} className="flex gap-2 text-sm leading-relaxed">
+          <span aria-hidden className="text-muted-foreground/40 select-none">
             -
           </span>
-          <span className="min-w-0">
+          <span className="text-foreground/90 min-w-0">
             {item.text}
             {item.commit && (
               <>
@@ -39,7 +62,7 @@ function ReleaseItems({ items }: { items: ChangelogItem[] }) {
                   href={commitUrl(item.commit)}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-muted-foreground/70 hover:text-foreground font-mono text-xs"
+                  className="text-muted-foreground/60 hover:text-foreground font-mono text-[11px]"
                 >
                   {item.commit}
                 </a>
@@ -49,6 +72,49 @@ function ReleaseItems({ items }: { items: ChangelogItem[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The release the instance could move to, and how. */
+function UpdateEntry({ update }: { update: AppUpdate }) {
+  const latest = update.latest;
+  if (!latest) return null;
+
+  return (
+    <section className="pb-4">
+      <ReleaseHeader version={latest.version} date={latest.date} />
+      <span className="text-primary mt-1 block text-[10px] font-semibold tracking-[0.18em] uppercase">
+        update available
+      </span>
+
+      {latest.items.length > 0 && <ReleaseItems items={latest.items} />}
+
+      <div className="bg-muted border-border mt-3 flex items-start gap-2 rounded-lg border p-3">
+        <pre className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+          {UPGRADE_COMMANDS}
+        </pre>
+        <CopyButton
+          text={UPGRADE_COMMANDS}
+          label="Copy the update commands"
+          className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+        />
+      </div>
+
+      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+        You are on <span className="font-mono">{update.current}</span>. A pinned{" "}
+        <span className="font-mono">SAALE_VERSION</span> stays where it is until you change it.
+      </p>
+
+      <a
+        href={latest.url}
+        target="_blank"
+        rel="noreferrer"
+        className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-xs"
+      >
+        Release notes on GitHub
+        <ArrowUpRight className="size-3" aria-hidden />
+      </a>
+    </section>
   );
 }
 
@@ -84,52 +150,22 @@ export function ChangelogSheet({
     };
   }, [open, releases, failed]);
 
-  const newer = update?.updateAvailable ? update.latest : null;
+  const newer = update?.updateAvailable && update.latest ? update : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[440px] sm:max-w-none">
         <SheetHeader className="border-border/30 border-b px-6 pt-6 pb-4">
-          <SheetTitle>Changelog</SheetTitle>
+          <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
+            Changelog
+          </SheetTitle>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Running <span className="font-mono">{APP_VERSION}</span>
+          </p>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {newer && update && (
-            <section className="border-border/40 border-b py-4 first:pt-0">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="font-mono text-sm font-medium">{newer.version}</span>
-                <Badge className="text-[10px]">update available</Badge>
-                {newer.date && <span className="console-label ml-auto shrink-0">{newer.date}</span>}
-              </div>
-
-              {newer.items.length > 0 && <ReleaseItems items={newer.items} />}
-
-              <div className="bg-muted border-border mt-3 flex items-start gap-2 rounded-xl border p-2.5">
-                <pre className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] leading-relaxed">
-                  {UPGRADE_COMMANDS}
-                </pre>
-                <CopyButton
-                  text={UPGRADE_COMMANDS}
-                  label="Copy the update commands"
-                  className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-                />
-              </div>
-
-              <p className="text-muted-foreground mt-2 text-xs">
-                You are on {update.current}. A pinned SAALE_VERSION stays where it is until you
-                change it.
-              </p>
-
-              <a
-                href={newer.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-muted-foreground hover:text-foreground mt-2 inline-block text-xs underline underline-offset-4"
-              >
-                Release notes on GitHub
-              </a>
-            </section>
-          )}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          {newer && <UpdateEntry update={newer} />}
 
           {failed ? (
             <p className="text-muted-foreground text-sm">The changelog could not be loaded.</p>
@@ -140,24 +176,24 @@ export function ChangelogSheet({
               This build did not ship with a changelog.
             </p>
           ) : (
-            releases.map((release) => (
-              <section
-                key={release.version}
-                className="border-border/40 border-b py-4 first:pt-0 last:border-b-0 last:pb-0"
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium">{release.version}</span>
-                  {release.version === APP_VERSION && (
-                    <Badge variant="outline" className="text-[10px]">
-                      running
-                    </Badge>
-                  )}
-                  <span className="console-label ml-auto shrink-0">{release.date}</span>
-                </div>
-
-                <ReleaseItems items={release.items} />
-              </section>
-            ))
+            <div className={cn("divide-border/40 divide-y", newer && "border-border/40 border-t")}>
+              {releases.map((release) => (
+                <section key={release.version} className="py-4 first:pt-0 last:pb-0">
+                  <ReleaseHeader
+                    version={release.version}
+                    date={release.date}
+                    marker={
+                      release.version === APP_VERSION ? (
+                        <Badge variant="outline" className="text-[10px]">
+                          running
+                        </Badge>
+                      ) : null
+                    }
+                  />
+                  <ReleaseItems items={release.items} />
+                </section>
+              ))}
+            </div>
           )}
         </div>
       </SheetContent>
