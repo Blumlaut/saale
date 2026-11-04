@@ -9,7 +9,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { CompactActivity } from "./compact-activity";
 import { compactBlocks, type CompactSplit } from "./compact-blocks";
 import { CompactionMessage } from "./compaction-message";
-import { CopyButton } from "./copy-button";
+import { CopyButton } from "@/components/shared/copy-button";
 import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { RedactedToolCall } from "./redacted-tool-call";
 import { categoryToolMark, type ToolMark } from "./tool-mark-model";

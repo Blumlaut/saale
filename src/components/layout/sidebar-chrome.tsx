@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { ChangelogSheet } from "@/components/layout/changelog-sheet";
-import { ChevronDown, ChevronRight, Moon, Sun, type LucideIcon } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useColorMode } from "@/hooks/use-color-mode";
+import { useAppUpdate } from "@/hooks/use-app-update";
+import { useIsAdmin } from "@/hooks/use-is-admin";
 import { APP_VERSION } from "@/lib/version";
 
 /**
@@ -266,21 +268,33 @@ export function useRowFlip(order: readonly string[]) {
 export function SidebarFooter({ workspaceName }: { workspaceName: string }) {
   const { setTheme } = useTheme();
   const mode = useColorMode();
+  const isAdmin = useIsAdmin();
+  const update = useAppUpdate(isAdmin);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const newer = update?.updateAvailable ? update.latest : null;
 
   return (
     <div className="border-border/60 mt-4 border-t px-3 pt-3">
       <div className="flex min-w-0 items-center justify-between">
         <Button
           variant="ghost"
-          className="console-label hover:text-foreground -ml-1.5 h-6 max-w-full min-w-0 overflow-hidden px-1.5 font-semibold"
+          className="console-label hover:text-foreground -ml-1.5 h-6 max-w-full min-w-0 gap-0 overflow-hidden px-1.5 font-semibold"
           onClick={() => setChangelogOpen(true)}
-          title="Changelog"
-          aria-label={`${workspaceName} ${APP_VERSION}, changelog`}
+          title={newer ? `Release ${newer.version} is available` : "Changelog"}
+          aria-label={
+            newer
+              ? `${workspaceName} ${APP_VERSION}, release ${newer.version} available, changelog`
+              : `${workspaceName} ${APP_VERSION}, changelog`
+          }
         >
-          <span className="min-w-0 truncate">{workspaceName}</span>{" "}
-          <span className="text-muted-foreground/70 tracking-normal normal-case">
-            {APP_VERSION}
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="min-w-0 truncate">{workspaceName}</span>
+            <span className="text-muted-foreground/70 tracking-normal normal-case">
+              {APP_VERSION}
+            </span>
+            {newer && (
+              <ArrowUp className="glow-primary text-primary size-3 shrink-0" aria-hidden="true" />
+            )}
           </span>
         </Button>
         <Button
@@ -295,7 +309,7 @@ export function SidebarFooter({ workspaceName }: { workspaceName: string }) {
         </Button>
       </div>
       <div className="bg-primary mt-2 h-0.5 w-8 rounded-full" />
-      <ChangelogSheet open={changelogOpen} onOpenChange={setChangelogOpen} />
+      <ChangelogSheet open={changelogOpen} onOpenChange={setChangelogOpen} update={update} />
     </div>
   );
 }

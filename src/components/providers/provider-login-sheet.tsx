@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 
-import { CopyButton } from "@/components/chat/copy-button";
+import { CopyButton } from "@/components/shared/copy-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

@@ -19,7 +19,7 @@ import { MarkdownRenderer, StreamingMarkdown } from "./markdown-renderer";
 import { LightboxImage } from "./image-lightbox";
 import { ApprovalMessage } from "./approval-message";
 import { CompactionMessage } from "./compaction-message";
-import { CopyButton } from "./copy-button";
+import { CopyButton } from "@/components/shared/copy-button";
 import { MessageStats } from "./message-stats";
 import { SelectionQuoteButton } from "./selection-quote-button";
 import { ToolCallGroup } from "./tool-call-group";

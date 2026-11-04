@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { CopyButton } from "@/components/chat/copy-button";
+import { CopyButton } from "@/components/shared/copy-button";
 
 describe("CopyButton", () => {
   beforeEach(() => {
