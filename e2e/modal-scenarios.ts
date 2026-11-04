@@ -1642,7 +1642,6 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/chat",
     sources: ["src/components/layout/changelog-sheet.tsx"],
     viewport: DESKTOP_VIEWPORT,
-    // The update section carries the longest line in the sheet: the commands.
     mock: (page) => mockChangelog(page, "available"),
     open: (page) => click(page, `button[title="Release ${LATEST_RELEASE.version} is available"]`),
   },

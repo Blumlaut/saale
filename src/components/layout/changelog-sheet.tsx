@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 
-import { CopyButton } from "@/components/shared/copy-button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { commitUrl, type ChangelogItem, type ChangelogRelease } from "@/lib/changelog/parse";
@@ -18,11 +17,8 @@ interface ChangelogResponse {
   releases: ChangelogRelease[];
 }
 
-/** What `docs/install.md` tells an operator to run, and the only way this moves. */
-const UPGRADE_COMMANDS = [
-  "docker compose -f docker-compose.prod.yml pull",
-  "docker compose -f docker-compose.prod.yml up -d",
-].join("\n");
+/** Where the README explains how a deployment moves to a release. */
+const UPDATING_URL = "https://github.com/Blumlaut/saale#updating";
 
 /** A release's version and date, with whatever marks it out from the others. */
 function ReleaseHeader({
@@ -88,16 +84,15 @@ function UpdateEntry({ update }: { update: AppUpdate }) {
         update available
       </span>
 
-      <div className="bg-muted border-border mt-3 flex items-start gap-2 rounded-lg border p-3">
-        <pre className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
-          {UPGRADE_COMMANDS}
-        </pre>
-        <CopyButton
-          text={UPGRADE_COMMANDS}
-          label="Copy the update commands"
-          className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-        />
-      </div>
+      <a
+        href={UPDATING_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="text-foreground decoration-muted-foreground/40 hover:decoration-foreground mt-3 inline-flex items-center gap-1 text-xs font-medium underline underline-offset-4"
+      >
+        How to update
+        <ArrowUpRight className="size-3" aria-hidden />
+      </a>
 
       {latest.items.length > 0 && <ReleaseItems items={latest.items} />}
 
