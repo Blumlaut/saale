@@ -18,13 +18,15 @@ yourself only when you run the app outside Docker.
 
 ## Address and access
 
-| Variable               | Default          | What it does                                                           |
-| ---------------------- | ---------------- | ---------------------------------------------------------------------- |
-| `PREVIEW_DOMAIN`       | `preview.<host>` | Wildcard the coder previews are served on. See [previews.md](previews.md). |
-| `AUTH_TRUSTED_ORIGINS` | none             | Extra origins allowed to sign in, comma separated. Wildcards are fine. |
-| `AUTH_RATE_LIMIT`      | on               | `off` disables the per-IP limit on the auth endpoints.                 |
-| `RATE_LIMIT_MAX`       | `60`             | Requests per IP and path per minute.                                   |
-| `RATE_LIMIT_WINDOW_MS` | `60000`          | The window `RATE_LIMIT_MAX` is counted over.                           |
+| Variable                         | Default          | What it does                                                               |
+| -------------------------------- | ---------------- | -------------------------------------------------------------------------- |
+| `PREVIEW_DOMAIN`                 | `preview.<host>` | Wildcard the coder previews are served on. See [previews.md](previews.md). |
+| `AUTH_TRUSTED_ORIGINS`           | none             | Extra origins allowed to sign in, comma separated. Wildcards are fine.     |
+| `AUTH_RATE_LIMIT`                | on               | `off` disables the per-IP limit on the auth endpoints.                     |
+| `SIGN_IN_FAILURE_LIMIT`          | `10`             | Wrong passwords one account may give before it is refused.                 |
+| `SIGN_IN_FAILURE_WINDOW_SECONDS` | `900`            | How long those failures count.                                             |
+| `RATE_LIMIT_MAX`                 | `60`             | Requests per IP and path per minute.                                       |
+| `RATE_LIMIT_WINDOW_MS`           | `60000`          | The window `RATE_LIMIT_MAX` is counted over.                               |
 
 Behind a reverse proxy, `AUTH_TRUSTED_ORIGINS` is what lets a second hostname sign in.
 A preview hostname changes per port, so give the wildcard form rather than one host:
@@ -37,15 +39,15 @@ AUTH_TRUSTED_ORIGINS="https://*.preview.example.com"
 
 The agent runs commands in a container of its own, one per user.
 
-| Variable                     | Default | What it does                                                     |
-| ---------------------------- | ------- | ---------------------------------------------------------------- |
-| `SANDBOX_USER`               | `root`  | `root` lets the agent install packages. `agent` is tighter.      |
-| `SANDBOX_MEMORY`             | `4g`    | Memory limit per container.                                     |
-| `SANDBOX_PIDS`               | `4096`  | Process limit. Threads count too, and a dev server needs many.  |
-| `SANDBOX_CPUS`               | `2`     | CPU limit per container.                                        |
-| `SANDBOX_IDLE_MINUTES`       | `720`   | Minutes before an idle container is stopped.                    |
-| `SANDBOX_CONTAINER_TTL_DAYS` | `0`     | Days before a container is removed. `0` keeps them.             |
-| `SANDBOX_TMP_HOURS`          | `72`    | Hours before a workspace's `.tmp/` is emptied. `0` keeps it.    |
+| Variable                     | Default | What it does                                                   |
+| ---------------------------- | ------- | -------------------------------------------------------------- |
+| `SANDBOX_USER`               | `root`  | `root` lets the agent install packages. `agent` is tighter.    |
+| `SANDBOX_MEMORY`             | `4g`    | Memory limit per container.                                    |
+| `SANDBOX_PIDS`               | `4096`  | Process limit. Threads count too, and a dev server needs many. |
+| `SANDBOX_CPUS`               | `2`     | CPU limit per container.                                       |
+| `SANDBOX_IDLE_MINUTES`       | `720`   | Minutes before an idle container is stopped.                   |
+| `SANDBOX_CONTAINER_TTL_DAYS` | `0`     | Days before a container is removed. `0` keeps them.            |
+| `SANDBOX_TMP_HOURS`          | `72`    | Hours before a workspace's `.tmp/` is emptied. `0` keeps it.   |
 
 A changed `SANDBOX_MEMORY`, `SANDBOX_PIDS` or `SANDBOX_CPUS` reaches the container on its
 next command, without replacing it, so an installed package and a running service stay
@@ -68,12 +70,12 @@ touched for that many days.
 The composer's microphone is decoded by a faster-whisper server in the `voice` container.
 It loads a model only when a recording arrives, and unloads it minutes after the last one.
 
-| Variable         | Default                       | What it does                                  |
-| ---------------- | ----------------------------- | --------------------------------------------- |
-| `VOICE_ENABLED`  | `1`                           | `0` removes the microphone.                   |
-| `VOICE_URL`      | `http://voice:8000`           | A transcription server elsewhere. Empty is off. |
-| `VOICE_MODEL`    | `Systran/faster-whisper-small` | Any CTranslate2 Whisper model id.             |
-| `VOICE_LANGUAGE` | detected                      | Force a language, e.g. `de`.                  |
+| Variable         | Default                        | What it does                                    |
+| ---------------- | ------------------------------ | ----------------------------------------------- |
+| `VOICE_ENABLED`  | `1`                            | `0` removes the microphone.                     |
+| `VOICE_URL`      | `http://voice:8000`            | A transcription server elsewhere. Empty is off. |
+| `VOICE_MODEL`    | `Systran/faster-whisper-small` | Any CTranslate2 Whisper model id.               |
+| `VOICE_LANGUAGE` | detected                       | Force a language, e.g. `de`.                    |
 
 That container downloads a few hundred MB on its first start. A 502 from the composer
 means the app reached `VOICE_URL` and nothing answered there, so read that container's
@@ -81,23 +83,23 @@ logs first.
 
 ## Push, Telegram and search
 
-| Variable                 | What it does                                                                 |
-| ------------------------ | ---------------------------------------------------------------------------- |
-| `VAPID_PUBLIC_KEY`       | Web Push key pair, from `npx web-push generate-vapid-keys`.                  |
-| `VAPID_PRIVATE_KEY`      | The other half. Rotating it drops every subscription.                        |
-| `VAPID_SUBJECT`          | Contact URI for the push service. Defaults to a `mailto:` on the app's host. |
-| `PUSH_MOBILE_DELAY_MINUTES` | Minutes a phone's copy of a notification waits, so a page you have open can call it off. Default `3`. |
-| `TELEGRAM_OIDC_CLIENT_ID` / `_SECRET` | Enables sign-in with the instance's Telegram bot.               |
-| `TELEGRAM_OUTBOUND_TTL_DAYS` | How long a sent message stays a reply target. Default `90`.              |
-| `SEARXNG_URL`            | Search backend for the web tools.                                            |
-| `ARCTIC_SHIFT_URL`       | Archive the web tools read Reddit through, because Reddit blocks servers.    |
+| Variable                              | What it does                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`                    | Web Push key pair, from `npx web-push generate-vapid-keys`.                                           |
+| `VAPID_PRIVATE_KEY`                   | The other half. Rotating it drops every subscription.                                                 |
+| `VAPID_SUBJECT`                       | Contact URI for the push service. Defaults to a `mailto:` on the app's host.                          |
+| `PUSH_MOBILE_DELAY_MINUTES`           | Minutes a phone's copy of a notification waits, so a page you have open can call it off. Default `3`. |
+| `TELEGRAM_OIDC_CLIENT_ID` / `_SECRET` | Enables sign-in with the instance's Telegram bot.                                                     |
+| `TELEGRAM_OUTBOUND_TTL_DAYS`          | How long a sent message stays a reply target. Default `90`.                                           |
+| `SEARXNG_URL`                         | Search backend for the web tools.                                                                     |
+| `ARCTIC_SHIFT_URL`                    | Archive the web tools read Reddit through, because Reddit blocks servers.                             |
 
 ## Modules
 
-| Variable          | Default | What it does                                                 |
-| ----------------- | ------- | ------------------------------------------------------------ |
-| `COUNCIL_ENABLED` | `1`     | `0` removes the council module: nav, routes and tools.       |
-| `PI_OFFLINE`      | unset   | Set it to stop the model catalog from reaching the network.  |
+| Variable          | Default | What it does                                                |
+| ----------------- | ------- | ----------------------------------------------------------- |
+| `COUNCIL_ENABLED` | `1`     | `0` removes the council module: nav, routes and tools.      |
+| `PI_OFFLINE`      | unset   | Set it to stop the model catalog from reaching the network. |
 
 ## Workspace variables
 
@@ -116,8 +118,8 @@ command. A variable the user sets with the same name wins.
 
 ## Development only
 
-| Variable               | What it does                                                          |
-| ---------------------- | --------------------------------------------------------------------- |
-| `ALLOWED_DEV_ORIGINS`  | Hosts a dev server accepts requests from. A LAN address or a tunnel.  |
-| `NGROK_URL`            | A tunnel in front of the app, used to build the Telegram webhook URL. |
-| `PI_GLOBAL_PLUGINS_DIR` | Pins the directory global plugins are read from.                     |
+| Variable                | What it does                                                          |
+| ----------------------- | --------------------------------------------------------------------- |
+| `ALLOWED_DEV_ORIGINS`   | Hosts a dev server accepts requests from. A LAN address or a tunnel.  |
+| `NGROK_URL`             | A tunnel in front of the app, used to build the Telegram webhook URL. |
+| `PI_GLOBAL_PLUGINS_DIR` | Pins the directory global plugins are read from.                      |

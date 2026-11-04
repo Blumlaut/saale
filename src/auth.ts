@@ -16,6 +16,12 @@ import { revokeSessionsOnTwoFactorEnable } from "@/lib/auth/two-factor";
 import { destroyUserSandbox } from "@/lib/sandbox/teardown";
 import { ADMIN_CREATE_USER_PATH, assertSignupsAllowed } from "@/lib/auth/signups";
 import { getAccountPolicy, PASSWORD_FIELD_BY_PATH } from "@/lib/auth/password-policy";
+import {
+  isSignInLockedOut,
+  recordRefusedSignIn,
+  SIGN_IN_LOCKED_ERROR,
+  signInHandle,
+} from "@/lib/auth/sign-in-throttle";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
 import {
   USERNAME_MAX_LENGTH,
@@ -70,10 +76,14 @@ export const auth = betterAuth({
   // one address: every run would answer 429 halfway through.
   rateLimit: { enabled: process.env.AUTH_RATE_LIMIT !== "off" },
   hooks: {
-    // Usernames are the login handle, so a credential account created without
-    // one could not be signed into. both entry points must carry it.
-    // Format and uniqueness are enforced by the username plugin itself.
     before: createAuthMiddleware(async (ctx) => {
+      // Counted against the account, because the per-address limit believes a
+      // header the caller sets.
+      const signIn = signInHandle(ctx.path, ctx.body);
+      if (signIn && (await isSignInLockedOut(signIn))) {
+        throw APIError.from("TOO_MANY_REQUESTS", SIGN_IN_LOCKED_ERROR);
+      }
+
       // The admin plugin validates role names and authorizes from `AUTH_ROLES`,
       // which is loaded here so a custom role is never "non-existent".
       await loadRoleDefinitions();
@@ -91,6 +101,9 @@ export const auth = betterAuth({
         }
       }
 
+      // Usernames are the login handle, so a credential account created without
+      // one could not be signed into. both entry points must carry it.
+      // Format and uniqueness are enforced by the username plugin itself.
       const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
       if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;
 
@@ -99,6 +112,9 @@ export const auth = betterAuth({
       if (typeof handle !== "string" || normalizeUsername(handle).length === 0) {
         throw APIError.from("BAD_REQUEST", USERNAME_REQUIRED_ERROR);
       }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      await recordRefusedSignIn(ctx.path, ctx.body, ctx.context.returned);
     }),
   },
   databaseHooks: {
