@@ -49,9 +49,10 @@ export async function resolveSourceChat(
  *    conversation context (custom entries convert to a user message for the
  *    model).
  *
- * `sourceSessionId` is the chat that sent the message. Without one (a task
- * reminder, an agent job run) the message lands in the chat that spoke last,
- * which is where a reply to it would go anyway.
+ * `sourceSessionId` is the chat that sent the message. Without one the message
+ * goes to the chat that spoke last, which is where a group post's breadcrumb
+ * belongs; a private message with no chat is not recorded at all (see
+ * `deliverTelegramMessage`).
  *
  * `sentTo` is a group title. A group message is recorded as a one-line
  * breadcrumb instead of its full text: the chat that produced it needs to know

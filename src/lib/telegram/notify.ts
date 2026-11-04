@@ -62,7 +62,7 @@ export async function deliverTelegramMessage(params: {
   encryptedToken: string;
   chatId: bigint;
   content: string;
-  /** The chat that produced this message; the home thread when omitted. */
+  /** The chat that produced this message; none when nothing in Saale did. */
   sourceSessionId?: string | null | undefined;
   /** Group title when the message went to a group, so the source chat sees where. */
   sentTo?: string | null | undefined;
@@ -85,10 +85,16 @@ export async function deliverTelegramMessage(params: {
   // follow the send. The source is resolved first: an id a caller made up must
   // not become the chat a reply is routed to.
   const source = await resolveSourceChat(userId, sourceSessionId);
-  try {
-    await recordOutboundMessage({ userId, content, sourceSessionId: source, sentTo });
-  } catch (err) {
-    console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
+
+  // A private message no chat produced belongs to no chat, and the reply starts
+  // one with the quoted text (see `processor.ts`). Writing it into the chat the
+  // user happened to leave open would put it in a conversation it never had.
+  if (source || sentTo) {
+    try {
+      await recordOutboundMessage({ userId, content, sourceSessionId: source, sentTo });
+    } catch (err) {
+      console.error(`[telegram] Failed to record outbound message for user ${userId}:`, err);
+    }
   }
 
   try {

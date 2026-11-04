@@ -147,14 +147,11 @@ describe("sendTelegramToUser", () => {
     expect(result).toEqual({ ok: true, chatId: "119075844", label: "Jane" });
     expect(mockGetLinkByUserId).toHaveBeenCalledWith(userId);
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "Dentist in 30 minutes");
-    // Recorded so a reply to the reminder continues the thread, and ledgered so
-    // the reply itself can be routed back.
-    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
-      userId,
-      content: "Dentist in 30 minutes",
-      sourceSessionId: null,
-      sentTo: null,
-    });
+    // No chat produced the reminder, so none gets the text. A reply opens one
+    // and carries the reminder with it.
+    expect(mockRecordOutboundMessage).not.toHaveBeenCalled();
+    // Ledgered so the reply can be found, and so nothing claims the reminder
+    // came from the chat the user last had open.
     expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
       userId,
       chatId,
@@ -254,7 +251,11 @@ describe("sendTelegramToUser", () => {
   it("delivers even when recording the message for replies fails", async () => {
     mockRecordOutboundMessage.mockRejectedValue(new Error("db down"));
 
-    const result = await sendTelegramToUser({ userId, content: "hello" });
+    const result = await sendTelegramToUser({
+      userId,
+      content: "hello",
+      sourceSessionId: "sess-9",
+    });
 
     // Bookkeeping must never hold back the message.
     expect(result.ok).toBe(true);
@@ -277,11 +278,12 @@ describe("deliverTelegramMessage", () => {
 
     expect(result).toEqual({ ok: true, chatId: "119075844" });
     expect(mockSendTelegramMessage).toHaveBeenCalledWith("enc", chatId, "hello");
-    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
+    expect(mockRecordOutboundMessage).not.toHaveBeenCalled();
+    expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
       userId,
-      content: "hello",
+      chatId,
+      messageIds: [42],
       sourceSessionId: null,
-      sentTo: undefined,
     });
   });
 
@@ -320,12 +322,7 @@ describe("deliverTelegramMessage", () => {
       sourceSessionId: "watcher:w-1",
     });
 
-    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
-      userId,
-      content: "CVE-2026-1 affects lodash",
-      sourceSessionId: null,
-      sentTo: undefined,
-    });
+    expect(mockRecordOutboundMessage).not.toHaveBeenCalled();
     expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
       userId,
       chatId,
