@@ -72,16 +72,18 @@ function writeStoredWidth(key: string, width: number): void {
  */
 export function useResizableWidth(options: ResizableWidthOptions): ResizableWidth {
   const { storageKey, label, defaultWidth, minWidth, maxWidth, handle } = options;
-  const [width, setWidth] = useState(defaultWidth);
+  // What the user asked for, before a shrunken window applies its own ceiling.
+  const [wanted, setWanted] = useState(defaultWidth);
   const [dragging, setDragging] = useState(false);
   const current = useRef(defaultWidth);
   const drag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const width = clamp(wanted, minWidth, maxWidth);
 
   const apply = useCallback(
     (next: number) => {
       const clamped = clamp(next, minWidth, maxWidth);
       current.current = clamped;
-      setWidth(clamped);
+      setWanted(clamped);
       return clamped;
     },
     [minWidth, maxWidth],
@@ -93,16 +95,17 @@ export function useResizableWidth(options: ResizableWidthOptions): ResizableWidt
     apply(readStoredWidth(storageKey, defaultWidth));
   }, [storageKey, defaultWidth, apply]);
 
-  const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: current.current,
-    };
-    setDragging(true);
-  }, []);
+  // A drag starts from what the panel shows, so a window that narrowed under an
+  // older width does not make the first pull do nothing.
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drag.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width };
+      setDragging(true);
+    },
+    [width],
+  );
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -125,9 +128,9 @@ export function useResizableWidth(options: ResizableWidthOptions): ResizableWidt
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      writeStoredWidth(storageKey, current.current);
+      writeStoredWidth(storageKey, clamp(current.current, minWidth, maxWidth));
     },
-    [storageKey],
+    [storageKey, minWidth, maxWidth],
   );
 
   const onKeyDown = useCallback(
@@ -136,13 +139,11 @@ export function useResizableWidth(options: ResizableWidthOptions): ResizableWidt
       // The key names the direction the edge travels, so ArrowLeft widens a
       // panel whose handle is on its left edge.
       const direction = event.key === "ArrowRight" ? 1 : -1;
-      const next = apply(
-        current.current + KEYBOARD_STEP_PX * direction * (handle === "left" ? -1 : 1),
-      );
+      const next = apply(width + KEYBOARD_STEP_PX * direction * (handle === "left" ? -1 : 1));
       writeStoredWidth(storageKey, next);
       event.preventDefault();
     },
-    [apply, handle, storageKey],
+    [apply, handle, storageKey, width],
   );
 
   return {

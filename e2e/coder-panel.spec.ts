@@ -591,6 +591,35 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("widens the worktree panel past its usual ceiling on an ultrawide", async ({ browser }) => {
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {},
+      { viewport: { width: 2560, height: 1200 } },
+    );
+    const handle = shown(page, '[role="separator"][aria-label="Resize the worktree panel"]');
+    const before = (await handle.boundingBox())!;
+
+    await page.mouse.move(before.x + before.width / 2, before.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(before.x - 700, before.y + 200, { steps: 10 });
+    await page.mouse.up();
+
+    // The pull is 700, and the panel used to stop after 400 of it, at a fixed
+    // 720 of width.
+    const after = (await handle.boundingBox())!;
+    expect(before.x - after.x).toBeGreaterThan(620);
+
+    // The chat keeps a column of its own beside it.
+    await expect(shownText(page, "Project")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+
+    await context.close();
+  });
+
   test("commits what is staged, saying so first", async ({ browser }) => {
     const sent: unknown[] = [];
     const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);

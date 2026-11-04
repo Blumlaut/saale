@@ -110,6 +110,26 @@ describe("useResizableWidth", () => {
     await waitFor(() => expect(width()).toBe(720));
   });
 
+  it("follows a ceiling that drops with the window, and restores it after", async () => {
+    const { rerender } = render(<Panel maxWidth={1200} />);
+    await waitFor(() => expect(width()).toBe(320));
+    drag(500, 100);
+    expect(width()).toBe(720);
+
+    // A narrower window can no longer hold 720, so the panel gives way.
+    rerender(<Panel maxWidth={400} />);
+    expect(width()).toBe(400);
+
+    // The width the user asked for comes back with the room for it.
+    rerender(<Panel maxWidth={1200} />);
+    expect(width()).toBe(720);
+
+    // And a pull starts from what is shown rather than from the old width.
+    rerender(<Panel maxWidth={400} />);
+    fireEvent.keyDown(screen.getByTestId("handle"), { key: "ArrowRight" });
+    expect(width()).toBe(376);
+  });
+
   it("moves the edge with the arrow keys", async () => {
     render(<Panel />);
     await waitFor(() => expect(width()).toBe(320));

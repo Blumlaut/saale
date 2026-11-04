@@ -18,6 +18,7 @@ import {
   useCoderChatStarter,
 } from "@/components/coder/use-coder-data";
 import { useResizableWidth } from "@/hooks/use-resizable-width";
+import { useElementWidth } from "@/hooks/use-element-width";
 
 /** How often an open coder chat re-reads its worktree while visible. */
 const WORKTREE_POLL_MS = 20_000;
@@ -41,6 +42,9 @@ const WORKTREE_PANEL = {
   handle: "left",
 } as const;
 
+/** The room the chat keeps beside a worktree panel dragged wide. */
+const CHAT_MIN_WIDTH = 440;
+
 export default function CoderLayout() {
   const pathname = usePathname();
   const startChat = useCoderChatStarter();
@@ -58,7 +62,6 @@ export default function CoderLayout() {
   const [loadingMoreCommits, setLoadingMoreCommits] = useState(false);
   const { state, loading, error } = useSessionState(sessionId, refreshKey, commitLimit);
   const { pullRequest } = usePullRequest(sessionId, refreshKey);
-  const panel = useResizableWidth(WORKTREE_PANEL);
 
   // Another chat has its own history, so the next one opens at the top again.
   useEffect(() => {
@@ -111,6 +114,17 @@ export default function CoderLayout() {
     handle: "right",
   });
 
+  // An ultrawide leaves room for a worktree panel past the fixed ceiling, so the
+  // ceiling is whatever the row holds beyond a usable chat.
+  const [measureRow, rowWidth] = useElementWidth();
+  const panel = useResizableWidth({
+    ...WORKTREE_PANEL,
+    maxWidth:
+      rowWidth === null
+        ? WORKTREE_PANEL.maxWidth
+        : Math.max(WORKTREE_PANEL.maxWidth, rowWidth - coderChatSidebar.width - CHAT_MIN_WIDTH),
+  });
+
   const newChat = useCallback(() => {
     if (projectId) startChat(projectId);
   }, [projectId, startChat]);
@@ -144,7 +158,7 @@ export default function CoderLayout() {
 
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div ref={measureRow} className="flex min-h-0 flex-1 overflow-hidden">
         <div
           className="relative hidden shrink-0 md:block"
           style={{ width: coderChatSidebar.width }}
