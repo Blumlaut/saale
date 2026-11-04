@@ -90,14 +90,7 @@ interface DayRow {
   calls: number;
 }
 
-const KINDS: readonly UsageKind[] = [
-  "chat",
-  "coder",
-  "council",
-  "job",
-  "automation",
-  "email_draft",
-];
+const KINDS: readonly UsageKind[] = ["chat", "coder", "job", "automation", "email_draft"];
 
 function isKind(value: string): value is UsageKind {
   return (KINDS as readonly string[]).includes(value);

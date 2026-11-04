@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
 import { gotoAndSettle, sessionContext } from "./utils";
+import { FILES_NOTES, FILES_ROOT, mockFiles } from "./files-mocks";
 
 /**
  * The files page: a workspace with room for an editor.
@@ -9,73 +10,6 @@ import { gotoAndSettle, sessionContext } from "./utils";
  * part a unit test cannot see: two panels side by side, one of them on a phone,
  * and a row menu that answers a right click as well as its own button.
  */
-
-const ROOT = "/workspaces/user-e2e";
-
-const LISTING = {
-  target: {
-    id: "user",
-    label: "files",
-    root: ROOT,
-    capabilities: {
-      upload: true,
-      createFile: true,
-      createDirectory: true,
-      rename: true,
-      remove: true,
-    },
-  },
-  path: ROOT,
-  truncated: false,
-  entries: [
-    {
-      name: "src",
-      path: `${ROOT}/src`,
-      kind: "directory",
-      size: 4096,
-      modified: 1_791_904_714_445,
-      writable: true,
-    },
-    {
-      name: "notes.md",
-      path: `${ROOT}/notes.md`,
-      kind: "file",
-      size: 128,
-      modified: 1_791_904_714_445,
-      writable: true,
-    },
-    {
-      name: ".gitconfig",
-      path: `${ROOT}/.gitconfig`,
-      kind: "file",
-      size: 64,
-      modified: 1_791_904_714_445,
-      writable: true,
-    },
-    {
-      name: "misnamed.md",
-      path: `${ROOT}/misnamed.md`,
-      kind: "file",
-      size: 64,
-      modified: 1_791_904_714_445,
-      writable: true,
-    },
-  ],
-};
-
-async function mockFiles(page: Page) {
-  await page.route(/\/api\/files\/list/, (route) => route.fulfill({ json: LISTING }));
-  await page.route(/\/api\/files\/raw/, (route) =>
-    route.request().url().includes("misnamed.md")
-      ? // A `.md` whose bytes are not text: the name alone does not decide.
-        route.fulfill({ body: "\u0000\u0001\u0002 binary\n", contentType: "text/markdown" })
-      : route.fulfill({ body: "# e2e notes\n", contentType: "text/markdown; charset=utf-8" }),
-  );
-  await page.route(/\/api\/files\/write/, (route) => route.fulfill({ json: { modified: 1 } }));
-  await page.route(/\/api\/files\/zip/, (route) =>
-    route.fulfill({ status: 200, contentType: "application/zip", body: "" }),
-  );
-}
 
 /**
  * The on-screen copy of an element.
@@ -105,14 +39,14 @@ test.describe("files page", () => {
     const { context, page } = await openFiles(browser);
 
     await expect(shownText(page, "No file open")).toBeVisible();
-    await page.locator('button:has-text("notes.md")').first().click();
+    await page.locator(`button:has-text("${FILES_NOTES}")`).first().click();
 
-    // Monaco, not the sheet the council files page opens.
+    // Monaco, the editor this page keeps beside the browser.
     await expect(shown(page, ".monaco-editor")).toBeVisible({ timeout: 30_000 });
-    await expect(shown(page, '[aria-label="Download notes.md"]')).toBeVisible();
+    await expect(shown(page, `[aria-label="Download ${FILES_NOTES}"]`)).toBeVisible();
     await expect(page.locator('[role="dialog"]:visible')).toHaveCount(0);
     // The browser stays beside it: this is the room the page exists for.
-    await expect(shown(page, 'button:has-text("notes.md")')).toBeVisible();
+    await expect(shown(page, `button:has-text("${FILES_NOTES}")`)).toBeVisible();
 
     await context.close();
   });
@@ -120,7 +54,7 @@ test.describe("files page", () => {
   test("opens the row menu on right click", async ({ browser }) => {
     const { context, page } = await openFiles(browser);
 
-    await page.locator('button:has-text("notes.md")').first().click({ button: "right" });
+    await page.locator(`button:has-text("${FILES_NOTES}")`).first().click({ button: "right" });
 
     const menu = page.locator('[role="menu"]:visible').first();
     await expect(menu).toBeVisible();
@@ -132,7 +66,7 @@ test.describe("files page", () => {
     await expect(shownText(page, "1 selected")).toBeVisible();
 
     // The same menu says the opposite once the row is selected.
-    await page.locator('button:has-text("notes.md")').first().click({ button: "right" });
+    await page.locator(`button:has-text("${FILES_NOTES}")`).first().click({ button: "right" });
     await expect(
       page.locator('[role="menu"]:visible').first().getByRole("menuitem", { name: "Deselect" }),
     ).toBeVisible();
@@ -181,7 +115,7 @@ test.describe("files page", () => {
     await shown(page, 'button:has-text("Create file")').click();
 
     await expect.poll(() => created.length).toBe(1);
-    expect(created[0]).toEqual({ path: ROOT, name: "roadmap.md" });
+    expect(created[0]).toEqual({ path: FILES_ROOT, name: "roadmap.md" });
 
     await context.close();
   });
@@ -189,13 +123,13 @@ test.describe("files page", () => {
   test("gives the editor the whole screen on a phone", async ({ browser }) => {
     const { context, page } = await openFiles(browser, { width: 375, height: 667 });
 
-    await page.locator('button:has-text("notes.md")').first().click();
+    await page.locator(`button:has-text("${FILES_NOTES}")`).first().click();
 
     await expect(shown(page, ".monaco-editor")).toBeVisible({ timeout: 30_000 });
     // One panel at a time: the browser steps aside until the back arrow asks.
-    await expect(page.locator('button:has-text("notes.md"):visible')).toHaveCount(0);
+    await expect(page.locator(`button:has-text("${FILES_NOTES}"):visible`)).toHaveCount(0);
     await shown(page, '[aria-label="Back to files"]').click();
-    await expect(shown(page, 'button:has-text("notes.md")')).toBeVisible();
+    await expect(shown(page, `button:has-text("${FILES_NOTES}")`)).toBeVisible();
 
     await context.close();
   });

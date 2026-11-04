@@ -55,7 +55,6 @@ services:
       - SANDBOX_GID=${SANDBOX_GID:-1000}
       - PREVIEW_DOMAIN=${PREVIEW_DOMAIN:-}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
-      - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
       # On by default: the voice container ships with the stack. VOICE_ENABLED=0
       # takes the mic away, and VOICE_URL points at a server elsewhere. An empty
       # VOICE_URL (an operator's own override) also turns it off.
@@ -108,7 +107,6 @@ services:
       - SANDBOX_UID=${SANDBOX_UID:-1000}
       - SANDBOX_GID=${SANDBOX_GID:-1000}
       - WORKER_API_KEY=${WORKER_API_KEY:?Set WORKER_API_KEY}
-      - COUNCIL_ENABLED=${COUNCIL_ENABLED:-1}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}

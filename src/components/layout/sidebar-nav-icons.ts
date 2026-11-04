@@ -3,7 +3,6 @@ import {
   Code2,
   CheckSquare,
   FolderTree,
-  Landmark,
   ListTodo,
   Mail,
   MessageSquare,
@@ -24,7 +23,6 @@ export const SIDEBAR_NAV_ICONS: Record<SidebarNavItemId, LucideIcon> = {
   calendar: Calendar,
   tasks: CheckSquare,
   jobs: ListTodo,
-  council: Landmark,
   infra: Server,
   settings: Settings,
 };

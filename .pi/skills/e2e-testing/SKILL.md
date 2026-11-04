@@ -112,7 +112,7 @@ Rules that keep a run fast and honest:
   too long (slow), usually both.
 - **Mock the API, do not drive it.** `page.route` before navigating. Model calls,
   sandboxes, IMAP and Telegram are not part of a layout test. See
-  `e2e/council-mocks.ts` and the `mock*` helpers in `e2e/modal-scenarios.ts`.
+  `e2e/files-mocks.ts` and the `mock*` helpers in `e2e/modal-scenarios.ts`.
 - **Create fixtures over HTTP.** `page.request.post("/api/chat/sessions")`, not
   three clicks through the UI. Shared helpers: `createChatSession`,
   `discardChatSessions`.

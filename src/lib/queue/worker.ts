@@ -6,19 +6,16 @@ import {
   CODER_SWEEP_JOB_NAME,
   scheduleCalendarReminders,
   scheduleCoderSweep,
-  COUNCIL_SWEEP_JOB_NAME,
   createWorker,
   scheduleAllJobs,
   scheduleAllWatchers,
-  scheduleCouncilSweep,
   scheduleOrphanCleanup,
-  removeRetiredAgentSchedulers,
+  removeRetiredSchedulers,
   scheduleWatcherChatCleanup,
   WATCHER_CHAT_CLEANUP_JOB_NAME,
   WATCHER_TICK_JOB_NAME,
 } from "@/lib/queue";
 import { processJob } from "@/lib/queue/job-handler";
-import { isCouncilEnabled } from "@/lib/council/flag";
 import { migrateWorkspaceIdentitiesOnBoot } from "@/lib/sandbox/legacy-identities";
 import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { sendCalendarReminders } from "@/lib/notifications/calendar-reminders";
@@ -31,9 +28,6 @@ const CALENDAR_REMINDERS_INTERVAL_MINUTES = 1;
 
 /** How often to scan for orphaned image files (30 min) */
 const ORPHAN_CLEANUP_INTERVAL_MINUTES = 30;
-
-/** How often to look for council runs abandoned by a restarted app (2 min) */
-const COUNCIL_SWEEP_INTERVAL_MINUTES = 2;
 
 /** Daily: the sweep repairs bookkeeping, and a day of drift costs nothing */
 const CODER_SWEEP_PATTERN = "0 4 * * *";
@@ -112,16 +106,6 @@ async function executeWatcherTickViaApp(job: Job): Promise<unknown> {
   });
 }
 
-/**
- * Rescue council runs whose loop died with a restarted app.
- *
- * The app owns the council tables (and the run records), so the sweep is an app
- * call like the watcher tick rather than an inline worker job.
- */
-async function executeCouncilSweepViaApp(): Promise<unknown> {
-  return postToApp("/api/council/execute", {});
-}
-
 /** Reconcile coder worktrees with their checkouts, and stop what deleted chats left running. */
 async function executeCoderSweepViaApp(): Promise<unknown> {
   return postToApp("/api/coder/sweep", {});
@@ -172,9 +156,6 @@ function createJobRouter(): Processor {
     if (job.name === WATCHER_TICK_JOB_NAME) {
       return executeWatcherTickViaApp(job);
     }
-    if (job.name === COUNCIL_SWEEP_JOB_NAME) {
-      return executeCouncilSweepViaApp();
-    }
     if (job.name === CODER_SWEEP_JOB_NAME) {
       return executeCoderSweepViaApp();
     }
@@ -221,8 +202,8 @@ async function main() {
   await migrateWorkspaceIdentitiesOnBoot("worker");
 
   // Their job definitions were removed, so these schedulers only produce failures.
-  for (const id of await removeRetiredAgentSchedulers()) {
-    console.log(`[worker] Removed retired agent scheduler ${id}`);
+  for (const id of await removeRetiredSchedulers()) {
+    console.log(`[worker] Removed retired job scheduler ${id}`);
   }
 
   console.log("[worker] Starting BullMQ worker...");
@@ -250,11 +231,6 @@ async function main() {
 
   await retryUntilSuccess("Schedule all jobs", scheduleAllJobs);
   await retryUntilSuccess("Schedule watchers", scheduleAllWatchers);
-  if (isCouncilEnabled()) {
-    await retryUntilSuccess("Schedule council sweep", async () => {
-      await scheduleCouncilSweep(COUNCIL_SWEEP_INTERVAL_MINUTES);
-    });
-  }
   await retryUntilSuccess("Schedule orphan cleanup", registerOrphanCleanup);
   await retryUntilSuccess("Schedule coder worktree sweep", registerCoderSweep);
   await retryUntilSuccess("Schedule watcher chat cleanup", registerWatcherChatCleanup);

@@ -63,20 +63,20 @@ describe("feature definitions", () => {
     expect(featureForToolCategory("terminal")).toBe("terminal");
   });
 
-  it("ships the council off and the everyday modules on", () => {
+  it("ships the everyday modules on", () => {
     const defaults = defaultFeatures();
-    expect(defaults.council).toBe(false);
     expect(defaults.mail).toBe(true);
     expect(defaults.terminal).toBe(true);
+    expect(defaults.coder).toBe(true);
   });
 });
 
 describe("resolveFeatures", () => {
   it("layers instance defaults over the built-ins, and account switches over both", () => {
-    const features = resolveFeatures({ mail: false, council: true }, { mail: true, web: false });
+    const features = resolveFeatures({ mail: false, jobs: true }, { mail: true, web: false });
 
     expect(features.mail).toBe(true);
-    expect(features.council).toBe(true);
+    expect(features.jobs).toBe(true);
     expect(features.web).toBe(false);
     expect(features.calendar).toBe(true);
   });
@@ -94,9 +94,9 @@ describe("resolveFeatures", () => {
 describe("sparseFeatureOverrides", () => {
   it("stores only the switches that differ from the baseline", () => {
     const baseline = defaultFeatures();
-    const overrides = sparseFeatureOverrides({ ...baseline, council: true, mail: false }, baseline);
+    const overrides = sparseFeatureOverrides({ ...baseline, jobs: false, mail: false }, baseline);
 
-    expect(overrides).toEqual({ council: true, mail: false });
+    expect(overrides).toEqual({ jobs: false, mail: false });
   });
 
   it("drops a switch the account put back to the baseline", () => {
@@ -126,12 +126,12 @@ describe("loadUserFeatures", () => {
 
   it("lets an account's own switch beat the instance default", async () => {
     mocks.findUser.mockResolvedValue({ role: "user" });
-    mocks.findAdminSettings.mockResolvedValue({ featureDefaults: { council: false } });
-    mocks.findUserSettings.mockResolvedValue({ features: { council: true } });
+    mocks.findAdminSettings.mockResolvedValue({ featureDefaults: { mail: false } });
+    mocks.findUserSettings.mockResolvedValue({ features: { mail: true } });
 
     const features = await loadUserFeatures("user-1");
 
-    expect(features.council).toBe(true);
+    expect(features.mail).toBe(true);
   });
 
   it("treats a missing account row as a regular account", async () => {
@@ -139,7 +139,7 @@ describe("loadUserFeatures", () => {
 
     const features = await loadUserFeatures("ghost");
 
-    expect(features.council).toBe(false);
+    expect(features.jobs).toBe(true);
     expect(features.mail).toBe(true);
   });
 });

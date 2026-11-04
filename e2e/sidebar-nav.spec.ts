@@ -31,10 +31,9 @@ const MOBILE = { width: 375, height: 667 };
 /**
  * The default sidebar order.
  *
- * Opt-in items (Council) are registered but hidden until the user enables them,
- * so they are not part of the default order  `NAV_LABELS_ANY` is what a label
- * filter uses, so a visible Council item cannot slip past these assertions
- * unnoticed.
+ * Opt-in items are registered but hidden until the user enables them, so they
+ * are not part of the default order. `NAV_LABELS_ANY` is what a label filter
+ * uses, so an opt-in item that wrongly shows cannot slip past these assertions.
  */
 /** Items that start hidden: their switch is off after a reset. */
 const OPT_IN_LABELS = new Set(
@@ -51,7 +50,7 @@ const NAV_LABELS = [
   "Infrastructure",
   "Settings",
 ];
-const NAV_LABELS_ANY = [...NAV_LABELS, "Council"];
+const NAV_LABELS_ANY = [...NAV_LABELS, ...OPT_IN_LABELS];
 
 test.describe.configure({ mode: "serial" });
 

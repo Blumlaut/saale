@@ -1,7 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { gotoAndSettle, sessionContext } from "./utils";
-import { mockCouncilWorkspace } from "./council-mocks";
 
 /**
  * One action row, one action size.
@@ -33,7 +32,6 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/dashboard/jobs/automations" },
   { path: "/dashboard/jobs/scheduled" },
   { path: "/dashboard/coder" },
-  { path: "/dashboard/council", prepare: mockCouncilWorkspace },
   { path: "/admin/models/providers" },
   { path: "/admin/models/availability" },
   { path: "/admin/users/accounts" },

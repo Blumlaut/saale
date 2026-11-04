@@ -719,18 +719,18 @@ describe("resize", () => {
 
 describe("remove / stop", () => {
   it("removes the container and leaves the directory", async () => {
-    await manager().ensure("council-abcd");
-    const dir = path.join(workspaces, "council-abcd");
+    await manager().ensure("user-abcd");
+    const dir = path.join(workspaces, "user-abcd");
     await fs.writeFile(path.join(dir, "work.md"), "x");
 
-    expect(await manager().remove("council-abcd")).toBe(true);
+    expect(await manager().remove("user-abcd")).toBe(true);
 
-    expect(docker.byIdentity("council-abcd").removed).toBe(true);
+    expect(docker.byIdentity("user-abcd").removed).toBe(true);
     expect(await fs.readFile(path.join(dir, "work.md"), "utf8")).toBe("x");
   });
 
   it("reports a container that was not there", async () => {
-    expect(await manager().remove("council-missing")).toBe(false);
+    expect(await manager().remove("user-missing")).toBe(false);
   });
 
   it("stops a container without touching its directory", async () => {
@@ -746,13 +746,13 @@ describe("remove / stop", () => {
 describe("sweep and reapIdle", () => {
   it("stops containers a previous process left running", async () => {
     await manager().ensure("user-a");
-    await manager().ensure("council-b");
+    await manager().ensure("user-b");
 
     const swept = await manager().sweep();
 
     expect(swept).toEqual({ stopped: 2, removed: 0 });
     expect(docker.byIdentity("user-a").running).toBe(false);
-    expect(docker.byIdentity("council-b").running).toBe(false);
+    expect(docker.byIdentity("user-b").running).toBe(false);
   });
 
   it("removes a container whose directory was renamed away", async () => {

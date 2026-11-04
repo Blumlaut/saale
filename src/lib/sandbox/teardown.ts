@@ -1,10 +1,9 @@
 /**
  * Removing a tenant entirely: its container and its directory.
  *
- * Best-effort and never throws. A user or a council that is already gone from
- * the database must not stay on the volume because the service was briefly
- * unreachable, but a cleanup that did not happen is reported. What is left
- * behind holds files.
+ * Best-effort and never throws. A user who is already gone from the database
+ * must not stay on the volume because the service was briefly unreachable, but
+ * a cleanup that did not happen is reported. What is left behind holds files.
  */
 
 import * as sandboxClient from "./client";

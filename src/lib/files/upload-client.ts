@@ -39,7 +39,7 @@ export interface StagedFile {
 export type StageResult = { ok: true; staged: StagedFile } | Extract<UploadResult, { ok: false }>;
 
 export interface UploadOptions {
-  /** Workspace token: `user`, or `council:<id>`. */
+  /** Workspace token: `user`. */
   target: string;
   /** Destination folder, absolute. A staged upload ignores it. */
   dir: string;

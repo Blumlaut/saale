@@ -78,7 +78,7 @@ describe("containerSpec", () => {
 
   it("idles until a command arrives", () => {
     expect(spec.Cmd).toEqual(["sleep", "infinity"]);
-    expect(containerName("council-abcd1234")).toBe("saale-sandbox-council-abcd1234");
+    expect(containerName("user-abcd1234")).toBe("saale-sandbox-user-abcd1234");
   });
 
   it("refuses a malformed identity instead of building a mount for it", () => {

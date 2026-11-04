@@ -46,7 +46,7 @@ export interface FileBrowserController {
 }
 
 export interface UseFileBrowserOptions {
-  /** Workspace token: `user`, or `council:<id>`. */
+  /** Workspace token: `user`. */
   target: string;
   /**
    * Where browsing starts, relative to the workspace root. A caller that shows

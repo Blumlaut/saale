@@ -1,14 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  Loader2,
-  MessagesSquare,
-  MoreVertical,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
+import { AlertTriangle, Loader2, MoreVertical, RefreshCw, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -375,13 +368,7 @@ function WorkspaceRow({
       <Avatar className="size-8" aria-hidden>
         {row.owner?.image ? <AvatarImage src={row.owner.image} alt="" /> : null}
         <AvatarFallback className={cn(orphan && "text-amber-600 dark:text-amber-400")}>
-          {orphan ? (
-            <AlertTriangle className="size-4" />
-          ) : row.kind === "council" ? (
-            <MessagesSquare className="size-4" />
-          ) : (
-            (name[0]?.toUpperCase() ?? "?")
-          )}
+          {orphan ? <AlertTriangle className="size-4" /> : (name[0]?.toUpperCase() ?? "?")}
         </AvatarFallback>
       </Avatar>
 
@@ -392,11 +379,6 @@ function WorkspaceRow({
           >
             {name}
           </span>
-          {row.kind === "council" ? (
-            <Badge variant="secondary" className="hidden sm:inline-flex">
-              Council
-            </Badge>
-          ) : null}
           {row.running > 0 ? (
             <Badge className="bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
               {row.running} live

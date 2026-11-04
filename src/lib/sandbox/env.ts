@@ -7,8 +7,7 @@
  * and never stored on a session, a prompt or a log line.
  *
  * Every read and write here filters `userId`. A background job resolves from
- * `task.userId` and a council from its owner's, so the same function cannot
- * reach another user's values.
+ * `task.userId`, so the same function cannot reach another user's values.
  */
 
 import { decrypt, encrypt } from "@/lib/crypto";

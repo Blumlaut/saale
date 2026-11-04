@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { gotoAndSettle, DESKTOP_VIEWPORT } from "./utils";
 import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
-import { FILES_PREVIEW_NAME, mockCouncilFiles, mockCouncilRoom } from "./council-mocks";
+import { FILES_NOTES, mockFiles } from "./files-mocks";
 
 /**
  * Registry of every overlay instance the app renders.
@@ -1413,34 +1413,6 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     skip: "only reachable once a user has enabled 2FA, which the shared e2e account never does",
   },
 
-  // ── Council ───────────────────────────────────────────────────────────────
-  {
-    name: "council · new council",
-    path: "/dashboard/council",
-    sources: ["src/components/council/council-dialog.tsx"],
-    open: (page) => click(page, 'button[aria-label="New council"]'),
-  },
-  {
-    name: "council · edit council",
-    path: "/dashboard/council",
-    sources: ["src/components/council/council-dialog.tsx"],
-    mock: mockCouncilRoom,
-    open: async (page) => {
-      await click(page, 'button[aria-label^="Actions for"]');
-      await click(page, '[role="menuitem"]:has-text("Edit")');
-    },
-  },
-  {
-    name: "council · delete council confirmation",
-    path: "/dashboard/council",
-    sources: ["src/app/dashboard/council/page.tsx"],
-    mock: mockCouncilRoom,
-    open: async (page) => {
-      await click(page, 'button[aria-label^="Actions for"]');
-      await click(page, '[role="menuitem"]:has-text("Delete")');
-    },
-  },
-
   // ── Coder ─────────────────────────────────────────────────────────────────
   {
     name: "coder · new project",
@@ -1532,31 +1504,24 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
 
-  // ── Council workspace files ───────────────────────────────────────────────
+  // ── Files ─────────────────────────────────────────────────────────────────
   {
-    name: "council · file preview",
-    path: `/dashboard/council/e2e-council/files`,
-    sources: ["src/components/files/file-viewer.tsx"],
-    mock: mockCouncilFiles,
-    open: (page) => click(page, `button:has-text("${FILES_PREVIEW_NAME}")`),
-  },
-  {
-    name: "council · new folder",
-    path: `/dashboard/council/e2e-council/files`,
+    name: "files · new folder",
+    path: "/dashboard/files",
     sources: ["src/components/files/file-prompt-sheet.tsx"],
-    mock: mockCouncilFiles,
+    mock: mockFiles,
     open: async (page) => {
       await click(page, 'button[aria-label="More actions"]');
       await click(page, '[role="menuitem"]:has-text("New folder")');
     },
   },
   {
-    name: "council · file delete confirmation",
-    path: `/dashboard/council/e2e-council/files`,
+    name: "files · delete confirmation",
+    path: "/dashboard/files",
     sources: ["src/components/files/file-delete-dialog.tsx"],
-    mock: mockCouncilFiles,
+    mock: mockFiles,
     open: async (page) => {
-      await click(page, `button[aria-label="Actions for ${FILES_PREVIEW_NAME}"]`);
+      await click(page, `button[aria-label="Actions for ${FILES_NOTES}"]`);
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
   },

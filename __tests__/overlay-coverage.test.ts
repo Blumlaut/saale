@@ -50,10 +50,10 @@ function overlayComponents(): string[] {
  * The page file a scenario's URL renders.
  *
  * A concrete id in a scenario URL still points at a dynamic route
- * (`/dashboard/council/e2e-council/files` → `[councilId]/files/page.tsx`), so a
- * segment that does not exist literally is matched against the app tree's
- * `[param]` directories. Scenarios can therefore use the URLs a spec really
- * visits rather than a synthetic `[councilId]`.
+ * (`/dashboard/coder/sessions/s-1` → `[sessionId]/page.tsx`), so a segment that
+ * does not exist literally is matched against the app tree's `[param]`
+ * directories. Scenarios can therefore use the URLs a spec really visits rather
+ * than a synthetic `[sessionId]`.
  */
 function routeFile(route: string): string {
   const segments = route.replace(/^\//, "").split("/").filter(Boolean);

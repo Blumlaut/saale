@@ -39,7 +39,6 @@ import { UploadProgressBar } from "@/components/ui/upload-progress";
 import { FileDeleteDialog } from "./file-delete-dialog";
 import { FileRowMenuItems, type FileRowActions } from "./file-row-menu";
 import { FilePromptSheet } from "./file-prompt-sheet";
-import { FileViewer } from "./file-viewer";
 import { useFileBrowser } from "./use-file-browser";
 import { downloadFile } from "@/lib/download";
 import { relativeToRoot } from "@/lib/files/paths";
@@ -48,7 +47,7 @@ import { formatRelativeDate } from "@/lib/format";
 import { cn, formatFileSize, ROW_ACTION } from "@/lib/utils";
 
 export interface FileBrowserProps {
-  /** Workspace token the API understands: `user`, or `council:<id>`. */
+  /** Workspace token the API understands: `user`. */
   target: string;
   /** Directory to open at, relative to the workspace root (a worktree). Home goes back to it. */
   rootPath?: string;
@@ -65,7 +64,7 @@ export interface FileBrowserProps {
    * Show a file through the host. The coder panel opens it as a tab, so the
    * editor gets the width the user gave the panel.
    */
-  onOpenFile?: (entry: FileEntry) => void;
+  onOpenFile: (entry: FileEntry) => void;
 }
 
 type PromptState = { mode: "folder" } | { mode: "file" } | { mode: "rename"; entry: FileEntry };
@@ -113,8 +112,7 @@ function iconFor(entry: FileEntry) {
  *
  * The component knows nothing about what it is browsing. it is handed a target
  * token and the server answers with a label, a root and the capabilities that
- * apply. That is what makes the same browser usable for a council's shared
- * workspace today and a user's own files next.
+ * apply.
  *
  * Layout follows the console shell: one full-height panel whose first row is the
  * toolbar (context left, actions right, icon-only on phones) and whose list is
@@ -129,7 +127,6 @@ export function FileBrowser({
   onOpenFile,
 }: FileBrowserProps) {
   const browser = useFileBrowser({ target, ...(rootPath ? { startPath: rootPath } : {}) });
-  const [viewing, setViewing] = useState<FileEntry | null>(null);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [deleting, setDeleting] = useState<FileEntry[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -156,20 +153,12 @@ export function FileBrowser({
 
   const current = crumbs[crumbs.length - 1];
 
-  const openFile = useCallback(
-    (entry: FileEntry) => {
-      if (onOpenFile) onOpenFile(entry);
-      else setViewing(entry);
-    },
-    [onOpenFile],
-  );
-
   const openEntry = useCallback(
     (entry: FileEntry) => {
       if (entry.kind === "directory") browser.open(entry.path);
-      else openFile(entry);
+      else onOpenFile(entry);
     },
-    [browser, openFile],
+    [browser, onOpenFile],
   );
 
   const downloadSelection = useCallback(() => {
@@ -179,7 +168,7 @@ export function FileBrowser({
 
   const rowActions = useCallback(
     (entry: FileEntry): FileRowActions => ({
-      openFile,
+      openFile: onOpenFile,
       download: (target) =>
         void downloadFile(
           target.kind === "file" ? browser.downloadUrl(target) : browser.zipUrlFor([target]),
@@ -191,7 +180,7 @@ export function FileBrowser({
       canRename: capabilities.rename,
       canRemove: capabilities.remove,
     }),
-    [openFile, browser, capabilities.rename, capabilities.remove],
+    [onOpenFile, browser, capabilities.rename, capabilities.remove],
   );
 
   const onDrop = useCallback(
@@ -594,10 +583,6 @@ export function FileBrowser({
           void browser.upload(files);
         }}
       />
-
-      {onOpenFile ? null : (
-        <FileViewer target={target} entry={viewing} onClose={() => setViewing(null)} />
-      )}
 
       <FilePromptSheet
         open={prompt !== null}

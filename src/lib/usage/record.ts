@@ -14,14 +14,7 @@
 import { prisma } from "@/lib/db";
 
 /** What ran a model call. */
-export const USAGE_KINDS = [
-  "chat",
-  "coder",
-  "council",
-  "job",
-  "automation",
-  "email_draft",
-] as const;
+export const USAGE_KINDS = ["chat", "coder", "job", "automation", "email_draft"] as const;
 
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
@@ -40,7 +33,7 @@ export interface UsageRecord {
   /** USD, as the provider billed it or the catalog estimated it. */
   cost?: number;
   billed?: boolean;
-  /** The chat, council run, job run or watcher the call belongs to. */
+  /** The chat, job run or watcher the call belongs to. */
   refId?: string | null;
 }
 

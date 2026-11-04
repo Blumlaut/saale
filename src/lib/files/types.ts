@@ -37,9 +37,9 @@ export interface FileCapabilities {
 
 /** Which workspace a request is about. */
 export interface FileTargetInfo {
-  /** The token the client sends back, e.g. `user` or `council:<id>`. */
+  /** The token the client sends back: `user`. */
   id: string;
-  /** Human label for the header, e.g. the council's name. */
+  /** Human label for the header. */
   label: string;
   /** Absolute path of the workspace root. */
   root: string;

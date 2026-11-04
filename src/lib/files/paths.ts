@@ -12,10 +12,9 @@
  * makes that harmless differs per backend and lives in the providers: for a
  * workspace account it is the kernel's own file permissions, for the app's
  * uploads volume it is a `realpath` check.
- *
- * This is the same rule the council sandbox applies to its members' tool
- * arguments. extracted here so both share one implementation rather than two
- * that drift.
+ * *
+ * extracted here so the workspace providers share one implementation rather
+ * than two that drift.
  */
 
 import { FilePathEscapeError } from "./errors";

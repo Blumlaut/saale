@@ -24,22 +24,12 @@ vi.mock("@/lib/auth", () => ({
   requireSession: vi.fn(async () => ({ ok: true, user: { id: "user-1" } })),
 }));
 
-vi.mock("@/lib/council/access", () => ({
-  requireCouncilAccess: vi.fn(async () => null),
-}));
-
-vi.mock("@/lib/council/files", () => ({
-  openCouncilFileTarget: vi.fn(),
-}));
-
 vi.mock("@/lib/files/targets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/files/targets")>()),
   openUserFileTarget: vi.fn(),
 }));
 
 import { requireSession } from "@/lib/auth";
-import { requireCouncilAccess } from "@/lib/council/access";
-import { openCouncilFileTarget } from "@/lib/council/files";
 import { WorkspaceUnavailableError } from "@/lib/files/errors";
 import { createLocalFileProvider } from "@/lib/files/local-provider";
 import { openUserFileTarget } from "@/lib/files/targets";
@@ -154,7 +144,6 @@ async function upload(query: string, name: string, content: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(requireSession).mockResolvedValue({ ok: true, user: { id: "user-1" } });
-  vi.mocked(requireCouncilAccess).mockResolvedValue(null);
 });
 
 describe("authorization", () => {
@@ -175,42 +164,12 @@ describe("authorization", () => {
     await expect(response.json()).resolves.toMatchObject({ error: "Unknown file target" });
   });
 
-  it("gates a council before doing any work for it", async () => {
-    vi.mocked(requireCouncilAccess).mockResolvedValueOnce(
-      NextResponse.json({ error: "Not found" }, { status: 404 }),
-    );
-
-    const response = await get(listRoute, "?target=council:c1&path=/");
-
-    expect(response.status).toBe(404);
-    expect(openCouncilFileTarget).not.toHaveBeenCalled();
-  });
-
-  it("browses a council's workspace through the council target", async () => {
-    const provider = createFakeProvider(TREE, ROOT);
-    vi.mocked(openCouncilFileTarget).mockResolvedValueOnce({
-      provider,
-      info: {
-        id: "council:c1",
-        label: "Launch review",
-        root: ROOT,
-        capabilities: FULL_CAPABILITIES,
-      },
-    });
-
-    const response = await get(listRoute, "?target=council:c1&path=/");
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.target).toMatchObject({ id: "council:c1", label: "Launch review" });
-  });
-
   it("reports a workspace that cannot be reached as a conflict, not a crash", async () => {
-    vi.mocked(openCouncilFileTarget).mockRejectedValueOnce(
-      new WorkspaceUnavailableError("Council workspaces need the Open Terminal integration."),
+    vi.mocked(openUserFileTarget).mockRejectedValueOnce(
+      new WorkspaceUnavailableError("The workspace is not mounted."),
     );
 
-    const response = await get(listRoute, "?target=council:c1&path=/");
+    const response = await get(listRoute, "?target=user&path=/");
     expect(response.status).toBe(409);
   });
 

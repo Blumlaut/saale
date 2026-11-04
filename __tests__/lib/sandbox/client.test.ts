@@ -277,10 +277,10 @@ describe("kill / removeContainer", () => {
   it("removes an identity's container by name", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ removed: true }), { status: 200 }));
 
-    await removeContainer("council-abcd");
+    await removeContainer("user-abcd");
 
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("http://sandbox-exec:8100/container/council-abcd");
+    expect(url).toBe("http://sandbox-exec:8100/container/user-abcd");
     expect(init.method).toBe("DELETE");
   });
 });

@@ -35,14 +35,14 @@ describe("sidebar nav registry", () => {
   });
 
   it("starts an opt-in item hidden rather than dropping it", () => {
-    const council = sidebarNavItem("council");
-    expect(council.defaultHidden).toBe(true);
+    const coder = sidebarNavItem("coder");
+    expect(coder.defaultHidden).toBe(true);
 
     // A layout saved before the item existed still knows about it  hidden.
     const stored = [{ id: "chat", hidden: false }] as SidebarNavEntry[];
     const entries = normalizeSidebarNav(stored);
-    expect(entries.find((entry) => entry.id === "council")?.hidden).toBe(true);
-    expect(visibleIds(entries)).not.toContain("council");
+    expect(entries.find((entry) => entry.id === "coder")?.hidden).toBe(true);
+    expect(visibleIds(entries)).not.toContain("coder");
   });
 
   it("has an icon for every registry item", () => {

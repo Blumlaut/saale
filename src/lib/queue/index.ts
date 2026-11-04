@@ -422,39 +422,6 @@ export async function scheduleWatcherChatCleanup(intervalMinutes: number): Promi
   return removed;
 }
 
-// ─── Council runs ───────────────────────────────────────────────────────────
-
-export const COUNCIL_SWEEP_SCHEDULER_ID = "council-run-sweep";
-export const COUNCIL_SWEEP_JOB_NAME = "council_sweep";
-
-/**
- * Register the sweep that rescues council runs left `running` by a dead process.
- *
- * A council run's loop lives in the web process and holds the council's run
- * slot through the row's `status`; a restart mid-run would leave that row behind
- * and refuse every later run. The sweep is what releases it, and it is the only
- * thing council scheduling needs from the queue.
- *
- * @param intervalMinutes - How often to look for abandoned runs
- * @returns Scheduler ids removed while cleaning up legacy repeatable jobs
- */
-export async function scheduleCouncilSweep(intervalMinutes: number): Promise<string[]> {
-  const queue = getQueue();
-  const removed = await removeLegacyRepeatableJobs(
-    queue,
-    COUNCIL_SWEEP_JOB_NAME,
-    COUNCIL_SWEEP_SCHEDULER_ID,
-  );
-
-  await queue.upsertJobScheduler(
-    COUNCIL_SWEEP_SCHEDULER_ID,
-    { pattern: `*/${intervalMinutes} * * * *`, tz: "UTC" },
-    { name: COUNCIL_SWEEP_JOB_NAME, data: {} },
-  );
-
-  return removed;
-}
-
 /**
  * Remove BullMQ v5 repeatable jobs that v6 treats as job schedulers of their own.
  *
@@ -482,17 +449,24 @@ function removeLegacyRepeatableJobs(
 /** Scheduler id prefix of the agent job definition that automations replaced. */
 const RETIRED_AGENT_SCHEDULER_PREFIX = "agent-scheduled-";
 
+/** Job names whose schedulers outlived the feature that registered them. */
+const RETIRED_JOB_NAMES: readonly string[] = ["council_sweep"];
+
 /**
- * Remove the schedulers of the retired agent job definitions.
+ * Remove the schedulers nothing handles any more.
  *
- * Nothing reads the `definitionId` they enqueue any more, so they would fail on
- * every run.
+ * The agent job definitions that automations replaced, and the council sweep
+ * that went with its feature: each would fail on every run.
  *
  * @returns The scheduler ids that were removed
  */
-export function removeRetiredAgentSchedulers(): Promise<string[]> {
-  return removeSchedulers(getQueue(), "the retired agent job schedulers", (scheduler) =>
-    scheduler.key.startsWith(RETIRED_AGENT_SCHEDULER_PREFIX),
+export function removeRetiredSchedulers(): Promise<string[]> {
+  return removeSchedulers(
+    getQueue(),
+    "the retired job schedulers",
+    (scheduler) =>
+      scheduler.key.startsWith(RETIRED_AGENT_SCHEDULER_PREFIX) ||
+      RETIRED_JOB_NAMES.includes(scheduler.name),
   );
 }
 

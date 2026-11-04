@@ -1,7 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { VIEWPORTS, gotoAndSettle, sessionContext } from "./utils";
-import { COUNCIL_ROUTES, mockCouncilWorkspace } from "./council-mocks";
 
 /**
  * Mobile layout guardrails.
@@ -66,14 +65,9 @@ const ADMIN_PAGES = [
   "/admin/settings/voice",
 ];
 
-/**
- * Every route this spec measures: the dashboard, the councils (whose API is
- * mocked  a council run costs model calls and measures nothing extra) and the
- * admin pages.
- */
+/** Every route this spec measures: the dashboard and the admin pages. */
 const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   ...DASHBOARD_PAGES.map((path) => ({ path })),
-  ...COUNCIL_ROUTES.map((path) => ({ path, prepare: mockCouncilWorkspace })),
   ...ADMIN_PAGES.map((path) => ({ path })),
 ];
 

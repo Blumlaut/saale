@@ -230,7 +230,7 @@ async function readUserDirs(): Promise<
   try {
     const identities = await fs.readdir(workspacesDir());
     for (const identity of identities) {
-      // `user-<key>`: a user's own workspace, never a council's.
+      // `user-<key>`: a user's own workspace.
       if (!identity.startsWith("user-")) continue;
       const imageDir = path.join(workspacesDir(), identity, "images");
       try {

@@ -39,9 +39,9 @@ function request(body: unknown) {
   });
 }
 
-/** Every feature on except the council, which ships off. */
+/** Every feature on. */
 function effective(): FeatureMap {
-  return Object.fromEntries(FEATURES.map((key) => [key, key !== "council"])) as FeatureMap;
+  return Object.fromEntries(FEATURES.map((key) => [key, true])) as FeatureMap;
 }
 
 beforeEach(() => {

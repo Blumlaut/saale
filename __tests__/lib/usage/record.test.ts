@@ -91,7 +91,7 @@ describe("recordUsage", () => {
   });
 
   it("writes nothing for a call that spent nothing", async () => {
-    await recordUsage({ userId: USER_ID, kind: "council", provider: "openai", model: "gpt-5" });
+    await recordUsage({ userId: USER_ID, kind: "job", provider: "openai", model: "gpt-5" });
 
     expect(mocks.findOwnKey).not.toHaveBeenCalled();
     expect(mocks.createEvent).not.toHaveBeenCalled();

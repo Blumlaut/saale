@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  councilIdentity,
   deriveUserWorkspaceKey,
   InvalidSandboxIdentityError,
   isSandboxIdentity,
@@ -10,9 +9,8 @@ import {
 } from "@/lib/sandbox/identity";
 
 describe("parseIdentity", () => {
-  it("accepts the two shapes the app produces", () => {
+  it("accepts the shape the app produces", () => {
     expect(parseIdentity("user-abc123")).toBe("user-abc123");
-    expect(parseIdentity("council-abcd1234")).toBe("council-abcd1234");
   });
 
   it("refuses anything a caller might use to name another tree", () => {
@@ -21,7 +19,7 @@ describe("parseIdentity", () => {
       "user",
       "user-abc/../user-other",
       "user-../../etc",
-      "council-abc/def",
+      "council-abcd1234",
       "user-abc\0",
       "/workspaces/user-abc",
       "user-abc\n",
@@ -75,16 +73,5 @@ describe("userIdentity", () => {
   it("refuses an id it cannot hash", () => {
     expect(() => userIdentity("")).toThrow(InvalidSandboxIdentityError);
     expect(() => deriveUserWorkspaceKey("")).toThrow(InvalidSandboxIdentityError);
-  });
-});
-
-describe("councilIdentity", () => {
-  it("prefixes the key so a user and a council can never collide", () => {
-    expect(councilIdentity("abc123")).toBe("council-abc123");
-    expect(councilIdentity("abc123")).not.toBe(userIdentity("abc123"));
-  });
-
-  it("refuses a key the pattern cannot carry", () => {
-    expect(() => councilIdentity("../escape")).toThrow(InvalidSandboxIdentityError);
   });
 });

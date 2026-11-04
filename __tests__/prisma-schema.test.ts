@@ -6,10 +6,9 @@ import { describe, expect, it } from "vitest";
  * A field written on the same line as a model/enum declaration is accepted by
  * `prisma validate` and then silently left out of the generated client.
  *
- * `model CouncilMessage {  id String @id @default(cuid())` lost the message's
- * `id` this way: every `prisma.councilMessage.create(...).id` became a type
- * error, and it only surfaced in a production build  the local client was
- * generated before the line was joined, so local typechecks passed.
+ * A key field written that way once cost a column: the create returned no `id`,
+ * and it only surfaced in a production build, because the local client was
+ * generated before the line was joined.
  */
 function fieldsOnDeclarationLine(schema: string): string[] {
   return schema
@@ -26,19 +25,19 @@ const SCHEMA_PATH = path.join(process.cwd(), "prisma", "schema.prisma");
 describe("prisma schema shape", () => {
   it("detects a field sharing a declaration line", () => {
     const broken = [
-      "model CouncilMessage {  id        String  @id @default(cuid())",
-      "  councilId String",
+      "model Watcher {  id        String  @id @default(cuid())",
+      "  userId String",
       "}",
-      "model Council {",
+      "model User {",
       "  id String @id",
       "}",
-      "enum CouncilStatus { // trailing comment is fine",
-      "  idle",
+      "enum Theme { // trailing comment is fine",
+      "  dark",
       "}",
     ].join("\n");
 
     expect(fieldsOnDeclarationLine(broken)).toEqual([
-      "model CouncilMessage {  id        String  @id @default(cuid())",
+      "model Watcher {  id        String  @id @default(cuid())",
     ]);
   });
 
@@ -47,18 +46,11 @@ describe("prisma schema shape", () => {
     expect(fieldsOnDeclarationLine(schema)).toEqual([]);
   });
 
-  it("gives every council row a primary key the app can read back", () => {
+  it("gives every row a primary key the app can read back", () => {
     const schema = readFileSync(SCHEMA_PATH, "utf8");
-    const blocks = schema.matchAll(/^model (Council\w*) \{([\s\S]*?)^\}/gm);
-    const models = [...blocks];
+    const models = [...schema.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)];
 
-    expect(models.map(([, name]) => name)).toEqual([
-      "Council",
-      "CouncilMember",
-      "CouncilRun",
-      "CouncilMessage",
-      "CouncilMemberTurn",
-    ]);
+    expect(models.length).toBeGreaterThan(0);
     for (const [, name, body] of models) {
       // Either a field-level key or a compound one, but never neither: without a
       // key Prisma refuses the schema outright, and without the key *field* the

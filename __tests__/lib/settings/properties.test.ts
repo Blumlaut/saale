@@ -227,9 +227,9 @@ describe("settings validation", () => {
   });
 
   it("validates the default feature switches by name", () => {
-    expect(accepts("admin.featureDefaults", { council: true })).toBe(true);
+    expect(accepts("admin.featureDefaults", { mail: true })).toBe(true);
     expect(accepts("admin.featureDefaults", {})).toBe(true);
-    expect(accepts("admin.featureDefaults", { council: "on" })).toBe(false);
+    expect(accepts("admin.featureDefaults", { mail: "on" })).toBe(false);
     expect(accepts("admin.featureDefaults", { not_a_feature: true })).toBe(false);
   });
 
@@ -320,11 +320,11 @@ describe("settings projections", () => {
     const property = findProperty("admin.featureDefaults")!;
     if (property.scope !== "admin") throw new Error("expected an admin property");
     const row = adminRow({
-      featureDefaults: { council: true, nope: true, mail: "yes" } as never,
+      featureDefaults: { jobs: false, nope: true, mail: "yes" } as never,
     });
 
     // Unknown names and non-booleans never survive a read or a write.
-    expect(property.read(row)).toEqual({ council: true });
+    expect(property.read(row)).toEqual({ jobs: false });
     expect(property.write(row, { mail: false, nope: true })).toEqual({
       featureDefaults: { mail: false },
     });

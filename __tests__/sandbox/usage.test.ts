@@ -41,12 +41,14 @@ describe("workspace measurement", () => {
 
   it("lists the directories that name a workspace and nothing else", async () => {
     await fs.mkdir(path.join(volume, "user-abc123"));
-    await fs.mkdir(path.join(volume, "council-7f3a91bc"));
+    await fs.mkdir(path.join(volume, "user-7f3a91bc"));
     await fs.mkdir(path.join(volume, "user-not.an.identity"));
+    await fs.mkdir(path.join(volume, "shared-7f3a91bc"));
     await fs.writeFile(path.join(volume, "stray-file"), "x");
     await fs.mkdir(path.join(volume, ".lost+found"));
 
-    expect(await listWorkspaceIdentities(volume)).toEqual(["council-7f3a91bc", "user-abc123"]);
+    // Only `user-` names a workspace; anything else is left to a human.
+    expect(await listWorkspaceIdentities(volume)).toEqual(["user-7f3a91bc", "user-abc123"]);
   });
 
   it("answers nothing for a volume that is not mounted", async () => {
@@ -55,25 +57,25 @@ describe("workspace measurement", () => {
 
   it("measures each identity, and reports a file's bytes as its size", async () => {
     const user = path.join(volume, "user-abc123");
-    const council = path.join(volume, "council-7f3a91bc");
+    const other = path.join(volume, "user-7f3a91bc");
     const empty = path.join(volume, "user-000000000000");
     await fs.mkdir(user, { recursive: true });
-    await fs.mkdir(council, { recursive: true });
+    await fs.mkdir(other, { recursive: true });
     await fs.mkdir(empty, { recursive: true });
     await fs.writeFile(path.join(user, "a.bin"), Buffer.alloc(200 * KIB));
     await fs.mkdir(path.join(user, "nested"));
     await fs.writeFile(path.join(user, "nested", "b.bin"), Buffer.alloc(50 * KIB));
-    await fs.writeFile(path.join(council, "c.bin"), Buffer.alloc(7 * KIB));
+    await fs.writeFile(path.join(other, "c.bin"), Buffer.alloc(7 * KIB));
 
     const usage = await measureWorkspaceUsage(volume, [
       "user-abc123",
-      "council-7f3a91bc",
+      "user-7f3a91bc",
       "user-000000000000",
     ]);
 
     const byIdentity = new Map(usage.map((row) => [row.identity, row.bytes]));
     expect(byIdentity.get("user-abc123")).toBeGreaterThanOrEqual(250 * KIB);
-    expect(byIdentity.get("council-7f3a91bc")).toBeGreaterThanOrEqual(7 * KIB);
+    expect(byIdentity.get("user-7f3a91bc")).toBeGreaterThanOrEqual(7 * KIB);
     // An empty workspace still has a row: du counts the directory itself.
     expect(byIdentity.get("user-000000000000")).toBeLessThan(64 * KIB);
   });

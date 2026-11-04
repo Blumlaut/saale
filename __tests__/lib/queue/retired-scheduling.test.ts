@@ -18,9 +18,9 @@ vi.mock("bullmq", () => ({
   }),
 }));
 
-import { removeRetiredAgentSchedulers } from "@/lib/queue";
+import { removeRetiredSchedulers } from "@/lib/queue";
 
-describe("retired agent job schedulers", () => {
+describe("retired job schedulers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
@@ -40,10 +40,20 @@ describe("retired agent job schedulers", () => {
       },
     ]);
 
-    const removed = await removeRetiredAgentSchedulers();
+    const removed = await removeRetiredSchedulers();
 
     expect(removed).toEqual(["agent-scheduled-def-1", "agent-scheduled-def-2"]);
     expect(mockRemoveJobScheduler).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes the council sweep its feature left behind", async () => {
+    mockGetJobSchedulers.mockResolvedValue([
+      { key: "council-run-sweep", name: "council_sweep", id: "council-run-sweep" },
+      { key: "calendar-reminders", name: "calendar_reminders", id: "calendar-reminders" },
+    ]);
+
+    await expect(removeRetiredSchedulers()).resolves.toEqual(["council-run-sweep"]);
+    expect(mockRemoveJobScheduler).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the current schedulers alone", async () => {
@@ -52,7 +62,7 @@ describe("retired agent job schedulers", () => {
       { key: "calendar-reminders", name: "calendar_reminders", id: "calendar-reminders" },
     ]);
 
-    await expect(removeRetiredAgentSchedulers()).resolves.toEqual([]);
+    await expect(removeRetiredSchedulers()).resolves.toEqual([]);
     expect(mockRemoveJobScheduler).not.toHaveBeenCalled();
   });
 
@@ -60,10 +70,10 @@ describe("retired agent job schedulers", () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
     mockGetJobSchedulers.mockRejectedValue(new Error("redis down"));
 
-    await expect(removeRetiredAgentSchedulers()).resolves.toEqual([]);
+    await expect(removeRetiredSchedulers()).resolves.toEqual([]);
 
     expect(errorLog).toHaveBeenCalledWith(
-      expect.stringContaining("retired agent"),
+      expect.stringContaining("retired job"),
       expect.any(Error),
     );
   });
@@ -76,7 +86,7 @@ describe("retired agent job schedulers", () => {
     ]);
     mockRemoveJobScheduler.mockRejectedValueOnce(new Error("no such scheduler"));
 
-    await expect(removeRetiredAgentSchedulers()).resolves.toEqual(["agent-scheduled-def-2"]);
+    await expect(removeRetiredSchedulers()).resolves.toEqual(["agent-scheduled-def-2"]);
 
     expect(errorLog).toHaveBeenCalledWith(
       expect.stringContaining("agent-scheduled-def-1"),

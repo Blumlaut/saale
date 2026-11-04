@@ -59,7 +59,7 @@ describe("legacyTargetName", () => {
   });
 
   it("has nothing to do for anything that is not a user's directory", () => {
-    expect(legacyTargetName("council-3bd99582")).toBeNull();
+    expect(legacyTargetName("shared-3bd99582")).toBeNull();
     expect(legacyTargetName("lost+found")).toBeNull();
     expect(legacyTargetName(`user-${LEGACY_ID}/x`)).toBeNull();
   });
@@ -72,7 +72,7 @@ describe("legacyTargetName", () => {
 describe("migrateLegacyIdentities", () => {
   it("moves the legacy directory and keeps what is in it", async () => {
     await seed(`user-${LEGACY_ID}`, { "notes.md": "keep me" });
-    await seed("council-3bd99582", { "brief.md": "council work" });
+    await seed("shared-3bd99582", { "brief.md": "someone else's work" });
 
     const report = await migrateLegacyIdentities();
 
@@ -80,7 +80,7 @@ describe("migrateLegacyIdentities", () => {
       { from: `user-${LEGACY_ID}`, to: `user-${deriveUserWorkspaceKey(LEGACY_ID)}` },
     ]);
     expect(await entryNames()).toEqual([
-      "council-3bd99582",
+      "shared-3bd99582",
       `user-${deriveUserWorkspaceKey(LEGACY_ID)}`,
     ]);
     const moved = path.join(root, `user-${deriveUserWorkspaceKey(LEGACY_ID)}`, "notes.md");

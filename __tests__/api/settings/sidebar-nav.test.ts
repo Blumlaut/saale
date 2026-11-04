@@ -105,18 +105,18 @@ describe("GET /api/settings/sidebar-nav", () => {
     expect(body.items.map((item: { id: string }) => item.id)).toEqual([...SIDEBAR_NAV_ITEM_IDS]);
     // Visible by default is per item: the opt-in entries start hidden.
     expect(body.items.find((item: { id: string }) => item.id === "chat").hidden).toBe(false);
-    expect(body.items.find((item: { id: string }) => item.id === "council").hidden).toBe(true);
+    expect(body.items.find((item: { id: string }) => item.id === "coder").hidden).toBe(true);
   });
 
   it("drops a nav item whose feature is off", async () => {
     mockLoadUserFeatures.mockResolvedValue({
       ...Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])),
-      council: false,
+      mail: false,
     });
     mockFindUnique.mockResolvedValue({
       sidebarItems: [
         { id: "chat", hidden: false },
-        { id: "council", hidden: false },
+        { id: "mail", hidden: false },
       ],
     });
 
@@ -126,7 +126,7 @@ describe("GET /api/settings/sidebar-nav", () => {
     expect(res.status).toBe(200);
     // Not hidden  absent: offering a toggle for a page that cannot be opened is
     // what a filtered list avoids.
-    expect(body.items.map((item: { id: string }) => item.id)).not.toContain("council");
+    expect(body.items.map((item: { id: string }) => item.id)).not.toContain("mail");
     expect(body.items.map((item: { id: string }) => item.id)).toContain("chat");
   });
 

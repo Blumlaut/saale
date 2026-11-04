@@ -13,13 +13,13 @@ import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { getActiveSessions } from "@/lib/redis";
 import * as sandboxClient from "@/lib/sandbox/client";
-import { councilIdentity, parseIdentity, userIdentity } from "@/lib/sandbox/identity";
+import { parseIdentity, userIdentity } from "@/lib/sandbox/identity";
 import { destroySandbox } from "@/lib/sandbox/teardown";
 import { listWorkspaceIdentities, measureWorkspaceUsage } from "@/lib/sandbox/usage";
 import { workspacesDir } from "@/lib/sandbox/workspace";
 
 /** Whose workspace a directory is. */
-export type WorkspaceKind = "user" | "council" | "orphan";
+export type WorkspaceKind = "user" | "orphan";
 
 /** What a directory on the volume holds and is doing. */
 export interface WorkspaceAuditRow {
@@ -30,7 +30,7 @@ export interface WorkspaceAuditRow {
   /** Bytes on disk, null while no measurement has seen this identity. */
   bytes: number | null;
   container: "running" | "stopped" | "absent" | "unknown";
-  /** Conversations generating right now, plus a council that is mid-run. */
+  /** Conversations generating right now. */
   running: number;
 }
 
@@ -99,8 +99,8 @@ export async function getWorkspaceAudit(): Promise<WorkspaceAudit> {
     const owner = owners.byIdentity.get(identity);
     return {
       identity,
-      kind: owner?.kind ?? "orphan",
-      owner: owner?.owner ?? null,
+      kind: owner ? "user" : "orphan",
+      owner: owner ?? null,
       bytes: measured?.bytes.get(identity) ?? null,
       container:
         containers.byIdentity.get(identity) ?? (containers.available ? "absent" : "unknown"),
@@ -120,33 +120,26 @@ export async function getWorkspaceAudit(): Promise<WorkspaceAudit> {
   };
 }
 
-/** An owner by identity. */
-interface ResolvedOwner {
-  kind: "user" | "council";
-  owner: { name: string; detail: string; image: string | null };
+/** Who an identity belongs to. */
+interface WorkspaceOwner {
+  name: string;
+  detail: string;
+  image: string | null;
 }
 
 interface LoadedOwners {
-  byIdentity: Map<string, ResolvedOwner>;
+  byIdentity: Map<string, WorkspaceOwner>;
   /** Generations running right now, keyed by identity. */
   runCounts: Map<string, number>;
 }
 
 /** Owners from the database, and how much of their work is live. */
 async function loadOwners(): Promise<LoadedOwners> {
-  const [users, councils] = await Promise.all([
-    prisma.user.findMany({ select: { id: true, name: true, email: true, image: true } }),
-    prisma.council.findMany({
-      select: {
-        name: true,
-        sandboxKey: true,
-        status: true,
-        user: { select: { email: true } },
-      },
-    }),
-  ]);
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, email: true, image: true },
+  });
 
-  const byIdentity = new Map<string, ResolvedOwner>();
+  const byIdentity = new Map<string, WorkspaceOwner>();
   const runCounts = new Map<string, number>();
 
   const active = await Promise.all(
@@ -155,23 +148,12 @@ async function loadOwners(): Promise<LoadedOwners> {
   users.forEach((user, index) => {
     const identity = userIdentity(user.id);
     byIdentity.set(identity, {
-      kind: "user",
-      owner: { name: user.name ?? user.email, detail: user.email, image: user.image },
+      name: user.name ?? user.email,
+      detail: user.email,
+      image: user.image,
     });
     runCounts.set(identity, active[index] ?? 0);
   });
-
-  for (const council of councils) {
-    const identity = councilIdentity(council.sandboxKey);
-    byIdentity.set(identity, {
-      kind: "council",
-      owner: { name: council.name, detail: `Council · ${council.user.email}`, image: null },
-    });
-    // A council runs its members in one turn of its own.
-    if (council.status === "running" || council.status === "waiting") {
-      runCounts.set(identity, (runCounts.get(identity) ?? 0) + 1);
-    }
-  }
 
   return { byIdentity, runCounts };
 }
@@ -243,12 +225,6 @@ export async function deleteOrphanWorkspace(identity: string): Promise<void> {
 
 /** Whether some account's workspace this identity is. */
 async function isOwned(identity: string): Promise<boolean> {
-  const [users, councils] = await Promise.all([
-    prisma.user.findMany({ select: { id: true } }),
-    prisma.council.findMany({ select: { sandboxKey: true } }),
-  ]);
-  return (
-    users.some((user) => userIdentity(user.id) === identity) ||
-    councils.some((council) => councilIdentity(council.sandboxKey) === identity)
-  );
+  const users = await prisma.user.findMany({ select: { id: true } });
+  return users.some((user) => userIdentity(user.id) === identity);
 }

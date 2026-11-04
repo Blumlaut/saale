@@ -29,8 +29,8 @@ const ROOT = "/home/u1a2b3c4";
 function listing(overrides: Partial<FileListing> = {}): FileListing {
   return {
     target: {
-      id: "council:c1",
-      label: "Launch review",
+      id: "user",
+      label: "files",
       root: ROOT,
       capabilities: {
         upload: true,
@@ -72,8 +72,17 @@ function listing(overrides: Partial<FileListing> = {}): FileListing {
   };
 }
 
+/** Opening a file is the host's job; these tests do not care what it does with it. */
+const openFile = vi.fn();
+
 function renderBrowser() {
-  return render(<FileBrowser target="council:c1" emptyHint="Members write here as they work." />);
+  return render(
+    <FileBrowser
+      target="user"
+      onOpenFile={openFile}
+      emptyHint="Files an agent writes land here."
+    />,
+  );
 }
 
 /** Answer each listing request with the folder that was asked for. */
@@ -103,8 +112,8 @@ describe("FileBrowser", () => {
     expect(screen.getByText("report.md")).toBeInTheDocument();
     // The label comes from the API, not from the caller  that is what makes
     // the same component work for any workspace.
-    expect(screen.getAllByText("Launch review").length).toBeGreaterThan(0);
-    expect(vi.mocked(fetchJson).mock.calls[0]?.[0]).toContain("target=council%3Ac1");
+    expect(screen.getAllByText("files").length).toBeGreaterThan(0);
+    expect(vi.mocked(fetchJson).mock.calls[0]?.[0]).toContain("target=user");
   });
 
   it("opens a folder by listing it", async () => {
@@ -126,7 +135,7 @@ describe("FileBrowser", () => {
 
     expect(downloadFile).toHaveBeenCalledWith(
       expect.stringContaining(
-        `/api/files/raw?target=council%3Ac1&path=${encodeURIComponent(`${ROOT}/report.md`)}&download=1`,
+        `/api/files/raw?target=user&path=${encodeURIComponent(`${ROOT}/report.md`)}&download=1`,
       ),
     );
 
@@ -173,7 +182,7 @@ describe("FileBrowser", () => {
     expect(status).toHaveTextContent("50%");
     // The browser knows which workspace and folder it is uploading into.
     expect(vi.mocked(uploadFile).mock.calls[0]?.[1]).toMatchObject({
-      target: "council:c1",
+      target: "user",
       dir: ROOT,
     });
 
@@ -241,7 +250,7 @@ describe("FileBrowser", () => {
 
   it("goes home to the folder it was opened at", async () => {
     listingPerRequest();
-    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" onOpenFile={openFile} />);
 
     // At the worktree root there is nowhere to go back to.
     await screen.findByText("artifacts");
@@ -267,10 +276,14 @@ describe("FileBrowser", () => {
 
   it("starts over at a new root when the caller hands over another worktree", async () => {
     listingPerRequest();
-    const view = render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+    const view = render(
+      <FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" onOpenFile={openFile} />,
+    );
     await screen.findByText("artifacts");
 
-    view.rerender(<FileBrowser target="user" rootPath="worktrees/c-2b3c4d5e" />);
+    view.rerender(
+      <FileBrowser target="user" rootPath="worktrees/c-2b3c4d5e" onOpenFile={openFile} />,
+    );
 
     await waitFor(() => {
       expect(vi.mocked(fetchJson).mock.calls.at(-1)?.[0]).toContain(
@@ -283,7 +296,7 @@ describe("FileBrowser", () => {
 
   it("stays in the folder it is filtering when hidden files are toggled", async () => {
     listingPerRequest();
-    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" />);
+    render(<FileBrowser target="user" rootPath="worktrees/c-1a2b3c4d" onOpenFile={openFile} />);
 
     fireEvent.click(await screen.findByText("artifacts"));
     const folder = `${ROOT}/worktrees/c-1a2b3c4d/artifacts`;
@@ -309,21 +322,21 @@ describe("FileBrowser", () => {
     renderBrowser();
 
     expect(await screen.findByText("Nothing here yet.")).toBeInTheDocument();
-    expect(screen.getByText("Members write here as they work.")).toBeInTheDocument();
+    expect(screen.getByText("Files an agent writes land here.")).toBeInTheDocument();
   });
 
   it("offers a retry when the workspace cannot be listed", async () => {
-    vi.mocked(fetchJson).mockRejectedValueOnce(new Error("Council workspaces need Open Terminal."));
+    vi.mocked(fetchJson).mockRejectedValueOnce(new Error("The workspace is not mounted."));
 
     renderBrowser();
 
-    expect(await screen.findByText("Council workspaces need Open Terminal.")).toBeInTheDocument();
+    expect(await screen.findByText("The workspace is not mounted.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("hands a file to the host instead of opening the viewer", async () => {
     const onOpenFile = vi.fn();
-    render(<FileBrowser target="council:c1" onOpenFile={onOpenFile} />);
+    render(<FileBrowser target="user" onOpenFile={onOpenFile} />);
 
     fireEvent.click(await screen.findByText("report.md"));
 

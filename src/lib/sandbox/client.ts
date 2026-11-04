@@ -68,8 +68,8 @@ export function isConfigured(): boolean {
 /**
  * Whether commands can run at all: the service, or this host in development.
  *
- * Ports and council sandboxes need the service itself, so they ask
- * `isConfigured`; everything that only wants to run a command asks this.
+ * Ports need the service itself, so they ask `isConfigured`; everything that
+ * only wants to run a command asks this.
  */
 export function canExec(): boolean {
   return isConfigured() || localExecAllowed();

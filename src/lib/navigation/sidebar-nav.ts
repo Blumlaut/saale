@@ -30,7 +30,6 @@ export const SIDEBAR_NAV_ITEM_IDS = [
   "calendar",
   "tasks",
   "jobs",
-  "council",
   "infra",
   "settings",
 ] as const;
@@ -99,9 +98,6 @@ const SIDEBAR_NAV_DEFINITIONS: Record<SidebarNavItemId, Omit<SidebarNavItem, "id
       },
     ],
   },
-  // Hidden until enabled: a council costs several models at once, so it is
-  // opt-in rather than a default destination.
-  council: { href: "/dashboard/council", label: "Council", defaultHidden: true },
   infra: { href: "/dashboard/infra", label: "Infrastructure", mobileLabel: "Servers" },
   settings: { href: "/dashboard/settings", label: "Settings" },
 };

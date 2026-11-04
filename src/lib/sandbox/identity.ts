@@ -9,8 +9,8 @@
 
 import { createHash } from "node:crypto";
 
-/** `user-<key>` or `council-<sandboxKey>`: no separators, no dots, no `..`. */
-const IDENTITY_PATTERN = /^(user|council)-[A-Za-z0-9_-]{1,64}$/;
+/** `user-<key>`: no separators, no dots, no `..`. */
+const IDENTITY_PATTERN = /^user-[A-Za-z0-9_-]{1,64}$/;
 
 /**
  * Hex characters in a user's workspace key.
@@ -24,8 +24,8 @@ export const USER_WORKSPACE_KEY_LENGTH = 12;
 
 /**
  * Namespace for that hash. Domain separation keeps a user's key out of the
- * space of every other hash in the app (councils' `sandboxKey`, preview slugs),
- * so no two things can be derived to the same string from the same input.
+ * space of every other hash in the app (preview slugs), so no two things can be
+ * derived to the same string from the same input.
  */
 const USER_WORKSPACE_KEY_NAMESPACE = "saale-user-workspace:v1";
 
@@ -68,9 +68,4 @@ export function deriveUserWorkspaceKey(userId: string): string {
 /** A Saale user's own workspace: `user-<key>`, never the id itself. */
 export function userIdentity(userId: string): string {
   return parseIdentity(`user-${deriveUserWorkspaceKey(userId)}`);
-}
-
-/** A council's shared workspace, named by its stored `sandboxKey`. */
-export function councilIdentity(sandboxKey: string): string {
-  return parseIdentity(`council-${sandboxKey}`);
 }

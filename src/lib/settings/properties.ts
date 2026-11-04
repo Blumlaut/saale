@@ -724,7 +724,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     group: GROUP.admin,
     label: "Default features",
     description:
-      "Feature switches applied to every regular account that has no override of its own, keyed by feature name. Absent keys keep the built-in default (council is off). Set to null for the built-in defaults.",
+      "Feature switches applied to every regular account that has no override of its own, keyed by feature name. Absent keys keep the built-in default. Set to null for the built-in defaults.",
     columns: ["featureDefaults"],
     apply: "sessions",
     scope: "admin",

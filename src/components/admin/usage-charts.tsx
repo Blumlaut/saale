@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils";
 const KIND_LABELS: Record<UsageKind, string> = {
   chat: "chat",
   coder: "coder",
-  council: "council",
   job: "jobs",
   automation: "automations",
   email_draft: "drafts",

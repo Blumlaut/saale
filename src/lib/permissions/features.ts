@@ -26,7 +26,6 @@ export const FEATURES = [
   "calendar",
   "tasks",
   "jobs",
-  "council",
   "infra",
   "mcp",
   "watchers",
@@ -75,15 +74,6 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     toolCategories: ["jobs"],
     navId: "jobs",
     defaultOn: true,
-  },
-  // Costs several models at a time and shares a workspace between them, so it
-  // stays off until an admin turns it on for an account.
-  council: {
-    label: "Council",
-    description: "Run several models against one brief, in a shared room.",
-    toolCategories: [],
-    navId: "council",
-    defaultOn: false,
   },
   infra: {
     label: "Infrastructure",

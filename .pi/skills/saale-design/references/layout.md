@@ -13,7 +13,7 @@ Pages never render a page title (no title text, no subtitle, no title+action row
 - **List/content pages:** a single full-height `GlassPanel` (`flex h-full flex-col overflow-hidden border-0`) in a `<Page className="gap-0">`. Its **first row is `<PageActions>`**: actions on the right as `<PageAction>` (icon on a phone, label at `md:`), functional context (date range, account switcher, search) on the left — never a bare page name. The body scrolls internally (`flex-1 min-h-0 overflow-y-auto`).
 - **Form and settings pages:** the same single panel and the same `<PageActions>` row, with the groups of settings stacked inside it as `<PageSection>`s. Save is a `<PageAction label="Save">`, feedback is `<PageStatus>`.
 - **Tab pages:** the `PageTabStrip` row IS the toolbar; actions go to its right.
-- **Two-panel pages** (jobs, council, mail): the action goes in the first panel's `GlassPanelHeader` `action` slot.
+- **Two-panel pages** (jobs, mail): the action goes in the first panel's `GlassPanelHeader` `action` slot.
 
 ### Structure
 

@@ -96,10 +96,9 @@ logs first.
 
 ## Modules
 
-| Variable          | Default | What it does                                                |
-| ----------------- | ------- | ----------------------------------------------------------- |
-| `COUNCIL_ENABLED` | `1`     | `0` removes the council module: nav, routes and tools.      |
-| `PI_OFFLINE`      | unset   | Set it to stop the model catalog from reaching the network. |
+| Variable     | Default | What it does                                                |
+| ------------ | ------- | ----------------------------------------------------------- |
+| `PI_OFFLINE` | unset   | Set it to stop the model catalog from reaching the network. |
 
 ## Workspace variables
 

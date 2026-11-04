@@ -9,7 +9,6 @@ import {
   type SidebarNavEntry,
   type SidebarNavItemId,
 } from "@/lib/navigation/sidebar-nav";
-import { isCouncilEnabled } from "@/lib/council/flag";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { FEATURES, FEATURE_DEFINITIONS } from "@/lib/permissions/features";
 import { applyUserSettingsPatch, SettingsError } from "@/lib/settings/update";
@@ -50,9 +49,7 @@ async function unavailableNavIds(userId: string): Promise<SidebarNavItemId[]> {
   for (const key of FEATURES) {
     const navId = FEATURE_DEFINITIONS[key].navId;
     if (!navId) continue;
-    // The council also has a deployment flag of its own.
-    const enabled = key === "council" ? features[key] && isCouncilEnabled() : features[key];
-    if (!enabled) unavailable.push(navId);
+    if (!features[key]) unavailable.push(navId);
   }
   return unavailable;
 }

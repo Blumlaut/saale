@@ -36,7 +36,7 @@ beforeEach(async () => {
 describe("identityPath", () => {
   it("gives each identity its own directory under the volume", () => {
     expect(identityPath("user-abc")).toBe(path.join(root, "user-abc"));
-    expect(identityPath("council-abcd")).toBe(path.join(root, "council-abcd"));
+    expect(identityPath("user-abcd")).toBe(path.join(root, "user-abcd"));
     expect(userWorkspacePath("abc")).toBe(path.join(root, userIdentity("abc")));
   });
 
@@ -80,17 +80,17 @@ describe("ensureWorkspace", () => {
 
 describe("removeWorkspace", () => {
   it("removes the directory and everything in it", async () => {
-    const dir = await ensureWorkspace("council-abcd");
+    const dir = await ensureWorkspace("user-abcd");
     await fs.mkdir(path.join(dir, "deep", "er"), { recursive: true });
     await fs.writeFile(path.join(dir, "deep", "er", "f.txt"), "x");
 
-    await removeWorkspace("council-abcd");
+    await removeWorkspace("user-abcd");
 
     await expect(fs.access(dir)).rejects.toThrow();
   });
 
   it("is a no-op for a directory that is already gone", async () => {
-    await expect(removeWorkspace("council-never-created")).resolves.toBeUndefined();
+    await expect(removeWorkspace("user-never-created")).resolves.toBeUndefined();
   });
 });
 

@@ -439,20 +439,20 @@ describe("DELETE /container/:id", () => {
     const manager = fakeManager(() => []);
     await start(manager);
 
-    const response = await fetch(`${baseUrl}/container/council-abcd`, {
+    const response = await fetch(`${baseUrl}/container/user-abcd`, {
       method: "DELETE",
       headers: { Authorization: "Bearer test-key" },
     });
 
     expect(response.status).toBe(200);
-    expect(manager.removed).toEqual(["council-abcd"]);
+    expect(manager.removed).toEqual(["user-abcd"]);
     await expect(response.json()).resolves.toEqual({ removed: true });
   });
 
   it("requires the key", async () => {
     await start(fakeManager(() => []));
 
-    const response = await fetch(`${baseUrl}/container/council-abcd`, { method: "DELETE" });
+    const response = await fetch(`${baseUrl}/container/user-abcd`, { method: "DELETE" });
 
     expect(response.status).toBe(401);
   });

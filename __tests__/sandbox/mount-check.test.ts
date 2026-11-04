@@ -64,8 +64,8 @@ describe("checkMountinfo", () => {
   });
 
   it("follows a deployment that mounts the volume elsewhere", () => {
-    const result = checkMountinfo(line("/srv/workspaces/council-abcd"), {
-      identity: "council-abcd",
+    const result = checkMountinfo(line("/srv/workspaces/user-abcd"), {
+      identity: "user-abcd",
       workspacesDir: "/srv/workspaces",
     });
 
