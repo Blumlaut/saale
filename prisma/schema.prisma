@@ -47,7 +47,6 @@ model User {
   infraMachines      InfraMachine[]
   mcpServers         McpServer[]
   mcpOAuthCredentials McpOAuthCredential[]
-  councils           Council[]
   coderProjects      CoderProject[]
   prompts            Prompt[]
   pushSubscriptions  PushSubscription[]
@@ -500,7 +499,7 @@ model AdminSettings {
   /// touching a provider cannot switch it off by accident.
   globalProviderModels   Json?
   /// Feature switches for regular accounts that have no override of their own:
-  /// { "council": true }. Sparse — absent keys keep the built-in default.
+  /// { "mail": false }. Sparse — absent keys keep the built-in default.
   featureDefaults        Json?
   /// Directory scanned for global Pi plugins. Empty falls back to
   /// PI_GLOBAL_PLUGINS_DIR, then <uploads>/pi_plugins.
@@ -1167,217 +1166,16 @@ model InfraNote {
   @@map("InfraNote")
 }
 
-// ─── Council ──────────────────────────────────────────────────
-
-/// A room of named agents that work a shared goal together. Members speak only
-/// through the `council_post` tool, so every room message is deliberate.
-model Council {
-  id     String @id @default(cuid())
-  userId String
-  name   String @db.VarChar(100)
-  /// What the council is meant to achieve — given to every member.
-  brief  String @db.Text
-
-  /// Which tool categories members may use: { web: true, terminal: true, ... }.
-  toolConfig        Json?
-  /// How members take turns: "parallel" (mention-driven) or "round-robin".
-  orchestration     String @default("parallel")
-  /// Votes needed to stop a run: "majority" | "unanimous" | "any".
-  stopVoteThreshold String @default("majority")
-
-  /// Budget defaults for a new run (overridable per run); null = unlimited.
-  maxDurationSeconds Int?
-  maxTokens          Int?
-  maxCostUsd         Float?
-
-  /// 8-char key naming this council's workspace: the `council-<key>` directory
-  /// in the workspaces volume, and the container that mounts it.
-  sandboxKey   String  @unique
-  /// Whether the workspace directory has been created.
-  sandboxReady Boolean @default(false)
-
-  /// Monotonic room message counter — the ordering members read by.
-  nextSeq Int @default(0)
-
-  status    String    @default("idle") // idle | running | waiting | completed | failed | aborted
-  lastRunAt DateTime?
-
-  members  CouncilMember[]
-  messages CouncilMessage[]
-  runs     CouncilRun[]
-  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, createdAt])
-  @@map("Council")
-}
-
-/// One named agent in a council. `name` is the handle others address with
-/// `@name`; it is unique within its council.
-model CouncilMember {
-  id           String  @id @default(cuid())
-  councilId    String
-  /// Denormalized owner — every query is scoped by it, not by the id alone.
-  userId       String
-  name         String  @db.VarChar(50)
-  /// Role and persona instructions appended to the member's system prompt.
-  instructions String? @db.Text
-
-  modelProvider String?
-  modelName     String?
-  thinkingLevel String  @default("default")
-
-  /// Per-member tool selection; null inherits the council's toolConfig.
-  toolConfig Json?
-
-  enabled Boolean @default(true)
-
-  council Council             @relation(fields: [councilId], references: [id], onDelete: Cascade)
-  turns   CouncilMemberTurn[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([councilId, name])
-  @@index([userId])
-  @@map("CouncilMember")
-}
-
-/// One execution of a council: members work in parallel (or in turn) until a
-/// vote, a budget or the user stops them.
-model CouncilRun {
-  id        String @id @default(cuid())
-  councilId String
-  userId    String
-
-  status           String  @default("pending") // pending | running | waiting | completed | aborted | failed
-  /// Why the run ended: "consensus" | "no-pending-work" | "budget:time" |
-  /// "budget:tokens" | "budget:cost" | "aborted" | "timeout" | "error".
-  stopReason       String?
-  /// The room message that started this run, when the user convened it.
-  triggerMessageId String?
-
-  /// Budget this run was started with (the council's defaults, overridden per
-  /// run); null = unlimited.
-  maxDurationSeconds Int?
-  maxTokens          Int?
-  maxCostUsd         Float?
-
-  inputTokens  Int   @default(0)
-  outputTokens Int   @default(0)
-  cost         Float @default(0)
-  /// Turns that ran, across all members.
-  turnCount    Int   @default(0)
-
-  error String? @db.Text
-
-  /// Bumped on every turn boundary — the watchdog stops a run whose loop died
-  /// (server restart) instead of leaving it "running" forever.
-  lastHeartbeatAt DateTime?
-
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  council Council             @relation(fields: [councilId], references: [id], onDelete: Cascade)
-  turns   CouncilMemberTurn[]
-
-  createdAt DateTime @default(now())
-
-  @@index([councilId, createdAt])
-  @@index([userId, status])
-  @@map("CouncilRun")
-}
-
-/// A message in the room: the user, a member's `council_post`, or a system
-/// notice (a vote, a stop, a failure).
-model CouncilMessage {
-  id        String  @id @default(cuid())
-  councilId String
-  userId    String
-  /// Run this message was posted in; null for user messages between runs.
-  runId     String?
-
-  /// Monotonic per council — read order and the members' read cursor.
-  seq Int
-
-  /// "user" | "member" | "system".
-  authorKind String
-  /// Set for authorKind "member" (kept as a bare id: history outlives members).
-  memberId   String?
-  /// Display name at post time — a member may later be renamed or removed.
-  authorName String
-  content    String   @db.Text
-  /// Names this message addresses — member names, plus "user" when it
-  /// addresses the owner and "all" for a broadcast. Names rather than ids, so a
-  /// transcript renders without a join and survives a member being renamed.
-  mentions   String[] @default([])
-
-  council Council @relation(fields: [councilId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@unique([councilId, seq])
-  @@index([councilId, createdAt])
-  @@map("CouncilMessage")
-}
-
-/// One member's turn inside a run — the private trace behind its public posts:
-/// what woke it, what it reasoned, every tool call it made, and the closing text
-/// it did NOT send to the room.
-model CouncilMemberTurn {
-  id         String  @id @default(cuid())
-  runId      String
-  councilId  String
-  userId     String
-  /// Null once the member is deleted; the run keeps its trace and its name.
-  memberId   String?
-  memberName String  @db.VarChar(50)
-
-  /// Room message seqs that woke this turn (the member's inbox).
-  triggeredBy Int[] @default([])
-  /// Highest room seq the member was shown, so a subpage can show the gap.
-  seenThrough Int?
-  /// Room messages this turn posted, in order.
-  postedSeqs  Int[] @default([])
-
-  thinking  String? @db.Text
-  /// Tool calls with their results, as JSON.
-  toolCalls String? @db.Text
-  /// The member's closing text. Never a room message — only its subpage shows it.
-  finalText String? @db.Text
-
-  status String  @default("running") // running | completed | preempted | error
-  error  String? @db.Text
-
-  inputTokens  Int   @default(0)
-  outputTokens Int   @default(0)
-  cost         Float @default(0)
-
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  run    CouncilRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
-  member CouncilMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-
-  @@index([runId, createdAt])
-  @@index([memberId, createdAt])
-  @@map("CouncilMemberTurn")
-}
-
 // ─── Usage ledger ──────────────────────────────────────────────
 
 /// One model call's bill. Append-only: the admin usage page adds these up per
 /// account, and `scope` is what splits our provider keys from a user's own.
 /// `ChatMessage.stats` carries the same numbers for the per-turn card; this row
-/// is the one place that covers chat, councils, jobs, automations and drafts.
+/// is the one place that covers chat, jobs, automations and drafts.
 model UsageEvent {
   id     String @id @default(cuid())
   userId String
-  /// What ran the call: "chat" | "coder" | "council" | "job" | "automation" | "email_draft".
+  /// What ran the call: "chat" | "coder" | "job" | "automation" | "email_draft".
   kind     String @db.VarChar(20)
   provider String @db.VarChar(100)
   model    String @db.VarChar(200)
@@ -1391,7 +1189,7 @@ model UsageEvent {
   cost Float @default(0)
   /// True when the provider reported the amount rather than a catalog estimate.
   billed Boolean @default(false)
-  /// The chat, council run, job run or watcher the call belongs to.
+  /// The chat, job run or watcher the call belongs to.
   refId     String?  @db.VarChar(40)
   createdAt DateTime @default(now())
 
