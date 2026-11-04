@@ -2,11 +2,16 @@ import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { findToolInfo, summarizeToolAction } from "@/lib/pi/tool-infos";
+import { subscribeSessionEvents } from "@/lib/pi/session-events";
+import type {
+  ApprovalPayload,
+  ApprovalRequest,
+  ApprovalResolutionData,
+} from "@/lib/pi/tool-approval-gate";
 import { createBot } from "./client";
 import { getEnabledTelegramBot } from "./bot";
 import { getLinkByTelegramUserId, getLinkByUserId } from "./links";
-import type { ApprovalRequest } from "@/lib/pi/tool-approval-gate";
-import type { ApprovalCardId } from "./approval-cards";
+import { createApprovalCardTracker, type ApprovalCardId } from "./approval-cards";
 
 /** Redis key prefix for short approval tokens. */
 const TOKEN_KEY_PREFIX = "saale:approval-token:";
@@ -110,6 +115,92 @@ export async function deleteTelegramApprovalMessage(
 ): Promise<void> {
   const bot = createBot(encryptedToken);
   await bot.api.deleteMessage(cardId.chatId, cardId.messageId);
+}
+
+/** A run's approval cards on the user's phone. */
+export interface TelegramApprovalChannel {
+  /** Stop watching the run and delete any card still on screen. */
+  stop: () => void;
+}
+
+/**
+ * Send a chat run's tool approvals to the user's Telegram chat.
+ *
+ * A chat's pooled agent publishes approval requests on the session bus, which
+ * reaches the browser but nothing on the phone. A run started from Telegram
+ * watches its own chat's channel and turns each request into a card, so an
+ * approval asked for in the browser mid-run is answerable from either surface.
+ * Cards are deleted when the bus reports the resolution, whoever resolved it.
+ */
+export async function createTelegramApprovalChannel(params: {
+  userId: string;
+  encryptedToken: string;
+  sessionId: string;
+}): Promise<TelegramApprovalChannel> {
+  const { userId, encryptedToken, sessionId } = params;
+
+  const cards = createApprovalCardTracker((cardId) =>
+    deleteTelegramApprovalMessage(encryptedToken, cardId),
+  );
+  let closed = false;
+
+  const unsubscribe = await subscribeSessionEvents(sessionId, (evt) => {
+    if (evt.event === "tool_approval_resolved") {
+      const data = evt.data as ApprovalResolutionData | undefined;
+      if (data?.toolCallId) cards.onResolved(data.toolCallId);
+      return;
+    }
+    if (evt.event !== "tool_approval_request") return;
+
+    const payload = evt.data as ApprovalPayload | undefined;
+    if (!payload?.toolCallId) return;
+
+    sendTelegramApprovalRequest(userId, approvalRequestFrom(userId, sessionId, payload))
+      .then((cardId) => {
+        if (!cardId) return;
+        // A card that lands after the run ended would sit there for the rest of
+        // its 5 minutes and approve nothing.
+        if (closed) {
+          return deleteTelegramApprovalMessage(encryptedToken, cardId).catch((err) => {
+            console.error("Failed to delete a late Telegram approval card:", err);
+          });
+        }
+        cards.track(payload.toolCallId, cardId);
+      })
+      .catch((err) => {
+        console.error("Failed to send a Telegram approval card:", err);
+      });
+  }).catch((err) => {
+    console.error(`Failed to watch approvals for chat ${sessionId}:`, err);
+    return undefined;
+  });
+
+  return {
+    stop: () => {
+      closed = true;
+      unsubscribe?.();
+      cards.flush();
+    },
+  };
+}
+
+/** The bus payload back into the request the card is rendered from. */
+function approvalRequestFrom(
+  userId: string,
+  sessionId: string,
+  payload: ApprovalPayload,
+): ApprovalRequest {
+  return {
+    toolCallId: payload.toolCallId,
+    toolName: payload.toolName,
+    sessionId,
+    userId,
+    args: payload.args,
+    summary: payload.summary,
+    ...(payload.batch ? { batch: payload.batch } : {}),
+    createdAt: Date.now(),
+    expiresAt: Date.parse(payload.expiresAt),
+  };
 }
 
 /**

@@ -18,6 +18,7 @@ const {
   mockIsLatestMessage,
   mockAttachTelegramSession,
   mockUnregisterTelegramSession,
+  mockCreateApprovalChannel,
 } = vi.hoisted(() => {
   const renderer = { onEvent: vi.fn(), finish: vi.fn() };
   return {
@@ -36,6 +37,7 @@ const {
     mockIsLatestMessage: vi.fn(),
     mockAttachTelegramSession: vi.fn(),
     mockUnregisterTelegramSession: vi.fn(),
+    mockCreateApprovalChannel: vi.fn(),
   };
 });
 
@@ -73,6 +75,10 @@ vi.mock("@/lib/telegram/render", () => ({
 
 vi.mock("@/lib/telegram/files", () => ({
   recordTelegramDocumentAttachment: vi.fn(),
+}));
+
+vi.mock("@/lib/telegram/approval", () => ({
+  createTelegramApprovalChannel: (...args: unknown[]) => mockCreateApprovalChannel(...args),
 }));
 
 vi.mock("@/lib/telegram/session-registry", () => ({
@@ -131,6 +137,7 @@ beforeEach(() => {
   mockIsLatestMessage.mockReturnValue(true);
   mockSendTelegramMessage.mockResolvedValue([7]);
   mockRenderer.finish.mockResolvedValue(undefined);
+  mockCreateApprovalChannel.mockResolvedValue({ stop: vi.fn() });
   entry.promptInFlight = false;
   entry.lastPromptedMessageId = null;
 });
@@ -265,6 +272,21 @@ describe("runRoutedTelegramMessage", () => {
       expect.stringContaining("encountered an error"),
     );
     expect(mockRenderer.finish).not.toHaveBeenCalled();
+  });
+
+  it("sends the run's tool approvals to the phone", async () => {
+    const stop = vi.fn();
+    mockCreateApprovalChannel.mockResolvedValue({ stop });
+
+    await runRoutedTelegramMessage(params);
+
+    expect(mockCreateApprovalChannel).toHaveBeenCalledWith({
+      userId,
+      encryptedToken: "enc",
+      sessionId,
+    });
+    // The card goes when the run does, so nothing outlives the run that sent it.
+    expect(stop).toHaveBeenCalled();
   });
 
   it("forwards an image to the vision model", async () => {

@@ -8,6 +8,7 @@ import { promptTitleFields } from "@/lib/chat/derive-title";
 import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { sendTelegramMessage, startTypingIndicator } from "./client";
+import { createTelegramApprovalChannel, type TelegramApprovalChannel } from "./approval";
 import { createTelegramRunRenderer } from "./render";
 import { recordTelegramDocumentAttachment, type ProcessedFile } from "./files";
 import {
@@ -148,6 +149,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
   });
 
   let session: AgentSession | undefined;
+  let approvals: TelegramApprovalChannel | undefined;
   let settled = false;
   try {
     const userMessage = await prisma.chatMessage.create({
@@ -189,6 +191,13 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       throw err;
     }
 
+    // A tool approval asked for during this run also lands on the phone.
+    approvals = await createTelegramApprovalChannel({
+      userId,
+      encryptedToken,
+      sessionId: chat.id,
+    });
+
     settled = await dispatchChatRun({
       userId,
       sessionId: chat.id,
@@ -222,6 +231,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
       console.error("Failed to report a failed Telegram run:", sendErr);
     });
   } finally {
+    approvals?.stop();
     stopTyping();
     // A failure before the agent was prompted still has to release the claim,
     // or the chat looks busy until the pool evicts it.
