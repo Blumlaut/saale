@@ -13,21 +13,21 @@ datasource db {
 // ─── Better Auth models ────────────────────────────────────────
 
 model User {
-  id                       String                    @id @default(cuid())
+  id                       String                     @id @default(cuid())
   name                     String?
   // Login handle — better-auth username plugin (lowercase, unique, nullable
   // only for rows that predate it).
-  username                 String?                   @unique
-  email                    String                    @unique
-  emailVerified            Boolean                   @default(false)
+  username                 String?                    @unique
+  email                    String                     @unique
+  emailVerified            Boolean                    @default(false)
   image                    String?
   // Admin plugin fields
-  role                     String                    @default("user")
-  banned                   Boolean                   @default(false)
-  banReason                String?                   @db.Text
+  role                     String                     @default("user")
+  banned                   Boolean                    @default(false)
+  banReason                String?                    @db.Text
   banExpires               DateTime?
   // Two-factor plugin field
-  twoFactorEnabled         Boolean                   @default(false)
+  twoFactorEnabled         Boolean                    @default(false)
   accounts                 Account[]
   sessions                 Session[]
   chatSessions             ChatSession[]
@@ -51,8 +51,10 @@ model User {
   prompts                  Prompt[]
   pushSubscriptions        PushSubscription[]
   usageEvents              UsageEvent[]
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
+  githubInstallations      GithubInstallationAccess[]
+  githubToken              GithubUserToken?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
 
   twoFactors TwoFactor[]
   avatar     UserAvatar?
@@ -586,6 +588,15 @@ model AdminSettings {
   webFetchMaxChars         Int      @default(50000)
   webFetchTimeoutMs        Int      @default(15000)
   webFetchMaxRedirects     Int      @default(5)
+  /// Which GitHub sources this instance offers: "choice" (both), "cli" (only
+  /// the GitHub CLI's own login) or "app" (only this instance's GitHub App, and
+  /// a CLI login found in a workspace is removed).
+  githubMethod             String   @default("choice")
+  /// When the app is the source *and* a GH_TOKEN sandbox variable exists, which
+  /// of the two a command uses: "app" (the app's token, the variable is ignored)
+  /// or "variable" (the user's own token wins). One credential is always used,
+  /// never both, even when nobody decided.
+  githubTokenPrecedence    String   @default("app")
   /// Whether voice input is offered at all. VOICE_ENABLED=0 still turns it off.
   voiceEnabled             Boolean  @default(true)
   /// faster-whisper model a transcription names. Null follows VOICE_MODEL.
@@ -714,6 +725,9 @@ model AppSettings {
   /// Decision model that judges the tool calls Auto would run on its own, as
   /// "provider:model". Null follows `AdminSettings.approvalDecisionModel`.
   approvalDecisionModel   String?
+  /// The active GitHub source, one at a time: "" (nothing linked), "cli" (the
+  /// GitHub CLI's own login) or "app" (this instance's GitHub App).
+  githubSource            String  @default("")
   sidebarItems            Json? // Sidebar layout, in display order: [{ "id": "chat", "hidden": false }, ...]. null = default order, everything visible
   /// This account's feature switches (sparse): { "mail": false }. Absent keys
   /// follow the instance defaults.
@@ -1355,4 +1369,111 @@ model UsageEvent {
   @@index([createdAt])
   @@index([userId, createdAt])
   @@map("UsageEvent")
+}
+
+/// The GitHub App this instance is installed as.
+///
+/// One row, like the Telegram bot: the private key and client secret are
+/// instance infrastructure an admin holds, never a user's value, so they live
+/// here encrypted instead of in the settings tables, which carry no secrets.
+/// `enabled` is the admin's switch; off keeps the credentials for a switch back.
+model GithubApp {
+  id                    String   @id @default("global")
+  /// GitHub's numeric app id, the `iss` of the JWT every app call is signed with.
+  /// An opaque identifier, so it is kept as text rather than a number.
+  appId                 String
+  /// The OAuth client id. Not the same value as `appId`, and the device flow
+  /// takes this one.
+  clientId              String
+  /// AES-256-GCM encrypted client secret, for exchanging a refresh token.
+  encryptedClientSecret String   @db.Text
+  /// AES-256-GCM encrypted PEM private key, for signing the app JWT.
+  encryptedPrivateKey   String   @db.Text
+  /// The app's slug, for the `github.com/apps/<slug>/installations/new` link.
+  slug                  String
+  /// The app's display name, as GitHub reports it.
+  name                  String
+  /// The account the app is registered under.
+  ownerLogin            String
+  /// The permissions this app was registered with, so the card can list them.
+  permissions           Json?
+  /// Whether this instance offers the app. Off keeps the credentials.
+  enabled               Boolean  @default(false)
+  /// Admin who last saved it (audit trail).
+  updatedByUserId       String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("GithubApp")
+}
+
+/// One installation of the app, on a user account or an organization.
+///
+/// Global rather than per user: an installation belongs to a GitHub account,
+/// and two Saale accounts can reach the same organization. Who may use it is
+/// `GithubInstallationAccess`, filled from `GET /user/installations`.
+model GithubInstallation {
+  id                  String                     @id @default(cuid())
+  /// GitHub's installation id, the number the API paths take.
+  installationId      String                     @unique
+  /// The account it is installed on, as GitHub spells it. Compared
+  /// case-insensitively, because GitHub logins are.
+  accountLogin        String
+  /// "User" | "Organization".
+  accountType         String                     @default("")
+  /// "all" | "selected". What the installer granted.
+  repositorySelection String                     @default("")
+  /// The repositories a "selected" installation covers, by full name.
+  repositories        Json?
+  /// The permissions GitHub reports for this installation.
+  permissions         Json?
+  /// Set while GitHub reports the installation suspended (or the account was
+  /// renamed away from us), which is why a token cannot be minted.
+  suspendedAt         DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  access              GithubInstallationAccess[]
+
+  @@index([accountLogin])
+  @@map("GithubInstallation")
+}
+
+/// Which account may use an installation.
+///
+/// Derived from `GET /user/installations` with that user's token, so it is a
+/// fact about GitHub rather than a grant Saale invents. Every read still carries
+/// the user: an installation another account can reach is not this one's.
+model GithubInstallationAccess {
+  userId         String
+  installationId String
+  /// Last time GitHub listed the installation for this user.
+  lastSeenAt     DateTime           @default(now())
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  installation   GithubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, installationId])
+  @@index([installationId])
+  @@map("GithubInstallationAccess")
+}
+
+/// A user's authorization of the app: the user-to-server token pair.
+///
+/// The access token lasts eight hours and the refresh token six months, so both
+/// are kept encrypted and refreshed on use. Signing out deletes the row; the
+/// authorization itself remains at GitHub and is revoked there.
+model GithubUserToken {
+  userId                String   @id
+  /// AES-256-GCM encrypted `ghu_…` access token.
+  encryptedAccessToken  String   @db.Text
+  /// AES-256-GCM encrypted `ghr_…` refresh token.
+  encryptedRefreshToken String   @db.Text
+  accessExpiresAt       DateTime
+  refreshExpiresAt      DateTime
+  /// The GitHub login the token was issued to.
+  login                 String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("GithubUserToken")
 }

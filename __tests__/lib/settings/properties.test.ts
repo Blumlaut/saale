@@ -225,6 +225,21 @@ describe("settings validation", () => {
     expect(accepts("models.disabled", ["anthropic:claude-sonnet-4"])).toBe(true);
     expect(accepts("models.disabled", ["claude-sonnet-4"])).toBe(false);
   });
+
+  it("offers exactly one GitHub source, of the ones an instance allows", () => {
+    for (const source of ["", "app", "cli"]) expect(accepts("github.source", source)).toBe(true);
+    expect(accepts("github.source", "both")).toBe(false);
+    expect(accepts("github.source", "gh")).toBe(false);
+
+    for (const method of ["choice", "app", "cli"])
+      expect(accepts("admin.githubMethod", method)).toBe(true);
+    expect(accepts("admin.githubMethod", "both")).toBe(false);
+
+    // Which credential wins when an account also keeps its own GH_TOKEN.
+    for (const precedence of ["app", "variable"])
+      expect(accepts("admin.githubTokenPrecedence", precedence)).toBe(true);
+    expect(accepts("admin.githubTokenPrecedence", "both")).toBe(false);
+  });
 });
 
 // ─── Projections ─────────────────────────────────────────────────────────────
@@ -243,6 +258,28 @@ describe("settings projections", () => {
     expect(property.read(userRow())).toBe(true);
     expect(property.read(apply(property, userRow(), false))).toBe(false);
     expect(property.read(apply(property, userRow({ compactActivity: false }), null))).toBe(true);
+  });
+
+  it("resets the GitHub token precedence to the app when cleared", () => {
+    const property = findProperty("admin.githubTokenPrecedence");
+    expect(property?.scope).toBe("admin");
+    if (!property || property.scope !== "admin") return;
+
+    expect(property.read(adminRow())).toBe("app");
+    const written = property.write(adminRow(), "variable");
+    expect(written).toEqual({ githubTokenPrecedence: "variable" });
+    // Null restores the default: the app's token, so one credential is used.
+    expect(property.write(adminRow(), null)).toEqual({ githubTokenPrecedence: "app" });
+  });
+
+  it("round-trips the active GitHub source and can unlink it", () => {
+    const property = userProperty("github.source");
+    // A row that predates the column is not linked to anything.
+    expect(property.read(userRow())).toBe("");
+    expect(property.read(apply(property, userRow(), "app"))).toBe("app");
+    // One source at a time: setting it again replaces the previous one.
+    expect(property.read(apply(property, userRow({ githubSource: "app" }), "cli"))).toBe("cli");
+    expect(property.read(apply(property, userRow({ githubSource: "cli" }), null))).toBe("");
   });
 
   it("round-trips a model reference pair", () => {
