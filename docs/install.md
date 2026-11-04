@@ -128,4 +128,6 @@ same way if a release changed the stack. A pinned `SAALE_VERSION` stays where it
 you change it.
 
 The migrations run before `web` and `worker` start, so nothing else is needed. The version
-a running instance is on is in the console footer.
+a running instance is on is in the console footer. An admin sees an orange arrow beside it
+once a newer release is published; opening it shows that release's notes and the two
+commands above.

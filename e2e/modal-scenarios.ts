@@ -38,6 +38,56 @@ export interface ModalScenario {
   viewport?: { name: string; width: number; height: number };
 }
 
+/** The release the footer could move to, as `/api/updates` reports it. */
+const LATEST_RELEASE = {
+  version: "2026.11.4",
+  date: "2026-11-04",
+  url: "https://github.com/Blumlaut/saale/releases/tag/2026.11.4",
+  items: [
+    {
+      text: "add an arrow when a newer release is out, with the commands that update",
+      commit: "a1b2c3d",
+    },
+  ],
+};
+
+/**
+ * The changelog the build ships, plus what the footer hears about a newer
+ * release. Both are ours to stub: the real route asks GitHub.
+ */
+async function mockChangelog(page: Page, update: "none" | "available") {
+  await page.route(/\/api\/updates$/, (route) =>
+    route.fulfill({
+      json:
+        update === "available"
+          ? { current: "2026.10.0", updateAvailable: true, latest: LATEST_RELEASE }
+          : { current: "2026.10.0", updateAvailable: false, latest: null },
+    }),
+  );
+
+  await page.route(/\/api\/changelog$/, (route) =>
+    route.fulfill({
+      json: {
+        version: "2026.10.0",
+        releases: [
+          {
+            version: "2026.10.0",
+            date: "2026-10-31",
+            items: [
+              {
+                text: "add a changelog the console can read, from the commits since the last tag",
+                commit: "62a50fda",
+              },
+              { text: "pull the install files from main", commit: "a07e9227" },
+            ],
+          },
+          { version: "2026.9.0", date: "2026-09-30", items: [] },
+        ],
+      },
+    }),
+  );
+}
+
 /**
  * Write a plugin's waiting dialog where `requestPluginUi` would.
  *
@@ -1584,30 +1634,17 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     // console sidebar below md), so a phone run has nothing to click.
     viewport: DESKTOP_VIEWPORT,
     // A long entry is the case that would push the sheet sideways at 320px.
-    mock: async (page) => {
-      await page.route(/\/api\/changelog$/, (route) =>
-        route.fulfill({
-          json: {
-            version: "2026.10.0",
-            releases: [
-              {
-                version: "2026.10.0",
-                date: "2026-10-31",
-                items: [
-                  {
-                    text: "add a changelog the console can read, from the commits since the last tag",
-                    commit: "62a50fda",
-                  },
-                  { text: "pull the install files from main", commit: "a07e9227" },
-                ],
-              },
-              { version: "2026.9.0", date: "2026-09-30", items: [] },
-            ],
-          },
-        }),
-      );
-    },
+    mock: (page) => mockChangelog(page, "none"),
     open: (page) => click(page, 'button[title="Changelog"]'),
+  },
+  {
+    name: "console · update available",
+    path: "/dashboard/chat",
+    sources: ["src/components/layout/changelog-sheet.tsx"],
+    viewport: DESKTOP_VIEWPORT,
+    // The update section carries the longest line in the sheet: the commands.
+    mock: (page) => mockChangelog(page, "available"),
+    open: (page) => click(page, `button[title="Release ${LATEST_RELEASE.version} is available"]`),
   },
   {
     name: "workspaces · delete orphaned directory",
