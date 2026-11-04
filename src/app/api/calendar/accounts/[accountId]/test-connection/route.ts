@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { requireCalendarAccountOwner, requireSession } from "@/lib/auth";
 import { sanitizeError } from "@/lib/auth";
 import { connectCalDAV } from "@/lib/calendar/caldav";
 import { prisma } from "@/lib/db";
@@ -15,16 +15,25 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ accountId: string }> },
 ) {
+  const { accountId } = await params;
+  const testingNew = !accountId || accountId === "new";
+
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const { accountId } = await params;
+  // A stored account is tested with the credentials saved on it, so only its
+  // owner may ask for the test.
+  if (!testingNew) {
+    const owned = await requireCalendarAccountOwner(accountId);
+    if (!owned.ok) return owned.response;
+  }
+
   const body = await request.json();
 
   let testAccountId = accountId;
 
   // If no accountId, create a temporary account for testing
-  if (!accountId || accountId === "new") {
+  if (testingNew) {
     const { serverUrl, username, password, authMethod } = body;
     if (!serverUrl || !username || !password) {
       return NextResponse.json(
@@ -53,7 +62,7 @@ export async function POST(
     const calendars = await client.fetchCalendars();
 
     // If this was a temp account and connection succeeded, rename and enable it
-    if (!accountId || accountId === "new") {
+    if (testingNew) {
       await prisma.calendarAccount.update({
         where: { id: testAccountId },
         data: {
@@ -99,7 +108,7 @@ export async function POST(
     });
   } catch (err) {
     // Clean up temp account on failure
-    if (!accountId || accountId === "new") {
+    if (testingNew) {
       await prisma.calendarAccount.delete({ where: { id: testAccountId } }).catch((err) => {
         console.error("Failed to clean up temp calendar account:", err);
       });
