@@ -21,7 +21,7 @@ import { cleanupOrphanedImages } from "@/lib/image-attachment";
 import { sendCalendarReminders } from "@/lib/notifications/calendar-reminders";
 import { MOBILE_PUSH_JOB_NAME, type PendingMobilePush } from "@/lib/push/deferred";
 import { sendDeferredPush } from "@/lib/push/send";
-import { registerTelegramWebhook } from "@/lib/telegram";
+import { registerTelegramWebhook, startTelegramDeliveryWatcher } from "@/lib/telegram";
 
 /** How often to look for calendar events that are due a reminder (1 min) */
 const CALENDAR_REMINDERS_INTERVAL_MINUTES = 1;
@@ -174,19 +174,29 @@ function createJobRouter(): Processor {
   };
 }
 
-/** Retry a function with exponential backoff until it succeeds. */
+/**
+ * Retry a function with exponential backoff until it succeeds.
+ *
+ * `attempts` bounds a step whose failure has another way forward, so the rest
+ * of startup still runs instead of waiting on it forever.
+ */
 async function retryUntilSuccess(
   label: string,
   fn: () => Promise<void>,
-  { maxDelay = 30_000, initialDelay = 3_000 }: { maxDelay?: number; initialDelay?: number } = {},
+  {
+    maxDelay = 30_000,
+    initialDelay = 3_000,
+    attempts = Infinity,
+  }: { maxDelay?: number; initialDelay?: number; attempts?: number } = {},
 ): Promise<void> {
   let delay = initialDelay;
-  while (true) {
+  for (let attempt = 1; ; attempt++) {
     try {
       await fn();
       console.log(`[worker] ${label}. ok`);
       return;
     } catch (err) {
+      if (attempt >= attempts) throw err;
       console.error(
         `[worker] ${label} failed (${(err as Error).message}), retrying in ${delay / 1000}s...`,
       );
@@ -235,7 +245,14 @@ async function main() {
   await retryUntilSuccess("Schedule coder worktree sweep", registerCoderSweep);
   await retryUntilSuccess("Schedule watcher chat cleanup", registerWatcherChatCleanup);
   await retryUntilSuccess("Schedule calendar reminders", registerCalendarReminders);
-  await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook);
+  // A webhook needs a public HTTPS URL. When Telegram refuses ours, the bot
+  // still works: the delivery watcher polls for updates instead.
+  await retryUntilSuccess("Register Telegram webhook", registerTelegramWebhook, {
+    attempts: 3,
+  }).catch((err) => {
+    console.error("[worker] Could not register the Telegram webhook:", err);
+  });
+  startTelegramDeliveryWatcher();
 
   process.on("SIGINT", async () => {
     console.log("[worker] Shutting down...");

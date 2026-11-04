@@ -94,6 +94,11 @@ logs first.
 | `SEARXNG_URL`                         | Search backend for the web tools.                                                                     |
 | `ARCTIC_SHIFT_URL`                    | Archive the web tools read Reddit through, because Reddit blocks servers.                             |
 
+The Telegram bot receives messages over a webhook, which needs a public HTTPS URL.
+When Telegram refuses that URL (an instance on a LAN address, or no public DNS), the
+worker polls Telegram for updates instead, so the bot still answers. A webhook is
+preferred when it works, and the two never run at the same time.
+
 ## Modules
 
 | Variable     | Default | What it does                                                |

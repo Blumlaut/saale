@@ -46,3 +46,5 @@ export {
 } from "./links";
 
 export { processTelegramMessage } from "./processor";
+
+export { startTelegramDeliveryWatcher } from "./polling";

@@ -90,6 +90,14 @@ That runs the published images. `docker-compose.yml` builds the same stack from 
 Open <http://localhost:3630> and create the first account, which is the admin. Add a
 provider key in Settings so the agent has a model.
 
+### Updating
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ## Docs
 
 | Page                                       | What is in it                                    |

@@ -10,10 +10,6 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Every attempt here comes from one address, and better-auth's own limiter
-// would answer 429 long before the account's budget runs out.
-process.env.AUTH_RATE_LIMIT = "off";
-
 const counts = new Map<string, number>();
 
 vi.mock("@/lib/redis", () => ({

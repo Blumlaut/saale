@@ -170,9 +170,9 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
         toast.success("Telegram bot saved");
       } else {
         // The token is valid (getMe passed) but Telegram would not accept the
-        // webhook. almost always an unreachable app URL. Say so instead of
-        // reporting a success the user will discover is not one.
-        toast.warning("Bot saved, but Telegram rejected the webhook. check the app URL");
+        // webhook. almost always an unreachable app URL. Delivery then comes
+        // from the worker's poll, so this is a warning and not a failure.
+        toast.warning("Bot saved, but Telegram refused the webhook. the worker polls instead");
       }
     } catch (err) {
       console.error("Failed to save the Telegram bot token:", err);

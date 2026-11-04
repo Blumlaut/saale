@@ -17,6 +17,10 @@ export default defineConfig({
     // and breaks @testing-library/react rendering.
     env: {
       NODE_ENV: "test",
+      // better-auth's per-address limit allows three sign-in requests per ten
+      // seconds. Auth tests make more than that from one address, and none of
+      // them are about the limit.
+      AUTH_RATE_LIMIT: "off",
     },
     include: ["__tests__/**/*.test.{ts,tsx}"],
     coverage: {
