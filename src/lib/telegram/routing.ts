@@ -1,25 +1,23 @@
 import { prisma } from "@/lib/db";
+import { createChatSessionRow } from "@/lib/chat/create-session";
 import { getLinkByUserId, type TelegramLinkInfo } from "./links";
 import { findOutboundSource } from "./outbound-messages";
 
 /**
  * Which Saale chat a Telegram message continues.
  *
- * The bot used to keep one chat of its own, so a reply to an alert from a job or
- * another conversation landed somewhere that knew nothing about it. Instead a
- * message resolves to the chat that sent the message it answers:
+ * A message resolves to the chat that sent the message it answers:
  *
  *  1. the message is a Telegram reply and the ledger knows what it answers;
  *  2. otherwise the chat that last sent a Telegram message;
- *  3. otherwise the link's home thread, which is the old dedicated chat and
- *     stays as the place a conversation starts.
+ *  3. otherwise a new chat, so a message never needs `/new` first.
  *
  * A chat that has since been deleted falls through to the next rule rather than
  * failing the message.
  */
 
-/** How a target was resolved. `home` is the dedicated Telegram thread. */
-export type TelegramTargetVia = "reply" | "active";
+/** How a target was resolved. */
+export type TelegramTargetVia = "reply" | "active" | "new";
 
 export interface TelegramTarget {
   sessionId: string;
@@ -72,6 +70,24 @@ export async function resolveTelegramTarget(params: {
   }
 
   return null;
+}
+
+/**
+ * The chat a message continues, starting one when it belongs to none.
+ *
+ * A phone user who sends a message expects an answer, so a message with
+ * nothing to continue begins a chat instead of asking for `/new`.
+ */
+export async function resolveOrStartTelegramTarget(params: {
+  userId: string;
+  telegramChatId: bigint;
+  replyToMessageId?: bigint | null | undefined;
+  link?: TelegramLinkInfo | null;
+}): Promise<TelegramTarget> {
+  const target = await resolveTelegramTarget(params);
+  if (target) return target;
+
+  return { sessionId: (await createChatSessionRow(params.userId)).id, via: "new" };
 }
 
 /**

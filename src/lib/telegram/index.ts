@@ -45,4 +45,4 @@ export {
   type LinkTelegramResult,
 } from "./links";
 
-export { processTelegramMessage, NO_CHAT_MESSAGE } from "./processor";
+export { processTelegramMessage } from "./processor";

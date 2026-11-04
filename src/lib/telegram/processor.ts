@@ -1,6 +1,6 @@
-import { createBot, sendTelegramMessage } from "./client";
+import { createBot } from "./client";
 import { expandPromptInChat } from "@/lib/prompts/chat";
-import { resolveTelegramTarget } from "./routing";
+import { resolveOrStartTelegramTarget } from "./routing";
 import { runRoutedTelegramMessage } from "./routed-run";
 import { buildQuotedContext, type QuotedMessageContext } from "./reply-context";
 import { beginTelegramRun, clearTelegramRun, isLatestMessage } from "./session-registry";
@@ -12,15 +12,6 @@ import {
 } from "./files";
 import { withChatLock } from "./chat-lock";
 import { setActiveTelegramSession } from "./links";
-
-/**
- * What the bot says to a message that continues no conversation.
- *
- * Telegram is a transport into ordinary chats, so there is no chat of the bot's
- * own to fall back to. A message that answers nothing has nowhere to run.
- */
-export const NO_CHAT_MESSAGE =
-  "This message doesn't belong to a chat. Send /new to start one, or reply to a message I sent you.";
 
 /**
  * Process an incoming Telegram message.
@@ -97,23 +88,12 @@ async function runTelegramMessage(params: ProcessTelegramMessageParams): Promise
 
   // 1. Which chat does this message continue? A reply goes back to the chat
   //    that sent the message it answers, otherwise to the chat this
-  //    conversation is in.
-  const target = await resolveTelegramTarget({
+  //    conversation is in. With neither it starts a chat.
+  const target = await resolveOrStartTelegramTarget({
     userId,
     telegramChatId,
     replyToMessageId: replyToQuoted ? BigInt(replyToQuoted.messageId) : null,
   });
-
-  if (!target) {
-    clearTelegramRun(userId, telegramChatId);
-    await sendTelegramMessage(encryptedToken, telegramChatId, NO_CHAT_MESSAGE, {
-      ...(replyToMessageId != null ? { replyToMessageId } : {}),
-      parseMode: "HTML",
-    }).catch((err) => {
-      console.error("Failed to tell Telegram there is no chat for the message:", err);
-    });
-    return;
-  }
 
   // Remember where this conversation is, so the next message that answers
   // nothing continues the same chat.

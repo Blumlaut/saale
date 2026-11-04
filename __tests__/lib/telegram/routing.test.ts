@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockGetLinkByUserId, mockFindOutboundSource, mockChatSession } = vi.hoisted(() => ({
-  mockGetLinkByUserId: vi.fn(),
-  mockFindOutboundSource: vi.fn(),
-  mockChatSession: { findFirst: vi.fn() },
-}));
+const { mockGetLinkByUserId, mockFindOutboundSource, mockChatSession, mockCreateChatSessionRow } =
+  vi.hoisted(() => ({
+    mockGetLinkByUserId: vi.fn(),
+    mockFindOutboundSource: vi.fn(),
+    mockChatSession: { findFirst: vi.fn() },
+    mockCreateChatSessionRow: vi.fn(),
+  }));
 
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: mockChatSession },
@@ -20,7 +22,15 @@ vi.mock("@/lib/telegram/outbound-messages", () => ({
   findOutboundSource: (...args: unknown[]) => mockFindOutboundSource(...args),
 }));
 
-import { resolveExistingTelegramTarget, resolveTelegramTarget } from "@/lib/telegram/routing";
+vi.mock("@/lib/chat/create-session", () => ({
+  createChatSessionRow: (...args: unknown[]) => mockCreateChatSessionRow(...args),
+}));
+
+import {
+  resolveExistingTelegramTarget,
+  resolveOrStartTelegramTarget,
+  resolveTelegramTarget,
+} from "@/lib/telegram/routing";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -43,6 +53,7 @@ beforeEach(() => {
   mockGetLinkByUserId.mockResolvedValue(link);
   mockFindOutboundSource.mockResolvedValue(null);
   mockChatSession.findFirst.mockResolvedValue({ id: "sess-x" });
+  mockCreateChatSessionRow.mockResolvedValue({ id: "sess-new", title: "New Chat" });
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -131,6 +142,24 @@ describe("resolveTelegramTarget", () => {
     await expect(resolveTelegramTarget({ userId, telegramChatId: chatId })).rejects.toThrow(
       "Telegram link not found",
     );
+  });
+});
+
+describe("resolveOrStartTelegramTarget", () => {
+  it("starts a chat when nothing resolves, so a message needs no /new", async () => {
+    const target = await resolveOrStartTelegramTarget({ userId, telegramChatId: chatId });
+
+    expect(target).toEqual({ sessionId: "sess-new", via: "new" });
+    expect(mockCreateChatSessionRow).toHaveBeenCalledWith(userId);
+  });
+
+  it("keeps the chat a message continues instead of starting another", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+
+    const target = await resolveOrStartTelegramTarget({ userId, telegramChatId: chatId });
+
+    expect(target).toEqual({ sessionId: "sess-active", via: "active" });
+    expect(mockCreateChatSessionRow).not.toHaveBeenCalled();
   });
 });
 

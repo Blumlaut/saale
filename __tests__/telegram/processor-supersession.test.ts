@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const h = vi.hoisted(() => ({
-  resolveTelegramTarget: vi.fn(),
+  resolveOrStartTelegramTarget: vi.fn(),
   runRoutedTelegramMessage: vi.fn(),
   sendTelegramMessage: vi.fn(),
   createBot: vi.fn(),
@@ -24,7 +24,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 
 vi.mock("@/lib/telegram/routing", () => ({
-  resolveTelegramTarget: (...args: unknown[]) => h.resolveTelegramTarget(...args),
+  resolveOrStartTelegramTarget: (...args: unknown[]) => h.resolveOrStartTelegramTarget(...args),
 }));
 
 vi.mock("@/lib/telegram/routed-run", () => ({
@@ -48,7 +48,7 @@ vi.mock("@/lib/telegram/files", async (importOriginal) => ({
 }));
 
 import { nextMessageSeq } from "@/lib/telegram/session-registry";
-import { NO_CHAT_MESSAGE, processTelegramMessage } from "@/lib/telegram/processor";
+import { processTelegramMessage } from "@/lib/telegram/processor";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ function params(chatId: bigint, overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.resolveTelegramTarget.mockResolvedValue({ sessionId: "sess-active", via: "active" });
+  h.resolveOrStartTelegramTarget.mockResolvedValue({ sessionId: "sess-active", via: "active" });
   h.runRoutedTelegramMessage.mockResolvedValue(undefined);
   h.sendTelegramMessage.mockResolvedValue([1]);
   h.downloadAndProcessTelegramFile.mockResolvedValue(undefined);
@@ -96,7 +96,7 @@ describe("processTelegramMessage  routing", () => {
 
     await processTelegramMessage(params(chatId, { replyToMessageId: 11 }));
 
-    expect(h.resolveTelegramTarget).toHaveBeenCalledWith({
+    expect(h.resolveOrStartTelegramTarget).toHaveBeenCalledWith({
       userId: USER,
       telegramChatId: chatId,
       replyToMessageId: null,
@@ -119,41 +119,15 @@ describe("processTelegramMessage  routing", () => {
     expect(h.setActiveTelegramSession).toHaveBeenCalledWith(USER, "sess-active");
   });
 
-  it("adds the quoted message to the prompt but stores the user's own words", async () => {
-    const chatId = nextChatId();
+  it("runs in the chat a message started when it continues none", async () => {
+    h.resolveOrStartTelegramTarget.mockResolvedValue({ sessionId: "sess-new", via: "new" });
 
-    await processTelegramMessage(
-      params(chatId, {
-        messageText: "why did that fail?",
-        replyToQuoted: { messageId: 9, text: "Deploy failed", from: "Saale" },
-      }),
+    await processTelegramMessage(params(nextChatId()));
+
+    expect(h.runRoutedTelegramMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "sess-new" }),
     );
-
-    expect(h.resolveTelegramTarget).toHaveBeenCalledWith(
-      expect.objectContaining({ replyToMessageId: BigInt(9) }),
-    );
-
-    const call = h.runRoutedTelegramMessage.mock.calls[0]![0] as {
-      promptText: string;
-      agentPrompt: string;
-    };
-    expect(call.promptText).toBe("why did that fail?");
-    expect(call.agentPrompt).toContain("Deploy failed");
-    expect(call.agentPrompt).toContain("why did that fail?");
-  });
-
-  it("says so instead of inventing a chat when nothing resolves", async () => {
-    const chatId = nextChatId();
-    h.resolveTelegramTarget.mockResolvedValue(null);
-
-    await processTelegramMessage(params(chatId, { replyToMessageId: 11 }));
-
-    expect(h.runRoutedTelegramMessage).not.toHaveBeenCalled();
-    expect(h.sendTelegramMessage).toHaveBeenCalledWith(TOKEN, chatId, NO_CHAT_MESSAGE, {
-      replyToMessageId: 11,
-      parseMode: "HTML",
-    });
-    expect(h.setActiveTelegramSession).not.toHaveBeenCalled();
+    expect(h.setActiveTelegramSession).toHaveBeenCalledWith(USER, "sess-new");
   });
 });
 
