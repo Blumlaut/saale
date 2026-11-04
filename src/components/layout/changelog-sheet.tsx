@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { commitUrl, type ChangelogItem, type ChangelogRelease } from "@/lib/changelog/parse";
 import type { AppUpdate } from "@/hooks/use-app-update";
+import { useIsAdmin } from "@/hooks/use-is-admin";
 import { fetchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
@@ -87,8 +88,6 @@ function UpdateEntry({ update }: { update: AppUpdate }) {
         update available
       </span>
 
-      {latest.items.length > 0 && <ReleaseItems items={latest.items} />}
-
       <div className="bg-muted border-border mt-3 flex items-start gap-2 rounded-lg border p-3">
         <pre className="min-w-0 flex-1 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
           {UPGRADE_COMMANDS}
@@ -100,16 +99,13 @@ function UpdateEntry({ update }: { update: AppUpdate }) {
         />
       </div>
 
-      <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
-        You are on <span className="font-mono">{update.current}</span>. A pinned{" "}
-        <span className="font-mono">SAALE_VERSION</span> stays where it is until you change it.
-      </p>
+      {latest.items.length > 0 && <ReleaseItems items={latest.items} />}
 
       <a
         href={latest.url}
         target="_blank"
         rel="noreferrer"
-        className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1 text-xs"
+        className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1 text-xs"
       >
         Release notes on GitHub
         <ArrowUpRight className="size-3" aria-hidden />
@@ -150,7 +146,9 @@ export function ChangelogSheet({
     };
   }, [open, releases, failed]);
 
-  const newer = update?.updateAvailable && update.latest ? update : null;
+  // The route behind `update` is admin-only; this keeps a caller from widening it.
+  const isAdmin = useIsAdmin();
+  const newer = isAdmin && update?.updateAvailable && update.latest ? update : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
