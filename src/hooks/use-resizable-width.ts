@@ -44,6 +44,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * The widest a panel may get in its row: what is left of the row once the
+ * columns beside it have theirs, and never less than its own fixed ceiling.
+ *
+ * `rowWidth` is null until the row has been measured, which keeps the fixed
+ * ceiling until then.
+ */
+export function panelCeiling(rowWidth: number | null, reserved: number, base: number): number {
+  return rowWidth === null ? base : Math.max(base, rowWidth - reserved);
+}
+
 function readStoredWidth(key: string, fallback: number): number {
   try {
     const stored = Number(window.localStorage.getItem(key));

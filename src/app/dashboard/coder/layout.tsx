@@ -17,7 +17,7 @@ import {
   useSessionState,
   useCoderChatStarter,
 } from "@/components/coder/use-coder-data";
-import { useResizableWidth } from "@/hooks/use-resizable-width";
+import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { useElementWidth } from "@/hooks/use-element-width";
 
 /** How often an open coder chat re-reads its worktree while visible. */
@@ -44,6 +44,16 @@ const WORKTREE_PANEL = {
 
 /** The room the chat keeps beside a worktree panel dragged wide. */
 const CHAT_MIN_WIDTH = 440;
+
+/** The chat list's width, remembered per browser. */
+const CHAT_SIDEBAR = {
+  storageKey: "saale:ui:coder:chatSidebarWidth",
+  label: "Resize coder chat list",
+  defaultWidth: 256,
+  minWidth: 180,
+  maxWidth: 400,
+  handle: "right",
+} as const;
 
 export default function CoderLayout() {
   const pathname = usePathname();
@@ -105,24 +115,27 @@ export default function CoderLayout() {
     };
   }, [sessionId, reload, provisioningStep]);
 
+  const [measureRow, rowWidth] = useElementWidth();
+
   const coderChatSidebar = useResizableWidth({
-    storageKey: "saale:ui:coder:chatSidebarWidth",
-    label: "Resize coder chat list",
-    defaultWidth: 256,
-    minWidth: 180,
-    maxWidth: 400,
-    handle: "right",
+    ...CHAT_SIDEBAR,
+    // The worktree panel keeps its opening width beside the list.
+    maxWidth: panelCeiling(
+      rowWidth,
+      CHAT_MIN_WIDTH + WORKTREE_PANEL.defaultWidth,
+      CHAT_SIDEBAR.maxWidth,
+    ),
   });
 
   // An ultrawide leaves room for a worktree panel past the fixed ceiling, so the
   // ceiling is whatever the row holds beyond a usable chat.
-  const [measureRow, rowWidth] = useElementWidth();
   const panel = useResizableWidth({
     ...WORKTREE_PANEL,
-    maxWidth:
-      rowWidth === null
-        ? WORKTREE_PANEL.maxWidth
-        : Math.max(WORKTREE_PANEL.maxWidth, rowWidth - coderChatSidebar.width - CHAT_MIN_WIDTH),
+    maxWidth: panelCeiling(
+      rowWidth,
+      coderChatSidebar.width + CHAT_MIN_WIDTH,
+      WORKTREE_PANEL.maxWidth,
+    ),
   });
 
   const newChat = useCallback(() => {

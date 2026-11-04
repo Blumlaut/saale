@@ -4,12 +4,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
-import { useResizableWidth } from "@/hooks/use-resizable-width";
+import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { patchJson } from "@/lib/http";
 import { createChatSession, startChatSession } from "@/lib/chat-session";
 import { PROMPT_PARAM, readPromptParam } from "@/lib/chat/prompt-param";
+
+/** The chat list's width, remembered per browser. */
+const CHAT_SIDEBAR = {
+  storageKey: "saale:ui:chat:sidebarWidth",
+  label: "Resize chat list",
+  defaultWidth: 224,
+  minWidth: 180,
+  maxWidth: 400,
+  handle: "right",
+} as const;
+
+/** The room the chat keeps beside its list. */
+const CHAT_MIN_WIDTH = 440;
 
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -17,13 +31,10 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   const searchParams = useSearchParams();
   const segments = pathname.split("/");
   const sessionId = segments.length >= 4 && segments[3] ? segments[3] : null;
+  const [measureRow, rowWidth] = useElementWidth();
   const chatSidebar = useResizableWidth({
-    storageKey: "saale:ui:chat:sidebarWidth",
-    label: "Resize chat list",
-    defaultWidth: 224,
-    minWidth: 180,
-    maxWidth: 400,
-    handle: "right",
+    ...CHAT_SIDEBAR,
+    maxWidth: panelCeiling(rowWidth, CHAT_MIN_WIDTH, CHAT_SIDEBAR.maxWidth),
   });
 
   // `temporaryMode` controls whether new chats are temporary.
@@ -98,7 +109,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
       {/* Content: sidebar + main. edge to edge on phones, console gutter on
           desktop (see `.full-bleed` in globals.css) */}
-      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+      <div ref={measureRow} className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         {/* Sidebar. desktop only */}
         <div className="relative hidden shrink-0 md:block" style={{ width: chatSidebar.width }}>
           <div

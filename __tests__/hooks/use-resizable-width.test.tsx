@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useResizableWidth, type ResizableWidthOptions } from "@/hooks/use-resizable-width";
+import {
+  panelCeiling,
+  useResizableWidth,
+  type ResizableWidthOptions,
+} from "@/hooks/use-resizable-width";
 
 /**
  * The drag handle that sets a column's width.
@@ -152,5 +156,19 @@ describe("useResizableWidth", () => {
     fireEvent.pointerMove(handle, { clientX: 620, pointerId: 1 });
 
     expect(width()).toBe(320);
+  });
+});
+
+describe("panelCeiling", () => {
+  it("keeps the fixed ceiling until the row has been measured", () => {
+    expect(panelCeiling(null, 440, 720)).toBe(720);
+  });
+
+  it("gives the panel the room left beside the columns that share the row", () => {
+    expect(panelCeiling(2560, 440, 720)).toBe(2120);
+  });
+
+  it("never drops under the fixed ceiling in a narrow row", () => {
+    expect(panelCeiling(900, 440, 720)).toBe(720);
   });
 });

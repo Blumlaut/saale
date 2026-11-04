@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { FileBrowser } from "@/components/files/file-browser";
 import { FileView } from "@/components/files/file-view";
-import { useResizableWidth } from "@/hooks/use-resizable-width";
+import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
+import { useElementWidth } from "@/hooks/use-element-width";
 import { downloadFile } from "@/lib/download";
 import { rawFileUrl } from "@/lib/files/urls";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,9 @@ const BROWSER_PANEL = {
   handle: "right",
 } as const;
 
+/** The room the open file keeps beside the browser. */
+const EDITOR_MIN_WIDTH = 480;
+
 /**
  * Files, as a workspace: the browser on one side and the editor on the
  * other.
@@ -36,7 +40,11 @@ export default function FilesPage() {
   const [entry, setEntry] = useState<FileEntry | null>(null);
   // Whether the open file holds text that is not on disk; the header says so.
   const [dirty, setDirty] = useState(false);
-  const panel = useResizableWidth(BROWSER_PANEL);
+  const [measureRow, rowWidth] = useElementWidth();
+  const panel = useResizableWidth({
+    ...BROWSER_PANEL,
+    maxWidth: panelCeiling(rowWidth, EDITOR_MIN_WIDTH, BROWSER_PANEL.maxWidth),
+  });
 
   const open = (next: FileEntry) => {
     setDirty(false);
@@ -45,7 +53,7 @@ export default function FilesPage() {
 
   return (
     <Page className="gap-0">
-      <div className="flex min-h-0 flex-1 overflow-hidden md:gap-4">
+      <div ref={measureRow} className="flex min-h-0 flex-1 overflow-hidden md:gap-4">
         <div
           className={cn("min-h-0 flex-1 md:flex-none", entry && "hidden md:block")}
           style={{ width: panel.width }}
