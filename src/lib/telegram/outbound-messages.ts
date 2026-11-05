@@ -68,18 +68,27 @@ export async function recordOutboundMessages(params: {
   ]);
 }
 
+/** What the ledger knows about a message someone replied to. */
+export type OutboundSource =
+  /** The message came from this chat. */
+  | { kind: "chat"; sessionId: string }
+  /** The message came from no chat: a watcher, a reminder, a job run. */
+  | { kind: "no_chat" }
+  /** Nothing on record: sent before the ledger, or aged out. */
+  | { kind: "unknown" };
+
 /**
  * The chat a replied-to message came from.
  *
  * Scoped to the user whose link received the reply, so a message id from
- * another account's chat can never resolve. Null means the message predates the
- * ledger, was a reminder, or has aged out. the caller falls back.
+ * another account's chat can never resolve. `no_chat` is a fact about the
+ * message, so the reply starts a chat instead of joining an unrelated one.
  */
 export async function findOutboundSource(params: {
   userId: string;
   chatId: bigint;
   messageId: bigint;
-}): Promise<string | null> {
+}): Promise<OutboundSource> {
   const { userId, chatId, messageId } = params;
 
   const row = await prisma.telegramOutboundMessage.findUnique({
@@ -87,6 +96,7 @@ export async function findOutboundSource(params: {
     select: { userId: true, sessionId: true },
   });
 
-  if (!row || row.userId !== userId) return null;
-  return row.sessionId;
+  if (!row || row.userId !== userId) return { kind: "unknown" };
+  if (!row.sessionId) return { kind: "no_chat" };
+  return { kind: "chat", sessionId: row.sessionId };
 }
