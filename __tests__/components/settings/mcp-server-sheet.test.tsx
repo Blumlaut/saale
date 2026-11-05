@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-import { McpServerSheet } from "@/app/dashboard/settings/components/mcp-server-sheet";
+import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
 import type { McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 
 type Props = Parameters<typeof McpServerSheet>[0];
@@ -122,6 +122,7 @@ function savedServer(overrides: Partial<McpServer> = {}): McpServer {
     coderEnabled: true,
     hasToken: false,
     hasOAuth: false,
+    shared: false,
     createdAt: "2026-01-01T09:00:00.000Z",
     updatedAt: "2026-01-01T09:00:00.000Z",
     ...overrides,

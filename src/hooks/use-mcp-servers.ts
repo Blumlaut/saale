@@ -19,6 +19,8 @@ export interface McpServer {
   hasToken: boolean;
   /** Whether an OAuth credential is stored for this server. */
   hasOAuth: boolean;
+  /** Written by an admin for the whole instance: the account cannot edit it. */
+  shared: boolean;
   createdAt: string;
   updatedAt: string;
 }

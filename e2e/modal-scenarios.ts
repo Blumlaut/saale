@@ -144,8 +144,9 @@ const MACHINE_LIST = "src/components/infra/machine-list.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/sections/memories-section.tsx";
 const PROMPTS_TAB = "src/app/dashboard/settings/sections/prompts-section.tsx";
+const PROMPT_DIALOG = "src/components/prompts/prompt-dialog.tsx";
 const MCP_TAB = "src/app/dashboard/settings/components/mcp-panel.tsx";
-const MCP_SHEET = "src/app/dashboard/settings/components/mcp-server-sheet.tsx";
+const MCP_SHEET = "src/components/mcp/mcp-server-sheet.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
@@ -513,25 +514,29 @@ async function mockMemories(page: Page) {
 }
 
 /** One prompt to edit and delete; its hint and description are the long parts. */
+const PROMPT_ROW = {
+  id: "e2e-prompt",
+  name: "review",
+  description:
+    "Review the staged changes and name every behaviour the diff breaks before proposing a fix",
+  argumentHint: "<path> [correctness, security and error handling]",
+  scope: "coder",
+  content: PROMPT_CONTENT,
+  updatedAt: NOW,
+};
+
 async function mockPrompts(page: Page) {
   await page.route(/\/api\/prompts(\?|$)/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    return route.fulfill({
-      json: {
-        prompts: [
-          {
-            id: "e2e-prompt",
-            name: "review",
-            description:
-              "Review the staged changes and name every behaviour the diff breaks before proposing a fix",
-            argumentHint: "<path> [correctness, security and error handling]",
-            scope: "coder",
-            content: PROMPT_CONTENT,
-            updatedAt: NOW,
-          },
-        ],
-      },
-    });
+    return route.fulfill({ json: { prompts: [PROMPT_ROW] } });
+  });
+}
+
+/** The instance's shared prompts, for the admin page that writes them. */
+async function mockSharedPrompts(page: Page) {
+  await page.route(/\/api\/admin\/shared-prompts(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { prompts: [PROMPT_ROW] } });
   });
 }
 
@@ -1224,7 +1229,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · new prompt",
     path: SETTINGS,
-    sources: [PROMPTS_TAB],
+    sources: [PROMPTS_TAB, PROMPT_DIALOG],
     open: async (page) => {
       await openSettingsSection(page, "prompts");
       await click(page, 'button:has-text("New prompt")');
@@ -1233,7 +1238,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · edit prompt",
     path: SETTINGS,
-    sources: [PROMPTS_TAB],
+    sources: [PROMPT_DIALOG],
     mock: mockPrompts,
     open: async (page) => {
       await openSettingsSection(page, "prompts");
@@ -1724,6 +1729,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await click(page, 'button[title="Create a role"]');
       await visible(page, "#role-name").waitFor({ state: "visible", timeout: 10_000 });
     },
+  },
+  {
+    name: "admin · delete shared prompt",
+    path: "/admin/settings/shared-prompts",
+    sources: ["src/components/shared/confirm-dialog.tsx"],
+    mock: mockSharedPrompts,
+    open: (page) => click(page, 'button[aria-label="Delete /review"]'),
   },
   {
     name: "console · changelog",
