@@ -51,7 +51,7 @@ const link = {
 beforeEach(() => {
   vi.resetAllMocks();
   mockGetLinkByUserId.mockResolvedValue(link);
-  mockFindOutboundSource.mockResolvedValue(null);
+  mockFindOutboundSource.mockResolvedValue({ kind: "unknown" });
   mockChatSession.findFirst.mockResolvedValue({ id: "sess-x" });
   mockCreateChatSessionRow.mockResolvedValue({ id: "sess-new", title: "New Chat" });
 });
@@ -60,7 +60,7 @@ beforeEach(() => {
 
 describe("resolveTelegramTarget", () => {
   it("continues the chat that sent the replied-to message", async () => {
-    mockFindOutboundSource.mockResolvedValue("sess-source");
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-source" });
 
     const target = await resolveTelegramTarget({
       userId,
@@ -86,7 +86,7 @@ describe("resolveTelegramTarget", () => {
 
   it("prefers the quoted message over the active chat", async () => {
     mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
-    mockFindOutboundSource.mockResolvedValue("sess-quoted");
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-quoted" });
 
     const target = await resolveTelegramTarget({
       userId,
@@ -114,12 +114,53 @@ describe("resolveTelegramTarget", () => {
     expect(target).toBeNull();
   });
 
-  it("ignores a reply whose chat was deleted, and falls back to the active chat", async () => {
+  it("starts a chat when the answered message's chat was deleted", async () => {
     mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
-    mockFindOutboundSource.mockResolvedValue("sess-gone");
-    mockChatSession.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "sess-active" ? { id: "sess-active" } : null,
-    );
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-gone" });
+    mockChatSession.findFirst.mockResolvedValue(null);
+
+    const target = await resolveTelegramTarget({
+      userId,
+      telegramChatId: chatId,
+      replyToMessageId: BigInt(42),
+    });
+
+    // The chat it answers is gone, so the answer joins none of the others.
+    expect(target).toBeNull();
+  });
+
+  it("starts a chat when the answered message came from no chat", async () => {
+    // A watcher's message has no chat behind it. Answering it must not drop the
+    // answer into whatever chat the user last spoke in.
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-unsloth" });
+    mockFindOutboundSource.mockResolvedValue({ kind: "no_chat" });
+
+    const target = await resolveTelegramTarget({
+      userId,
+      telegramChatId: chatId,
+      replyToMessageId: BigInt(42),
+    });
+
+    expect(target).toBeNull();
+  });
+
+  it("opens a new chat for a watcher reply instead of joining the open one", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-unsloth" });
+    mockFindOutboundSource.mockResolvedValue({ kind: "no_chat" });
+
+    const target = await resolveOrStartTelegramTarget({
+      userId,
+      telegramChatId: chatId,
+      replyToMessageId: BigInt(42),
+    });
+
+    expect(target).toEqual({ sessionId: "sess-new", via: "new" });
+    expect(mockCreateChatSessionRow).toHaveBeenCalledWith(userId);
+  });
+
+  it("continues the open chat when the answered message is not on record", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
+    mockFindOutboundSource.mockResolvedValue({ kind: "unknown" });
 
     const target = await resolveTelegramTarget({
       userId,
@@ -163,7 +204,7 @@ describe("resolveOrStartTelegramTarget", () => {
   });
 
   it("starts a chat when the answered message's chat is gone", async () => {
-    mockFindOutboundSource.mockResolvedValue("sess-gone");
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-gone" });
     mockChatSession.findFirst.mockResolvedValue(null);
 
     const target = await resolveOrStartTelegramTarget({
@@ -177,7 +218,7 @@ describe("resolveOrStartTelegramTarget", () => {
   });
 
   it("continues the answered message's chat when the user still owns it", async () => {
-    mockFindOutboundSource.mockResolvedValue("sess-source");
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-source" });
 
     const target = await resolveOrStartTelegramTarget({
       userId,
@@ -207,7 +248,7 @@ describe("resolveExistingTelegramTarget", () => {
 
   it("starts no chat for a reply whose chat is gone", async () => {
     // A command acts on a chat. it never opens one.
-    mockFindOutboundSource.mockResolvedValue("sess-gone");
+    mockFindOutboundSource.mockResolvedValue({ kind: "chat", sessionId: "sess-gone" });
     mockChatSession.findFirst.mockResolvedValue(null);
 
     const sessionId = await resolveExistingTelegramTarget({
@@ -218,5 +259,18 @@ describe("resolveExistingTelegramTarget", () => {
 
     expect(sessionId).toBeNull();
     expect(mockCreateChatSessionRow).not.toHaveBeenCalled();
+  });
+
+  it("acts on nothing for a command that answers a chat-less message", async () => {
+    mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-unsloth" });
+    mockFindOutboundSource.mockResolvedValue({ kind: "no_chat" });
+
+    const sessionId = await resolveExistingTelegramTarget({
+      userId,
+      telegramChatId: chatId,
+      replyToMessageId: BigInt(42),
+    });
+
+    expect(sessionId).toBeNull();
   });
 });

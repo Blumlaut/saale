@@ -12,8 +12,9 @@ import { findOutboundSource } from "./outbound-messages";
  *  2. otherwise the chat that last sent a Telegram message;
  *  3. otherwise a new chat, so a message never needs `/new` first.
  *
- * A chat that has since been deleted falls through to the next rule rather than
- * failing the message.
+ * A reply whose message came from no chat, or from a chat that has since been
+ * deleted, continues nothing: it starts a chat of its own rather than landing
+ * in whatever conversation the user happens to have open.
  */
 
 /** How a target was resolved. */
@@ -59,8 +60,14 @@ export async function resolveTelegramTarget(params: {
       chatId: telegramChatId,
       messageId: replyToMessageId,
     });
-    if (source && (await chatExists(userId, source))) {
-      return { sessionId: source, via: "reply" };
+
+    // The answer belongs to the chat that sent the quoted message and to none
+    // other, so a watcher's message (which no chat sent) starts one.
+    if (source.kind === "no_chat") return null;
+    if (source.kind === "chat") {
+      return (await chatExists(userId, source.sessionId))
+        ? { sessionId: source.sessionId, via: "reply" }
+        : null;
     }
   }
 

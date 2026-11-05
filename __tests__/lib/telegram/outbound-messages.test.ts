@@ -90,7 +90,7 @@ describe("findOutboundSource", () => {
 
     const source = await findOutboundSource({ userId, chatId, messageId: BigInt(42) });
 
-    expect(source).toBe("sess-1");
+    expect(source).toEqual({ kind: "chat", sessionId: "sess-1" });
     expect(mockOutbound.findUnique).toHaveBeenCalledWith({
       where: { chatId_messageId: { chatId, messageId: BigInt(42) } },
       select: { userId: true, sessionId: true },
@@ -102,22 +102,22 @@ describe("findOutboundSource", () => {
 
     const source = await findOutboundSource({ userId, chatId, messageId: BigInt(42) });
 
-    expect(source).toBeNull();
+    expect(source).toEqual({ kind: "unknown" });
   });
 
-  it("returns null for a message it never sent", async () => {
+  it("returns unknown for a message it never sent", async () => {
     mockOutbound.findUnique.mockResolvedValue(null);
 
     const source = await findOutboundSource({ userId, chatId, messageId: BigInt(1) });
 
-    expect(source).toBeNull();
+    expect(source).toEqual({ kind: "unknown" });
   });
 
-  it("returns null for a row with no source chat", async () => {
+  it("reports a row with no source chat as one no chat sent", async () => {
     mockOutbound.findUnique.mockResolvedValue({ userId, sessionId: null });
 
     const source = await findOutboundSource({ userId, chatId, messageId: BigInt(1) });
 
-    expect(source).toBeNull();
+    expect(source).toEqual({ kind: "no_chat" });
   });
 });
