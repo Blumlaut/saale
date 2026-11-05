@@ -52,8 +52,31 @@ export async function addInboxNotification(
     createdAt: new Date().toISOString(),
   };
 
-  await redis.lpush(key, JSON.stringify(entry));
-  await redis.ltrim(key, 0, MAX_ENTRIES - 1);
+  await redis
+    .multi()
+    .lpush(key, JSON.stringify(entry))
+    .ltrim(key, 0, MAX_ENTRIES - 1)
+    .exec();
 
   return entry;
+}
+
+/**
+ * Replace a user's whole list, for a write that rewrites every entry (mark read).
+ *
+ * One round trip: the old copy goes, the new one arrives in the same order it
+ * was read in, and the list keeps its cap.
+ */
+export async function replaceInboxNotifications(
+  userId: string,
+  entries: ReadonlyArray<StoredInboxNotification>,
+): Promise<void> {
+  const redis = getRedis();
+  const key = `${NOTIFICATION_KEY}${userId}`;
+  const multi = redis.multi().del(key);
+  if (entries.length > 0) {
+    multi.rpush(key, ...entries.map((entry) => JSON.stringify(entry)));
+    multi.ltrim(key, 0, MAX_ENTRIES - 1);
+  }
+  await multi.exec();
 }

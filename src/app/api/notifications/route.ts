@@ -2,7 +2,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getRedis } from "@/lib/redis";
-import { addInboxNotification } from "@/lib/notifications/inbox";
+import {
+  addInboxNotification,
+  replaceInboxNotifications,
+  type StoredInboxNotification,
+} from "@/lib/notifications/inbox";
 
 const NOTIFICATION_KEY = "notifications:";
 
@@ -58,7 +62,7 @@ export async function PATCH(request: NextRequest) {
   const key = `${NOTIFICATION_KEY}${authResult.user.id}`;
 
   const rawNotifications = await redis.lrange(key, 0, -1);
-  let notifications: Array<{ id: string; read: boolean }> = rawNotifications.map((n) =>
+  let notifications: StoredInboxNotification[] = rawNotifications.map((n) =>
     JSON.parse(n as string),
   );
 
@@ -68,10 +72,7 @@ export async function PATCH(request: NextRequest) {
     notifications = notifications.map((n) => (ids.includes(n.id) ? { ...n, read: true } : n));
   }
 
-  await redis.del(key);
-  for (const n of notifications) {
-    await redis.lpush(key, JSON.stringify(n));
-  }
+  await replaceInboxNotifications(authResult.user.id, notifications);
 
   return NextResponse.json({ ok: true });
 }

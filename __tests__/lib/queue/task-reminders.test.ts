@@ -2,10 +2,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockTask, mockRedis } = vi.hoisted(() => ({
-  mockTask: { findMany: vi.fn(), updateMany: vi.fn() },
-  mockRedis: { lpush: vi.fn(), ltrim: vi.fn() },
-}));
+const { mockTask, mockRedis } = vi.hoisted(() => {
+  const lpush = vi.fn();
+  const ltrim = vi.fn();
+  const rpush = vi.fn();
+  const del = vi.fn();
+
+  // The in-app list is written through a pipeline: its commands land on the
+  // same spies, so an assertion does not care which form the code takes.
+  const pipeline = () => {
+    const chain: Record<string, unknown> = {};
+    for (const [name, spy] of Object.entries({ lpush, ltrim, rpush, del })) {
+      chain[name] = (...args: unknown[]) => {
+        spy(...args);
+        return chain;
+      };
+    }
+    chain.exec = async () => [];
+    return chain;
+  };
+
+  return {
+    mockTask: { findMany: vi.fn(), updateMany: vi.fn() },
+    mockRedis: { lpush, ltrim, rpush, del, multi: vi.fn(pipeline) },
+  };
+});
 
 vi.mock("@/lib/db", () => ({ prisma: { task: mockTask } }));
 vi.mock("@/lib/redis", () => ({ getRedis: () => mockRedis }));
