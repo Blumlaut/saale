@@ -2,15 +2,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockCount, mockFindUnique } = vi.hoisted(() => ({
+const { mockCount, mockFindUnique, mockSsoRows } = vi.hoisted(() => ({
   mockCount: vi.fn(),
   mockFindUnique: vi.fn(),
+  mockSsoRows: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     user: { count: (...args: unknown[]) => mockCount(...args) },
     adminSettings: { findUnique: (...args: unknown[]) => mockFindUnique(...args) },
+    instanceSso: { findMany: (...args: unknown[]) => mockSsoRows(...args) },
   },
 }));
 
@@ -20,13 +22,27 @@ import {
   areSignupsEnabled,
   assertSignupsAllowed,
 } from "@/lib/auth/signups";
+import { _resetKey, encrypt } from "@/lib/crypto";
+import { invalidateSsoConfig } from "@/lib/auth/sso";
 import { SSO_SIGNUP_REFUSED } from "@/lib/auth/sso-login";
 
+const TEST_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 beforeEach(() => {
+  process.env.ENCRYPTION_KEY = TEST_KEY;
+  _resetKey();
+  invalidateSsoConfig();
   mockCount.mockReset();
   mockCount.mockResolvedValue(2);
   mockFindUnique.mockReset();
   mockFindUnique.mockResolvedValue({ signupsEnabled: true });
+  mockSsoRows.mockReset();
+  mockSsoRows.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  delete process.env.ENCRYPTION_KEY;
+  _resetKey();
 });
 
 describe("areSignupsEnabled", () => {
@@ -71,23 +87,30 @@ describe("assertSignupsAllowed", () => {
   });
 
   describe("a single sign-on login", () => {
-    const SSO_CALLBACK = "/callback/sso-oidc";
+    const SSO_CALLBACK = "/callback/sso-abc12345";
 
-    beforeEach(() => {
-      process.env.SSO_OIDC_ISSUER = "https://login.example.com";
-      process.env.SSO_OIDC_CLIENT_ID = "saale";
-      process.env.SSO_OIDC_CLIENT_SECRET = "secret";
-      process.env.SSO_ALLOWED_DOMAINS = "example.com";
-    });
-
-    afterEach(() => {
-      delete process.env.SSO_OIDC_ISSUER;
-      delete process.env.SSO_OIDC_CLIENT_ID;
-      delete process.env.SSO_OIDC_CLIENT_SECRET;
-      delete process.env.SSO_ALLOWED_DOMAINS;
-    });
+    /** One ready provider, allowing a single domain. */
+    function storeProvider(allowedDomains: string[] = ["example.com"]) {
+      invalidateSsoConfig();
+      mockSsoRows.mockResolvedValue([
+        {
+          id: "sso-1",
+          slug: "abc12345",
+          enabled: true,
+          issuer: "https://login.example.com/tenant",
+          clientId: "saale",
+          encryptedClientSecret: encrypt("secret"),
+          name: "Company SSO",
+          scopes: ["openid", "profile", "email"],
+          allowedDomains,
+          updatedByUserId: "admin-1",
+          updatedAt: new Date("2026-11-12T10:00:00Z"),
+        },
+      ]);
+    }
 
     it("creates an account for an allowed domain even with sign-ups off", async () => {
+      storeProvider();
       mockFindUnique.mockResolvedValue({ signupsEnabled: false });
 
       await expect(
@@ -95,13 +118,23 @@ describe("assertSignupsAllowed", () => {
       ).resolves.toBeUndefined();
     });
 
+    it("reads the domains of the provider that asked", async () => {
+      storeProvider([]);
+
+      await expect(
+        assertSignupsAllowed({ path: SSO_CALLBACK }, "ada@example.com"),
+      ).rejects.toMatchObject({ body: { code: SSO_SIGNUP_REFUSED.code } });
+    });
+
     it("refuses an address outside the domain list", async () => {
+      storeProvider();
       await expect(
         assertSignupsAllowed({ path: SSO_CALLBACK }, "ada@elsewhere.test"),
       ).rejects.toMatchObject({ body: { code: SSO_SIGNUP_REFUSED.code } });
     });
 
     it("refuses an address it cannot read", async () => {
+      storeProvider();
       mockFindUnique.mockResolvedValue({ signupsEnabled: false });
 
       await expect(assertSignupsAllowed({ path: SSO_CALLBACK })).rejects.toMatchObject({
