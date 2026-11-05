@@ -78,6 +78,10 @@ interface MessageListProps {
    * Defaults to the step-by-step transcript.
    */
   compactActivity?: boolean;
+  /** The server holds turns older than the ones on screen. */
+  hasEarlier?: boolean;
+  /** Read the page above the oldest message on screen. */
+  onLoadEarlier?: () => void;
 }
 
 const BOTTOM_EPSILON_PX = 1; // px from the tail that still counts as the tail
@@ -187,6 +191,8 @@ export const MessageList = memo(
       activeTool,
       retry,
       compactActivity = false,
+      hasEarlier = false,
+      onLoadEarlier,
     },
     ref,
   ) {
@@ -430,6 +436,9 @@ export const MessageList = memo(
       [groupedMessages, windowStart],
     );
 
+    // Everything held has been revealed, and the server has more.
+    const canLoadEarlier = hiddenMessageCount === 0 && hasEarlier && !!onLoadEarlier;
+
     // Follow the tail whenever the transcript's *height* changes, not only
     // when a message arrives: a thinking block unfolding, a tool card
     // reporting live output, a code block reflowing when a panel is resized.
@@ -518,17 +527,36 @@ export const MessageList = memo(
           onTouchMove={handleTouchMove}
         >
           <div ref={contentRef} className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
-            {hiddenMessageCount > 0 && (
+            {(hiddenMessageCount > 0 || canLoadEarlier) && (
               <div className="flex justify-center">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground hover:text-foreground text-xs"
-                  onClick={() => setRevealedFrom(revealStartFor(groupedMessages, windowStart))}
+                  onClick={() => {
+                    if (canLoadEarlier) {
+                      // Reading back: the page lands above what is held, the
+                      // whole of it belongs in the window, and the follow has
+                      // to let go or it would snap straight back to the tail.
+                      armAutoScroll(false);
+                      setIsAtBottom(false);
+                      setRevealedFrom(0);
+                      setPinnedStart(null);
+                      onLoadEarlier?.();
+                      return;
+                    }
+                    setRevealedFrom(revealStartFor(groupedMessages, windowStart));
+                  }}
                 >
                   <History className="mr-1.5 h-3.5 w-3.5" />
-                  Show {hiddenMessageCount} earlier{" "}
-                  {hiddenMessageCount === 1 ? "message" : "messages"}
+                  {canLoadEarlier ? (
+                    "Show earlier messages"
+                  ) : (
+                    <>
+                      Show {hiddenMessageCount} earlier{" "}
+                      {hiddenMessageCount === 1 ? "message" : "messages"}
+                    </>
+                  )}
                 </Button>
               </div>
             )}

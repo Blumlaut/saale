@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { readJsonBody } from "@/lib/api-body";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -27,7 +28,10 @@ import {
 import { promptTitleFields } from "@/lib/chat/derive-title";
 import { sendMessageSchema } from "@/lib/chat/schema";
 import { expandPromptInChat } from "@/lib/prompts/chat";
-import { serializeChatMessage } from "@/lib/chat/serialize-message";
+import {
+  serializeChatMessage,
+  type ChatMessageWithAttachments,
+} from "@/lib/chat/serialize-message";
 import {
   adoptChatUpload,
   buildAttachmentPromptText,
@@ -39,10 +43,77 @@ import { FileNotFoundError, FileUploadError } from "@/lib/files/errors";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
 
 /**
- * GET /api/chat/sessions/:sessionId/messages. Get messages for a session
+ * Messages one page of the transcript carries.
+ *
+ * A long chat's whole history is megabytes of text and tool output, and a
+ * transcript is read from its tail, so the conversation arrives in pages and
+ * the reader fetches older ones with `?before=`.
+ */
+const MESSAGES_PAGE_SIZE = 60;
+
+/** Ceiling for `?limit=`, so one request cannot ask for the whole chat again. */
+const MESSAGES_MAX_PAGE_SIZE = 200;
+
+function pageSizeParam(raw: string | null): number {
+  const asked = Number(raw);
+  if (!Number.isInteger(asked) || asked <= 0) return MESSAGES_PAGE_SIZE;
+  return Math.min(asked, MESSAGES_MAX_PAGE_SIZE);
+}
+
+/**
+ * A page of the conversation, newest first internally and returned in
+ * transcript order.
+ *
+ * The `id` tiebreak keeps a page boundary stable when several rows share a
+ * millisecond, which a compaction and the turn after it do.
+ */
+async function loadTranscriptPage(
+  sessionId: string,
+  limit: number,
+  before: string | null,
+): Promise<{ messages: ChatMessageWithAttachments[]; hasEarlier: boolean } | null> {
+  let cursor: { id: string; createdAt: Date } | null = null;
+  if (before) {
+    cursor = await prisma.chatMessage.findFirst({
+      where: { id: before, sessionId, queuedAt: null },
+      select: { id: true, createdAt: true },
+    });
+    if (!cursor) return null;
+  }
+
+  const rows = await prisma.chatMessage.findMany({
+    where: {
+      sessionId,
+      queuedAt: null,
+      ...(cursor
+        ? {
+            OR: [
+              { createdAt: { lt: cursor.createdAt } },
+              { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: TRANSCRIPT_ORDER,
+    take: limit + 1,
+    include: { attachments: true },
+  });
+
+  const hasEarlier = rows.length > limit;
+  return { messages: (hasEarlier ? rows.slice(0, limit) : rows).reverse(), hasEarlier };
+}
+
+const TRANSCRIPT_ORDER: Prisma.ChatMessageOrderByWithRelationInput[] = [
+  { createdAt: "desc" },
+  { id: "desc" },
+];
+
+/**
+ * GET /api/chat/sessions/:sessionId/messages. The newest page of the
+ * conversation, or the page before `?before=<messageId>`.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ sessionId: string }> },
 ) {
   const { sessionId } = await params;
@@ -51,16 +122,23 @@ export async function GET(
   if (!authResult.ok) return authResult.response;
   const chatSession = authResult.session;
 
+  const { searchParams } = new URL(request.url);
+
   // Queued messages are not part of the conversation yet. they are rendered
   // in the composer's queue strip until the server delivers them.
-  const [messages, queuedMessages] = await Promise.all([
-    prisma.chatMessage.findMany({
-      where: { sessionId, queuedAt: null },
-      orderBy: { createdAt: "asc" },
-      include: { attachments: true },
-    }),
+  const [page, queuedMessages] = await Promise.all([
+    loadTranscriptPage(
+      sessionId,
+      pageSizeParam(searchParams.get("limit")),
+      searchParams.get("before"),
+    ),
     listQueuedMessages(sessionId),
   ]);
+
+  if (!page) {
+    return NextResponse.json({ error: "Unknown message cursor" }, { status: 400 });
+  }
+  const { messages, hasEarlier } = page;
 
   // Source of truth: Redis tracks active generations (ephemeral. cleared on crash).
   // processingSince is a DB timestamp that survives crashes and must not be trusted.
@@ -115,6 +193,7 @@ export async function GET(
     },
     messages: messages.map(serializeChatMessage),
     queuedMessages: serializeQueuedMessages(queuedMessages),
+    hasEarlier,
   });
 }
 

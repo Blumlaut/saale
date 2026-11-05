@@ -52,6 +52,12 @@ export interface MergeOptions {
    * kept even though the snapshot lacks it.
    */
   requestedAt?: number;
+  /**
+   * The oldest row in the snapshot. The transcript arrives one page at a time,
+   * so everything the client holds below this row came from an earlier page and
+   * belongs on screen above the snapshot.
+   */
+  pageStart?: { id: string; createdAt: string } | undefined;
 }
 
 export function mergeMessagesWithLive(
@@ -66,7 +72,7 @@ export function mergeMessagesWithLive(
     const turnId = turnByMessageId.get(m.id);
     return turnId && !m.turnId ? { ...m, turnId } : m;
   });
-  const live = prevMessages.filter((m) => isStreamingMessage(m) || isTempUserMessage(m));
+  const live = prevMessages.filter(isLive);
   const snapshotIds = new Set(dbMessages.map((m) => m.id));
   const savedWhileLoading = prevMessages.filter(
     (m) =>
@@ -78,7 +84,41 @@ export function mergeMessagesWithLive(
   const ordered = [...tagged, ...live.filter(isStreamingMessage), ...savedWhileLoading].sort(
     byCreatedAt,
   );
-  return [...ordered, ...live.filter(isTempUserMessage)];
+  // Live turns and optimistic messages have their own rule below, and a live
+  // turn is older than the page whenever the page is one row of what a run
+  // wrote. Holding one here as well would render it twice.
+  const earlierPages = options.pageStart
+    ? prevMessages.filter(
+        (m) => !snapshotIds.has(m.id) && !isLive(m) && isOlderThan(m, options.pageStart!),
+      )
+    : [];
+  return [...earlierPages, ...ordered, ...live.filter(isTempUserMessage)];
+}
+
+/**
+ * Put a page the user asked for above what is already loaded.
+ *
+ * The page comes from `?before=`, so it is older than the oldest message on
+ * screen; an id already held is dropped in case a reload landed in between.
+ */
+export function prependOlderMessages(older: Message[], prevMessages: Message[]): Message[] {
+  const held = new Set(prevMessages.map((m) => m.id));
+  const fresh = older.filter((m) => !held.has(m.id));
+  return fresh.length === 0 ? prevMessages : [...fresh, ...prevMessages];
+}
+
+/** Whether `message` sits below the row a page starts at, in transcript order. */
+function isOlderThan(message: Message, start: { id: string; createdAt: string }): boolean {
+  const at = Date.parse(message.createdAt) || 0;
+  const boundary = Date.parse(start.createdAt) || 0;
+  if (at !== boundary) return at < boundary;
+  // Rows written in the same millisecond: the server breaks the tie by id.
+  return message.id < start.id;
+}
+
+/** A message that exists only on the client: in-flight tokens, or an unsent send. */
+function isLive(message: Message): boolean {
+  return isStreamingMessage(message) || isTempUserMessage(message);
 }
 
 function byCreatedAt(a: Message, b: Message): number {

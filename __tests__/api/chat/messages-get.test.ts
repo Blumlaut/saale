@@ -12,7 +12,7 @@ const {
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockPrisma: {
-    chatMessage: { findMany: vi.fn() },
+    chatMessage: { findMany: vi.fn(), findFirst: vi.fn() },
   },
   mockIsSessionActive: vi.fn().mockResolvedValue(false),
   mockIsAgentBuilding: vi.fn().mockResolvedValue(false),
@@ -72,12 +72,12 @@ function baseSession(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function get() {
+async function get(query = "") {
   const res = await GET(
-    new NextRequest(`http://localhost/api/chat/sessions/${SESSION_ID}/messages`),
+    new NextRequest(`http://localhost/api/chat/sessions/${SESSION_ID}/messages${query}`),
     { params: Promise.resolve({ sessionId: SESSION_ID }) },
   );
-  return res.json();
+  return res;
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -104,7 +104,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
     });
     mockPrisma.chatMessage.findMany.mockResolvedValue([]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     // The header says what will answer instead of an empty picker.
     expect(body.session.defaultModel).toEqual({ provider: "anthropic", name: "claude-sonnet-4" });
@@ -119,7 +119,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
     });
     mockPrisma.chatMessage.findMany.mockResolvedValue([]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     expect(body.session.defaultModel).toBeNull();
   });
@@ -127,19 +127,20 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
   it("leaves a chat's own model alone", async () => {
     mockPrisma.chatMessage.findMany.mockResolvedValue([]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     expect(body.session.defaultModel).toBeNull();
     expect(mockResolveModelForPurpose).not.toHaveBeenCalled();
   });
 
   it("returns the provider error of a failed assistant turn", async () => {
+    // The route reads a page newest-first and answers in transcript order.
     mockPrisma.chatMessage.findMany.mockResolvedValue([
-      baseMessage({ id: "u1", role: "user", content: "hi" }),
       baseMessage({ errorMessage: '400: {"message":"Invalid max_tokens value"}' }),
+      baseMessage({ id: "u1", role: "user", content: "hi" }),
     ]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     // The failed turn is delivered with its error and no content  the UI has
     // nothing else to show for it.
@@ -155,7 +156,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
   it("omits errorMessage for turns that did not fail", async () => {
     mockPrisma.chatMessage.findMany.mockResolvedValue([baseMessage({ content: "All good" })]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     expect(body.messages[0].content).toBe("All good");
     expect(body.messages[0].errorMessage).toBeUndefined();
@@ -170,7 +171,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
       }),
     ]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     expect(body.messages[0]).toMatchObject({
       content: "Here is the first half",
@@ -185,7 +186,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
       .mockResolvedValueOnce([]);
     mockIsAgentBuilding.mockResolvedValue(true);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     // Nothing streams while the build runs, so a client that comes back to the
     // chat needs this to know a reply is still owed.
@@ -201,7 +202,7 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
         baseMessage({ id: "queued-1", role: "user", content: "not yet", queuedAt }),
       ]);
 
-    const body = await get();
+    const body = await (await get()).json();
 
     // Queued messages never mix into the conversation, and they are not
     // filtered out of the conversation by the client either.
@@ -220,6 +221,69 @@ describe("GET /api/chat/sessions/[sessionId]/messages", () => {
         where: { sessionId: SESSION_ID, queuedAt: { not: null } },
         orderBy: { queuedAt: "asc" },
       }),
+    );
+  });
+
+  it("answers with one page of a long conversation and says more exist", async () => {
+    const newestFirst = Array.from({ length: 61 }, (_, index) =>
+      baseMessage({
+        id: `msg-${61 - index}`,
+        role: "user",
+        content: `m${61 - index}`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, 61 - index)),
+      }),
+    );
+    mockPrisma.chatMessage.findMany.mockResolvedValue(newestFirst);
+
+    const body = await (await get()).json();
+
+    // 60 on screen, the 61st is the signal that a page of older turns waits.
+    expect(body.messages).toHaveLength(60);
+    expect(body.hasEarlier).toBe(true);
+    // Transcript order: oldest of the page first.
+    expect(body.messages[0].id).toBe("msg-2");
+    expect(body.messages[59].id).toBe("msg-61");
+    expect(mockPrisma.chatMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 61, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),
+    );
+  });
+
+  it("reads the page before the oldest message on screen", async () => {
+    const cursor = { id: "msg-10", createdAt: new Date("2026-01-01T00:00:10Z") };
+    mockPrisma.chatMessage.findFirst.mockResolvedValue(cursor);
+    mockPrisma.chatMessage.findMany.mockResolvedValue([
+      baseMessage({ id: "msg-9", createdAt: new Date("2026-01-01T00:00:09Z") }),
+      baseMessage({ id: "msg-8", createdAt: new Date("2026-01-01T00:00:08Z") }),
+    ]);
+
+    const body = await (await get("?before=msg-10")).json();
+
+    expect(body.hasEarlier).toBe(false);
+    expect(body.messages.map((m: { id: string }) => m.id)).toEqual(["msg-8", "msg-9"]);
+    expect(mockPrisma.chatMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          sessionId: SESSION_ID,
+          queuedAt: null,
+          OR: [
+            { createdAt: { lt: cursor.createdAt } },
+            { createdAt: cursor.createdAt, id: { lt: "msg-10" } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it("refuses a cursor from another conversation", async () => {
+    mockPrisma.chatMessage.findFirst.mockResolvedValue(null);
+
+    const response = await get("?before=someone-elses-message");
+
+    expect(response.status).toBe(400);
+    // A bad cursor never becomes a query for the conversation (the send queue
+    // is read regardless).
+    expect(mockPrisma.chatMessage.findMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ take: expect.any(Number) }),
     );
   });
 });

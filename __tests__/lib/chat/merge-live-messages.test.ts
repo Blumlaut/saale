@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
+import { mergeMessagesWithLive, prependOlderMessages } from "@/lib/chat/merge-live-messages";
 import type { Message } from "@/components/chat/types";
 
 function makeMessage(overrides: Partial<Message> & { id: string }): Message {
@@ -225,5 +225,73 @@ describe("mergeMessagesWithLive", () => {
     ];
 
     expect(mergeMessagesWithLive(db, prev).map((m) => m.id)).toEqual(["db-user"]);
+  });
+
+  it("keeps an earlier page above a reloaded tail", () => {
+    // The transcript arrives in pages: a reload only asks for the newest one,
+    // and everything the reader revealed above it has to stay on screen.
+    const earlier = [makeMessage({ id: "old-1", createdAt: "2026-01-01T00:00:00.000Z" })];
+    const tail = [makeMessage({ id: "new-1", createdAt: "2026-01-01T00:05:00.000Z" })];
+    const prev = [...earlier, ...tail];
+
+    const merged = mergeMessagesWithLive(tail, prev, {
+      pageStart: { id: "new-1", createdAt: "2026-01-01T00:05:00.000Z" },
+    });
+
+    expect(merged.map((m) => m.id)).toEqual(["old-1", "new-1"]);
+  });
+
+  it("drops a deletion the snapshot covers, and keeps what lies below it", () => {
+    // The snapshot is one page. A row at or after its first message is its
+    // business, so a gap there is a deletion; anything older is another page
+    // the client holds on its own word.
+    const prev = [
+      makeMessage({ id: "older-page", createdAt: "2026-01-01T00:00:00.000Z" }),
+      makeMessage({ id: "page-start", createdAt: "2026-01-01T00:05:00.000Z" }),
+      makeMessage({ id: "deleted", createdAt: "2026-01-01T00:06:00.000Z" }),
+    ];
+    const db = [makeMessage({ id: "page-start", createdAt: "2026-01-01T00:05:00.000Z" })];
+
+    const merged = mergeMessagesWithLive(db, prev, {
+      pageStart: { id: "page-start", createdAt: "2026-01-01T00:05:00.000Z" },
+    });
+
+    expect(merged.map((m) => m.id)).toEqual(["older-page", "page-start"]);
+  });
+});
+
+describe("mergeMessagesWithLive with a page of the transcript", () => {
+  it("keeps a live turn once, even below the page it is merged into", () => {
+    // A one-row page (the newest save) sits above a run that is still
+    // streaming, so the run is both "live" and "older than the page".
+    const live = makeMessage({
+      id: "streaming-turn-1",
+      role: "assistant",
+      content: "in flight",
+      createdAt: "2026-01-01T00:00:05.000Z",
+    });
+    const db = [makeMessage({ id: "db-saved", createdAt: "2026-01-01T00:00:31.000Z" })];
+
+    const merged = mergeMessagesWithLive(db, [live], {
+      pageStart: { id: "db-saved", createdAt: "2026-01-01T00:00:31.000Z" },
+    });
+
+    expect(merged.map((m) => m.id)).toEqual(["streaming-turn-1", "db-saved"]);
+  });
+});
+
+describe("prependOlderMessages", () => {
+  it("puts the page above what is held", () => {
+    const held = [makeMessage({ id: "new-1" })];
+    const older = [makeMessage({ id: "old-1" }), makeMessage({ id: "old-2" })];
+
+    expect(prependOlderMessages(older, held).map((m) => m.id)).toEqual(["old-1", "old-2", "new-1"]);
+  });
+
+  it("does not double a message a reload already brought in", () => {
+    const held = [makeMessage({ id: "old-1" }), makeMessage({ id: "new-1" })];
+    const older = [makeMessage({ id: "old-1" })];
+
+    expect(prependOlderMessages(older, held).map((m) => m.id)).toEqual(["old-1", "new-1"]);
   });
 });

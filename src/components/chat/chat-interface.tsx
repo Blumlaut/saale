@@ -18,7 +18,7 @@ import { loadDraft } from "@/lib/chat/draft";
 import { shouldAutoDeleteSession } from "@/lib/chat/auto-delete";
 import { useCompactActivity } from "@/hooks/use-compact-activity";
 import { useFileDrop } from "@/hooks/use-file-drop";
-import { mergeMessagesWithLive } from "@/lib/chat/merge-live-messages";
+import { mergeMessagesWithLive, prependOlderMessages } from "@/lib/chat/merge-live-messages";
 import {
   isTempMessage,
   makeCompactionMessage,
@@ -99,6 +99,11 @@ export function ChatInterface({
   const { links, reload: reloadLinks } = useSessionLinks(sessionId);
   const [linksOpen, setLinksOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Older pages of the transcript the reader asked for, and whether the server
+  // still has some. The transcript arrives one page at a time: a long chat's
+  // whole history is megabytes, and it is read from its tail.
+  const [hasEarlier, setHasEarlier] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   // Messages waiting in the send queue (submitted while Pi was working).
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
   // Queued message whose "send now" request is in flight.
@@ -206,6 +211,7 @@ export function ChatInterface({
       const data = await fetchJson<{
         messages: Message[];
         queuedMessages?: Message[];
+        hasEarlier?: boolean;
         session: {
           title?: string;
           modelProvider?: string;
@@ -222,7 +228,15 @@ export function ChatInterface({
       // tokens/tools + the optimistic user message whose POST hasn't resolved
       // yet). A stale snapshot fetched before the POST committed must never
       // wipe the just-sent message, or the UI flashes back to the empty state.
-      setMessages((prev) => mergeMessagesWithLive(data.messages, prev, { requestedAt }));
+      setMessages((prev) =>
+        mergeMessagesWithLive(data.messages, prev, {
+          requestedAt,
+          ...(data.messages[0] && {
+            pageStart: { id: data.messages[0].id, createdAt: data.messages[0].createdAt },
+          }),
+        }),
+      );
+      setHasEarlier(data.hasEarlier ?? false);
       setQueuedMessages(data.queuedMessages ?? []);
       setQueuePaused(data.session?.queueHeld ?? false);
       setActiveTool(data.session?.activeTool ?? null);
@@ -249,6 +263,31 @@ export function ChatInterface({
   useEffect(() => {
     queuedRef.current = queuedMessages;
   }, [queuedMessages]);
+
+  /**
+   * The page above the oldest message on screen.
+   *
+   * The list keeps its own render window over what it holds, so this runs when
+   * the reader has revealed everything loaded and asks for more.
+   */
+  const loadEarlier = useCallback(async (): Promise<void> => {
+    if (!hasEarlier || loadingEarlier) return;
+    const oldest = messages[0];
+    if (!oldest) return;
+
+    setLoadingEarlier(true);
+    try {
+      const data = await fetchJson<{ messages: Message[]; hasEarlier?: boolean }>(
+        `/api/chat/sessions/${sessionId}/messages?before=${encodeURIComponent(oldest.id)}`,
+      );
+      setMessages((prev) => prependOlderMessages(data.messages, prev));
+      setHasEarlier(data.hasEarlier ?? false);
+    } catch (err) {
+      console.error("Failed to load earlier messages:", err);
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [hasEarlier, loadingEarlier, messages, sessionId]);
 
   /**
    * Queue snapshot from the server (mutation, or a run starting after a
@@ -1007,6 +1046,8 @@ export function ChatInterface({
               <MessageList
                 ref={messageListRef}
                 messages={messages}
+                hasEarlier={hasEarlier}
+                onLoadEarlier={loadEarlier}
                 isLoading={isLoading}
                 isCompacting={isCompacting}
                 onEditMessage={handleEditMessage}
