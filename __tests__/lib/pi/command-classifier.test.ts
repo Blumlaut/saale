@@ -46,6 +46,39 @@ describe("classifyCommand", () => {
       "printenv PATH",
       "timeout 10s ls /var/log",
       "nice ls",
+      // reads on a server
+      "pveversion",
+      "lvs 2>&1",
+      "pvs",
+      "vgs",
+      "zpool status 2>&1 | head -40",
+      "zfs list -t all",
+      "pvesm status",
+      "qm list 2>&1",
+      "pct config 100",
+      "systemctl status pveproxy pvedaemon --no-pager 2>&1 | head -80",
+      "systemctl list-units --failed",
+      "systemctl is-active pveproxy",
+      "service pveproxy status",
+      "journalctl -u pveproxy -n 50",
+      "lsof -i :8006",
+      "lsblk -f",
+      "crontab -l",
+      "ufw status",
+      "dpkg -l",
+      "apt list --installed",
+      "npm ls --depth=0",
+      "docker ps -a",
+      "docker logs pve",
+      "docker compose ps",
+      "docker network ls",
+      "git status",
+      "git log --oneline -5",
+      "kubectl get pods -A",
+      "ps aux | grep node",
+      "env | grep HOME",
+      "ls -la 2>&1",
+      "echo $(date)",
     ])('classifies "%s" as safe', (cmd) => {
       const result = classifyCommand(cmd);
       expect(result.safety).toBe("safe");
@@ -95,9 +128,51 @@ describe("classifyCommand", () => {
       "psql mydb",
       "redis-cli",
       "sqlite3 /path/to/db",
+      // A reporting tool, called to change something
+      "systemctl restart pveproxy",
+      "git reset --hard",
+      "git push origin main",
+      "docker compose up -d",
+      "docker volume rm x",
+      "kubectl delete pod x",
+      "zpool create tank sda",
+      "zfs destroy tank/data",
+      "qm destroy 100",
+      "pct stop 100",
     ])('classifies "%s" as risky', (cmd) => {
       const result = classifyCommand(cmd);
       expect(result.safety).toBe("risky");
+    });
+  });
+
+  describe("chains and pipelines", () => {
+    it.each([
+      "ls && rm -rf /tmp/x",
+      "cat /etc/hosts; rm -rf /tmp/x",
+      "cd /var/www && git reset --hard",
+      "grep -q a file && rm file",
+      "ls | tee /etc/motd",
+      "ls | xargs rm",
+    ])("asks about %s, whatever it starts with", (cmd) => {
+      expect(classifyCommand(cmd).safety).toBe("risky");
+    });
+
+    it("reads a substitution as its own command", () => {
+      expect(classifyCommand("echo $(date)").safety).toBe("safe");
+      expect(classifyCommand("echo $(rm -rf /tmp/x)").safety).toBe("risky");
+    });
+  });
+
+  describe("redirects", () => {
+    it.each(["ls -la 2>&1", "ls -la 2>/dev/null", "ls -la > /dev/null 2>&1", 'echo "a > b"'])(
+      "runs %s",
+      (cmd) => {
+        expect(classifyCommand(cmd).safety).toBe("safe");
+      },
+    );
+
+    it.each(["ls 2>/tmp/err", "ls >out.txt", 'echo x > "$LOG"'])("asks about %s", (cmd) => {
+      expect(classifyCommand(cmd).safety).toBe("risky");
     });
   });
 

@@ -7,11 +7,159 @@
  * `escapesWorkspace` answers "can this reach past the workspace": a coder chat's
  * policy, where editing files is the job and only leaving the workspace asks.
  *
- * Both are heuristics over the command text. Each parses the command itself and
- * when in doubt errs towards asking.
+ * Both are heuristics over the command text. They read every command in a chain
+ * or a pipeline rather than its first word, and when in doubt they err towards
+ * asking.
  */
 
 import { resolveWithinRoot } from "@/lib/files/paths";
+
+// ─── Shell parsing ──────────────────────────────────────────────────────────
+
+/**
+ * The command with every quoted span blanked out, so the content of a quote is
+ * read as data: `grep ">" file` searches, it writes nothing.
+ */
+function stripQuoted(text: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    if (quote) {
+      // Inside double quotes a backslash escapes the next character.
+      if (char === "\\" && quote === '"') {
+        out += "  ";
+        i++;
+        continue;
+      }
+      if (char === quote) quote = null;
+      out += " ";
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      out += " ";
+      continue;
+    }
+    out += char;
+  }
+  return out;
+}
+
+/** One command per entry, so a `&&` chain and a pipeline are read in full. */
+function shellSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command.charAt(i);
+
+    if (quote) {
+      current += char;
+      if (char === "\\" && quote === '"') {
+        current += command.charAt(i + 1);
+        i++;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    const pair = command.slice(i, i + 2);
+    if (pair === "&&" || pair === "||") {
+      segments.push(current);
+      current = "";
+      i++;
+      continue;
+    }
+
+    if (
+      char === ";" ||
+      char === "|" ||
+      char === "\n" ||
+      // A lone `&` separates commands in cmd.exe too, but not in `2>&1`.
+      (char === "&" && !"<>".includes(command.charAt(i - 1)))
+    ) {
+      segments.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+  segments.push(current);
+
+  return segments
+    .map((segment) => segment.trim().replace(/^&+/, "").trim())
+    .filter((segment) => segment !== "");
+}
+
+/** The words of one segment, quotes stripped. */
+function wordsOf(segment: string): string[] {
+  return segment
+    .split(/\s+/)
+    .map((word) => word.replace(/^["']|["']$/g, ""))
+    .filter((word) => word !== "");
+}
+
+/**
+ * Commands that hand their arguments to another program, so the word after them
+ * is the command being judged: `timeout 30 rm -rf /` removes a directory.
+ *
+ * A shell (`bash -c '…'`) stays out: its script is not parsed here, so it asks.
+ */
+const WRAPPERS = new Set(["timeout", "nice", "ionice", "nohup", "env", "exec", "command", "xargs"]);
+
+/** A wrapper's own argument: a flag, a duration (`30`, `5s`), or an assignment. */
+const WRAPPER_ARGUMENT = /^-|^\d+(\.\d+)?[smh]?$/;
+
+/** An assignment ahead of the command: `HOME=/root cat x`. */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/** The program one segment runs, and the words after it. */
+interface ParsedCommand {
+  command: string;
+  /** Words after the command, subcommand first. */
+  args: string[];
+}
+
+function basename(word: string): string {
+  const slash = word.lastIndexOf("/");
+  return slash >= 0 ? word.slice(slash + 1) : word;
+}
+
+function parseCommand(segment: string): ParsedCommand | null {
+  const words = wordsOf(segment);
+  let index = 0;
+
+  while (index < words.length && ASSIGNMENT.test(words[index] ?? "")) index++;
+
+  let wrapper: string | null = null;
+  while (index < words.length && WRAPPERS.has(words[index] ?? "")) {
+    wrapper = words[index] ?? null;
+    index++;
+    while (index < words.length) {
+      const next = words[index] ?? "";
+      if (!WRAPPER_ARGUMENT.test(next) && !ASSIGNMENT.test(next)) break;
+      index++;
+    }
+  }
+
+  const word = words[index];
+  if (word === undefined) {
+    // A wrapper with nothing after it is the command itself (`env`, `xargs`).
+    return wrapper === null ? null : { command: basename(wrapper), args: [] };
+  }
+
+  return { command: basename(word), args: words.slice(index + 1) };
+}
 
 // ─── Safe commands (read-only or navigation) ────────────────────────────────
 
@@ -35,13 +183,14 @@ const ALWAYS_SAFE = new Set([
   "more",
   "nl",
   "column",
+  "zcat",
+  "zgrep",
 
   // Text processing (read-only)
   "grep",
   "egrep",
   "fgrep",
   "awk",
-  "sort",
   "uniq",
   "cut",
   "tr",
@@ -58,11 +207,23 @@ const ALWAYS_SAFE = new Set([
   "unexpand",
   "printf",
   "echo",
+  "jq",
+  "strings",
+  "xxd",
+  "od",
+  "hexdump",
+  "base64",
+  "sha256sum",
+  "sha1sum",
+  "sha512sum",
+  "md5sum",
 
   // File/directory info (read-only)
   "file",
   "stat",
   "identify",
+  "lsblk",
+  "blkid",
 
   // System info
   "uname",
@@ -73,12 +234,39 @@ const ALWAYS_SAFE = new Set([
   "groups",
   "hostname",
   "domainname",
+  "dmesg",
+  "lscpu",
+  "lsmod",
+  "nproc",
+  "arch",
+  "tty",
+  "w",
+  "last",
+  "getent",
+  "systemd-analyze",
 
   // Disk/memory info
   "df",
   "du",
   "free",
   "vmstat",
+  "iostat",
+  "mpstat",
+  "pidstat",
+  "sensors",
+
+  // Volumes and Proxmox report their state through one command
+  "lvs",
+  "pvs",
+  "vgs",
+  "lvmdiskscan",
+  "lvdisplay",
+  "vgdisplay",
+  "pvdisplay",
+  "lvscan",
+  "vgscan",
+  "pvscan",
+  "pveversion",
 
   // Process/network info
   "ps",
@@ -86,6 +274,7 @@ const ALWAYS_SAFE = new Set([
   "pidof",
   "top",
   "htop",
+  "lsof",
   "netstat",
   "ss",
   "ip",
@@ -96,6 +285,9 @@ const ALWAYS_SAFE = new Set([
   "dig",
   "nslookup",
   "host",
+
+  // Logs
+  "journalctl",
 
   // Lookup
   "which",
@@ -123,6 +315,8 @@ const ALWAYS_SAFE = new Set([
   "realpath",
   "readlink",
   "seq",
+  "sleep",
+  "mktemp",
   "bc",
   "expr",
   "env",
@@ -136,6 +330,210 @@ const ALWAYS_SAFE = new Set([
   "history",
 ]);
 
+// ─── Reporting subcommands ──────────────────────────────────────────────────
+
+/**
+ * A tool whose subcommand decides whether the call reports or changes
+ * something: `systemctl status` reads, `systemctl restart` does not.
+ */
+interface SubcommandRule {
+  /** First words that only report. A flag counts: `crontab -l`. */
+  report: ReadonlySet<string>;
+  /** A group word, where the word after it decides: `docker compose ps`. */
+  groups?: ReadonlySet<string>;
+  /** A flag that makes even a reporting form change something. */
+  mutating?: RegExp;
+}
+
+/**
+ * The first words of the dual-use tools worth knowing by name. Anything else
+ * these tools are called with is treated as a mutation, which is what most of
+ * them are.
+ */
+const SUBCOMMAND_RULES: Record<string, SubcommandRule> = {
+  systemctl: {
+    report: new Set([
+      "status",
+      "is-active",
+      "is-enabled",
+      "is-failed",
+      "show",
+      "cat",
+      "help",
+      "get-default",
+      "list-units",
+      "list-unit-files",
+      "list-timers",
+      "list-sockets",
+      "list-jobs",
+      "list-machines",
+      "list-dependencies",
+      "--version",
+      "--failed",
+      "--state",
+    ]),
+  },
+  service: {
+    report: new Set(),
+  },
+  git: {
+    report: new Set([
+      "status",
+      "log",
+      "diff",
+      "show",
+      "blame",
+      "shortlog",
+      "reflog",
+      "grep",
+      "fetch",
+      "ls-files",
+      "ls-tree",
+      "ls-remote",
+      "rev-parse",
+      "rev-list",
+      "describe",
+      "cat-file",
+      "count-objects",
+      "merge-base",
+      "whatchanged",
+    ]),
+  },
+  docker: {
+    report: new Set([
+      "ps",
+      "logs",
+      "inspect",
+      "images",
+      "info",
+      "version",
+      "stats",
+      "events",
+      "top",
+      "port",
+      "diff",
+      "search",
+      "history",
+      "ls",
+      "df",
+      "help",
+    ]),
+    groups: new Set([
+      "compose",
+      "container",
+      "image",
+      "network",
+      "volume",
+      "node",
+      "service",
+      "secret",
+      "config",
+      "plugin",
+      "context",
+      "system",
+      "builder",
+      "swarm",
+    ]),
+  },
+  "docker-compose": {
+    report: new Set(["ps", "logs", "config", "version", "top", "images", "ls", "port", "events"]),
+  },
+  kubectl: {
+    report: new Set([
+      "get",
+      "describe",
+      "logs",
+      "top",
+      "version",
+      "explain",
+      "api-resources",
+      "api-versions",
+      "cluster-info",
+      "diff",
+      "events",
+    ]),
+    groups: new Set(["config", "auth"]),
+  },
+  crontab: { report: new Set(["-l", "--list"]) },
+  ufw: { report: new Set(["status"]) },
+  zfs: { report: new Set(["list", "get", "holds", "userspace", "groupspace"]) },
+  zpool: {
+    report: new Set(["status", "list", "iostat", "get", "history", "events", "version"]),
+  },
+  pvesm: { report: new Set(["status", "list"]) },
+  pvecm: { report: new Set(["status", "nodes"]) },
+  qm: { report: new Set(["list", "status", "config", "pending"]) },
+  pct: { report: new Set(["list", "status", "config", "pending"]) },
+  dpkg: {
+    report: new Set([
+      "-l",
+      "-L",
+      "-s",
+      "-S",
+      "-p",
+      "--list",
+      "--listfiles",
+      "--status",
+      "--search",
+      "--print-avail",
+      "--get-selections",
+    ]),
+  },
+  apt: {
+    report: new Set(["list", "search", "show", "policy", "depends", "rdepends", "changelog"]),
+  },
+  npm: {
+    report: new Set([
+      "ls",
+      "list",
+      "view",
+      "info",
+      "outdated",
+      "why",
+      "root",
+      "prefix",
+      "audit",
+      "search",
+      "help",
+      "explain",
+    ]),
+  },
+  pnpm: {
+    report: new Set([
+      "ls",
+      "list",
+      "view",
+      "info",
+      "outdated",
+      "why",
+      "root",
+      "audit",
+      "search",
+      "help",
+      "explain",
+    ]),
+  },
+  yarn: {
+    report: new Set(["list", "info", "why", "outdated", "audit", "cache"]),
+  },
+  bun: {
+    report: new Set(["pm", "info"]),
+  },
+};
+
+/** Whether a rule's subcommand only reports. */
+function reportsOnly(rule: SubcommandRule, args: string[]): boolean {
+  // `service nginx status` puts the service before the verb.
+  if (rule.report.size === 0) return args[1] === "status" || args[1] === "reload-status";
+
+  const first = args[0];
+  if (first === undefined) return false;
+  if (rule.report.has(first)) return true;
+
+  const second = args[1];
+  return second !== undefined && (rule.groups?.has(first) ?? false) && rule.report.has(second);
+}
+
 // ─── Conditionally safe commands ────────────────────────────────────────────
 
 /**
@@ -144,6 +542,7 @@ const ALWAYS_SAFE = new Set([
  */
 const CONDITIONAL_SAFE: Record<string, RegExp[]> = {
   sed: [/-i(\s|$)/, /-\s*i(\s|$)/, /--in-place\b/],
+  sort: [/\s-o\s*\S/, /--output[=\s]/],
   find: [
     /-delete\b/,
     /-exec\b/,
@@ -171,9 +570,13 @@ const CONDITIONAL_SAFE: Record<string, RegExp[]> = {
   ],
 };
 
-// ─── Risky patterns ─────────────────────────────────────────────────────────
+// ─── Risky commands ─────────────────────────────────────────────────────────
 
-/** Commands that are always risky (destructive, mutating, or privileged). */
+/**
+ * Commands that always change state: destructive, privileged, or running code
+ * of their own. A tool with a subcommand rule is left out, since there the
+ * subcommand decides.
+ */
 const ALWAYS_RISKY = new Set([
   // Destructive
   "rm",
@@ -189,9 +592,9 @@ const ALWAYS_RISKY = new Set([
   "chgrp",
   "touch",
   "ln",
+  "tee",
 
   // Package management
-  "apt",
   "apt-get",
   "aptitude",
   "yum",
@@ -199,17 +602,12 @@ const ALWAYS_RISKY = new Set([
   "pacman",
   "pip",
   "pip3",
-  "npm",
-  "yarn",
-  "pnpm",
   "cargo",
   "go",
   "gem",
   "composer",
 
   // Service management
-  "systemctl",
-  "service",
   "reload",
 
   // Network mutation
@@ -229,6 +627,7 @@ const ALWAYS_RISKY = new Set([
   "zsh",
   "fish",
   "dash",
+  "eval",
 
   // Database
   "mysql",
@@ -278,9 +677,6 @@ const ALWAYS_RISKY = new Set([
   "groupadd",
   "groupdel",
 
-  // Cron
-  "crontab",
-
   // Firewall
   "iptables",
   "ufw",
@@ -298,25 +694,51 @@ const ALWAYS_RISKY = new Set([
   "poweroff",
 ]);
 
-/** Patterns in the full command string that indicate risk. */
+/**
+ * Patterns over the whole command that change state whatever the command word
+ * is. A here-document can write a file through a command that only reads.
+ */
 const RISKY_PATTERNS: { pattern: RegExp; reason: string }[] = [
-  // Append redirect (>>)
-  { pattern: /\s>>\s/, reason: "append redirect (>>)" },
-  // Overwrite redirect (>). but not >>
-  { pattern: /\s>\s*(?!>)/, reason: "overwrite redirect (>)" },
-  // Here-docs (can be used to create files)
-  { pattern: /<<-?\s*['"]?EOF['"]?/, reason: "here-document" },
-  // Subshell execution
-  { pattern: /\$\(/, reason: "command substitution" },
-  { pattern: /`[^`]+`/, reason: "backtick substitution" },
-  // Pipe to a risky command
-  {
-    pattern: /\|\s*(sudo|rm|sh|bash|zsh|fish|curl|wget|python|node|xargs\s+rm)/,
-    reason: "pipe to risky command",
-  },
+  { pattern: /<<(?!<)-?\s*['"]?\w+['"]?/, reason: "here-document" },
 ];
 
-// ─── Classification ─────────────────────────────────────────────────────────
+/** Operators that write a file: `>`, `>>`, `>|`, `&>`, `&>>`. */
+const WRITE_REDIRECT = /(\d*)(&>>|&>|>>|>\|?)\s*([^\s;|<>]*)/g;
+
+/** Targets that take the output without changing a file: `2>&1`, `>/dev/null`. */
+const HARMLESS_REDIRECT = /^&\d+$|^&-$|^\/dev\/(null|stdout|stderr|tty)$/;
+
+/** The first write redirect in the command, if it has one. */
+function findWriteRedirect(command: string): string | null {
+  for (const match of stripQuoted(command).matchAll(WRITE_REDIRECT)) {
+    const target = match[3] ?? "";
+    // A target that was quoted is blanked out here, so an empty one is unknown.
+    if (target === "") return "write redirect";
+    if (HARMLESS_REDIRECT.test(target)) continue;
+    return `write redirect (${match[2] ?? ">"} ${target})`;
+  }
+  return null;
+}
+
+/**
+ * A script's `$(…)` and backtick bodies, classified as their own command.
+ * Reads run, a substitution that changes state asks.
+ */
+function classifySubstitutions(
+  command: string,
+  depth: number,
+): { safety: "risky"; reason: string } | null {
+  for (const match of stripQuoted(command).matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) {
+    const body = (match[1] ?? match[2] ?? "").trim();
+    // `$((1 + 2))` is arithmetic, so there is no command to read.
+    if (body === "" || body.startsWith("(")) continue;
+    const verdict = classify(body, depth + 1);
+    if (verdict.safety === "risky") {
+      return { safety: "risky", reason: "command substitution changes state" };
+    }
+  }
+  return null;
+}
 
 // ─── Workspace scope ────────────────────────────────────────────────────────
 
@@ -418,7 +840,7 @@ const LEAVES_WORKSPACE_SUBCOMMANDS: Record<string, ReadonlySet<string>> = {
  * (`node -e`, `python -c`) stays out of its sight.
  */
 export function escapesWorkspace(command: string, scope: WorkspaceScope): boolean {
-  for (const segment of commandSegments(command)) {
+  for (const segment of shellSegments(command)) {
     for (const name of commandWords(segment)) {
       if (LEAVES_WORKSPACE.has(name)) return true;
 
@@ -434,24 +856,11 @@ export function escapesWorkspace(command: string, scope: WorkspaceScope): boolea
   return pathArguments(command).some((token) => !isInsideWorkspace(token, scope));
 }
 
-/** One command per entry, so a `&&` chain is read in full rather than at its first word. */
-function commandSegments(command: string): string[] {
-  return command.split(/\s*(?:&&|\|\||;|\||\n)\s*/).filter((segment) => segment.trim() !== "");
-}
-
-/** The words of one segment, quotes stripped. */
-function wordsOf(segment: string): string[] {
-  return segment
-    .split(/\s+/)
-    .map((word) => word.replace(/^["']|["']$/g, ""))
-    .filter((word) => word !== "");
-}
-
 /**
  * Commands that hand their arguments to another command, so the word after them
  * is a command too: `ls | xargs gh pr list` reaches the network.
  */
-const WRAPPERS = new Set([
+const WORKSPACE_WRAPPERS = new Set([
   "xargs",
   "watch",
   "exec",
@@ -468,7 +877,7 @@ const WRAPPERS = new Set([
 ]);
 
 /** A wrapper's own argument: a flag, a duration (`30`, `5s`), or an assignment. */
-const WRAPPER_ARGUMENT = /^-|^\d+(\.\d+)?[smh]?$/;
+const WORKSPACE_WRAPPER_ARGUMENT = /^-|^\d+(\.\d+)?[smh]?$/;
 
 /**
  * The words of a segment that name the program being run: its first word, and
@@ -489,10 +898,10 @@ function commandWords(segment: string): string[] {
       continue;
     }
 
-    const isArgument = WRAPPER_ARGUMENT.test(word) || word.includes("=");
+    const isArgument = WORKSPACE_WRAPPER_ARGUMENT.test(word) || word.includes("=");
     if (expectCommand && !isArgument) words.push(word);
     // A wrapper is still waiting for its own command.
-    expectCommand = WRAPPERS.has(word) || (expectCommand && isArgument);
+    expectCommand = WORKSPACE_WRAPPERS.has(word) || (expectCommand && isArgument);
   }
   return words;
 }
@@ -545,11 +954,16 @@ function isInsideWorkspace(token: string, scope: WorkspaceScope): boolean {
   return resolveWithinRoot(scope.root, absolute).inside;
 }
 
+// ─── Classification ─────────────────────────────────────────────────────────
+
 export type CommandSafety = "safe" | "risky";
 export type CommandClassification = {
   safety: CommandSafety;
   reason: string;
 };
+
+/** How deep a `$(…)` inside a `$(…)` is still read. */
+const MAX_SUBSTITUTION_DEPTH = 3;
 
 /**
  * Classify a shell command as safe or risky.
@@ -557,103 +971,87 @@ export type CommandClassification = {
  * Safe: read-only operations (ls, cat, grep, system info, etc.)
  * Risky: anything that modifies state, deletes data, escalates privileges, etc.
  *
+ * Every command in a chain or a pipeline has to be safe: `ls && rm -rf /` asks.
  * When in doubt, classifies as "risky".
  */
 export function classifyCommand(command: string): CommandClassification {
+  return classify(command, 0);
+}
+
+function classify(command: string, depth: number): CommandClassification {
   const trimmed = command.trim();
   if (!trimmed) {
     return { safety: "safe", reason: "empty command" };
   }
+  if (depth > MAX_SUBSTITUTION_DEPTH) {
+    return { safety: "risky", reason: "deeply nested command substitution" };
+  }
 
-  // Check risky patterns first (redirects, subshells, pipes to risky commands)
   for (const { pattern, reason } of RISKY_PATTERNS) {
     if (pattern.test(trimmed)) {
       return { safety: "risky", reason };
     }
   }
 
-  // Extract the base command (first word, stripping leading env vars and path)
-  const baseCommand = extractBaseCommand(trimmed);
-  if (!baseCommand) {
+  const substitution = classifySubstitutions(trimmed, depth);
+  if (substitution) return substitution;
+
+  const redirect = findWriteRedirect(trimmed);
+  if (redirect) {
+    return { safety: "risky", reason: redirect };
+  }
+
+  const segments = shellSegments(trimmed);
+  if (segments.length === 0) {
     return { safety: "risky", reason: "could not parse command" };
   }
 
-  // Check always risky
-  if (ALWAYS_RISKY.has(baseCommand)) {
-    return { safety: "risky", reason: `"${baseCommand}" is a mutating command` };
+  for (const segment of segments) {
+    const verdict = classifySegment(segment);
+    if (verdict.safety === "risky") return verdict;
   }
 
-  // Check conditionally safe
-  const riskyPatterns = CONDITIONAL_SAFE[baseCommand];
-  if (riskyPatterns) {
-    for (const pattern of riskyPatterns) {
-      if (pattern.test(trimmed)) {
-        return { safety: "risky", reason: `"${baseCommand}" with mutating flag` };
+  return { safety: "safe", reason: "every command is read-only" };
+}
+
+/** What one command in the chain does. */
+function classifySegment(segment: string): CommandClassification {
+  const parsed = parseCommand(segment);
+  if (!parsed) {
+    return { safety: "risky", reason: "could not parse command" };
+  }
+  const { command, args } = parsed;
+
+  const riskyFlags = CONDITIONAL_SAFE[command];
+  if (riskyFlags) {
+    for (const pattern of riskyFlags) {
+      if (pattern.test(segment)) {
+        return { safety: "risky", reason: `"${command}" with a mutating flag` };
       }
     }
-    return { safety: "safe", reason: `"${baseCommand}" without mutating flags` };
+    return { safety: "safe", reason: `"${command}" without mutating flags` };
   }
 
-  // Check always safe
-  if (ALWAYS_SAFE.has(baseCommand)) {
-    return { safety: "safe", reason: `"${baseCommand}" is read-only` };
+  const rule = SUBCOMMAND_RULES[command];
+  if (rule) {
+    if (rule.mutating?.test(segment)) {
+      return { safety: "risky", reason: `"${command}" with a mutating flag` };
+    }
+    if (reportsOnly(rule, args)) {
+      const form = args[0] === undefined ? command : `${command} ${args[0]}`;
+      return { safety: "safe", reason: `"${form}" only reports` };
+    }
+    return { safety: "risky", reason: `"${command}" changes state with that subcommand` };
+  }
+
+  if (ALWAYS_RISKY.has(command)) {
+    return { safety: "risky", reason: `"${command}" is a mutating command` };
+  }
+
+  if (ALWAYS_SAFE.has(command)) {
+    return { safety: "safe", reason: `"${command}" is read-only` };
   }
 
   // Unknown command. err on the side of caution
-  return { safety: "risky", reason: `"${baseCommand}" is not in the safe command list` };
-}
-
-/**
- * Extract the base command name from a command string.
- * Strips leading environment variables (VAR=value cmd), paths (/usr/bin/cmd → cmd),
- * and wrapper commands (timeout, nice).
- */
-function extractBaseCommand(cmd: string): string | null {
-  // Split on shell metacharacters to get tokens
-  const tokens = cmd.replace(/>>|>>|>>/g, " ").split(/\s+/);
-
-  let i = 0;
-  // Skip environment variable assignments (VAR=value)
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (!token || !/=/.test(token) || token.startsWith("=")) break;
-    i++;
-  }
-
-  if (i >= tokens.length) return null;
-
-  const firstToken = tokens[i];
-  if (!firstToken) return null;
-
-  let command = firstToken;
-
-  // Strip path
-  const slashIdx = command.lastIndexOf("/");
-  if (slashIdx >= 0) {
-    command = command.slice(slashIdx + 1);
-  }
-
-  // Strip wrapper commands (timeout, nice, ionice, nohup, env)
-  // These may have arguments before the actual command (e.g., "timeout 30s ls")
-  const wrappers = new Set(["timeout", "nice", "ionice", "nohup", "env"]);
-  if (wrappers.has(command)) {
-    // Skip wrapper's own arguments to find the real command
-    let j = i + 1;
-    while (j < tokens.length) {
-      const next = tokens[j];
-      if (!next) break;
-      // Stop at the first token that looks like a command (not a flag, not a number/duration)
-      if (!next.startsWith("-") && !/^\d+(\.\d+)?[smh]?$/.test(next)) {
-        command = next;
-        const slashIdx2 = command.lastIndexOf("/");
-        if (slashIdx2 >= 0) {
-          command = command.slice(slashIdx2 + 1);
-        }
-        break;
-      }
-      j++;
-    }
-  }
-
-  return command || null;
+  return { safety: "risky", reason: `"${command}" is not in the safe command list` };
 }
