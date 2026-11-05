@@ -23,6 +23,7 @@ import {
   signInHandle,
 } from "@/lib/auth/sign-in-throttle";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
+import { ssoOidcPlugins, ssoTrustedProviders } from "@/lib/auth/sso";
 import {
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
@@ -62,6 +63,17 @@ export const auth = betterAuth({
     maxPasswordLength: PASSWORD_MAX_LENGTH,
   },
   socialProviders: {},
+  account: {
+    accountLinking: {
+      enabled: true,
+      // A company's identity provider owns the addresses it reports, so a
+      // sign-in for an existing account's email links to it.
+      trustedProviders: ssoTrustedProviders(),
+      // Nothing on this instance verifies a local address, so a local row's
+      // flag cannot stand in for proof that the address is the signer's.
+      requireLocalEmailVerified: false,
+    },
+  },
   // Security settings
   advanced: {
     defaultCookieAttributes: sessionCookieAttributes(),
@@ -120,10 +132,10 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        before: async (_user, context) => {
+        before: async (user, context) => {
           // Applied here rather than in a middleware so it covers every path
           // that creates a user, whether or not a form was involved.
-          await assertSignupsAllowed(context);
+          await assertSignupsAllowed(context, user.email);
         },
         after: async (user) => {
           const count = await prisma.user.count();
@@ -185,5 +197,6 @@ export const auth = betterAuth({
     }),
     // Absent (no provider, no login) unless the instance has OIDC credentials.
     ...telegramOidcPlugins(),
+    ...ssoOidcPlugins(),
   ],
 });

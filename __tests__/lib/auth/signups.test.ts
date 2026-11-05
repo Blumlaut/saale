@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -20,6 +20,7 @@ import {
   areSignupsEnabled,
   assertSignupsAllowed,
 } from "@/lib/auth/signups";
+import { SSO_SIGNUP_REFUSED } from "@/lib/auth/sso-login";
 
 beforeEach(() => {
   mockCount.mockReset();
@@ -67,5 +68,45 @@ describe("assertSignupsAllowed", () => {
 
     await expect(assertSignupsAllowed({ path: "/sign-up/email" })).resolves.toBeUndefined();
     await expect(assertSignupsAllowed(null)).resolves.toBeUndefined();
+  });
+
+  describe("a single sign-on login", () => {
+    const SSO_CALLBACK = "/callback/sso-oidc";
+
+    beforeEach(() => {
+      process.env.SSO_OIDC_ISSUER = "https://login.example.com";
+      process.env.SSO_OIDC_CLIENT_ID = "saale";
+      process.env.SSO_OIDC_CLIENT_SECRET = "secret";
+      process.env.SSO_ALLOWED_DOMAINS = "example.com";
+    });
+
+    afterEach(() => {
+      delete process.env.SSO_OIDC_ISSUER;
+      delete process.env.SSO_OIDC_CLIENT_ID;
+      delete process.env.SSO_OIDC_CLIENT_SECRET;
+      delete process.env.SSO_ALLOWED_DOMAINS;
+    });
+
+    it("creates an account for an allowed domain even with sign-ups off", async () => {
+      mockFindUnique.mockResolvedValue({ signupsEnabled: false });
+
+      await expect(
+        assertSignupsAllowed({ path: SSO_CALLBACK }, "ada@example.com"),
+      ).resolves.toBeUndefined();
+    });
+
+    it("refuses an address outside the domain list", async () => {
+      await expect(
+        assertSignupsAllowed({ path: SSO_CALLBACK }, "ada@elsewhere.test"),
+      ).rejects.toMatchObject({ body: { code: SSO_SIGNUP_REFUSED.code } });
+    });
+
+    it("refuses an address it cannot read", async () => {
+      mockFindUnique.mockResolvedValue({ signupsEnabled: false });
+
+      await expect(assertSignupsAllowed({ path: SSO_CALLBACK })).rejects.toMatchObject({
+        body: { code: SSO_SIGNUP_REFUSED.code },
+      });
+    });
   });
 });
