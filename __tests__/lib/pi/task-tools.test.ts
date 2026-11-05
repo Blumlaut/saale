@@ -14,13 +14,17 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/search/sources", () => ({ searchTasks: vi.fn() }));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
+import { searchTasks } from "@/lib/search/sources";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockTask = db.prisma.task as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockQueryRaw = db.prisma.$queryRaw as any;
+const mockSearchTasks = searchTasks as unknown as ReturnType<typeof vi.fn>;
 
 // Import after mocks
 import { createTaskTools } from "@/lib/pi/tools/task-tools";
@@ -238,31 +242,60 @@ describe("createTaskTools", () => {
   });
 
   describe("task_search", () => {
-    it("uses full-text search when query is provided", async () => {
+    it("searches through the matcher when a query is provided", async () => {
       const tools = createTaskTools(userId);
       const search = tools.find((t) => t.name === "task_search")!;
 
-      const results = [makeTask()];
-      mockQueryRaw.mockResolvedValue(results);
+      mockSearchTasks.mockResolvedValue([{ ...makeTask(), score: 2.1 }]);
 
       const result = await callExecute(search.execute, { query: "groceries" });
       const text = JSON.parse((result.content[0] as { text: string }).text);
 
       expect(text.count).toBe(1);
       expect(text.query).toBe("groceries");
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchTasks).toHaveBeenCalledWith(userId, "groceries", {
+        status: undefined,
+        priority: undefined,
+        tag: undefined,
+        dueBefore: undefined,
+        limit: 100,
+      });
       expect(mockTask.findMany).not.toHaveBeenCalled();
     });
 
-    it("uses full-text search with status filter", async () => {
+    it("passes the structured filters along with the query", async () => {
       const tools = createTaskTools(userId);
       const search = tools.find((t) => t.name === "task_search")!;
 
-      mockQueryRaw.mockResolvedValue([]);
+      mockSearchTasks.mockResolvedValue([]);
 
-      await callExecute(search.execute, { query: "test", status: "pending" });
+      await callExecute(search.execute, {
+        query: "test",
+        status: "completed",
+        priority: "high",
+        tag: "work",
+        dueBefore: "2026-01-01",
+      });
 
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchTasks).toHaveBeenCalledWith(userId, "test", {
+        status: "completed",
+        priority: "high",
+        tag: "work",
+        dueBefore: new Date("2026-01-01"),
+        limit: 100,
+      });
+    });
+
+    it("treats a whitespace-only query as no query", async () => {
+      const tools = createTaskTools(userId);
+      const search = tools.find((t) => t.name === "task_search")!;
+
+      mockTask.findMany.mockResolvedValue([]);
+
+      await callExecute(search.execute, { query: "   " });
+
+      expect(mockSearchTasks).not.toHaveBeenCalled();
+      expect(mockTask.findMany).toHaveBeenCalled();
     });
 
     it("uses Prisma ORM when no query is provided", async () => {

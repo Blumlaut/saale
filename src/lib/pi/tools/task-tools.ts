@@ -1,8 +1,8 @@
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+import { searchTasks } from "@/lib/search/sources";
 import {
   taskToResponse,
   buildTaskUpdateData,
@@ -208,9 +208,15 @@ export function createTaskTools(userId: string): ToolDefinition[] {
       name: "task_search",
       label: "Search Tasks",
       description:
-        "Search tasks by title, description, tags, or status. Use to find existing tasks before creating duplicates. Results include task IDs for reference in update/delete operations.",
+        "Search tasks by title or description, best match first. Use to find existing tasks before creating duplicates. " +
+        "Every word must appear in the task. Results include task IDs for reference in update/delete operations.",
       parameters: Type.Object({
-        query: Type.Optional(Type.String({ description: "Search in titles and descriptions." })),
+        query: Type.Optional(
+          Type.String({
+            description:
+              "Search words matched against titles and descriptions. Every word has to match.",
+          }),
+        ),
         status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("completed")])),
         priority: Type.Optional(
           Type.Union([Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")]),
@@ -225,44 +231,15 @@ export function createTaskTools(userId: string): ToolDefinition[] {
       outputSchema: taskSearchSchema,
       execute: async (_toolCallId, params) => {
         const trimmedQuery = params.query?.trim();
-        const hasQuery = trimmedQuery?.length ?? 0 > 0;
 
-        if (hasQuery && trimmedQuery) {
-          // Use PostgreSQL full-text search (consistent with memory_search and chat_search)
-
-          const results = await prisma.$queryRaw<
-            Array<{
-              id: string;
-              title: string;
-              description: string | null;
-              status: string;
-              priority: string;
-              dueDate: Date | null;
-              tags: string[];
-              order: number;
-              source: string;
-              sourceEmailId: string | null;
-              completedAt: Date | null;
-              createdAt: Date;
-              updatedAt: Date;
-              rank: number;
-            }>
-          >(
-            Prisma.sql`
-              SELECT id, title, description, status, priority, "dueDate", tags, "order",
-                     source, "sourceEmailId", "completedAt", "createdAt", "updatedAt",
-                     ts_rank(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, '')), plainto_tsquery('english', ${trimmedQuery})) AS rank
-              FROM "Task"
-              WHERE "userId" = ${userId}
-                ${params.status ? Prisma.sql`AND status = ${params.status}` : Prisma.empty}
-                ${params.priority ? Prisma.sql`AND priority = ${params.priority}` : Prisma.empty}
-                ${params.tag ? Prisma.sql`AND tags && ARRAY[${params.tag}]::text[]` : Prisma.empty}
-                ${params.dueBefore ? Prisma.sql`AND "dueDate" IS NOT NULL AND "dueDate" < ${new Date(params.dueBefore)}` : Prisma.empty}
-                AND to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', ${trimmedQuery})
-              ORDER BY rank DESC
-              LIMIT 100
-            `,
-          );
+        if (trimmedQuery) {
+          const results = await searchTasks(userId, trimmedQuery, {
+            status: params.status,
+            priority: params.priority,
+            tag: params.tag,
+            dueBefore: params.dueBefore ? new Date(params.dueBefore) : undefined,
+            limit: 100,
+          });
 
           return {
             value: {
