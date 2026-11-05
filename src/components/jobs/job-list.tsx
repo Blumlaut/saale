@@ -56,6 +56,11 @@ interface JobListProps {
   action?: React.ReactNode;
 }
 
+/** How often the list re-reads while a run is in flight. */
+const RUNNING_POLL_MS = 5000;
+/** How often it looks for a run the scheduler started. */
+const IDLE_POLL_MS = 30_000;
+
 export function JobList({ onRefresh, onEdit, action }: JobListProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,15 +120,21 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     }
   }, []);
 
-  // Refs for polling. avoids re-creating the interval when callbacks change
+  // Refs for polling. avoids re-creating the loop when callbacks change
   const loadJobsRef = useRef(loadJobs);
   const loadRunsRef = useRef(loadRuns);
   const selectedJobRef = useRef(selectedJob);
+  const anyRunningRef = useRef(false);
+  // The scheduler starts runs this page cannot see, so the list polls to notice
+  // one. Idle it only waits for that start, which is worth far less of a share
+  // of the page's traffic than a run's progress is.
+  const anyRunning = runningId !== null || jobs.some((job) => job.latestRunStatus === "running");
 
   useEffect(() => {
     loadJobsRef.current = loadJobs;
     loadRunsRef.current = loadRuns;
     selectedJobRef.current = selectedJob;
+    anyRunningRef.current = anyRunning;
   });
 
   useEffect(() => {
@@ -142,16 +153,33 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     }
   }, [selectedJob, loadRuns]);
 
-  // Poll for job state updates every 5 seconds (silent. no loading states)
-  // Uses refs so the effect runs only once on mount
+  // Poll silently (no loading states), fast while a run is in flight and
+  // slowly otherwise. A hidden tab asks for nothing, and asks again as soon as
+  // it is looked at.
   useEffect(() => {
-    const interval = setInterval(() => {
-      loadJobsRef.current(true);
-      if (selectedJobRef.current) {
-        loadRunsRef.current(selectedJobRef.current.id, true);
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = () => {
+      clearTimeout(timer);
+      if (document.visibilityState === "visible") {
+        loadJobsRef.current(true);
+        if (selectedJobRef.current) {
+          loadRunsRef.current(selectedJobRef.current.id, true);
+        }
       }
-    }, 5000);
-    return () => clearInterval(interval);
+      timer = setTimeout(tick, anyRunningRef.current ? RUNNING_POLL_MS : IDLE_POLL_MS);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+
+    timer = setTimeout(tick, anyRunningRef.current ? RUNNING_POLL_MS : IDLE_POLL_MS);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const handleRun = async (jobId: string) => {
