@@ -232,3 +232,42 @@ describe("deletePrompt", () => {
     });
   });
 });
+
+describe("instance prompts", () => {
+  it("lists them from their own table, with no owner filter", async () => {
+    mockShared.findMany.mockResolvedValue([{ ...row(), userId: undefined }]);
+
+    await listPrompts(INSTANCE_PROMPTS);
+
+    expect(mockShared.findMany).toHaveBeenCalledWith({ orderBy: { name: "asc" } });
+    expect(mockPrompt.findMany).not.toHaveBeenCalled();
+  });
+
+  it("writes a new one without an owner column", async () => {
+    mockShared.findFirst.mockResolvedValue(null);
+    mockShared.create.mockResolvedValue(row());
+
+    const result = await createPrompt(INSTANCE_PROMPTS, VALID);
+
+    expect(mockShared.create).toHaveBeenCalledWith({ data: VALID });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("names the instance when the name is taken", async () => {
+    mockShared.findFirst.mockResolvedValue(row());
+
+    expect(await createPrompt(INSTANCE_PROMPTS, VALID)).toEqual({
+      ok: false,
+      error: "The instance already has a prompt named /review.",
+      conflict: true,
+    });
+    expect(mockShared.create).not.toHaveBeenCalled();
+  });
+
+  it("deletes by id alone, so no account can stand in for the owner", async () => {
+    mockShared.deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deletePrompt(INSTANCE_PROMPTS, "shared-1")).toBe(true);
+    expect(mockShared.deleteMany).toHaveBeenCalledWith({ where: { id: "shared-1" } });
+  });
+});
