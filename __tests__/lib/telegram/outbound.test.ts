@@ -120,14 +120,15 @@ describe("recordOutboundMessage", () => {
     expect(mockAppendCustomMessageEntry.mock.calls[0]![1]).not.toContain("axios");
   });
 
-  it("falls back to the chat the Telegram conversation is in", async () => {
+  it("no-ops when no chat produced the message", async () => {
+    // A watcher's delivery never came from a thread, so the chat the user left
+    // open must not receive it.
     mockGetLinkByUserId.mockResolvedValue({ ...link, activeSessionId: "sess-active" });
 
     await recordOutboundMessage({ userId, content: "Standup in 5" });
 
-    expect(mockChatMessage.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ sessionId: "sess-active" }),
-    });
+    expect(mockChatMessage.create).not.toHaveBeenCalled();
+    expect(mockContinueRecent).not.toHaveBeenCalled();
   });
 
   it("no-ops for blank content", async () => {
@@ -165,10 +166,8 @@ describe("recordOutboundMessage", () => {
       select: { id: true },
     });
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown chat"));
-    // It reached Telegram, so it lands where a reply to it would go.
-    expect(mockChatMessage.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ sessionId: "sess-active" }),
-    });
+    // It reached Telegram, but no chat of this user's sent it.
+    expect(mockChatMessage.create).not.toHaveBeenCalled();
   });
 
   it("writes the DB row but skips the transcript while the chat is generating", async () => {
