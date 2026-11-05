@@ -2,11 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import nodemailer, { type SendMailOptions } from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer";
-
-/** Strip CR/LF characters to prevent email header injection. */
-function sanitizeHeader(value: string): string {
-  return value.replace(/[\r\n]/g, "");
-}
+import { sanitizeHeader } from "./header";
 
 /** MIME types by file extension */
 const MIME_TYPES: Record<string, string> = {

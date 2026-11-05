@@ -551,6 +551,34 @@ model AdminSettings {
   @@map("admin_settings")
 }
 
+// ─── Instance mail ─────────────────────────────────────────────
+
+/// The instance's own outgoing mail: verification links, password resets and
+/// invitations leave through this relay.
+///
+/// One row, configured in the admin panel, so a deployment does not need a
+/// `.env` edit to send a mail. The password is encrypted with lib/crypto like a
+/// mail account's, and the admin API never echoes it back.
+model InstanceMail {
+  id      String  @id @default("global")
+  enabled Boolean @default(true)
+  host    String  @default("")
+  port    Int     @default(587)
+  /// "tls" (implicit TLS, usually 465) | "starttls" (upgrade on 587) | "none".
+  security          String  @default("starttls")
+  username          String  @default("")
+  encryptedPassword String? @db.Text
+  /// The address mail is sent from.
+  fromAddress String @default("")
+  /// The name shown beside that address. Empty sends the instance's own name.
+  fromName        String   @default("")
+  /// Admin who last saved this configuration.
+  updatedByUserId String?
+  updatedAt       DateTime @updatedAt
+
+  @@map("instance_mail")
+}
+
 // ─── Roles ─────────────────────────────────────────────────────
 
 /// A named permission bundle. `User.role` stores the name (comma-separated
