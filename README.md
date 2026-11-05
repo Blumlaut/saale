@@ -56,6 +56,10 @@ Integrations for private repositories, pushes and pull requests.
 Yes, with permission groups. Providers come in two kinds: global ones an admin configures,
 and local ones each user sets up for themselves.
 
+Sign-in goes through the company's identity provider over OpenID Connect, so nobody needs
+a second password. A first sign-in creates an account for the domains the deployment
+lists; any other address needs an account an admin makes.
+
 ## Infrastructure Management?
 
 Saale connects to and manages servers over SSH. The host needs a reachable SSH port, and
