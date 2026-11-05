@@ -14,11 +14,15 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/search/sources", () => ({ searchContacts: vi.fn() }));
+
 import * as db from "@/lib/db";
+import { searchContacts } from "@/lib/search/sources";
 import { createContactTools } from "@/lib/pi/tools/contact-tools";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockContact = db.prisma.contact as any;
+const mockSearchContacts = searchContacts as unknown as ReturnType<typeof vi.fn>;
 
 // Helper to call execute with all required args, returning the structured value
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,23 +64,29 @@ describe("createContactTools", () => {
   });
 
   describe("contacts_search", () => {
-    it("scopes the query to the user and returns the matched contacts", async () => {
+    it("hands the query to the matcher with the user as the owner", async () => {
       const tools = createContactTools(userId);
       const search = tools.find((t) => t.name === "contacts_search")!;
-      mockContact.findMany.mockResolvedValue([makeContact()]);
+      mockSearchContacts.mockResolvedValue([{ ...makeContact(), score: 3 }]);
 
       const result = (await callExecute(search.execute, { query: "jane" })) as {
         count: number;
         contacts: Array<{ name: string; email: string }>;
       };
 
-      expect(mockContact.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ userId, OR: expect.any(Array) }),
-        }),
-      );
+      expect(mockSearchContacts).toHaveBeenCalledWith(userId, "jane", { limit: 20 });
       expect(result.count).toBe(1);
       expect(result.contacts[0]).toMatchObject({ name: "Jane Doe", email: "jane@example.com" });
+    });
+
+    it("searches past a misspelling", async () => {
+      const tools = createContactTools(userId);
+      const search = tools.find((t) => t.name === "contacts_search")!;
+      mockSearchContacts.mockResolvedValue([]);
+
+      await callExecute(search.execute, { query: "janne", limit: 5 });
+
+      expect(mockSearchContacts).toHaveBeenCalledWith(userId, "janne", { limit: 5 });
     });
   });
 

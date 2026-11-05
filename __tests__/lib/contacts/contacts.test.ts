@@ -16,7 +16,10 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/search/sources", () => ({ searchContacts: vi.fn() }));
+
 import * as db from "@/lib/db";
+import { searchContacts } from "@/lib/search/sources";
 import {
   parseRecipient,
   extractEmails,
@@ -33,6 +36,7 @@ const mockContact = db.prisma.contact as any;
 const mockAccount = db.prisma.emailAccount as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockMessage = db.prisma.emailMessage as any;
+const mockSearchContacts = searchContacts as unknown as ReturnType<typeof vi.fn>;
 
 function makeContact(overrides = {}) {
   return {
@@ -278,9 +282,9 @@ describe("listContacts", () => {
     vi.clearAllMocks();
   });
 
-  it("always scopes the query to the user", async () => {
+  it("scopes the plain listing to the user", async () => {
     mockContact.findMany.mockResolvedValue([]);
-    await listContacts("user-1", { search: "jane" });
+    await listContacts("user-1");
     expect(mockContact.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ userId: "user-1" }),
@@ -288,14 +292,26 @@ describe("listContacts", () => {
     );
   });
 
-  it("searches name, email, and company", async () => {
-    mockContact.findMany.mockResolvedValue([]);
-    await listContacts("user-1", { search: "acme" });
-    const where = mockContact.findMany.mock.calls[0][0].where as {
-      OR: Array<Record<string, unknown>>;
-    };
-    expect(where.OR).toHaveLength(3);
-    expect(where.OR.map((clause) => Object.keys(clause)[0])).toEqual(["name", "email", "company"]);
+  it("hands a search to the matcher with the user as the owner", async () => {
+    mockSearchContacts.mockResolvedValue([]);
+    await listContacts("user-1", { search: "acme", limit: 5 });
+    expect(mockSearchContacts).toHaveBeenCalledWith("user-1", "acme", { limit: 5 });
+    expect(mockContact.findMany).not.toHaveBeenCalled();
+  });
+
+  it("maps matcher rows to the wire shape", async () => {
+    mockSearchContacts.mockResolvedValue([{ ...makeContact(), score: 2.5 }]);
+    const contacts = await listContacts("user-1", { search: "jane" });
+    expect(contacts).toEqual([
+      {
+        id: "contact-1",
+        name: "Jane Doe",
+        email: "jane@example.com",
+        company: null,
+        notes: null,
+        lastSentAt: null,
+      },
+    ]);
   });
 
   it("caps the limit at 500", async () => {

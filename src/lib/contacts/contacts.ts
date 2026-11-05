@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { splitEmailAddresses } from "@/lib/email/utils";
+import { searchContacts } from "@/lib/search/sources";
 
 // ─── Address parsing ─────────────────────────────────────────────────────────
 
@@ -113,19 +114,18 @@ export async function listContacts(
   userId: string,
   opts: { search?: string; limit?: number } = {},
 ): Promise<ContactDto[]> {
-  const where: Prisma.ContactWhereInput = { userId };
+  const limit = Math.min(opts.limit ?? 200, 500);
   const search = opts.search?.trim();
+
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { company: { contains: search, mode: "insensitive" } },
-    ];
+    const hits = await searchContacts(userId, search, { limit });
+    return hits.map(toContactDto);
   }
+
   const contacts = await prisma.contact.findMany({
-    where,
+    where: { userId },
     orderBy: { name: "asc" },
-    take: Math.min(opts.limit ?? 200, 500),
+    take: limit,
   });
   return contacts.map(toContactDto);
 }
