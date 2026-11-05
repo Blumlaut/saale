@@ -73,17 +73,6 @@ describe("useChatSessionState", () => {
     });
   });
 
-  it("loadSessionTitle fetches and stores the session title", async () => {
-    mockFetchJson.mockResolvedValueOnce({ session: { title: "My Chat" } });
-    const { result } = renderHook(() => useChatSessionState("sess-1"));
-
-    await act(async () => {
-      await result.current.loadSessionTitle();
-    });
-
-    expect(result.current.sessionTitle).toBe("My Chat");
-  });
-
   it("applySession announces a title the server assigned to a new chat", () => {
     // A new chat is named by its first message, server-side: no click happens,
     // so the lists outside this component only learn about it from the event.
@@ -156,14 +145,5 @@ describe("useChatSessionState", () => {
     expect(mockPatchJson).toHaveBeenCalledWith("/api/chat/sessions/sess-1", {
       toolConfig: expect.objectContaining({ mail: !before }),
     });
-  });
-
-  it("surfaces a 404 title fetch without throwing", async () => {
-    mockFetchJson.mockRejectedValueOnce(new Error("Not found"));
-    const { result } = renderHook(() => useChatSessionState("sess-1"));
-    await act(async () => {
-      await result.current.loadSessionTitle();
-    });
-    expect(result.current.sessionTitle).toBe("");
   });
 });

@@ -176,7 +176,6 @@ export function ChatInterface({
     setThinkingLevel,
     toolConfig,
     applySession,
-    loadSessionTitle,
     saveTitle,
     toggleTool,
   } = useChatSessionState(sessionId);
@@ -822,7 +821,6 @@ export function ChatInterface({
 
     const init = async () => {
       await loadMessages();
-      await loadSessionTitle();
       // Unmounted mid-load (navigated away): connecting here would open a
       // stream no cleanup would ever close.
       if (cancelled) return;
@@ -839,7 +837,7 @@ export function ChatInterface({
       cancelled = true;
       disconnect();
     };
-  }, [sessionId, connect, disconnect, loadMessages, loadSessionTitle]);
+  }, [sessionId, connect, disconnect, loadMessages]);
 
   // Session auto-delete on leave: temporary sessions never persist, and a
   // session that was never started (no messages, no draft) goes with the tab.

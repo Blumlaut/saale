@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchJson, patchJson } from "@/lib/http";
+import { patchJson } from "@/lib/http";
 import { broadcastChatRenamed } from "@/lib/chat/session-events";
 import { DEFAULT_TOOL_CONFIG, type ToolConfig } from "@/lib/pi/tool-config";
 
@@ -43,17 +43,6 @@ export function useChatSessionState(sessionId: string) {
     setSessionTitle(title);
     broadcastChatRenamed();
   }, []);
-
-  const loadSessionTitle = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ session: { title: string } }>(
-        `/api/chat/sessions/${sessionId}`,
-      );
-      if (data.session?.title) applyTitle(data.session.title);
-    } catch (err) {
-      console.error("Failed to load session title:", err);
-    }
-  }, [sessionId, applyTitle]);
 
   // ── Apply server session metadata (from GET /messages) ─────────────────
   // Syncing the prev refs here prevents the debounced persistence effect from
@@ -160,7 +149,6 @@ export function useChatSessionState(sessionId: string) {
     setThinkingLevel,
     toolConfig,
     applySession,
-    loadSessionTitle,
     saveTitle,
     toggleTool,
   };
