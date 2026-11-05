@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { sendMailForAccount } from "@/lib/email/send-mail";
 import { learnContactsFromSend } from "@/lib/contacts/contacts";
+import { searchMail } from "@/lib/search/sources";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { getUploadsDir } from "@/lib/uploads";
@@ -599,12 +600,13 @@ export function createMailTools(userId: string): ToolDefinition[] {
       name: "mail_search",
       label: "Search Emails",
       description:
-        "Search emails across all connected accounts. Searches subject, body, and sender. " +
-        'Each word in the query is matched independently (OR logic), so "invoice march" finds emails containing either word.',
+        "Search emails across all connected accounts by subject, body, and sender. " +
+        "Every word must appear somewhere in the email, so add words to narrow the result. " +
+        'Spelling and word forms are forgiven: "invoce march" still finds "invoice for March".',
       parameters: Type.Object({
         query: Type.String({
           description:
-            'Search keyword(s). Use 1-2 words. each word is matched independently (OR logic). e.g. "invoice march" finds emails with either word.',
+            'Search words. Two or three specific words beat one common one. Every word has to match, e.g. "invoice march" finds only emails with both.',
         }),
         accountId: Type.Optional(
           Type.String({
@@ -622,66 +624,29 @@ export function createMailTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
-        // Split multi-word queries into individual terms so "hello world" matches emails
-        // containing either "hello" OR "world" (not just the exact phrase "hello world")
-        const terms = params.query.split(/\s+/).filter(Boolean);
-        const searchTerms = terms.length > 0 ? terms : [params.query];
-
-        const where: Record<string, unknown> = {
-          accountId: { in: accountIds },
-          OR: searchTerms.flatMap((term: string) => [
-            { subject: { contains: term, mode: "insensitive" } },
-            { bodyText: { contains: term, mode: "insensitive" } },
-            { bodyPreview: { contains: term, mode: "insensitive" } },
-            { fromEmail: { contains: term, mode: "insensitive" } },
-            { fromName: { contains: term, mode: "insensitive" } },
-          ]),
-        };
-
-        if (params.accountId) {
-          if (!accountIds.includes(params.accountId)) {
-            throw new Error(`Email account ${params.accountId} not found`);
-          }
-          where.accountId = params.accountId;
+        if (params.accountId && !accountIds.includes(params.accountId)) {
+          throw new Error(`Email account ${params.accountId} not found`);
         }
 
-        const emails = await prisma.emailMessage.findMany({
-          where,
-          orderBy: { date: "desc" },
-          take: params.limit ?? 20,
-          select: {
-            id: true,
-            fromName: true,
-            fromEmail: true,
-            subject: true,
-            date: true,
-            bodyPreview: true,
-            isRead: true,
-            folder: true,
-            accountId: true,
-          },
+        if (!params.query.trim()) {
+          return { value: { query: params.query, count: 0, emails: [] }, details: { count: 0 } };
+        }
+
+        const emails = await searchMail(params.query, {
+          accountIds,
+          filters: { accountId: params.accountId },
+          limit: params.limit ?? 20,
         });
 
-        const emailData = emails.map(
-          (e: {
-            id: string;
-            fromName: string | null;
-            fromEmail: string;
-            subject: string;
-            date: Date;
-            bodyPreview: string | null;
-            isRead: boolean;
-            folder: string;
-          }) => ({
-            id: e.id,
-            from: formatFrom(e.fromName, e.fromEmail),
-            subject: e.subject,
-            date: e.date.toISOString(),
-            preview: (e.bodyPreview ?? "").slice(0, 200),
-            read: e.isRead,
-            folder: e.folder,
-          }),
-        );
+        const emailData = emails.map((e) => ({
+          id: e.id,
+          from: formatFrom(e.fromName, e.fromEmail),
+          subject: e.subject,
+          date: e.date.toISOString(),
+          preview: (e.bodyPreview ?? "").slice(0, 200),
+          read: e.isRead,
+          folder: e.folder,
+        }));
 
         // Structured metadata for UI rendering (email cards)
         const mailMeta = {

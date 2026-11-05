@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { searchUserMail } from "@/lib/search/sources";
 
 /** Fallback trash folder names for accounts that haven't synced yet */
 const KNOWN_TRASH_FOLDERS = [
@@ -38,6 +39,13 @@ async function collectTrashFolders(userId: string, accountId?: string): Promise<
   return Array.from(trashNames);
 }
 
+/** A query-string date, or undefined when it is missing or unparseable. */
+function searchDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 /**
  * GET /api/email/messages. List emails across user's accounts
  * Query params: accountId, folder, unread, starred, since, until, limit, offset, search, tag
@@ -47,121 +55,58 @@ export async function GET(request: NextRequest) {
   if (!authResult.ok) return authResult.response;
 
   const url = new URL(request.url);
-  const accountId = url.searchParams.get("accountId");
-  const folder = url.searchParams.get("folder");
+  const accountId = url.searchParams.get("accountId") ?? undefined;
+  const folder = url.searchParams.get("folder") ?? undefined;
   const unread = url.searchParams.get("unread");
   const starred = url.searchParams.get("starred");
   const since = url.searchParams.get("since");
   const until = url.searchParams.get("until");
   const limit = parseInt(url.searchParams.get("limit") ?? "20", 10);
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
-  const search = url.searchParams.get("search");
-  const tag = url.searchParams.get("tag");
+  const search = url.searchParams.get("search") ?? "";
+  const tag = url.searchParams.get("tag") ?? undefined;
 
-  const where: Record<string, unknown> = {
-    account: { userId: authResult.user.id },
-  };
+  // The "all" view leaves out each account's trash, which only IMAP knows.
+  const excludeFolders = folder
+    ? undefined
+    : await collectTrashFolders(authResult.user.id, accountId);
 
-  if (accountId) {
-    where.accountId = accountId;
-  }
-  if (folder) {
-    where.folder = folder;
-  } else {
-    // "All" view: exclude trash/deleted folders (per-account, from IMAP SPECIAL-USE)
-    const trashFolders = await collectTrashFolders(authResult.user.id, accountId ?? undefined);
-    if (trashFolders.length > 0) {
-      where.NOT = trashFolders.map((name) => ({
-        folder: { equals: name, mode: "insensitive" as const },
-      }));
-    }
-  }
-  if (tag) {
-    where.tags = { has: tag };
-  }
-  if (unread === "true") {
-    where.isRead = false;
-  } else if (unread === "false") {
-    where.isRead = true;
-  }
-  if (starred === "true") {
-    where.isStarred = true;
-  }
-  if (since) {
-    where.date = where.date || {};
-    (where.date as Record<string, unknown>).gte = new Date(since);
-  }
-  if (until) {
-    where.date = where.date || {};
-    (where.date as Record<string, unknown>).lt = new Date(until);
-  }
-  if (search) {
-    where.OR = [
-      { subject: { contains: search, mode: "insensitive" } },
-      { fromEmail: { contains: search, mode: "insensitive" } },
-      { fromName: { contains: search, mode: "insensitive" } },
-    ];
-  }
-
-  const rows = await prisma.emailMessage.findMany({
-    where,
-    orderBy: { date: "desc" },
-    take: limit + 1,
-    skip: offset,
-    select: {
-      id: true,
-      uid: true,
-      fromName: true,
-      fromEmail: true,
-      to: true,
-      subject: true,
-      date: true,
-      bodyPreview: true,
-      isRead: true,
-      isStarred: true,
-      folder: true,
-      tags: true,
-      accountId: true,
+  // One past the page says another one follows, where a count would scan the
+  // whole mailbox on every scroll.
+  const rows = await searchUserMail(authResult.user.id, search, {
+    filters: {
+      accountId,
+      folder,
+      excludeFolders,
+      unread: unread === "true" ? true : unread === "false" ? false : undefined,
+      starred: starred === "true" ? true : starred === "false" ? false : undefined,
+      since: searchDate(since),
+      until: searchDate(until),
+      tag,
     },
+    limit: limit + 1,
+    offset,
   });
 
-  // One row past the page says another one follows, where a count would scan
-  // the whole mailbox on every scroll.
   const hasMore = rows.length > limit;
   const messages = hasMore ? rows.slice(0, limit) : rows;
 
   return NextResponse.json({
-    messages: messages.map(
-      (m: {
-        id: string;
-        uid: string;
-        fromName: string | null;
-        fromEmail: string;
-        to: string;
-        subject: string;
-        date: Date;
-        bodyPreview: string | null;
-        isRead: boolean;
-        isStarred: boolean;
-        folder: string;
-        tags: string[];
-        accountId: string;
-      }) => ({
-        id: m.id,
-        uid: m.uid,
-        fromName: m.fromName,
-        fromEmail: m.fromEmail,
-        to: m.to,
-        subject: m.subject,
-        date: m.date.toISOString(),
-        bodyPreview: m.bodyPreview,
-        isRead: m.isRead,
-        isStarred: m.isStarred,
-        folder: m.folder,
-        tags: m.tags,
-        accountId: m.accountId,
-      }),
-    ),
+    messages: messages.map((m) => ({
+      id: m.id,
+      uid: m.uid,
+      fromName: m.fromName,
+      fromEmail: m.fromEmail,
+      to: m.to,
+      subject: m.subject,
+      date: m.date.toISOString(),
+      bodyPreview: m.bodyPreview,
+      isRead: m.isRead,
+      isStarred: m.isStarred,
+      folder: m.folder,
+      tags: m.tags,
+      accountId: m.accountId,
+    })),
     hasMore,
   });
 }

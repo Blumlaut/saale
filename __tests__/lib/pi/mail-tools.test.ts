@@ -46,14 +46,18 @@ vi.mock("@/lib/email/imap", () => ({
   syncMessageFlags: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/search/sources", () => ({ searchMail: vi.fn() }));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
+import { searchMail } from "@/lib/search/sources";
 import { sendMailForAccount } from "@/lib/email/send-mail";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockEmailAccount = db.prisma.emailAccount as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockEmailMessage = db.prisma.emailMessage as any;
+const mockSearchMail = searchMail as unknown as ReturnType<typeof vi.fn>;
 
 // Import after mocks
 import { getUserAccountIds, formatFrom, createMailTools } from "@/lib/pi/tools/mail-tools";
@@ -283,9 +287,9 @@ describe("createMailTools", () => {
   });
 
   describe("mail_search", () => {
-    it("uses getUserAccountIds for user isolation", async () => {
+    it("confines the search to the user's accounts", async () => {
       mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
-      mockEmailMessage.findMany.mockResolvedValue([]);
+      mockSearchMail.mockResolvedValue([]);
 
       const tools = createMailTools(userId);
       const mailSearch = tools.find((t) => t.name === "mail_search")!;
@@ -296,11 +300,17 @@ describe("createMailTools", () => {
         where: { userId: "user-123" },
         select: { id: true },
       });
+      expect(mockSearchMail).toHaveBeenCalledWith("invoice", {
+        accountIds: ["acc-1"],
+        filters: { accountId: undefined },
+        limit: 20,
+      });
+      expect(mockEmailMessage.findMany).not.toHaveBeenCalled();
     });
 
     it("formats from field correctly", async () => {
       mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
-      mockEmailMessage.findMany.mockResolvedValue([
+      mockSearchMail.mockResolvedValue([
         {
           id: "msg-1",
           fromName: null,
@@ -311,6 +321,7 @@ describe("createMailTools", () => {
           isRead: false,
           folder: "INBOX",
           accountId: "acc-1",
+          score: 4.2,
         },
       ]);
 
@@ -321,6 +332,31 @@ describe("createMailTools", () => {
       const text = (result.content[0] as { type: string; text: string }).text;
 
       expect(text).toContain("alerts@service.com");
+    });
+
+    it("rejects an account that belongs to someone else", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+
+      const tools = createMailTools(userId);
+      const mailSearch = tools.find((t) => t.name === "mail_search")!;
+
+      await expect(
+        callExecute(mailSearch.execute, { query: "invoice", accountId: "acc-9" }),
+      ).rejects.toThrow("Email account acc-9 not found");
+      expect(mockSearchMail).not.toHaveBeenCalled();
+    });
+
+    it("returns nothing for an empty query instead of the whole mailbox", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+
+      const tools = createMailTools(userId);
+      const mailSearch = tools.find((t) => t.name === "mail_search")!;
+
+      const result = await callExecute(mailSearch.execute, { query: "   " });
+      const text = JSON.parse((result.content[0] as { text: string }).text);
+
+      expect(text.count).toBe(0);
+      expect(mockSearchMail).not.toHaveBeenCalled();
     });
   });
 
