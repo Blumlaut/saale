@@ -1107,7 +1107,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       // The header button only appears when the session has linked watchers,
       // so the listing is stubbed  the guardrail is the panel's layout, not
       // the watcher data.
-      await page.route(/\/api\/chat\/sessions\/[^/]+\/watchers/, (route) =>
+      await page.route(/\/api\/chat\/sessions\/[^/]+\/automations/, (route) =>
         route.fulfill({
           json: {
             watchers: [
@@ -1138,7 +1138,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
     open: async (page) => {
       await gotoChatSession(page, await ensureChatSession(page));
-      await click(page, 'button[title="Linked watchers"]');
+      await click(page, 'button[title="Linked automations"]');
     },
   },
 

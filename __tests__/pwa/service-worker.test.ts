@@ -441,15 +441,31 @@ describe("service worker push", () => {
     });
   });
 
-  it("stays quiet while the app is on screen", async () => {
+  it("stays quiet while the page it is about is on screen", async () => {
     const harness = createHarness({
       mode: "production",
-      windows: [openWindow("/dashboard", "visible")],
+      windows: [openWindow(PUSH_PAYLOAD.url, "visible")],
     });
 
     await harness.dispatchPush(PUSH_PAYLOAD);
 
     expect(harness.notifications).toHaveLength(0);
+    // Seen here, so a phone's copy that is still waiting can go.
+    expect(harness.fetchStub).toHaveBeenCalledWith(
+      "/api/push/seen",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("still shows one when the app is on another page", async () => {
+    const harness = createHarness({
+      mode: "production",
+      windows: [openWindow("/dashboard/mail", "visible")],
+    });
+
+    await harness.dispatchPush(PUSH_PAYLOAD);
+
+    expect(harness.notifications).toHaveLength(1);
   });
 
   it("still shows one when the open window is in the background", async () => {

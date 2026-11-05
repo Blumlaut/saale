@@ -128,10 +128,12 @@ test.describe("a viewer who has signed in", () => {
 
       // The link is up once sharing is on, and it is the one that changes hands.
       await expect(page.getByLabel("Share link")).toHaveValue(/\/share\/[0-9a-f]{32}$/);
-      await expect(page.locator("#share-access")).toBeEnabled();
 
-      await page.locator("#share-access").click();
-      await page.getByRole("option", { name: "Signed-in users" }).click();
+      // The audience is a two-way switch beside the link, not a menu.
+      const audience = page.getByRole("group", { name: "Who can open the link" });
+      const signedIn = audience.getByRole("button", { name: "Signed in", exact: true });
+      await expect(signedIn).toBeEnabled();
+      await signedIn.click();
 
       const shareState = async () =>
         (await (await request.get(`/api/chat/sessions/${sessionId}/share`)).json()) as {

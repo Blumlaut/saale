@@ -16,12 +16,20 @@ import brand from "@/lib/pwa/brand.json";
  */
 
 const ROOT = join(__dirname, "../..");
-const GLOBALS_CSS = readFileSync(join(ROOT, "src/app/globals.css"), "utf8");
+const GLOBALS_CSS = readFileSync(join(ROOT, "src/app/globals.css"), "utf8")
+  // A comment between two rules would otherwise ride along in the next selector.
+  .replace(/\/\*[\s\S]*?\*\//g, "");
 
-/** Reads `--<token>` out of a single top-level rule, e.g. `:root` or `.dark`. */
+/**
+ * Reads `--<token>` out of a top-level rule, e.g. `:root` or `.dark`.
+ *
+ * A rule may list several selectors (the light palette covers `:root` and
+ * `.light`), so the whole list is searched rather than one exact selector.
+ */
 function cssToken(selector: string, token: string): string {
-  const escaped = selector.replace(/[.:]/g, "\\$&");
-  const block = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(GLOBALS_CSS)?.[1];
+  const block = [...GLOBALS_CSS.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter((rule) => (rule[1] ?? "").split(",").some((part) => part.trim() === selector))
+    .map((rule) => rule[2])[0];
   if (block === undefined) throw new Error(`No ${selector} rule found in globals.css`);
 
   const value = new RegExp(`--${token}:\\s*([^;]+);`).exec(block)?.[1]?.trim();

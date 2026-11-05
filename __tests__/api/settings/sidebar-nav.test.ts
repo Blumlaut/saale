@@ -212,10 +212,9 @@ describe("PATCH /api/settings/sidebar-nav", () => {
   });
 
   it("keeps pinned items visible when the layout hides every item", async () => {
-    const items = ["chat", "mail", "calendar", "tasks", "jobs", "infra", "settings"].map((id) => ({
-      id,
-      hidden: true,
-    }));
+    // Every item, because one the layout leaves out comes back at its default
+    // visibility rather than staying hidden.
+    const items = [...SIDEBAR_NAV_ITEM_IDS].map((id) => ({ id, hidden: true }));
 
     const res = await PATCH(patch({ items }));
     const body = await res.json();

@@ -32,10 +32,10 @@ function mockSession(role: string | null) {
   );
 }
 
-/** The bottom bar's labels, left to right. */
+/** The bottom bar's labels, left to right. The bar is icons only. */
 function labels(): string[] {
   const bar = screen.getByRole("navigation");
-  return [...bar.querySelectorAll("a")].map((link) => (link.textContent ?? "").trim());
+  return [...bar.querySelectorAll("a")].map((link) => link.getAttribute("aria-label") ?? "");
 }
 
 function renderNav() {
@@ -70,6 +70,7 @@ describe("MobileNav", () => {
       expect(labels()).toEqual([
         "Chat",
         "Mail",
+        "Contacts",
         "Calendar",
         "Tasks",
         "Jobs",
@@ -84,7 +85,7 @@ describe("MobileNav", () => {
     mockSession("user");
     renderNav();
 
-    await waitFor(() => expect(labels()).toHaveLength(7));
+    await waitFor(() => expect(labels()).toHaveLength(8));
     expect(labels()).not.toContain("Admin");
   });
 
@@ -99,7 +100,7 @@ describe("MobileNav", () => {
 
     // The current admin page is flagged, and Dashboard links back to the app.
     const active = screen.getByRole("link", { name: /Users/ });
-    expect(active).toHaveClass("text-foreground");
+    expect(active).toHaveClass("text-primary");
     expect(active).toHaveAttribute("href", "/admin/users");
     expect(screen.getByRole("link", { name: /Dashboard/ })).toHaveAttribute(
       "href",
@@ -119,7 +120,7 @@ describe("MobileNav", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     renderNav();
 
-    await waitFor(() => expect(labels()).toHaveLength(7));
+    await waitFor(() => expect(labels()).toHaveLength(8));
     expect(consoleError).toHaveBeenCalledWith(
       "Failed to load session permissions:",
       expect.anything(),

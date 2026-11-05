@@ -9,8 +9,9 @@ const { mockRequireChatSessionOwner, mockUpdate, mockGenerateShareToken } = vi.h
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
 vi.mock("@/lib/chat/share", () => ({ generateShareToken: mockGenerateShareToken }));
-vi.mock("@/lib/db", () => ({ prisma: { chatSession: { update: mockUpdate } } }));
+vi.mock("@/lib/db", () => ({ prisma: { chatSession: { updateMany: mockUpdate } } }));
 
+import { DEFAULT_SHARE_ACCESS } from "@/lib/chat/share-access";
 import { GET, POST, DELETE } from "@/app/api/chat/sessions/[sessionId]/share/route";
 
 const USER_ID = "share-route-user";
@@ -21,7 +22,7 @@ function params() {
 }
 
 function getSession(shared: boolean, shareToken: string | null) {
-  return { shared, shareToken };
+  return { shared, shareToken, shareAccess: DEFAULT_SHARE_ACCESS };
 }
 
 function authWith(session: { shared: boolean; shareToken: string | null }) {
@@ -43,6 +44,7 @@ describe("GET /api/chat/sessions/[sessionId]/share", () => {
       ok: true,
       isShared: true,
       shareUrl: "/share/abc123",
+      access: DEFAULT_SHARE_ACCESS,
     });
   });
 
@@ -50,7 +52,11 @@ describe("GET /api/chat/sessions/[sessionId]/share", () => {
     authWith(getSession(false, null));
 
     const res = await GET(new NextRequest("http://localhost/api/x", { method: "GET" }), params());
-    await expect(res.json()).resolves.toEqual({ ok: true, isShared: false });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      isShared: false,
+      access: DEFAULT_SHARE_ACCESS,
+    });
   });
 
   it("treats a session with shared=true but no token as not shared", async () => {
@@ -58,7 +64,11 @@ describe("GET /api/chat/sessions/[sessionId]/share", () => {
     authWith(getSession(true, null));
 
     const res = await GET(new NextRequest("http://localhost/api/x", { method: "GET" }), params());
-    await expect(res.json()).resolves.toEqual({ ok: true, isShared: false });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      isShared: false,
+      access: DEFAULT_SHARE_ACCESS,
+    });
   });
 
   it("propagates auth failures", async () => {
@@ -89,6 +99,7 @@ describe("POST /api/chat/sessions/[sessionId]/share", () => {
       ok: true,
       shareUrl: "/share/abc123",
       shareToken: "abc123",
+      access: DEFAULT_SHARE_ACCESS,
     });
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockGenerateShareToken).not.toHaveBeenCalled();
@@ -102,8 +113,8 @@ describe("POST /api/chat/sessions/[sessionId]/share", () => {
 
     expect(body.shareToken).toBe("fresh-token");
     expect(mockUpdate).toHaveBeenCalledWith({
-      where: { id: SESSION_ID },
-      data: { shared: true, shareToken: "fresh-token" },
+      where: { id: SESSION_ID, userId: USER_ID },
+      data: { shared: true, shareToken: "fresh-token", shareAccess: DEFAULT_SHARE_ACCESS },
     });
   });
 });
@@ -124,7 +135,7 @@ describe("DELETE /api/chat/sessions/[sessionId]/share", () => {
 
     await expect(res.json()).resolves.toEqual({ ok: true });
     expect(mockUpdate).toHaveBeenCalledWith({
-      where: { id: SESSION_ID },
+      where: { id: SESSION_ID, userId: USER_ID },
       data: { shared: false, shareToken: null },
     });
   });

@@ -36,7 +36,14 @@ function renderEditor(overrides: Partial<React.ComponentProps<typeof SidebarNavE
   return { onChange, onReset, props };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // jsdom has no matchMedia, which the row animation asks before it moves one.
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+  );
+});
 
 describe("SidebarNavEditor", () => {
   it("lists every sidebar item in layout order", () => {
@@ -58,7 +65,7 @@ describe("SidebarNavEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move Chat down" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["coder", "chat", "mail"]);
+    expect(ids(changedEntries(onChange)).slice(0, 3)).toEqual(["coder", "chat", "files"]);
   });
 
   it("disables the boundary arrows", () => {

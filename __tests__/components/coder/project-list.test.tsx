@@ -143,11 +143,14 @@ describe("ProjectList", () => {
     expect(screen.getByText("Fix the build")).toBeInTheDocument();
   });
 
-  it("says a project has no chats without inventing a row for it", async () => {
+  it("opens a chatless project from its name, without inventing a row for it", async () => {
     render(<ProjectList />);
 
     await screen.findByText("Attrition");
-    expect(screen.getByText("no chats")).toBeInTheDocument();
+    // Nothing to fold, so the line opens the project instead.
+    fireEvent.click(screen.getByRole("button", { name: "Open Attrition" }));
+    expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/p-2");
+
     const row = screen.getByText("Attrition").closest("[data-slot=project-row]")!;
     expect(row.parentElement!.querySelectorAll("[data-slot=session-row]")).toHaveLength(0);
   });
@@ -195,14 +198,14 @@ describe("ProjectList", () => {
     await waitFor(() => expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/p-1/s-new"));
   });
 
-  it("opens the project from its name", async () => {
+  it("folds a project from its name", async () => {
     render(<ProjectList />);
     await screen.findByText("Saale Web");
 
-    expect(screen.getByRole("link", { name: /^Saale Web/ })).toHaveAttribute(
-      "href",
-      "/dashboard/coder/p-1",
-    );
+    // A project with chats folds its line, and the chats go with it.
+    fireEvent.click(screen.getByRole("button", { name: "Fold Saale Web" }));
+    expect(screen.queryByText("Fix the build")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unfold Saale Web" })).toBeInTheDocument();
   });
 
   it("leaves a project with nothing to fold unfolded, and unmarked", async () => {

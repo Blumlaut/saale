@@ -7,6 +7,17 @@ vi.mock("@/lib/auth", () => ({
   requireSession: (...args: unknown[]) => mockRequireSession(...args),
 }));
 
+// The stored settings live in the admin settings row, which a unit test does
+// not carry a database for: these routes are about the environment and the
+// transcription call.
+vi.mock("@/lib/voice/settings", async () => {
+  const { resolveVoiceSettings } = await import("@/lib/voice/options");
+  return {
+    readVoiceSettings: async () =>
+      resolveVoiceSettings({ enabled: true, model: null, language: null }),
+  };
+});
+
 import { GET } from "@/app/api/voice/route";
 import { POST } from "@/app/api/voice/transcribe/route";
 import { MAX_VOICE_BYTES } from "@/lib/voice/config";
