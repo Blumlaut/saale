@@ -23,7 +23,8 @@ import {
   signInHandle,
 } from "@/lib/auth/sign-in-throttle";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
-import { ssoOidcPlugins, ssoTrustedProviders } from "@/lib/auth/sso";
+import { SSO_CALLBACK_PATH, ssoOidcPlugins, ssoTrustedProviders } from "@/lib/auth/sso";
+import { sendPasswordResetMail, sendVerificationMail } from "@/lib/email/instance-mail-messages";
 import {
   USERNAME_MAX_LENGTH,
   USERNAME_MIN_LENGTH,
@@ -61,6 +62,19 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: PASSWORD_MIN_LENGTH,
     maxPasswordLength: PASSWORD_MAX_LENGTH,
+    // A reset link only leaves when the instance has a relay; without one the
+    // request is answered the same way and nothing is sent.
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetMail(user.email, url);
+    },
+  },
+  emailVerification: {
+    // Asked for on sign-up, and sent again on request. Signing in does not
+    // wait for it: an instance has to be usable before it has a mail server.
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendVerificationMail(user.email, url);
+    },
   },
   socialProviders: {},
   account: {
@@ -69,8 +83,9 @@ export const auth = betterAuth({
       // A company's identity provider owns the addresses it reports, so a
       // sign-in for an existing account's email links to it.
       trustedProviders: ssoTrustedProviders(),
-      // Nothing on this instance verifies a local address, so a local row's
-      // flag cannot stand in for proof that the address is the signer's.
+      // A local row's flag means something only once the instance can send a
+      // verification mail, and an account made before it had a relay carries no
+      // such proof. The identity provider is what vouches for the address.
       requireLocalEmailVerified: false,
     },
   },
@@ -136,6 +151,13 @@ export const auth = betterAuth({
           // Applied here rather than in a middleware so it covers every path
           // that creates a user, whether or not a form was involved.
           await assertSignupsAllowed(context, user.email);
+
+          // An address an admin typed, and one the company's identity provider
+          // reported, are both vouched for by someone; neither waits on a
+          // verification mail.
+          if (context?.path === ADMIN_CREATE_USER_PATH || context?.path === SSO_CALLBACK_PATH) {
+            return { data: { ...user, emailVerified: true } };
+          }
         },
         after: async (user) => {
           const count = await prisma.user.count();

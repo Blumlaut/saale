@@ -43,6 +43,8 @@ vi.mock("@/lib/db", () => ({
     },
     role: { createMany: async () => ({}), findMany: async () => [] },
     adminSettings: { findUnique: async () => ({ signupsEnabled: true }) },
+    // No relay: the verification mail sign-up asks for is skipped, not sent.
+    instanceMail: { findUnique: async () => null },
   },
 }));
 

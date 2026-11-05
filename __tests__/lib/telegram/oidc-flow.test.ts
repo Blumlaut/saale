@@ -21,6 +21,8 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     user: { count: async () => state.userCount, update: async () => ({}) },
     adminSettings: { findUnique: async () => ({ signupsEnabled: state.signupsEnabled }) },
+    // No relay: the verification mail a new account asks for is skipped.
+    instanceMail: { findUnique: async () => null },
   },
 }));
 
