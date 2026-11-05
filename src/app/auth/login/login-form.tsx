@@ -9,11 +9,19 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { AlertCircle, ChevronRight, KeyRound, MessageCircle, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  Building2,
+  ChevronRight,
+  KeyRound,
+  MessageCircle,
+  ShieldCheck,
+} from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { isTotpCode } from "@/lib/auth/totp";
 import { TELEGRAM_OIDC_PROVIDER_ID, telegramLoginError } from "@/lib/telegram/login";
+import { SSO_OIDC_PROVIDER_ID, ssoLoginError } from "@/lib/auth/sso-login";
 
 const DASHBOARD_URL = "/dashboard/chat";
 
@@ -22,8 +30,16 @@ export interface TelegramLoginOptions {
   enabled: boolean;
 }
 
+export interface SsoLoginOptions {
+  /** Whether this instance has an identity provider configured. */
+  enabled: boolean;
+  /** What the provider calls itself, for the button. */
+  name: string;
+}
+
 export interface LoginFormProps {
   telegram: TelegramLoginOptions;
+  sso: SsoLoginOptions;
   /** Whether someone with no account yet could create one here. the copy for a failed Telegram login depends on it. */
   signupsEnabled: boolean;
 }
@@ -155,15 +171,20 @@ function TwoFactorForm({ onVerified }: { onVerified: () => void }) {
   );
 }
 
-function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
+function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // A Telegram login that fails comes back here with better-auth's error code.
-  const [error, setError] = useState(
-    () => telegramLoginError(searchParams?.get("error"), { signupsEnabled }) ?? "",
-  );
+  // A sign-in that fails comes back here with better-auth's error code, and
+  // single sign-on names its provider so its own sentences are shown.
+  const [error, setError] = useState(() => {
+    const code = searchParams?.get("error");
+    return searchParams?.get("provider") === SSO_OIDC_PROVIDER_ID
+      ? (ssoLoginError(code, { provider: sso.name }) ?? "")
+      : (telegramLoginError(code, { signupsEnabled }) ?? "");
+  });
   const [loading, setLoading] = useState(false);
   const [telegramLoading, setTelegramLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const { register, handleSubmit } = useForm<{ username: string; password: string }>();
   // A page that redirected a signed-out visitor here, e.g. a chat a browser
@@ -192,6 +213,22 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
     setTelegramLoading(false);
     if (signInError) {
       setError(signInError.message || "Could not start Telegram sign-in");
+    }
+  };
+
+  const onSsoSignIn = async () => {
+    setSsoLoading(true);
+    setError("");
+
+    const { error: signInError } = await authClient.signIn.social({
+      provider: SSO_OIDC_PROVIDER_ID,
+      callbackURL: returnPath,
+      errorCallbackURL: `/auth/login?provider=${SSO_OIDC_PROVIDER_ID}`,
+    });
+
+    setSsoLoading(false);
+    if (signInError) {
+      setError(signInError.message || "Could not start single sign-on");
     }
   };
 
@@ -278,8 +315,8 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
               </Button>
             </form>
 
-            {/* Telegram sign-in, when this instance has it set up */}
-            {telegram.enabled && (
+            {/* The other ways in, when this instance has them set up */}
+            {(sso.enabled || telegram.enabled) && (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Separator className="flex-1" />
@@ -287,16 +324,33 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
                   <Separator className="flex-1" />
                 </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={telegramLoading}
-                  onClick={onTelegramSignIn}
-                >
-                  <MessageCircle />
-                  {telegramLoading ? "Opening Telegram..." : "Continue with Telegram"}
-                </Button>
+                <div className="space-y-3">
+                  {sso.enabled && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={ssoLoading}
+                      onClick={onSsoSignIn}
+                    >
+                      <Building2 />
+                      {ssoLoading ? "Opening..." : `Continue with ${sso.name}`}
+                    </Button>
+                  )}
+
+                  {telegram.enabled && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      disabled={telegramLoading}
+                      onClick={onTelegramSignIn}
+                    >
+                      <MessageCircle />
+                      {telegramLoading ? "Opening Telegram..." : "Continue with Telegram"}
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -320,10 +374,10 @@ function LoginFields({ telegram, signupsEnabled }: LoginFormProps) {
  * Reads its error from the query string (`useSearchParams`), which is why the
  * page renders it inside a Suspense boundary.
  */
-export function LoginForm({ telegram, signupsEnabled }: LoginFormProps) {
+export function LoginForm({ telegram, sso, signupsEnabled }: LoginFormProps) {
   return (
     <Suspense fallback={null}>
-      <LoginFields telegram={telegram} signupsEnabled={signupsEnabled} />
+      <LoginFields telegram={telegram} sso={sso} signupsEnabled={signupsEnabled} />
     </Suspense>
   );
 }

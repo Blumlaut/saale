@@ -26,9 +26,11 @@ const signInUsername = vi.mocked(authClient.signIn.username);
 const signInEmail = vi.mocked(authClient.signIn.email);
 const signInSocial = vi.mocked(authClient.signIn.social);
 
-const telegramOff = { telegram: { enabled: false }, signupsEnabled: true };
-const telegramOn = { telegram: { enabled: true }, signupsEnabled: true };
-const signupsClosed = { telegram: { enabled: true }, signupsEnabled: false };
+const ssoOff = { enabled: false, name: "Single sign-on" };
+const ssoOn = { enabled: true, name: "Company SSO" };
+const telegramOff = { telegram: { enabled: false }, sso: ssoOff, signupsEnabled: true };
+const telegramOn = { telegram: { enabled: true }, sso: ssoOff, signupsEnabled: true };
+const signupsClosed = { telegram: { enabled: true }, sso: ssoOff, signupsEnabled: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -181,5 +183,36 @@ describe("sign-in form", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue with Telegram" }));
 
     expect(await screen.findByText("Provider not found")).toBeInTheDocument();
+  });
+
+  it("offers single sign-on only when the instance has an identity provider", () => {
+    const { unmount } = render(<LoginForm {...telegramOff} />);
+    expect(screen.queryByRole("button", { name: /Company SSO/ })).not.toBeInTheDocument();
+    unmount();
+
+    render(<LoginForm {...telegramOff} sso={ssoOn} />);
+    expect(screen.getByRole("button", { name: "Continue with Company SSO" })).toBeInTheDocument();
+  });
+
+  it("starts the sign-in on the provider and comes back to the login page on failure", async () => {
+    signInSocial.mockResolvedValue({ data: null, error: null } as never);
+    render(<LoginForm {...telegramOff} sso={ssoOn} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Company SSO" }));
+
+    await waitFor(() =>
+      expect(signInSocial).toHaveBeenCalledWith({
+        provider: "sso-oidc",
+        callbackURL: "/dashboard/chat",
+        errorCallbackURL: "/auth/login?provider=sso-oidc",
+      }),
+    );
+  });
+
+  it("names the provider in a single sign-on failure", () => {
+    query.current = new URLSearchParams({ error: "account_not_linked", provider: "sso-oidc" });
+    render(<LoginForm {...telegramOff} sso={ssoOn} />);
+
+    expect(screen.getByText(/Company SSO account is not linked/)).toBeInTheDocument();
   });
 });
