@@ -79,6 +79,9 @@ describe("classifyCommand", () => {
       "env | grep HOME",
       "ls -la 2>&1",
       "echo $(date)",
+      "sudo ls",
+      "sudo systemctl status nginx",
+      "sudo dmidecode -t system",
     ])('classifies "%s" as safe', (cmd) => {
       const result = classifyCommand(cmd);
       expect(result.safety).toBe("safe");
@@ -96,8 +99,10 @@ describe("classifyCommand", () => {
       "chown user:group /file",
       "touch /tmp/newfile",
       "ln -s /a /b",
-      "sudo ls",
       "sudo rm -rf /",
+      "sudo -i",
+      "sudo bash",
+      "sudo systemctl restart nginx",
       "apt install nginx",
       "apt-get update",
       "npm install",
@@ -201,6 +206,24 @@ describe("classifyCommand", () => {
   });
 
   describe("conditionally safe commands", () => {
+    it.each(["date", "date +%Y-%m-%d", "sort -u /etc/hosts", "ifconfig -a", "sysctl -a"])(
+      "runs %s",
+      (cmd) => {
+        expect(classifyCommand(cmd).safety).toBe("safe");
+      },
+    );
+
+    it.each([
+      "date -s 2020-01-01",
+      "sort -o out in",
+      "ifconfig eth0 up",
+      "route add default 10.0.0.1",
+      "sysctl -w net.ipv4.ip_forward=1",
+      "hostname newbox",
+      "ip link set eth0 down",
+    ])("asks about %s", (cmd) => {
+      expect(classifyCommand(cmd).safety).toBe("risky");
+    });
     it("find without dangerous flags is safe", () => {
       expect(classifyCommand("find /etc -name '*.conf'").safety).toBe("safe");
     });
@@ -269,6 +292,85 @@ describe("classifyCommand", () => {
 
       const risky = classifyCommand("rm -rf /");
       expect(risky.reason).toContain("mutating");
+    });
+  });
+  describe("windows, macOS and BSD", () => {
+    it.each([
+      "dir C:\\\\Windows\\\\System32",
+      "ipconfig /all",
+      "ping -n 4 8.8.8.8",
+      "netstat -ano",
+      "tasklist",
+      "systeminfo",
+      "findstr /i error app.log",
+      "where python",
+      "qwinsta",
+      "whoami /priv",
+      "wmic os get caption",
+      "wmic process where \"name='node.exe'\" get processid",
+      "sc query state= all",
+      "reg query HKLM\\\\Software",
+      "schtasks /query /fo LIST",
+      "netsh wlan show profiles",
+      "wevtutil qe System /c:5",
+      "powercfg /list",
+      "Get-Process",
+      "get-service -Name W32Time",
+      "Get-WinEvent -LogName System -MaxEvents 20",
+      "Select-String -Path logs\\*.log -Pattern error",
+      "Test-Path C:\\\\Windows",
+      "ConvertTo-Json",
+      "Out-String",
+      "launchctl list",
+      "diskutil list",
+      "defaults read com.apple.finder",
+      "pmset -g therm",
+      "brew list --formula",
+      "sw_vers",
+      "system_profiler SPHardwareDataType",
+      "networksetup -listallnetworkservices",
+      "route -n get default",
+      "apk info",
+      "pkg info",
+      "rc-service nginx status",
+      "timedatectl status",
+      "loginctl list-sessions",
+      "lspci -nn",
+      "dmidecode -t system",
+      "findmnt -t ext4",
+    ])("runs %s", (cmd) => {
+      expect(classifyCommand(cmd).safety).toBe("safe");
+    });
+
+    it.each([
+      'wmic process call create "cmd.exe"',
+      "sc stop W32Time",
+      "reg add HKLM\\\\Software\\\\X /v Y /d Z",
+      "schtasks /create /tn x /tr y /sc once",
+      "netsh advfirewall set allprofiles state off",
+      "wevtutil cl System",
+      "powercfg /hibernate off",
+      "Remove-Item C:\\\\x -Recurse",
+      "Set-Service -Name W32Time -StartupType Disabled",
+      "Stop-Process -Name node",
+      "Invoke-WebRequest https://example.com",
+      "Out-File C:\\\\x.txt",
+      "Export-Csv C:\\\\x.csv",
+      "Get-Content x | Out-File y",
+      "taskkill /PID 1234 /F",
+      "shutdown /r /t 0",
+      "net user someone /add",
+      "launchctl unload /Library/LaunchDaemons/x.plist",
+      "diskutil eraseDisk JHFS+ X disk2",
+      "defaults write com.apple.finder AppleShowAllFiles -bool YES",
+      "pmset sleepnow",
+      "brew install jq",
+      "networksetup -setdnsservers Wi-Fi 1.1.1.1",
+      "apk add nginx",
+      "pkg install jq",
+      "rc-service nginx restart",
+    ])("asks about %s", (cmd) => {
+      expect(classifyCommand(cmd).safety).toBe("risky");
     });
   });
 });

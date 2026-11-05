@@ -115,7 +115,17 @@ function wordsOf(segment: string): string[] {
  *
  * A shell (`bash -c '…'`) stays out: its script is not parsed here, so it asks.
  */
-const WRAPPERS = new Set(["timeout", "nice", "ionice", "nohup", "env", "exec", "command", "xargs"]);
+const WRAPPERS = new Set([
+  "timeout",
+  "nice",
+  "ionice",
+  "nohup",
+  "env",
+  "exec",
+  "command",
+  "xargs",
+  "sudo",
+]);
 
 /** A wrapper's own argument: a flag, a duration (`30`, `5s`), or an assignment. */
 const WRAPPER_ARGUMENT = /^-|^\d+(\.\d+)?[smh]?$/;
@@ -154,11 +164,12 @@ function parseCommand(segment: string): ParsedCommand | null {
 
   const word = words[index];
   if (word === undefined) {
-    // A wrapper with nothing after it is the command itself (`env`, `xargs`).
-    return wrapper === null ? null : { command: basename(wrapper), args: [] };
+    // A wrapper with nothing after it is the command itself (`env`, `sudo -i`).
+    return wrapper === null ? null : { command: basename(wrapper).toLowerCase(), args: [] };
   }
 
-  return { command: basename(word), args: words.slice(index + 1) };
+  // Windows command names are case-insensitive, so the name is matched folded.
+  return { command: basename(word).toLowerCase(), args: words.slice(index + 1) };
 }
 
 // ─── Safe commands (read-only or navigation) ────────────────────────────────
@@ -228,22 +239,26 @@ const ALWAYS_SAFE = new Set([
   // System info
   "uname",
   "uptime",
-  "date",
   "whoami",
   "id",
   "groups",
-  "hostname",
   "domainname",
   "dmesg",
   "lscpu",
   "lsmod",
+  "modinfo",
+  "lspci",
+  "lsusb",
+  "dmidecode",
   "nproc",
   "arch",
   "tty",
   "w",
   "last",
   "getent",
+  "getconf",
   "systemd-analyze",
+  "coredumpctl",
 
   // Disk/memory info
   "df",
@@ -277,14 +292,24 @@ const ALWAYS_SAFE = new Set([
   "lsof",
   "netstat",
   "ss",
-  "ip",
-  "ifconfig",
-  "route",
   "traceroute",
+  "mtr",
   "ping",
   "dig",
   "nslookup",
   "host",
+  "whois",
+
+  // Mounts
+  "findmnt",
+  "lsns",
+  "mountpoint",
+
+  // Binaries (read-only inspection)
+  "ldd",
+  "readelf",
+  "objdump",
+  "nm",
 
   // Logs
   "journalctl",
@@ -328,6 +353,40 @@ const ALWAYS_SAFE = new Set([
   "hash",
   "help",
   "history",
+
+  // Windows, read-only commands of cmd.exe
+  "findstr",
+  "where",
+  "systeminfo",
+  "ver",
+  "ipconfig",
+  "tracert",
+  "pathping",
+  "arp",
+  "getmac",
+  "driverquery",
+  "tasklist",
+  "vol",
+  "cls",
+  "chcp",
+  "comp",
+  "fc",
+  "qwinsta",
+  "quser",
+  "qprocess",
+  "openfiles",
+  "prompt",
+
+  // macOS and BSD
+  "sw_vers",
+  "system_profiler",
+  "ioreg",
+  "vm_stat",
+  "mdls",
+  "mdfind",
+  "scutil",
+  "rc-status",
+  "bsdinfo",
 ]);
 
 // ─── Reporting subcommands ──────────────────────────────────────────────────
@@ -341,6 +400,12 @@ interface SubcommandRule {
   report: ReadonlySet<string>;
   /** A group word, where the word after it decides: `docker compose ps`. */
   groups?: ReadonlySet<string>;
+  /** The reporting verb comes after a subject instead: `service nginx status`. */
+  verbAfterSubject?: boolean;
+  /** The calling form has no leading verb to match, so it is read from the text. */
+  reportPattern?: RegExp;
+  /** Called with no argument at all, the tool only reports. */
+  bare?: boolean;
   /** A flag that makes even a reporting form change something. */
   mutating?: RegExp;
 }
@@ -374,7 +439,12 @@ const SUBCOMMAND_RULES: Record<string, SubcommandRule> = {
     ]),
   },
   service: {
-    report: new Set(),
+    report: new Set(["status", "reload-status"]),
+    verbAfterSubject: true,
+  },
+  "rc-service": {
+    report: new Set(["status"]),
+    verbAfterSubject: true,
   },
   git: {
     report: new Set([
@@ -519,18 +589,173 @@ const SUBCOMMAND_RULES: Record<string, SubcommandRule> = {
   bun: {
     report: new Set(["pm", "info"]),
   },
+  podman: {
+    report: new Set([
+      "ps",
+      "logs",
+      "inspect",
+      "images",
+      "info",
+      "version",
+      "stats",
+      "events",
+      "top",
+      "port",
+      "diff",
+      "search",
+      "history",
+      "ls",
+      "df",
+      "help",
+    ]),
+    groups: new Set([
+      "compose",
+      "container",
+      "image",
+      "network",
+      "volume",
+      "pod",
+      "secret",
+      "system",
+      "healthcheck",
+    ]),
+  },
+  ip: {
+    report: new Set([
+      "addr",
+      "a",
+      "link",
+      "l",
+      "route",
+      "r",
+      "neigh",
+      "n",
+      "rule",
+      "ru",
+      "netns",
+      "ne",
+      "maddr",
+      "mr",
+      "show",
+      "monitor",
+      "-br",
+      "-4",
+      "-6",
+      "-s",
+      "-o",
+      "-j",
+      "-all",
+    ]),
+    mutating: /\b(set|add|del|delete|change|replace|flush|append|up|down)\b/,
+  },
+  hostname: {
+    report: new Set(["-I", "-f", "-d", "-i", "-A", "-s", "-a", "-v", "--version", "--fqdn"]),
+    bare: true,
+    mutating: /^hostname\s+[^-\s]/,
+  },
+  timedatectl: {
+    report: new Set(["status", "show", "list-timezones", "timesync-status", "show-timesync"]),
+    bare: true,
+  },
+  hostnamectl: { report: new Set(["status", "show"]), bare: true },
+  localectl: {
+    report: new Set(["status", "list-locales", "list-keymaps", "list-x11-keymap-models"]),
+    bare: true,
+  },
+  loginctl: {
+    report: new Set([
+      "list-sessions",
+      "list-users",
+      "list-seats",
+      "session-status",
+      "user-status",
+      "seat-status",
+      "show-session",
+      "show-user",
+      "show-seat",
+    ]),
+    bare: true,
+  },
+
+  // Windows, where the verb often comes after the noun
+  wmic: {
+    report: new Set(),
+    reportPattern: /\b(get|list|brief|status|assoc|where)\b/i,
+    mutating: /\b(call|create|delete|set|terminate|invoke|install)\b/i,
+  },
+  sc: {
+    report: new Set([
+      "query",
+      "queryex",
+      "qc",
+      "qdescription",
+      "qfailure",
+      "qtriggerinfo",
+      "sdshow",
+      "getdisplayname",
+      "getkeyname",
+      "enumdepend",
+    ]),
+  },
+  reg: { report: new Set(["query", "q"]) },
+  schtasks: { report: new Set(["/query", "-query", "/fo", "-fo"]) },
+  netsh: {
+    report: new Set(),
+    reportPattern: /\bshow\b/i,
+    mutating: /\b(add|delete|set|reset|import|export|start|stop|enable|disable)\b/i,
+  },
+  wevtutil: { report: new Set(["qe", "gl", "gli", "el", "ep"]) },
+  powercfg: {
+    report: new Set(["/list", "-list", "/query", "-query", "/a", "-a", "/availablesleepstates"]),
+  },
+
+  // macOS
+  launchctl: {
+    report: new Set(["list", "print", "dumpstate", "blame", "err", "procinfo", "version"]),
+  },
+  diskutil: { report: new Set(["list", "info", "activity"]), bare: true },
+  defaults: { report: new Set(["read", "read-type", "domains", "find", "export"]) },
+  pmset: { report: new Set(["-g", "--get"]), bare: true },
+  brew: {
+    report: new Set([
+      "list",
+      "ls",
+      "info",
+      "outdated",
+      "search",
+      "config",
+      "doctor",
+      "deps",
+      "uses",
+      "home",
+      "desc",
+      "--version",
+      "--prefix",
+    ]),
+  },
+  networksetup: {
+    report: new Set(),
+    reportPattern: /\s--?(list|get)/i,
+    mutating: /\s--?(set|create|delete|add|remove|reorder|switch)/i,
+  },
+
+  // Alpine and FreeBSD packages
+  apk: { report: new Set(["info", "list", "search", "policy", "stats", "dot", "version"]) },
+  pkg: { report: new Set(["info", "list", "search", "query", "audit", "check", "version"]) },
 };
 
 /** Whether a rule's subcommand only reports. */
-function reportsOnly(rule: SubcommandRule, args: string[]): boolean {
-  // `service nginx status` puts the service before the verb.
-  if (rule.report.size === 0) return args[1] === "status" || args[1] === "reload-status";
-
-  const first = args[0];
-  if (first === undefined) return false;
-  if (rule.report.has(first)) return true;
+function reportsOnly(rule: SubcommandRule, args: string[], segment: string): boolean {
+  if (rule.reportPattern?.test(segment)) return true;
 
   const second = args[1];
+  // `service nginx status` puts the subject before the verb.
+  if (rule.verbAfterSubject) return second !== undefined && rule.report.has(second);
+
+  const first = args[0];
+  if (first === undefined) return rule.bare === true;
+  if (rule.report.has(first)) return true;
+
   return second !== undefined && (rule.groups?.has(first) ?? false) && rule.report.has(second);
 }
 
@@ -542,7 +767,12 @@ function reportsOnly(rule: SubcommandRule, args: string[]): boolean {
  */
 const CONDITIONAL_SAFE: Record<string, RegExp[]> = {
   sed: [/-i(\s|$)/, /-\s*i(\s|$)/, /--in-place\b/],
-  sort: [/\s-o\s*\S/, /--output[=\s]/],
+  sort: [/\s-o\s*\S/, /--output[=\s]/, /\s\/o\s/],
+  date: [/\s-s\b/, /--set\b/, /^date\s+\d{6,}/],
+  sysctl: [/-w\b/, /--write\b/, /[a-z0-9_.]+\s*=/],
+  ifconfig: [/\s(up|down|mtu|netmask|broadcast|inet|inet6|promisc|-promisc|alias|metric)\b/],
+  route: [/\s(add|del|delete|flush|change)\b/],
+  xattr: [/\s-[wdc]/],
   find: [
     /-delete\b/,
     /-exec\b/,
@@ -693,6 +923,53 @@ const ALWAYS_RISKY = new Set([
   "halt",
   "poweroff",
 ]);
+
+/**
+ * PowerShell cmdlets that only read. `Get-` is the convention for a cmdlet that
+ * retrieves and changes nothing, so the prefix carries the rest of the family.
+ */
+const POWERSHELL_READ_ONLY = new Set([
+  "test-path",
+  "test-connection",
+  "test-netconnection",
+  "measure-object",
+  "select-object",
+  "select-string",
+  "where-object",
+  "sort-object",
+  "group-object",
+  "compare-object",
+  "convertto-json",
+  "convertto-csv",
+  "convertto-xml",
+  "convertto-html",
+  "convertfrom-json",
+  "convertfrom-csv",
+  "convertfrom-stringdata",
+  "format-table",
+  "format-list",
+  "format-wide",
+  "format-custom",
+  "format-hex",
+  "join-path",
+  "split-path",
+  "resolve-path",
+  "read-host",
+  "out-string",
+  "out-host",
+  "out-null",
+  "out-gridview",
+  "write-output",
+  "write-host",
+  "write-verbose",
+  "import-csv",
+  "import-clixml",
+]);
+
+/** Whether a command name is a PowerShell cmdlet that only reads. */
+function reportsInPowerShell(command: string): boolean {
+  return command.startsWith("get-") || POWERSHELL_READ_ONLY.has(command);
+}
 
 /**
  * Patterns over the whole command that change state whatever the command word
@@ -1037,7 +1314,7 @@ function classifySegment(segment: string): CommandClassification {
     if (rule.mutating?.test(segment)) {
       return { safety: "risky", reason: `"${command}" with a mutating flag` };
     }
-    if (reportsOnly(rule, args)) {
+    if (reportsOnly(rule, args, segment)) {
       const form = args[0] === undefined ? command : `${command} ${args[0]}`;
       return { safety: "safe", reason: `"${form}" only reports` };
     }
@@ -1046,6 +1323,10 @@ function classifySegment(segment: string): CommandClassification {
 
   if (ALWAYS_RISKY.has(command)) {
     return { safety: "risky", reason: `"${command}" is a mutating command` };
+  }
+
+  if (reportsInPowerShell(command)) {
+    return { safety: "safe", reason: `"${command}" only reports` };
   }
 
   if (ALWAYS_SAFE.has(command)) {
