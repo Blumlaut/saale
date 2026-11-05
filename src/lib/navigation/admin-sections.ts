@@ -65,6 +65,12 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       description: "Whether new accounts can be created",
     },
     {
+      id: "sso",
+      href: "/admin/settings/sso",
+      label: "Single sign-on",
+      description: "The identity provider and the redirect URI to register",
+    },
+    {
       id: "features",
       href: "/admin/settings/features",
       label: "Features",
