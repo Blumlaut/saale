@@ -3,12 +3,30 @@ import { Type } from "typebox";
 import { prisma } from "@/lib/db";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
 import { pushEventToCalDAV } from "@/lib/calendar/caldav";
+import { searchCalendarEvents, type CalendarEventHit } from "@/lib/search/sources";
 import {
   defaultEventEnd,
   resolveEventTimeUpdate,
   resolveNewEventTimes,
 } from "@/lib/calendar/event-times";
 import { formatWallClock } from "@/lib/calendar/timezone";
+
+/** Shape a stored event the way every read-only calendar tool reports it. */
+function serializeEvent(e: CalendarEventHit) {
+  return {
+    id: e.id,
+    uid: e.uid,
+    summary: e.summary,
+    description: e.description,
+    location: e.location,
+    dtStart: e.dtStart.toISOString(),
+    dtEnd: e.dtEnd?.toISOString() ?? null,
+    timeZone: e.timeZone,
+    allDay: e.allDay,
+    calendarName: e.calendarName,
+    calendarColor: e.calendarColor,
+  };
+}
 
 /** An event as queryEvents serializes it, for the read-only listing tools. */
 const calendarEventSchema = Type.Object({
@@ -120,19 +138,9 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
       },
     });
 
-    return events.map((e) => ({
-      id: e.id,
-      uid: e.uid,
-      summary: e.summary,
-      description: e.description,
-      location: e.location,
-      dtStart: e.dtStart.toISOString(),
-      dtEnd: e.dtEnd?.toISOString() ?? null,
-      timeZone: e.timeZone,
-      allDay: e.allDay,
-      calendarName: e.calendar.name,
-      calendarColor: e.calendar.color,
-    }));
+    return events.map((e) =>
+      serializeEvent({ ...e, calendarName: e.calendar.name, calendarColor: e.calendar.color }),
+    );
   }
 
   return [
@@ -249,10 +257,12 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
       name: "calendar_search",
       label: "Search Events",
       description:
-        "Search calendar events by keyword. Matches against title, description, and location.",
+        "Search calendar events by keyword, best match first. Matches title, location, and description. " +
+        "Every word must appear somewhere in the event. Spelling and word forms are forgiven.",
       parameters: Type.Object({
         query: Type.String({
-          description: "Search query (matches title, description, location).",
+          description:
+            'Search words. Every word has to match, e.g. "dentist monday" finds only events with both.',
         }),
         limit: Type.Optional(
           Type.Integer({
@@ -263,14 +273,13 @@ export function createCalendarTools(userId: string): ToolDefinition[] {
       }),
       outputSchema: calendarSearchSchema,
       execute: async (_toolCallId, params) => {
-        const events = await queryEvents({
-          calendar: { account: { userId }, enabled: true },
-          OR: [
-            { summary: { contains: params.query, mode: "insensitive" } },
-            { description: { contains: params.query, mode: "insensitive" } },
-            { location: { contains: params.query, mode: "insensitive" } },
-          ],
-        });
+        if (!params.query.trim()) {
+          return { value: { query: params.query, count: 0, events: [] }, details: { count: 0 } };
+        }
+
+        const events = (
+          await searchCalendarEvents(userId, params.query, { limit: params.limit ?? 20 })
+        ).map(serializeEvent);
 
         // Structured metadata for UI rendering (calendar cards)
         const calMeta = {
