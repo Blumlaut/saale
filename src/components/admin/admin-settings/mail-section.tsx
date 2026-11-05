@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageSection } from "@/components/layout/page";
-import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
+import { postJson } from "@/lib/http";
 import { MAIL_SECURITIES, type InstanceMailStatus } from "@/lib/email/mail-config";
 import { AdminSettingsFrame } from "./settings-frame";
+import { useInstanceSettings } from "./use-instance-settings";
 import { NumberRow, SettingsRow } from "./settings-rows";
-import { useSaveStatus } from "./use-admin-settings";
 
 const SECURITY_LABELS: Record<string, string> = {
   starttls: "STARTTLS (587)",
@@ -70,80 +70,48 @@ function draftOf(mail: InstanceMailStatus): MailDraft {
  * is what a deployment configures before any of those can reach a person.
  */
 export function MailSection() {
-  const [mail, setMail] = useState<InstanceMailStatus | null>(null);
-  const [draft, setDraft] = useState<MailDraft | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const { saveStatus, setSaveStatus } = useSaveStatus();
   const [testTo, setTestTo] = useState("");
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
 
-  const apply = useCallback((next: InstanceMailStatus) => {
-    setMail(next);
-    setDraft(draftOf(next));
-    setTestTo((current) => current || next.fromAddress);
-  }, []);
+  const {
+    status: mail,
+    draft,
+    loading,
+    saving,
+    removing,
+    saveStatus,
+    edit,
+    save,
+    remove,
+  } = useInstanceSettings<InstanceMailStatus, MailDraft>({
+    url: "/api/admin/mail",
+    key: "mail",
+    toDraft: draftOf,
+    toPatch: (draft) => ({
+      enabled: draft.enabled,
+      host: draft.host.trim(),
+      port: Number(draft.port) || 587,
+      security: draft.security,
+      username: draft.username.trim(),
+      fromAddress: draft.fromAddress.trim(),
+      fromName: draft.fromName.trim(),
+      ...(draft.password ? { password: draft.password } : {}),
+    }),
+    onApply: (next) => setTestTo((current) => current || next.fromAddress),
+  });
 
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchJson<{ mail: InstanceMailStatus }>("/api/admin/mail");
-      apply(data.mail);
-    } catch (err) {
-      console.error("Failed to load the instance mail settings:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [apply]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const edit = (change: Partial<MailDraft>) =>
-    setDraft((current) => (current ? { ...current, ...change } : current));
-
-  const save = async () => {
-    if (!draft) return;
-
-    setSaving(true);
-    try {
-      const data = await patchJson<{ mail: InstanceMailStatus }>("/api/admin/mail", {
-        enabled: draft.enabled,
-        host: draft.host.trim(),
-        port: Number(draft.port) || 587,
-        security: draft.security,
-        username: draft.username.trim(),
-        fromAddress: draft.fromAddress.trim(),
-        fromName: draft.fromName.trim(),
-        ...(draft.password ? { password: draft.password } : {}),
-      });
-      apply(data.mail);
-      setSaveStatus("success");
-    } catch (err) {
-      console.error("Failed to save the instance mail settings:", err);
-      setSaveStatus("error");
-      toast.error((err as Error).message || "Could not save the mail settings");
-    } finally {
-      setSaving(false);
-    }
+  const saveMail = async () => {
+    const err = await save();
+    if (err) toast.error(err.message || "Could not save the mail settings");
   };
 
-  const remove = async () => {
-    setRemoving(true);
-    try {
-      const data = await deleteJson<{ mail: InstanceMailStatus }>("/api/admin/mail");
-      apply(data.mail);
-      toast.success("Mail relay removed");
-    } catch (err) {
-      console.error("Failed to remove the instance mail settings:", err);
-      toast.error("Could not remove the mail relay");
-    } finally {
-      setRemoving(false);
-      setRemoveOpen(false);
-    }
+  const removeMail = async () => {
+    const err = await remove();
+    setRemoveOpen(false);
+    if (err) toast.error("Could not remove the mail relay");
+    else toast.success("Mail relay removed");
   };
 
   const sendTest = async () => {
@@ -165,7 +133,7 @@ export function MailSection() {
       loading={loading || !draft}
       saving={saving}
       status={saveStatus}
-      onSave={() => void save()}
+      onSave={() => void saveMail()}
     >
       {draft ? (
         <>
@@ -356,7 +324,7 @@ export function MailSection() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep it</AlertDialogCancel>
-                <AlertDialogAction onClick={() => void remove()}>Remove</AlertDialogAction>
+                <AlertDialogAction onClick={() => void removeMail()}>Remove</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

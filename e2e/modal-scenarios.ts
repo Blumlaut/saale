@@ -1448,6 +1448,37 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "admin · remove mail relay confirmation",
+    path: "/admin/settings/mail",
+    sources: ["src/components/admin/admin-settings/mail-section.tsx"],
+    mock: async (page) => {
+      await page.route(/\/api\/admin\/mail$/, (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                mail: {
+                  configured: true,
+                  enabled: true,
+                  host: "smtp.a-very-long-relay-hostname.example.com",
+                  port: 587,
+                  security: "starttls",
+                  username: "saale",
+                  fromAddress: "saale@a-very-long-relay-hostname.example.com",
+                  fromName: "Saale",
+                  hasPassword: true,
+                  updatedAt: null,
+                  updatedByUserId: null,
+                },
+              },
+            })
+          : route.fallback(),
+      );
+    },
+    open: async (page) => {
+      await click(page, 'button:has-text("Remove")');
+    },
+  },
+  {
     name: "settings · remove email account confirmation",
     path: SETTINGS,
     sources: ["src/app/dashboard/settings/sections/email-section.tsx"],
