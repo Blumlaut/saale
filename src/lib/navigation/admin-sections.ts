@@ -71,6 +71,12 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       description: "The identity provider and the redirect URI to register",
     },
     {
+      id: "mail",
+      href: "/admin/settings/mail",
+      label: "Mail",
+      description: "The relay verification and reset mail goes out through",
+    },
+    {
       id: "features",
       href: "/admin/settings/features",
       label: "Features",

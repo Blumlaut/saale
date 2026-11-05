@@ -124,6 +124,18 @@ When Telegram refuses that URL (an instance on a LAN address, or no public DNS),
 worker polls Telegram for updates instead, so the bot still answers. A webhook is
 preferred when it works, and the two never run at the same time.
 
+## Mail
+
+Saale sends verification links, password resets and invitations through one SMTP relay,
+configured in the admin panel under Settings → Mail. It lives in the database rather than
+in `.env`, so a deployment can be set up from the browser, and the password is encrypted
+with `ENCRYPTION_KEY` like a mail account's.
+
+Nothing depends on it. With no relay the instance works, sign-in does not wait for a
+verification, and the mails are logged as skipped. The panel's test button sends one
+message and reports what the relay said, which is the quickest way to find a typo in a
+host or a password.
+
 ## Modules
 
 | Variable     | Default | What it does                                                |
