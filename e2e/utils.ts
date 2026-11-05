@@ -6,6 +6,7 @@ import type {
   Page,
 } from "@playwright/test";
 
+import { withDb } from "./db";
 import { SESSION_FILE } from "./env";
 
 /** The account every suite runs as. Created and seeded by `global-setup.ts`. */
@@ -210,31 +211,17 @@ export async function ensureLocalCalendarAccount(request: APIRequestContext): Pr
  * must be a failure rather than a silent skip.
  */
 export async function grantAdminRole(): Promise<void> {
-  // Loaded lazily: this module is also imported by unit tests, which have no
-  // business booting a database client.
-  await import("dotenv/config");
-  const { PrismaClient } = await import("@prisma/client");
-  const { PrismaPg } = await import("@prisma/adapter-pg");
-
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("e2e: DATABASE_URL is not set  the admin routes cannot be covered without it");
-  }
-
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
-  try {
-    const updated = await prisma.user.updateMany({
+  await withDb(async (db) => {
+    const updated = await db.user.updateMany({
       where: { email: E2E_EMAIL },
       data: { role: "admin" },
     });
     if (updated.count === 0) {
       throw new Error(
-        `e2e: no ${E2E_EMAIL} row in ${connectionString}  is DATABASE_URL the database of the app under test?`,
+        `e2e: no ${E2E_EMAIL} row  is DATABASE_URL the database of the app under test?`,
       );
     }
-  } finally {
-    await prisma.$disconnect();
-  }
+  });
 }
 
 /**
