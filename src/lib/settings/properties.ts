@@ -247,6 +247,7 @@ const GROUP = {
   coder: "coder",
   sidebar: "sidebar",
   notifications: "notifications",
+  telegram: "telegram",
   admin: "admin",
   branding: "branding",
   plugins: "plugins",
@@ -286,6 +287,21 @@ const SCALAR_PROPERTIES: UserProperty[] = [
     read: (row) => row.compactActivity,
     write: (_row, value) => ({
       compactActivity: value === null ? true : Boolean(value),
+    }),
+  },
+  {
+    key: "telegram.toolNotices",
+    group: GROUP.telegram,
+    label: "Telegram tool notices",
+    description:
+      "Send Telegram a line for every tool the agent runs, above its answer. Off sends only what the agent says.",
+    columns: ["telegramToolNotices"],
+    apply: "none",
+    scope: "user",
+    schema: z.boolean(),
+    read: (row) => row.telegramToolNotices,
+    write: (_row, value) => ({
+      telegramToolNotices: value === null ? false : Boolean(value),
     }),
   },
   {

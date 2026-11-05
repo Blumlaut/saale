@@ -57,6 +57,7 @@ const baseSettings: UserSettings = {
   defaultThinkingLevel: "off",
   theme: "system",
   compactActivity: true,
+  telegramToolNotices: false,
   agentCustomInstructions: null,
   coderCustomInstructions: null,
   emailWritingStyle: null,

@@ -584,6 +584,8 @@ model AppSettings {
   defaultThinkingLevel String   @default("default") // "default" = leave the level to Pi
   theme                String   @default("system") // "dark" | "light" | "system"
   compactActivity      Boolean  @default(true) // Collapse a turn's reasoning and tool calls into one compact line instead of a card per step
+  /// Whether Telegram gets a line for every tool call. Off sends only what the agent says.
+  telegramToolNotices  Boolean  @default(false)
   agentCustomInstructions String?  @db.Text // User-defined custom instructions appended to the default system prompt
   emailWritingStyle      String?  @db.Text // User-defined writing style for email reply drafts
   coderCustomInstructions String? @db.Text // Custom instructions for coder chats, in place of agentCustomInstructions

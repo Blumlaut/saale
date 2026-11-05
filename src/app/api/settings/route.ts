@@ -13,6 +13,7 @@ function serializeSettings(settings: AppSettings) {
     defaultThinkingLevel: settings.defaultThinkingLevel,
     theme: settings.theme,
     compactActivity: settings.compactActivity,
+    telegramToolNotices: settings.telegramToolNotices,
     agentCustomInstructions: settings.agentCustomInstructions,
     coderCustomInstructions: settings.coderCustomInstructions,
     emailWritingStyle: settings.emailWritingStyle,
