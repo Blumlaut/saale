@@ -219,6 +219,11 @@ export const MessageList = memo(
     const touchStartYRef = useRef<number | null>(null);
     /** When the last scroll input arrived (see `INPUT_GRACE_MS`). */
     const lastInputAtRef = useRef(Number.NEGATIVE_INFINITY);
+    /**
+     * The content offset of the transcript's last row, which moves only when
+     * something lands above it: the measure a prepend is caught by.
+     */
+    const placeRef = useRef<{ el: Element; top: number } | null>(null);
     /** A pointer or finger is down on the transcript right now (a scrollbar
      * drag reports its movement without any further input event). */
     const pointerDownRef = useRef(false);
@@ -424,6 +429,29 @@ export const MessageList = memo(
       followTail();
     }, [messages, followTail]);
 
+    /**
+     * Hold the reader's place when history lands above them.
+     *
+     * The browser anchors on the reveal control at the top of the transcript,
+     * which a prepend never moves, so it would leave the view where it is and
+     * drop the reader at the oldest of the new messages. The last row is what a
+     * prepend does move, so it is the measure.
+     */
+    const holdPlace = useCallback(() => {
+      const el = containerRef.current;
+      const last = contentRef.current?.lastElementChild as HTMLElement | null | undefined;
+      if (!el || !last) return;
+      const top = last.offsetTop;
+      const previous = placeRef.current;
+      placeRef.current = { el: last, top };
+      // A new last row is a message appended below: nothing moved above.
+      if (autoScrollRef.current || previous?.el !== last) return;
+      const shift = top - previous.top;
+      if (shift <= 0) return;
+      el.scrollTop += shift;
+      observedTopRef.current = el.scrollTop;
+    }, []);
+
     const visibleGroups = windowStart > 0 ? groupedMessages.slice(windowStart) : groupedMessages;
     const hiddenMessageCount = useMemo(
       () =>
@@ -455,10 +483,13 @@ export const MessageList = memo(
       if (!hasTranscript) return;
       const content = contentRef.current;
       if (!content || typeof ResizeObserver === "undefined") return;
-      const observer = new ResizeObserver(() => followTail());
+      const observer = new ResizeObserver(() => {
+        holdPlace();
+        followTail();
+      });
       observer.observe(content);
       return () => observer.disconnect();
-    }, [hasTranscript, followTail]);
+    }, [hasTranscript, followTail, holdPlace]);
 
     // The box resizes on its own too: the on-screen keyboard opens or closes,
     // the composer wraps another line, the panel next door is dragged wider.
@@ -526,7 +557,11 @@ export const MessageList = memo(
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
         >
-          <div ref={contentRef} className="space-y-4 px-3 py-3 md:space-y-6 md:px-6 md:py-6">
+          <div
+            ref={contentRef}
+            /* The list holds the reader's place itself; see `holdPlace`. */
+            className="space-y-4 px-3 py-3 [overflow-anchor:none] md:space-y-6 md:px-6 md:py-6"
+          >
             {(hiddenMessageCount > 0 || canLoadEarlier) && (
               <div className="flex justify-center">
                 <Button

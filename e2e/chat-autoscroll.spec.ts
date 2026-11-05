@@ -17,9 +17,9 @@ import { createChatSession, discardChatSessions, gotoAndSettle, sessionContext }
 const TURNS = 8;
 
 /** Long enough that the transcript overflows any laptop height. */
-function transcript() {
+function transcript(turns: number) {
   const rows = [];
-  for (let i = 0; i < TURNS; i++) {
+  for (let i = 0; i < turns; i++) {
     rows.push({
       id: `u${i}`,
       role: "user",
@@ -58,12 +58,15 @@ test.afterAll(async ({ request }: { request: APIRequestContext }) => {
   await discardChatSessions(request, [sessionId]);
 });
 
-async function openChat(browser: Browser): Promise<{ page: Page; close: () => Promise<void> }> {
+async function openChat(
+  browser: Browser,
+  turns = TURNS,
+): Promise<{ page: Page; close: () => Promise<void> }> {
   const context = await sessionContext(browser, { viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
   await page.route(/\/api\/chat\/sessions\/[^/]+\/messages$/, (route) =>
     route.fulfill({
-      json: { messages: transcript(), queuedMessages: [], session: { title: "auto-scroll" } },
+      json: { messages: transcript(turns), queuedMessages: [], session: { title: "auto-scroll" } },
     }),
   );
   await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
@@ -85,6 +88,17 @@ function transcriptHeight(page: Page): Promise<number> {
     const el = document.querySelector<HTMLElement>("[data-transcript]");
     if (!el) throw new Error("the transcript is not on the page");
     return el.scrollHeight;
+  });
+}
+
+/** Where the newest bubble sits relative to the top of the transcript box. */
+function readerPlace(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>("[data-transcript]");
+    const bubbles = el?.querySelectorAll<HTMLElement>("[data-quoteable]");
+    if (!el || !bubbles?.length) throw new Error("the transcript has no messages");
+    const last = bubbles[bubbles.length - 1]!;
+    return Math.round(last.getBoundingClientRect().top - el.getBoundingClientRect().top);
   });
 }
 
@@ -257,6 +271,31 @@ test.describe("chat auto-scroll", () => {
       await frameSettled(page);
       expect(await distanceFromTail(page)).toBeGreaterThan(1000);
       await expect(jumpButton(page)).toBeVisible();
+    } finally {
+      await close();
+    }
+  });
+
+  test("keeps a reader's place when earlier turns are revealed above them", async ({ browser }) => {
+    // 40 turns: more than the render window holds, so the reveal control is
+    // what a reader scrolled to the top of the history has to use.
+    const { page, close } = await openChat(browser, 40);
+    try {
+      const scroller = page.locator("[data-transcript]");
+      const reveal = page.getByRole("button", { name: /earlier messages?$/ });
+      await scroller.evaluate((el) => el.scrollTo({ top: 0 }));
+      await expect(reveal).toBeVisible();
+
+      const before = await readerPlace(page);
+      await reveal.click();
+      await frameSettled(page);
+
+      // The turns land above the view, which keeps the bubble the reader was
+      // reading where it was. Holding the offset still would drop them at the
+      // oldest of the new turns instead.
+      expect(Math.abs((await readerPlace(page)) - before)).toBeLessThanOrEqual(1);
+      await expect(reveal).not.toBeInViewport();
+      expect(await scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     } finally {
       await close();
     }

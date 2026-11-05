@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { MessageList } from "@/components/chat/message-list";
 import type { Message } from "@/components/chat/types";
+import { FakeResizeObserver, fireTranscriptResize } from "../../helpers/fake-resize-observer";
 
 /**
  * The render window. A long transcript is thousands of DOM nodes, so only the
@@ -121,5 +122,75 @@ describe("MessageList render window", () => {
     // New turns append below without shifting what the reader is looking at.
     expect(firstRendered()).toBe(before);
     expect(screen.getByText("answer 44")).toBeInTheDocument();
+  });
+});
+
+describe("MessageList reading back", () => {
+  /** A row's height, so a prepend can be measured in jsdom's layout-free world. */
+  const ROW_PX = 100;
+
+  beforeEach(() => {
+    FakeResizeObserver.instances = [];
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    // jsdom lays nothing out: rows sit one below the next in their parent.
+    Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        const parent = this.parentElement;
+        return parent ? [...parent.children].indexOf(this) * ROW_PX : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(HTMLElement.prototype, "offsetTop");
+  });
+
+  /**
+   * Put the reader at the top of the transcript, the only place the reveal
+   * control is reachable, with following released the way their scroll to it
+   * released it.
+   */
+  function openAtTop(container: HTMLElement) {
+    const scroller = container.querySelector<HTMLElement>(".overflow-y-auto")!;
+    Object.defineProperty(scroller, "scrollHeight", { value: 5000, configurable: true });
+    Object.defineProperty(scroller, "clientHeight", { value: 500, configurable: true });
+    scroller.scrollTop = 200;
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scroller.scrollTop = 0;
+    fireEvent.scroll(scroller);
+    // The browser's first size report, which is where the list measures from.
+    act(() => fireTranscriptResize("content"));
+    return scroller;
+  }
+
+  it("keeps the reader's place when earlier turns are revealed", () => {
+    const { container } = render(<MessageList messages={transcript(60)} />);
+    const scroller = openAtTop(container);
+    const content = container.querySelector<HTMLElement>("[data-transcript] > div")!;
+
+    // Where the tail row sits relative to the viewport is the reader's place.
+    const place = () => (content.lastElementChild as HTMLElement).offsetTop - scroller.scrollTop;
+    const before = place();
+
+    fireEvent.click(revealButton()!);
+    act(() => fireTranscriptResize("content"));
+
+    // The revealed turns landed above the view, pushing it down with them.
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+    expect(place()).toBe(before);
+    expect(screen.getByText("question 35")).toBeInTheDocument();
+  });
+
+  it("leaves the reader alone when a turn is added below", () => {
+    const { container, rerender } = render(<MessageList messages={transcript(60)} />);
+    const scroller = openAtTop(container);
+
+    rerender(<MessageList messages={transcript(61)} />);
+    act(() => fireTranscriptResize("content"));
+
+    // Growth below the view is not the reader's place moving.
+    expect(scroller.scrollTop).toBe(0);
   });
 });

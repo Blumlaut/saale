@@ -5,6 +5,7 @@ import { createRef } from "react";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { MessageList, type MessageListHandle } from "@/components/chat/message-list";
 import type { Message } from "@/components/chat/types";
+import { FakeResizeObserver, fireTranscriptResize } from "../../helpers/fake-resize-observer";
 
 /**
  * Auto-scroll: the list follows the tail while armed, and the user's own scroll
@@ -14,45 +15,14 @@ import type { Message } from "@/components/chat/types";
  * under a reader who had scrolled away. Only input re-arms the follow now.
  */
 
-/**
- * jsdom has no layout, so the transcript's own height changes (a thinking block
- * unfolding, a tool card reporting output) are driven by hand.
- */
-class FakeResizeObserver {
-  static instances: FakeResizeObserver[] = [];
-  active = true;
-  target: Element | null = null;
-  constructor(private readonly cb: () => void) {
-    FakeResizeObserver.instances.push(this);
-  }
-  observe(target: Element) {
-    this.target = target;
-  }
-  disconnect() {
-    this.active = false;
-  }
-  /** Report a resize, the way the browser does after layout. */
-  fire() {
-    if (this.active) this.cb();
-  }
-}
-
-/** The transcript is the scroller; the box observers watch it, the rest watch the content. */
-function fireObservers(onScroller: boolean) {
-  for (const observer of FakeResizeObserver.instances) {
-    const watchesScroller = observer.target?.matches(".overflow-y-auto") ?? false;
-    if (watchesScroller === onScroller) observer.fire();
-  }
-}
-
 /** Content height changed without any message changing. */
 function contentResized() {
-  fireObservers(false);
+  fireTranscriptResize("content");
 }
 
 /** The box itself was resized: the on-screen keyboard, or the composer growing. */
 function boxResized() {
-  fireObservers(true);
+  fireTranscriptResize("box");
 }
 
 function message(overrides: Partial<Message> & { id: string }): Message {
