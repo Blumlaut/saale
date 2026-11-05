@@ -579,6 +579,34 @@ model InstanceMail {
   @@map("instance_mail")
 }
 
+// ─── Instance single sign-on ───────────────────────────────────
+
+/// The company identity provider the login page signs people in with.
+///
+/// One provider per instance, configured in the admin panel. The client secret
+/// is encrypted with lib/crypto like a mail account's, and the admin API never
+/// echoes it back.
+model InstanceSso {
+  id      String  @id @default("global")
+  enabled Boolean @default(true)
+  /// The issuer URL, or its discovery document.
+  issuer   String @default("")
+  clientId String @default("")
+  /// Encrypted with lib/crypto. Read only to build the provider.
+  encryptedClientSecret String?  @db.Text
+  /// The sign-in button's label. Empty shows "Single sign-on".
+  name                  String   @default("")
+  /// Scopes a sign-in asks for. `openid` is added when it is missing.
+  scopes                String[] @default(["openid", "profile", "email"])
+  /// Domains a new account may come from. Empty means existing accounts only.
+  allowedDomains        String[] @default([])
+  /// Admin who last saved this configuration.
+  updatedByUserId       String?
+  updatedAt             DateTime @updatedAt
+
+  @@map("instance_sso")
+}
+
 // ─── Roles ─────────────────────────────────────────────────────
 
 /// A named permission bundle. `User.role` stores the name (comma-separated

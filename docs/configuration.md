@@ -37,24 +37,15 @@ AUTH_TRUSTED_ORIGINS="https://*.preview.example.com"
 
 ## Single sign-on
 
-An instance belongs to one company, so it takes one identity provider. Register the app
-at the provider first, using the redirect URI
-`<BETTER_AUTH_URL>/api/auth/callback/sso-oidc`; Admin → Settings → Single sign-on shows
-the exact value and what the instance currently reads.
+An instance belongs to one company, so it takes one identity provider. Admin →
+Settings → Single sign-on holds the issuer, the client credentials and the domains a
+new account may come from. The same page shows the redirect URI to register at the
+provider, `<BETTER_AUTH_URL>/api/auth/callback/sso-oidc`.
 
-| Variable                 | Default                | What it does                                               |
-| ------------------------ | ---------------------- | ---------------------------------------------------------- |
-| `SSO_OIDC_ISSUER`        | none                   | The provider's issuer URL, e.g. `https://example.okta.com` |
-| `SSO_OIDC_CLIENT_ID`     | none                   | The client id registered at the provider                   |
-| `SSO_OIDC_CLIENT_SECRET` | none                   | The client secret                                          |
-| `SSO_OIDC_NAME`          | `Single sign-on`       | The sign-in button's label                                 |
-| `SSO_OIDC_SCOPES`        | `openid profile email` | Scopes to ask for, comma separated                         |
-| `SSO_ALLOWED_DOMAINS`    | none                   | Domains a new account may be created for, comma separated  |
-
-With the three credentials set, the login page offers the button. A first sign-in creates
-an account only for an address whose domain is on `SSO_ALLOWED_DOMAINS`, and that holds
-whether or not sign-ups are open. With no list, sign-in is for accounts that already
-exist, so an admin still creates each one.
+Once the issuer and the client pair are stored, the login page offers the button. A
+first sign-in creates an account only for an address whose domain is on the allowed
+list, and that holds whether or not sign-ups are open. With no list, sign-in is for
+accounts that already exist, so an admin still creates each one.
 
 An account whose email the provider reports is linked to the provider on first sign-in,
 which is what lets someone with a password sign in through the company directory

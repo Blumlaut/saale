@@ -1,10 +1,11 @@
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { loginPath, PATH_HEADER, queryOf } from "@/lib/auth/redirect";
 
 export default async function Home() {
   const requestHeaders = await headers();
+  const auth = await getAuth();
   const session = await auth.api.getSession({
     headers: requestHeaders,
   });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { hasPermission } from "@/lib/permissions/check";
 import type { PermissionResource } from "@/lib/permissions/statements";
@@ -31,6 +31,7 @@ export function sanitizeError(err: unknown): string {
  * Returns null if not authenticated (caller should handle 401).
  */
 export async function getSession() {
+  const auth = await getAuth();
   return auth.api.getSession({ headers: await headers() });
 }
 

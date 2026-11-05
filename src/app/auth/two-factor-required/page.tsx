@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { loginPath } from "@/lib/auth/redirect";
 import { isTwoFactorRequired } from "@/lib/auth/two-factor-policy";
 import { TwoFactorRequired } from "./two-factor-required";
@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
  * none: the requirement, and the one action that clears it.
  */
 export default async function TwoFactorRequiredPage() {
+  const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect(loginPath("/dashboard/chat"));
 

@@ -1,5 +1,6 @@
 import { areSignupsEnabled } from "@/lib/auth/signups";
 import { getSsoStatus } from "@/lib/auth/sso";
+import { SSO_DEFAULT_NAME } from "@/lib/auth/sso-config";
 import { getTelegramLoginStatus } from "@/lib/telegram/oidc";
 import { LoginForm } from "./login-form";
 
@@ -17,7 +18,7 @@ export default async function LoginPage() {
   return (
     <LoginForm
       telegram={{ enabled: telegram.enabled }}
-      sso={{ enabled: sso.enabled, name: sso.name }}
+      sso={{ enabled: sso.configured, name: sso.name || SSO_DEFAULT_NAME }}
       signupsEnabled={signupsEnabled}
     />
   );

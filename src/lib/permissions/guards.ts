@@ -8,13 +8,14 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { hasFeature, hasPermission, getRoleAccess, type RoleAccess } from "./check";
 import { hasGrant } from "./roles";
 import type { FeatureKey } from "./features";
 import type { AdminAction } from "./statements";
 
 async function currentUserId(): Promise<string | null> {
+  const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
   return session?.user?.id ?? null;
 }

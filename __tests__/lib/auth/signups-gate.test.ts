@@ -23,10 +23,12 @@ vi.mock("@/lib/db", () => ({
     adminSettings: { findUnique: async () => ({ signupsEnabled: state.signupsEnabled }) },
     // No relay: the verification mail sign-up asks for is skipped, not sent.
     instanceMail: { findUnique: async () => null },
+    // No identity provider either, so single sign-on registers nothing.
+    instanceSso: { findUnique: async () => null },
   },
 }));
 
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { SIGNUPS_DISABLED_ERROR } from "@/lib/auth/signups";
 
 const PASSWORD = "test123456";
@@ -58,7 +60,7 @@ type SignUpClient = {
 async function buildInstance() {
   // Every option is production's; only the database is swapped for the
   // harness's in-memory one.
-  const { database: _adapter, ...productionOptions } = auth.options;
+  const { database: _adapter, ...productionOptions } = (await getAuth()).options;
 
   const config = {
     clientOptions: { plugins: [usernameClient({ displayUsername: false })] },

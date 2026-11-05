@@ -45,6 +45,8 @@ vi.mock("@/lib/db", () => ({
     adminSettings: { findUnique: async () => ({ signupsEnabled: true }) },
     // No relay: the verification mail sign-up asks for is skipped, not sent.
     instanceMail: { findUnique: async () => null },
+    // No identity provider either, so single sign-on registers nothing.
+    instanceSso: { findUnique: async () => null },
   },
 }));
 
@@ -52,7 +54,7 @@ import { getTestInstance } from "better-auth/test";
 import type { BetterAuthOptions } from "better-auth";
 import { usernameClient } from "better-auth/client/plugins";
 
-const { auth } = await import("@/auth");
+const { getAuth } = await import("@/auth");
 const { SIGN_IN_FAILURE_LIMIT } = await import("@/lib/auth/sign-in-throttle");
 
 const PASSWORD = "test123456";
@@ -75,7 +77,7 @@ type LockoutClient = {
 };
 
 async function buildInstance() {
-  const { database: _adapter, ...productionOptions } = auth.options;
+  const { database: _adapter, ...productionOptions } = (await getAuth()).options;
 
   return getTestInstance(
     productionOptions as Partial<BetterAuthOptions>,

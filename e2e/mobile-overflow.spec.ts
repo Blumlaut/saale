@@ -58,6 +58,8 @@ const ADMIN_PAGES = [
   "/admin/roles",
   "/admin/plugins",
   "/admin/settings/signups",
+  "/admin/settings/sso",
+  "/admin/settings/mail",
   "/admin/settings/features",
   "/admin/settings/branding",
   "/admin/settings/telegram",

@@ -1479,6 +1479,39 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "admin · remove single sign-on confirmation",
+    path: "/admin/settings/sso",
+    sources: ["src/components/admin/admin-settings/sso-section.tsx"],
+    mock: async (page) => {
+      await page.route(/\/api\/admin\/sso$/, (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                sso: {
+                  enabled: true,
+                  issuer: "https://login.a-very-long-provider-hostname.example.com/tenant",
+                  clientId: "saale-console",
+                  name: "Company SSO",
+                  scopes: ["openid", "profile", "email"],
+                  allowedDomains: ["example.com", "a-very-long-subdomain.example.com"],
+                  configured: true,
+                  hasClientSecret: true,
+                  discoveryUrl:
+                    "https://login.a-very-long-provider-hostname.example.com/tenant/.well-known/openid-configuration",
+                  redirectUri: "https://saale.example.com/api/auth/callback/sso-oidc",
+                  updatedAt: null,
+                  updatedByUserId: null,
+                },
+              },
+            })
+          : route.fallback(),
+      );
+    },
+    open: async (page) => {
+      await click(page, 'button:has-text("Remove")');
+    },
+  },
+  {
     name: "settings · remove email account confirmation",
     path: SETTINGS,
     sources: ["src/app/dashboard/settings/sections/email-section.tsx"],

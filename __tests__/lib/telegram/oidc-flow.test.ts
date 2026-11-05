@@ -23,6 +23,8 @@ vi.mock("@/lib/db", () => ({
     adminSettings: { findUnique: async () => ({ signupsEnabled: state.signupsEnabled }) },
     // No relay: the verification mail a new account asks for is skipped.
     instanceMail: { findUnique: async () => null },
+    // No identity provider, so single sign-on registers nothing.
+    instanceSso: { findUnique: async () => null },
   },
 }));
 
@@ -191,8 +193,8 @@ beforeAll(async () => {
   process.env.TELEGRAM_OIDC_CLIENT_ID = CLIENT_ID;
   process.env.TELEGRAM_OIDC_CLIENT_SECRET = "secret-1";
 
-  const { auth } = await import("@/auth");
-  const { database: _database, ...productionOptions } = auth.options;
+  const { getAuth } = await import("@/auth");
+  const { database: _database, ...productionOptions } = (await getAuth()).options;
 
   instance = await getHttpTestInstance(productionOptions as Partial<BetterAuthOptions>, {
     disableTestUser: true,

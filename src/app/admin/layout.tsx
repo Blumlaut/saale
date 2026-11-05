@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasPermission } from "@/lib/permissions/check";
@@ -19,6 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const requestHeaders = await headers();
+  const auth = await getAuth();
   const session = await auth.api.getSession({
     headers: requestHeaders,
   });

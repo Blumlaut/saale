@@ -22,10 +22,12 @@ vi.mock("@/lib/db", () => ({
     adminSettings: { findUnique: async () => ({ signupsEnabled: true }) },
     // No relay: the verification mail sign-up asks for is skipped, not sent.
     instanceMail: { findUnique: async () => null },
+    // No identity provider either, so single sign-on registers nothing.
+    instanceSso: { findUnique: async () => null },
   },
 }));
 
-import { auth } from "@/auth";
+import { getAuth } from "@/auth";
 
 const PASSWORD = "test123456";
 const TEST_HANDLE = "testuser";
@@ -67,7 +69,7 @@ type UsernameAuthClient = {
 async function buildInstance() {
   // Swap the prisma adapter for the harness database; every other option is
   // exactly what production runs.
-  const { database: _adapter, ...productionOptions } = auth.options;
+  const { database: _adapter, ...productionOptions } = (await getAuth()).options;
 
   // The harness types `testUser` from better-auth's core user model, which has
   // no username  but the plugin refuses to create the test account without one.

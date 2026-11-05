@@ -50,7 +50,7 @@ export async function assertSignupsAllowed(
   if ((await prisma.user.count()) === 0) return;
 
   if (context?.path === SSO_CALLBACK_PATH) {
-    if (email && isSsoEmailAllowed(email)) return;
+    if (email && (await isSsoEmailAllowed(email))) return;
     throw APIError.from("FORBIDDEN", SSO_SIGNUP_REFUSED);
   }
 

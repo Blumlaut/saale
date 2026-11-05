@@ -23,7 +23,13 @@ import {
   signInHandle,
 } from "@/lib/auth/sign-in-throttle";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
-import { SSO_CALLBACK_PATH, ssoOidcPlugins, ssoTrustedProviders } from "@/lib/auth/sso";
+import {
+  SSO_CALLBACK_PATH,
+  loadSsoConfig,
+  ssoOidcPlugins,
+  ssoTrustedProviders,
+  type SsoOidcConfig,
+} from "@/lib/auth/sso";
 import { sendPasswordResetMail, sendVerificationMail } from "@/lib/email/instance-mail-messages";
 import {
   USERNAME_MAX_LENGTH,
@@ -51,174 +57,196 @@ function trustedOriginsFromEnv(): string[] {
     .filter(Boolean);
 }
 
-export const auth = betterAuth({
-  database: prismaAdapter(prisma, {
-    provider: "postgresql",
-  }),
-  // A preview hostname is under the deployment's own domain and changes per
-  // port, so the wildcard is configured once rather than per host.
-  trustedOrigins: trustedOriginsFromEnv(),
-  emailAndPassword: {
-    enabled: true,
-    minPasswordLength: PASSWORD_MIN_LENGTH,
-    maxPasswordLength: PASSWORD_MAX_LENGTH,
-    // A reset link only leaves when the instance has a relay; without one the
-    // request is answered the same way and nothing is sent.
-    sendResetPassword: async ({ user, url }) => {
-      await sendPasswordResetMail(user.email, url);
-    },
-  },
-  emailVerification: {
-    // Asked for on sign-up, and sent again on request. Signing in does not
-    // wait for it: an instance has to be usable before it has a mail server.
-    sendOnSignUp: true,
-    sendVerificationEmail: async ({ user, url }) => {
-      await sendVerificationMail(user.email, url);
-    },
-  },
-  socialProviders: {},
-  account: {
-    accountLinking: {
+function createAuth(sso: SsoOidcConfig | null) {
+  return betterAuth({
+    database: prismaAdapter(prisma, {
+      provider: "postgresql",
+    }),
+    // A preview hostname is under the deployment's own domain and changes per
+    // port, so the wildcard is configured once rather than per host.
+    trustedOrigins: trustedOriginsFromEnv(),
+    emailAndPassword: {
       enabled: true,
-      // A company's identity provider owns the addresses it reports, so a
-      // sign-in for an existing account's email links to it.
-      trustedProviders: ssoTrustedProviders(),
-      // A local row's flag means something only once the instance can send a
-      // verification mail, and an account made before it had a relay carries no
-      // such proof. The identity provider is what vouches for the address.
-      requireLocalEmailVerified: false,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
+      maxPasswordLength: PASSWORD_MAX_LENGTH,
+      // A reset link only leaves when the instance has a relay; without one the
+      // request is answered the same way and nothing is sent.
+      sendResetPassword: async ({ user, url }) => {
+        await sendPasswordResetMail(user.email, url);
+      },
     },
-  },
-  // Security settings
-  advanced: {
-    defaultCookieAttributes: sessionCookieAttributes(),
-  },
-  // Session settings. one year, sliding: activity older than the refresh
-  // window resets the expiry to the full TTL (see session-config.ts).
-  session: {
-    expiresIn: SESSION_EXPIRES_IN_SECONDS,
-    updateAge: SESSION_REFRESH_WINDOW_SECONDS,
-  },
-  // The limit keys on the client IP, and the e2e suite reaches the server from
-  // one address: every run would answer 429 halfway through.
-  rateLimit: { enabled: process.env.AUTH_RATE_LIMIT !== "off" },
-  hooks: {
-    before: createAuthMiddleware(async (ctx) => {
-      // Counted against the account, because the per-address limit believes a
-      // header the caller sets.
-      const signIn = signInHandle(ctx.path, ctx.body);
-      if (signIn && (await isSignInLockedOut(signIn))) {
-        throw APIError.from("TOO_MANY_REQUESTS", SIGN_IN_LOCKED_ERROR);
-      }
+    emailVerification: {
+      // Asked for on sign-up, and sent again on request. Signing in does not
+      // wait for it: an instance has to be usable before it has a mail server.
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendVerificationMail(user.email, url);
+      },
+    },
+    socialProviders: {},
+    account: {
+      accountLinking: {
+        enabled: true,
+        // A company's identity provider owns the addresses it reports, so a
+        // sign-in for an existing account's email links to it.
+        trustedProviders: ssoTrustedProviders(sso),
+        // A local row's flag means something only once the instance can send a
+        // verification mail, and an account made before it had a relay carries no
+        // such proof. The identity provider is what vouches for the address.
+        requireLocalEmailVerified: false,
+      },
+    },
+    // Security settings
+    advanced: {
+      defaultCookieAttributes: sessionCookieAttributes(),
+    },
+    // Session settings. one year, sliding: activity older than the refresh
+    // window resets the expiry to the full TTL (see session-config.ts).
+    session: {
+      expiresIn: SESSION_EXPIRES_IN_SECONDS,
+      updateAge: SESSION_REFRESH_WINDOW_SECONDS,
+    },
+    // The limit keys on the client IP, and the e2e suite reaches the server from
+    // one address: every run would answer 429 halfway through.
+    rateLimit: { enabled: process.env.AUTH_RATE_LIMIT !== "off" },
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        // Counted against the account, because the per-address limit believes a
+        // header the caller sets.
+        const signIn = signInHandle(ctx.path, ctx.body);
+        if (signIn && (await isSignInLockedOut(signIn))) {
+          throw APIError.from("TOO_MANY_REQUESTS", SIGN_IN_LOCKED_ERROR);
+        }
 
-      // The admin plugin validates role names and authorizes from `AUTH_ROLES`,
-      // which is loaded here so a custom role is never "non-existent".
-      await loadRoleDefinitions();
+        // The admin plugin validates role names and authorizes from `AUTH_ROLES`,
+        // which is loaded here so a custom role is never "non-existent".
+        await loadRoleDefinitions();
 
-      // The instance's minimum sits above better-auth's own, so a password is
-      // measured against it before the endpoint writes it.
-      const passwordField = PASSWORD_FIELD_BY_PATH[ctx.path];
-      if (passwordField) {
-        const password = (ctx.body as Record<string, unknown> | undefined)?.[passwordField];
-        if (typeof password === "string") {
-          const problem = accountPolicyProblem(password, await getAccountPolicy());
-          if (problem) {
-            throw APIError.from("BAD_REQUEST", { code: "PASSWORD_TOO_SHORT", message: problem });
+        // The instance's minimum sits above better-auth's own, so a password is
+        // measured against it before the endpoint writes it.
+        const passwordField = PASSWORD_FIELD_BY_PATH[ctx.path];
+        if (passwordField) {
+          const password = (ctx.body as Record<string, unknown> | undefined)?.[passwordField];
+          if (typeof password === "string") {
+            const problem = accountPolicyProblem(password, await getAccountPolicy());
+            if (problem) {
+              throw APIError.from("BAD_REQUEST", { code: "PASSWORD_TOO_SHORT", message: problem });
+            }
           }
         }
-      }
 
-      // Usernames are the login handle, so a credential account created without
-      // one could not be signed into. both entry points must carry it.
-      // Format and uniqueness are enforced by the username plugin itself.
-      const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
-      if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;
+        // Usernames are the login handle, so a credential account created without
+        // one could not be signed into. both entry points must carry it.
+        // Format and uniqueness are enforced by the username plugin itself.
+        const createdByAdmin = ctx.path === ADMIN_CREATE_USER_PATH;
+        if (ctx.path !== "/sign-up/email" && !createdByAdmin) return;
 
-      const body = ctx.body as { username?: unknown; data?: { username?: unknown } } | undefined;
-      const handle = createdByAdmin ? body?.data?.username : body?.username;
-      if (typeof handle !== "string" || normalizeUsername(handle).length === 0) {
-        throw APIError.from("BAD_REQUEST", USERNAME_REQUIRED_ERROR);
-      }
-    }),
-    after: createAuthMiddleware(async (ctx) => {
-      await recordRefusedSignIn(ctx.path, ctx.body, ctx.context.returned);
-    }),
-  },
-  databaseHooks: {
-    user: {
-      create: {
-        before: async (user, context) => {
-          // Applied here rather than in a middleware so it covers every path
-          // that creates a user, whether or not a form was involved.
-          await assertSignupsAllowed(context, user.email);
+        const body = ctx.body as { username?: unknown; data?: { username?: unknown } } | undefined;
+        const handle = createdByAdmin ? body?.data?.username : body?.username;
+        if (typeof handle !== "string" || normalizeUsername(handle).length === 0) {
+          throw APIError.from("BAD_REQUEST", USERNAME_REQUIRED_ERROR);
+        }
+      }),
+      after: createAuthMiddleware(async (ctx) => {
+        await recordRefusedSignIn(ctx.path, ctx.body, ctx.context.returned);
+      }),
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user, context) => {
+            // Applied here rather than in a middleware so it covers every path
+            // that creates a user, whether or not a form was involved.
+            await assertSignupsAllowed(context, user.email);
 
-          // An address an admin typed, and one the company's identity provider
-          // reported, are both vouched for by someone; neither waits on a
-          // verification mail.
-          if (context?.path === ADMIN_CREATE_USER_PATH || context?.path === SSO_CALLBACK_PATH) {
-            return { data: { ...user, emailVerified: true } };
-          }
+            // An address an admin typed, and one the company's identity provider
+            // reported, are both vouched for by someone; neither waits on a
+            // verification mail.
+            if (context?.path === ADMIN_CREATE_USER_PATH || context?.path === SSO_CALLBACK_PATH) {
+              return { data: { ...user, emailVerified: true } };
+            }
+          },
+          after: async (user) => {
+            const count = await prisma.user.count();
+            if (count <= 1) {
+              await prisma.user.update({
+                where: { id: user.id },
+                data: { role: "admin" },
+              });
+            }
+          },
         },
-        after: async (user) => {
-          const count = await prisma.user.count();
-          if (count <= 1) {
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { role: "admin" },
-            });
-          }
+        update: {
+          // Sign out every device that never passed the 2FA challenge when the
+          // user enables two-factor; the enabling browser is re-issued a session
+          // by the plugin immediately afterwards.
+          after: async (user, context) => {
+            await revokeSessionsOnTwoFactorEnable(user, context);
+          },
+        },
+        delete: {
+          // The user's directory and container are outside the database, so the
+          // cascade does not reach them.
+          after: async (user) => {
+            await destroyUserSandbox(user.id);
+          },
         },
       },
-      update: {
-        // Sign out every device that never passed the 2FA challenge when the
-        // user enables two-factor; the enabling browser is re-issued a session
-        // by the plugin immediately afterwards.
-        after: async (user, context) => {
-          await revokeSessionsOnTwoFactorEnable(user, context);
-        },
-      },
-      delete: {
-        // The user's directory and container are outside the database, so the
-        // cascade does not reach them.
-        after: async (user) => {
-          await destroyUserSandbox(user.id);
+      account: {
+        create: {
+          // A Telegram login is also a link: the account row is the first moment
+          // the Saale user and the Telegram identity belong together, and the
+          // bot routes messages by that link, not by the session.
+          after: async (account) => {
+            await linkTelegramFromOidcLogin(account);
+          },
         },
       },
     },
-    account: {
-      create: {
-        // A Telegram login is also a link: the account row is the first moment
-        // the Saale user and the Telegram identity belong together, and the
-        // bot routes messages by that link, not by the session.
-        after: async (account) => {
-          await linkTelegramFromOidcLogin(account);
-        },
-      },
-    },
-  },
-  plugins: [
-    admin({
-      defaultRole: "user",
-      adminRoles: ["admin"],
-      ac: saaleAccessControl,
-      roles: AUTH_ROLES,
-    }),
-    twoFactor({
-      issuer: "Saale",
-    }),
-    username({
-      minUsernameLength: USERNAME_MIN_LENGTH,
-      maxUsernameLength: USERNAME_MAX_LENGTH,
-      usernameValidator: isValidUsername,
-      usernameNormalization: normalizeUsername,
-      // Validate the stored handle rather than the raw input: normalization
-      // trims and lowercases, so `Ada.Lovelace` and ` ada.lovelace ` collide.
-      validationOrder: { username: "post-normalization" },
-      // `name` already carries the handle as typed; no second display field.
-      displayUsername: false,
-    }),
-    // Absent (no provider, no login) unless the instance has OIDC credentials.
-    ...telegramOidcPlugins(),
-    ...ssoOidcPlugins(),
-  ],
-});
+    plugins: [
+      admin({
+        defaultRole: "user",
+        adminRoles: ["admin"],
+        ac: saaleAccessControl,
+        roles: AUTH_ROLES,
+      }),
+      twoFactor({
+        issuer: "Saale",
+      }),
+      username({
+        minUsernameLength: USERNAME_MIN_LENGTH,
+        maxUsernameLength: USERNAME_MAX_LENGTH,
+        usernameValidator: isValidUsername,
+        usernameNormalization: normalizeUsername,
+        // Validate the stored handle rather than the raw input: normalization
+        // trims and lowercases, so `Ada.Lovelace` and ` ada.lovelace ` collide.
+        validationOrder: { username: "post-normalization" },
+        // `name` already carries the handle as typed; no second display field.
+        displayUsername: false,
+      }),
+      // Absent (no provider, no login) unless the instance has OIDC credentials.
+      ...telegramOidcPlugins(),
+      ...ssoOidcPlugins(sso),
+    ],
+  });
+}
+
+export type Auth = ReturnType<typeof createAuth>;
+
+let built: { version: number; auth: Auth } | null = null;
+
+/**
+ * The auth instance, rebuilt when the panel's single sign-on settings change.
+ *
+ * better-auth registers its providers when the instance is created, so a
+ * provider configured in the panel can only reach a freshly built one. Sessions
+ * live in the database, so rebuilding costs a request nothing.
+ */
+export async function getAuth(): Promise<Auth> {
+  const { config, version } = await loadSsoConfig();
+  if (built?.version === version) return built.auth;
+
+  const auth = createAuth(config);
+  built = { version, auth };
+  return auth;
+}
