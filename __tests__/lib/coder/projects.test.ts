@@ -419,6 +419,31 @@ describe("listProjects", () => {
       },
     ]);
   });
+
+  it("lists the projects without chats below the ones that have them", async () => {
+    const project = (id: string, chats: number) => ({
+      id,
+      name: id,
+      slug: id,
+      repoPath: `projects/${id}`,
+      defaultBranch: "main",
+      chatMode: "worktree",
+      worktrees: [],
+      _count: { chats },
+      chats: [],
+    });
+    // Newest first, as the query hands them over: an empty project on top.
+    mockProjectFindMany.mockResolvedValue([
+      project("fresh", 0),
+      project("busy", 2),
+      project("idle", 0),
+      project("working", 1),
+    ]);
+
+    const projects = await listProjects(USER);
+
+    expect(projects.map((entry) => entry.id)).toEqual(["busy", "working", "fresh", "idle"]);
+  });
 });
 
 describe("getProject", () => {

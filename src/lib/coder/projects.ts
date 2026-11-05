@@ -398,11 +398,14 @@ function mapChat(row: ChatRow): CoderProjectChat {
 }
 
 /**
- * The user's projects, most recently touched first.
+ * The user's projects, most recently touched first, the empty ones last.
  *
  * `chats` is the fold under each project: the latest few, so the usual way back
  * into work is one click. `_count` decides whether the project has more than
  * that, and the project row is the way to the rest.
+ *
+ * A project without chats is not in flight, so it waits below the ones that
+ * are. It takes its place in the returned order as soon as a chat lands on it.
  */
 export async function listProjects(userId: string): Promise<CoderProjectSummary[]> {
   const projects = await prisma.coderProject.findMany({
@@ -425,7 +428,7 @@ export async function listProjects(userId: string): Promise<CoderProjectSummary[
     },
   });
 
-  return projects.map((project) => ({
+  const summaries = projects.map((project) => ({
     id: project.id,
     name: project.name,
     slug: project.slug,
@@ -437,6 +440,11 @@ export async function listProjects(userId: string): Promise<CoderProjectSummary[
     lastActivityAt: project.chats[0]?.lastActivityAt ?? null,
     chats: project.chats.map(mapChat),
   }));
+
+  return [
+    ...summaries.filter((project) => project.chatCount > 0),
+    ...summaries.filter((project) => project.chatCount === 0),
+  ];
 }
 
 /** A project and its chats, or null when it is not this user's. */
