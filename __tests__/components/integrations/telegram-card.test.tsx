@@ -39,6 +39,7 @@ function renderBox(overrides: Partial<Parameters<typeof TelegramBox>[0]> = {}) {
   const onUnlink = vi.fn();
   const onLink = vi.fn();
   const onRemoveChat = vi.fn();
+  const onToolNoticesChange = vi.fn();
 
   render(
     <TelegramBox
@@ -50,11 +51,15 @@ function renderBox(overrides: Partial<Parameters<typeof TelegramBox>[0]> = {}) {
       onUnlink={onUnlink}
       onLink={onLink}
       onRemoveChat={onRemoveChat}
+      toolNotices={false}
+      noticesDisabled={false}
+      noticesSaving={false}
+      onToolNoticesChange={onToolNoticesChange}
       {...overrides}
     />,
   );
 
-  return { onUnlink, onLink, onRemoveChat };
+  return { onUnlink, onLink, onRemoveChat, onToolNoticesChange };
 }
 
 function renderPanel(overrides: Partial<Parameters<typeof TelegramLinkPanel>[0]> = {}) {
@@ -107,6 +112,20 @@ describe("TelegramBox", () => {
     expect(screen.getByRole("button", { name: /Link Telegram/ })).toBeInTheDocument();
     // No menu or account details while unlinked.
     expect(screen.queryByRole("button", { name: /Unlink/ })).not.toBeInTheDocument();
+  });
+
+  it("toggles tool call notices for a linked account", () => {
+    const { onToolNoticesChange } = renderBox({ toolNotices: false });
+
+    fireEvent.click(screen.getByRole("switch", { name: /Tool call notices/ }));
+
+    expect(onToolNoticesChange).toHaveBeenCalledWith(true, expect.anything());
+  });
+
+  it("hides the notice switch while nothing is linked", () => {
+    renderBox({ link: null });
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 
   it("unlinks through the row menu", async () => {

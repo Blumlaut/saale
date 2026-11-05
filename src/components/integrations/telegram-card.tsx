@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +57,10 @@ export function TelegramBox({
   onUnlink,
   onLink,
   onRemoveChat,
+  toolNotices,
+  noticesDisabled,
+  noticesSaving,
+  onToolNoticesChange,
 }: {
   link: TelegramLink | null;
   bot: TelegramBotStatus;
@@ -67,6 +73,13 @@ export function TelegramBox({
   /** Opens the link dialog. first link or relink, the panel adapts. */
   onLink: () => void;
   onRemoveChat: (chatId: string) => void;
+  /** Whether a line goes out for every tool call. */
+  toolNotices: boolean;
+  /** True while the settings are still loading. */
+  noticesDisabled: boolean;
+  /** True while the last change is on its way to the server. */
+  noticesSaving: boolean;
+  onToolNoticesChange: (on: boolean) => void;
 }) {
   return (
     <IntegrationBox
@@ -119,6 +132,26 @@ export function TelegramBox({
           <Link2 className="mr-2 h-4 w-4" />
           Link Telegram
         </Button>
+      )}
+
+      {link && (
+        <div className="mt-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Label htmlFor="telegram-tool-notices">Tool call notices</Label>
+            <p className="text-muted-foreground mt-0.5 text-xs">
+              Post a line for every tool the agent runs, above its answer.
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-2 pt-1">
+            {noticesSaving && <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />}
+            <Switch
+              id="telegram-tool-notices"
+              checked={toolNotices}
+              disabled={noticesDisabled}
+              onCheckedChange={onToolNoticesChange}
+            />
+          </span>
+        </div>
       )}
 
       {chats.length > 0 && (
