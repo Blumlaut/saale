@@ -1,15 +1,44 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { searchChatMessages, searchChatSessions, searchUserMail } from "@/lib/search/sources";
 
 /**
- * GET /api/search. Unified fuzzy search across chat and email.
- * Uses pg_trgm similarity for fuzzy matching and relevance ranking.
+ * GET /api/search. Fuzzy search for the ⌘K palette, across chats and email.
+ *
+ * Chats match by title or by anything said in them. Email matches subject,
+ * sender, and body. Every word of the query has to match, and results come back
+ * best first, so a long query narrows instead of flooding.
  *
  * Query params: q (required), type (optional: "all" | "chat" | "email"), limit
  */
+
+interface PaletteResult {
+  type: "chat" | "email";
+  id: string;
+  title: string;
+  snippet: string;
+  date: string;
+  score: number;
+  metadata?: Record<string, unknown>;
+}
+
+/** A body excerpt around the first word that matched, so the snippet shows why. */
+function snippetAround(text: string, query: string, length: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= length) return flat;
+
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const lower = flat.toLowerCase();
+  const at = terms.reduce((best, term) => {
+    const index = lower.indexOf(term);
+    return index >= 0 && (best < 0 || index < best) ? index : best;
+  }, -1);
+
+  const start = at <= 0 ? 0 : Math.max(0, at - Math.floor(length / 3));
+  return `${start > 0 ? "…" : ""}${flat.slice(start, start + length)}…`;
+}
+
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
@@ -23,128 +52,71 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Query parameter 'q' is required" }, { status: 400 });
   }
 
-  const results: Array<{
-    type: "chat" | "email";
-    id: string;
-    title: string;
-    snippet: string;
-    date: string;
-    score: number;
-    metadata?: Record<string, unknown>;
-  }> = [];
-
+  const userId = authResult.user.id;
   const trimmedQuery = query.trim();
+  const results: PaletteResult[] = [];
 
-  // Search chat sessions. fuzzy match on title, rank by similarity
   if (type === "all" || type === "chat") {
-    const chatRows = await prisma.$queryRaw<
-      Array<{
-        id: string;
-        title: string;
-        lastActivityAt: Date;
-        messageCount: number;
-        similarity: number;
-      }>
-    >(
-      Prisma.sql`
-        SELECT
-          "ChatSession".id,
-          "ChatSession".title,
-          COALESCE("ChatSession"."lastActivityAt", "ChatSession"."updatedAt") AS "lastActivityAt",
-          "ChatSession"."messageCount",
-          similarity("ChatSession".title, ${trimmedQuery}) AS similarity
-        FROM "ChatSession"
-        WHERE "ChatSession"."userId" = ${authResult.user.id}
-          AND "ChatSession".title % ${trimmedQuery}
-        ORDER BY similarity DESC
-        LIMIT ${limit}
-      `,
-    );
+    const [sessions, messages] = await Promise.all([
+      searchChatSessions(userId, trimmedQuery, { limit }),
+      searchChatMessages(userId, trimmedQuery, { limit }),
+    ]);
 
-    for (const row of chatRows) {
-      results.push({
+    // One row per chat: the title match and any message hit collapse together.
+    const byId = new Map<string, PaletteResult>();
+
+    for (const session of sessions) {
+      byId.set(session.id, {
         type: "chat",
-        id: row.id,
-        title: row.title,
-        snippet: row.title,
-        date: row.lastActivityAt.toISOString(),
-        score: Number(row.similarity),
-        metadata: {
-          messageCount: row.messageCount,
-        },
+        id: session.id,
+        title: session.title,
+        snippet: session.title,
+        date: session.lastActivityAt.toISOString(),
+        score: session.score,
+        metadata: { messageCount: session.messageCount },
       });
     }
+
+    for (const message of messages) {
+      const existing = byId.get(message.sessionId);
+      if (existing && existing.score >= message.score) continue;
+
+      byId.set(message.sessionId, {
+        type: "chat",
+        id: message.sessionId,
+        title: message.sessionTitle,
+        snippet: snippetAround(message.content, trimmedQuery, 150),
+        date: message.createdAt.toISOString(),
+        score: message.score,
+        metadata: { messageCount: existing?.metadata?.messageCount },
+      });
+    }
+
+    results.push(...byId.values());
   }
 
-  // Search emails. fuzzy match across subject/from/body, rank by weighted similarity
   if (type === "all" || type === "email") {
-    const emailRows = await prisma.$queryRaw<
-      Array<{
-        id: string;
-        subject: string;
-        fromName: string | null;
-        fromEmail: string;
-        bodyPreview: string | null;
-        date: Date;
-        folder: string;
-        isRead: boolean;
-        score: number;
-      }>
-    >(
-      Prisma.sql`
-        SELECT
-          "EmailMessage".id,
-          "EmailMessage".subject,
-          "EmailMessage"."fromName",
-          "EmailMessage"."fromEmail",
-          "EmailMessage"."bodyPreview",
-          "EmailMessage".date,
-          "EmailMessage".folder,
-          "EmailMessage"."isRead",
-          (
-            similarity("EmailMessage".subject, ${trimmedQuery}) * 3.0
-            + similarity("EmailMessage"."fromName", ${trimmedQuery}) * 1.5
-            + similarity("EmailMessage"."fromEmail", ${trimmedQuery}) * 1.5
-            + similarity(COALESCE("EmailMessage"."bodyPreview", ''), ${trimmedQuery}) * 1.0
-          ) AS score
-        FROM "EmailMessage"
-        JOIN "EmailAccount" ON "EmailMessage"."accountId" = "EmailAccount".id
-        WHERE "EmailAccount"."userId" = ${authResult.user.id}
-          AND (
-            "EmailMessage".subject % ${trimmedQuery}
-            OR "EmailMessage"."fromName" % ${trimmedQuery}
-            OR "EmailMessage"."fromEmail" % ${trimmedQuery}
-            OR COALESCE("EmailMessage"."bodyPreview", '') % ${trimmedQuery}
-          )
-        ORDER BY score DESC
-        LIMIT ${limit}
-      `,
-    );
+    const emails = await searchUserMail(userId, trimmedQuery, { limit });
 
-    for (const row of emailRows) {
-      const preview = row.bodyPreview ?? "";
-      const snippet =
-        `${row.fromName || row.fromEmail}: ` +
-        preview.slice(0, 150) +
-        (preview.length >= 150 ? "..." : "");
-
+    for (const email of emails) {
+      const preview = email.bodyPreview ?? "";
       results.push({
         type: "email",
-        id: row.id,
-        title: row.subject || "(no subject)",
-        snippet,
-        date: row.date.toISOString(),
-        score: Number(row.score),
+        id: email.id,
+        title: email.subject || "(no subject)",
+        snippet: `${email.fromName || email.fromEmail}: ${snippetAround(preview, trimmedQuery, 150)}`,
+        date: email.date.toISOString(),
+        score: email.score,
         metadata: {
-          from: row.fromName || row.fromEmail,
-          folder: row.folder,
-          read: row.isRead,
+          from: email.fromName || email.fromEmail,
+          folder: email.folder,
+          read: email.isRead,
+          accountId: email.accountId,
         },
       });
     }
   }
 
-  // Sort by score descending (best matches first)
   results.sort((a, b) => b.score - a.score);
 
   return NextResponse.json({

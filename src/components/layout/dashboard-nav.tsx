@@ -42,6 +42,7 @@ interface SearchResult {
   title: string;
   snippet: string;
   date: string;
+  metadata?: { accountId?: string } | undefined;
 }
 
 export function DashboardNav({ workspaceName }: { workspaceName: string }) {
@@ -155,7 +156,10 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
     if (result.type === "chat") {
       router.push(`/dashboard/chat/${result.id}`);
     } else if (result.type === "email") {
-      router.push("/dashboard/mail");
+      const accountId = result.metadata?.accountId;
+      const params = new URLSearchParams({ msg: result.id });
+      if (typeof accountId === "string") params.set("accountId", accountId);
+      router.push(`/dashboard/mail?${params.toString()}`);
     }
   };
 
