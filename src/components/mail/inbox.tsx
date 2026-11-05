@@ -79,7 +79,7 @@ export function Inbox({
         });
         if (activeAccountId) params.set("accountId", activeAccountId);
         if (folder) params.set("folder", folder);
-        if (debouncedSearch) params.set("q", debouncedSearch);
+        if (debouncedSearch) params.set("search", debouncedSearch);
         if (tagFilter) params.set("tag", tagFilter);
 
         const data = await fetchJson<{
@@ -89,7 +89,9 @@ export function Inbox({
 
         setMessages(append ? (prev) => [...prev, ...data.messages] : data.messages);
         setHasMore(data.hasMore);
-        if (append) setOffset((prev) => prev + data.messages.length);
+        // `offset` is how much the next page skips, so a fresh load sets it to
+        // what it just loaded.
+        setOffset(append ? (prev) => prev + data.messages.length : data.messages.length);
       } catch (err) {
         console.error("Failed to load messages:", err);
       } finally {
@@ -276,7 +278,7 @@ export function Inbox({
     setHasMore(false);
     loadMessages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAccountId, folder, tagFilter]);
+  }, [activeAccountId, folder, tagFilter, debouncedSearch]);
 
   // Initial load
   useEffect(() => {

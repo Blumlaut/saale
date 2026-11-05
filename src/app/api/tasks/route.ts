@@ -46,14 +46,10 @@ export async function GET(request: NextRequest) {
   }
   orderBy.push({ order: "asc" as const });
 
-  const [tasks, total] = await Promise.all([
-    prisma.task.findMany({ where, orderBy, take: limit, skip: offset }),
-    prisma.task.count({ where }),
-  ]);
+  const tasks = await prisma.task.findMany({ where, orderBy, take: limit, skip: offset });
 
   return NextResponse.json({
     tasks: tasks.map(taskToResponse),
-    total,
     limit,
     offset,
   });

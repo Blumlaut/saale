@@ -103,30 +103,32 @@ export async function GET(request: NextRequest) {
     ];
   }
 
-  const [messages, total] = await Promise.all([
-    prisma.emailMessage.findMany({
-      where,
-      orderBy: { date: "desc" },
-      take: limit,
-      skip: offset,
-      select: {
-        id: true,
-        uid: true,
-        fromName: true,
-        fromEmail: true,
-        to: true,
-        subject: true,
-        date: true,
-        bodyPreview: true,
-        isRead: true,
-        isStarred: true,
-        folder: true,
-        tags: true,
-        accountId: true,
-      },
-    }),
-    prisma.emailMessage.count({ where }),
-  ]);
+  const rows = await prisma.emailMessage.findMany({
+    where,
+    orderBy: { date: "desc" },
+    take: limit + 1,
+    skip: offset,
+    select: {
+      id: true,
+      uid: true,
+      fromName: true,
+      fromEmail: true,
+      to: true,
+      subject: true,
+      date: true,
+      bodyPreview: true,
+      isRead: true,
+      isStarred: true,
+      folder: true,
+      tags: true,
+      accountId: true,
+    },
+  });
+
+  // One row past the page says another one follows, where a count would scan
+  // the whole mailbox on every scroll.
+  const hasMore = rows.length > limit;
+  const messages = hasMore ? rows.slice(0, limit) : rows;
 
   return NextResponse.json({
     messages: messages.map(
@@ -160,7 +162,6 @@ export async function GET(request: NextRequest) {
         accountId: m.accountId,
       }),
     ),
-    total,
-    hasMore: messages.length > 0 && offset + messages.length < total,
+    hasMore,
   });
 }

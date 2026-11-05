@@ -39,10 +39,16 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | nul
 
 /**
  * GET /api/email/accounts. List user's email accounts
+ *
+ * `?includeFolders=true` adds the folders the account's messages sit in. The
+ * scan behind it reads every message of the account, and the nav asks for this
+ * list on every page, so it is opt-in.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
+
+  const includeFolders = new URL(request.url).searchParams.get("includeFolders") === "true";
 
   const accounts = await prisma.emailAccount.findMany({
     where: { userId: authResult.user.id },
@@ -66,12 +72,16 @@ export async function GET() {
       _count: {
         select: { messages: true },
       },
-      messages: {
-        select: {
-          folder: true,
-        },
-        distinct: ["folder"],
-      },
+      ...(includeFolders
+        ? {
+            messages: {
+              select: {
+                folder: true,
+              },
+              distinct: ["folder" as const],
+            },
+          }
+        : {}),
     },
   });
 
@@ -94,7 +104,7 @@ export async function GET() {
         createdAt: Date;
         updatedAt: Date;
         _count: { messages: number };
-        messages: { folder: string }[];
+        messages?: { folder: string }[];
       }) => ({
         id: a.id,
         email: a.email,
@@ -111,7 +121,7 @@ export async function GET() {
         createdAt: a.createdAt.toISOString(),
         updatedAt: a.updatedAt.toISOString(),
         messageCount: a._count.messages,
-        folders: a.messages.map((m) => m.folder),
+        folders: a.messages?.map((m) => m.folder) ?? [],
         remoteFolders: (a.cachedFolders as string[]) ?? [],
       }),
     ),

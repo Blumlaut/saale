@@ -168,7 +168,7 @@ describe("GET /api/email/accounts", () => {
       },
     ] as never);
 
-    const response = await GET();
+    const response = await GET(listRequest());
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { accounts: Array<Record<string, unknown>> };
@@ -178,7 +178,48 @@ describe("GET /api/email/accounts", () => {
       lastSyncErrorAt: "2026-01-01T10:00:00.000Z",
     });
   });
+
+  it("only scans the account's messages for folders when asked", async () => {
+    // The nav asks for this list on every page, and the folder scan reads every
+    // message of the account.
+    vi.mocked(prisma.emailAccount.findMany).mockResolvedValue([] as never);
+
+    await GET(listRequest());
+
+    const select = vi.mocked(prisma.emailAccount.findMany).mock.calls[0]?.[0]?.select;
+    expect(select).not.toHaveProperty("messages");
+  });
+
+  it("includes the folders when the inbox asks for them", async () => {
+    mockOwnerFolderRows();
+
+    const response = await GET(listRequest("true"));
+
+    const body = (await response.json()) as { accounts: Array<{ folders: string[] }> };
+    expect(body.accounts[0]?.folders).toEqual(["INBOX", "Sent"]);
+  });
 });
+
+function listRequest(includeFolders?: string) {
+  const query = includeFolders ? `?includeFolders=${includeFolders}` : "";
+  return new Request(
+    `http://localhost/api/email/accounts${query}`,
+  ) as never as import("next/server").NextRequest;
+}
+
+function mockOwnerFolderRows() {
+  vi.mocked(prisma.emailAccount.findMany).mockResolvedValue([
+    {
+      ...createdAccount,
+      cachedFolders: null,
+      lastSyncErrorAt: null,
+      createdAt: new Date("2026-01-01T08:00:00Z"),
+      updatedAt: new Date("2026-01-01T09:00:00Z"),
+      _count: { messages: 3 },
+      messages: [{ folder: "INBOX" }, { folder: "Sent" }],
+    },
+  ] as never);
+}
 
 function mockOwnerOk() {
   vi.mocked(auth.requireAccountOwner).mockResolvedValue({
