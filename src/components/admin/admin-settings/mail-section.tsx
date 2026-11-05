@@ -164,7 +164,7 @@ export function MailSection() {
             >
               <Input
                 id="mail-host"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.host}
                 onChange={(event) => edit({ host: event.target.value })}
                 placeholder="smtp.example.com"
@@ -186,7 +186,7 @@ export function MailSection() {
                 value={draft.security}
                 onValueChange={(security) => edit({ security: security ?? "starttls" })}
               >
-                <SelectTrigger id="mail-security" className="h-8 w-40">
+                <SelectTrigger id="mail-security" className="h-8 w-full sm:w-40">
                   <SelectValue>{SECURITY_LABELS[draft.security]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -206,7 +206,7 @@ export function MailSection() {
             >
               <Input
                 id="mail-username"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 autoComplete="off"
                 value={draft.username}
                 onChange={(event) => edit({ username: event.target.value })}
@@ -225,7 +225,7 @@ export function MailSection() {
               <Input
                 id="mail-password"
                 type="password"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 autoComplete="new-password"
                 value={draft.password}
                 onChange={(event) => edit({ password: event.target.value })}
@@ -242,7 +242,7 @@ export function MailSection() {
             >
               <Input
                 id="mail-from"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.fromAddress}
                 onChange={(event) => edit({ fromAddress: event.target.value })}
                 placeholder="saale@example.com"
@@ -256,7 +256,7 @@ export function MailSection() {
             >
               <Input
                 id="mail-from-name"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.fromName}
                 onChange={(event) => edit({ fromName: event.target.value })}
               />

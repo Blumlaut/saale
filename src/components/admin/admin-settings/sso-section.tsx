@@ -138,7 +138,7 @@ export function SsoSection() {
             >
               <Input
                 id="sso-issuer"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.issuer}
                 onChange={(event) => edit({ issuer: event.target.value })}
                 placeholder="https://login.example.com"
@@ -152,7 +152,7 @@ export function SsoSection() {
             >
               <Input
                 id="sso-client-id"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 autoComplete="off"
                 value={draft.clientId}
                 onChange={(event) => edit({ clientId: event.target.value })}
@@ -171,7 +171,7 @@ export function SsoSection() {
               <Input
                 id="sso-client-secret"
                 type="password"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 autoComplete="new-password"
                 value={draft.clientSecret}
                 onChange={(event) => edit({ clientSecret: event.target.value })}
@@ -186,7 +186,7 @@ export function SsoSection() {
             >
               <Input
                 id="sso-name"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.name}
                 onChange={(event) => edit({ name: event.target.value })}
                 placeholder={SSO_DEFAULT_NAME}
@@ -202,7 +202,7 @@ export function SsoSection() {
             >
               <Input
                 id="sso-domains"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.allowedDomains}
                 onChange={(event) => edit({ allowedDomains: event.target.value })}
                 placeholder="example.com, example.org"
@@ -216,7 +216,7 @@ export function SsoSection() {
             >
               <Input
                 id="sso-scopes"
-                className="h-8 w-56"
+                className="h-8 w-full sm:w-56"
                 value={draft.scopes}
                 onChange={(event) => edit({ scopes: event.target.value })}
               />

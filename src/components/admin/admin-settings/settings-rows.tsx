@@ -20,14 +20,14 @@ export function SettingsRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <div className="min-w-0">
         <Label htmlFor={htmlFor} className="text-sm font-medium">
           {label}
         </Label>
         {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="w-full sm:w-auto sm:shrink-0">{children}</div>
     </div>
   );
 }
@@ -55,7 +55,7 @@ export function NumberRow({
 }) {
   return (
     <SettingsRow htmlFor={id} label={label} description={description}>
-      <div className="flex items-center gap-2">
+      <div className="flex w-full items-center gap-2 sm:w-auto">
         <Input
           id={id}
           type="number"
@@ -67,7 +67,7 @@ export function NumberRow({
           onBlur={() =>
             onChange(String(Math.min(Math.max(Math.round(Number(value) || min), min), max)))
           }
-          className="h-8 w-24 text-sm"
+          className="h-8 w-full text-sm sm:w-24"
         />
         {unit ? <span className="text-muted-foreground text-xs">{unit}</span> : null}
       </div>
