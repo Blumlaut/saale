@@ -1,6 +1,6 @@
 import { APIError } from "better-auth/api";
 import { prisma } from "@/lib/db";
-import { SSO_CALLBACK_PATH, isSsoEmailAllowed } from "@/lib/auth/sso";
+import { isSsoCallbackPath, isSsoEmailAllowed, providerIdFromCallbackPath } from "@/lib/auth/sso";
 import { SSO_SIGNUP_REFUSED } from "@/lib/auth/sso-login";
 
 /**
@@ -49,8 +49,9 @@ export async function assertSignupsAllowed(
   if (context?.path === ADMIN_CREATE_USER_PATH) return;
   if ((await prisma.user.count()) === 0) return;
 
-  if (context?.path === SSO_CALLBACK_PATH) {
-    if (email && (await isSsoEmailAllowed(email))) return;
+  if (isSsoCallbackPath(context?.path)) {
+    const providerId = providerIdFromCallbackPath(context?.path);
+    if (email && providerId && (await isSsoEmailAllowed(email, providerId))) return;
     throw APIError.from("FORBIDDEN", SSO_SIGNUP_REFUSED);
   }
 

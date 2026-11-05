@@ -21,7 +21,8 @@ import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { isTotpCode } from "@/lib/auth/totp";
 import { TELEGRAM_OIDC_PROVIDER_ID, telegramLoginError } from "@/lib/telegram/login";
-import { SSO_OIDC_PROVIDER_ID, ssoLoginError } from "@/lib/auth/sso-login";
+import { ssoLoginError } from "@/lib/auth/sso-login";
+import { SSO_DEFAULT_NAME, type SsoLoginProvider } from "@/lib/auth/sso-config";
 
 const DASHBOARD_URL = "/dashboard/chat";
 
@@ -31,10 +32,8 @@ export interface TelegramLoginOptions {
 }
 
 export interface SsoLoginOptions {
-  /** Whether this instance has an identity provider configured. */
-  enabled: boolean;
-  /** What the provider calls itself, for the button. */
-  name: string;
+  /** The providers this instance offers, one button each. */
+  providers: SsoLoginProvider[];
 }
 
 export interface LoginFormProps {
@@ -178,13 +177,14 @@ function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
   // single sign-on names its provider so its own sentences are shown.
   const [error, setError] = useState(() => {
     const code = searchParams?.get("error");
-    return searchParams?.get("provider") === SSO_OIDC_PROVIDER_ID
-      ? (ssoLoginError(code, { provider: sso.name }) ?? "")
+    const provider = sso.providers.find((option) => option.id === searchParams?.get("provider"));
+    return provider
+      ? (ssoLoginError(code, { provider: provider.name }) ?? "")
       : (telegramLoginError(code, { signupsEnabled }) ?? "");
   });
   const [loading, setLoading] = useState(false);
   const [telegramLoading, setTelegramLoading] = useState(false);
-  const [ssoLoading, setSsoLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState<string | null>(null);
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const { register, handleSubmit } = useForm<{ username: string; password: string }>();
   // A page that redirected a signed-out visitor here, e.g. a chat a browser
@@ -216,17 +216,17 @@ function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
     }
   };
 
-  const onSsoSignIn = async () => {
-    setSsoLoading(true);
+  const onSsoSignIn = async (providerId: string) => {
+    setSsoLoading(providerId);
     setError("");
 
     const { error: signInError } = await authClient.signIn.social({
-      provider: SSO_OIDC_PROVIDER_ID,
+      provider: providerId,
       callbackURL: returnPath,
-      errorCallbackURL: `/auth/login?provider=${SSO_OIDC_PROVIDER_ID}`,
+      errorCallbackURL: `/auth/login?provider=${encodeURIComponent(providerId)}`,
     });
 
-    setSsoLoading(false);
+    setSsoLoading(null);
     if (signInError) {
       setError(signInError.message || "Could not start single sign-on");
     }
@@ -316,7 +316,7 @@ function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
             </form>
 
             {/* The other ways in, when this instance has them set up */}
-            {(sso.enabled || telegram.enabled) && (
+            {(sso.providers.length > 0 || telegram.enabled) && (
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Separator className="flex-1" />
@@ -325,18 +325,21 @@ function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
                 </div>
 
                 <div className="space-y-3">
-                  {sso.enabled && (
+                  {sso.providers.map((provider) => (
                     <Button
+                      key={provider.id}
                       type="button"
                       variant="outline"
                       className="w-full"
-                      disabled={ssoLoading}
-                      onClick={onSsoSignIn}
+                      disabled={ssoLoading !== null}
+                      onClick={() => onSsoSignIn(provider.id)}
                     >
                       <Building2 />
-                      {ssoLoading ? "Opening..." : `Continue with ${sso.name}`}
+                      {ssoLoading === provider.id
+                        ? "Opening..."
+                        : `Continue with ${provider.name || SSO_DEFAULT_NAME}`}
                     </Button>
-                  )}
+                  ))}
 
                   {telegram.enabled && (
                     <Button

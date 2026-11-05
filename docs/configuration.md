@@ -37,19 +37,25 @@ AUTH_TRUSTED_ORIGINS="https://*.preview.example.com"
 
 ## Single sign-on
 
-An instance belongs to one company, so it takes one identity provider. Admin →
-Settings → Single sign-on holds the issuer, the client credentials and the domains a
-new account may come from. The same page shows the redirect URI to register at the
-provider, `<BETTER_AUTH_URL>/api/auth/callback/sso-oidc`.
+Identity providers are set up in the panel, one entry per directory: Admin →
+Settings → Single sign-on. A company can have more than one (employees on Entra,
+contractors on Google), and the login page shows a button for every provider that
+is ready.
 
-Once the issuer and the client pair are stored, the login page offers the button. A
-first sign-in creates an account only for an address whose domain is on the allowed
-list, and that holds whether or not sign-ups are open. With no list, sign-in is for
-accounts that already exist, so an admin still creates each one.
+Each provider carries its own issuer, client credentials and allowed domains, and
+its own redirect URI: `<BETTER_AUTH_URL>/api/auth/callback/sso-<slug>`. The slug is
+generated when the provider is added and never changes, so a rename cannot break
+the registration at the identity provider. The panel shows the exact URI to
+register.
 
-An account whose email the provider reports is linked to the provider on first sign-in,
-which is what lets someone with a password sign in through the company directory
-instead.
+A first sign-in creates an account only for an address whose domain is on that
+provider's allowed list, and that holds whether or not sign-ups are open. With no
+list, sign-in is for accounts that already exist, so an admin still creates each
+one. Switching a provider off keeps its credentials and hides its button.
+
+An account whose email a provider reports is linked to that provider on first
+sign-in, which is what lets someone with a password sign in through the company
+directory instead.
 
 ## Sandbox
 

@@ -1,6 +1,5 @@
 import { areSignupsEnabled } from "@/lib/auth/signups";
-import { getSsoStatus } from "@/lib/auth/sso";
-import { SSO_DEFAULT_NAME } from "@/lib/auth/sso-config";
+import { getSsoLoginProviders } from "@/lib/auth/sso";
 import { getTelegramLoginStatus } from "@/lib/telegram/oidc";
 import { LoginForm } from "./login-form";
 
@@ -11,14 +10,14 @@ import { LoginForm } from "./login-form";
 export default async function LoginPage() {
   const [telegram, sso, signupsEnabled] = await Promise.all([
     getTelegramLoginStatus(),
-    getSsoStatus(),
+    getSsoLoginProviders(),
     areSignupsEnabled(),
   ]);
 
   return (
     <LoginForm
       telegram={{ enabled: telegram.enabled }}
-      sso={{ enabled: sso.configured, name: sso.name || SSO_DEFAULT_NAME }}
+      sso={{ providers: sso }}
       signupsEnabled={signupsEnabled}
     />
   );

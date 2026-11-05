@@ -1,21 +1,25 @@
 /**
- * Single sign-on: what the panel's stored row turns into, and what the login
- * page and the sign-up gate read from it.
+ * Single sign-on: what the panel's stored providers turn into, and what the
+ * login page and the sign-up gate read from them.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockFindUnique, mockUpsert, mockDeleteMany } = vi.hoisted(() => ({
+const { mockFindMany, mockFindUnique, mockCreate, mockUpdate, mockDeleteMany } = vi.hoisted(() => ({
+  mockFindMany: vi.fn(),
   mockFindUnique: vi.fn(),
-  mockUpsert: vi.fn(),
+  mockCreate: vi.fn(),
+  mockUpdate: vi.fn(),
   mockDeleteMany: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     instanceSso: {
+      findMany: (...args: unknown[]) => mockFindMany(...args),
       findUnique: (...args: unknown[]) => mockFindUnique(...args),
-      upsert: (...args: unknown[]) => mockUpsert(...args),
+      create: (...args: unknown[]) => mockCreate(...args),
+      update: (...args: unknown[]) => mockUpdate(...args),
       deleteMany: (...args: unknown[]) => mockDeleteMany(...args),
     },
   },
@@ -24,17 +28,22 @@ vi.mock("@/lib/db", () => ({
 import { _resetKey, decrypt, encrypt } from "@/lib/crypto";
 import {
   buildSsoRedirectUri,
-  clearInstanceSso,
+  createSsoProvider,
   discoveryUrlFor,
-  getSsoStatus,
+  getSsoLoginProviders,
   invalidateSsoConfig,
+  isSsoCallbackPath,
   isSsoEmailAllowed,
+  listSsoProviders,
   loadSsoConfig,
   normalizeDomains,
   normalizeIssuer,
   normalizeScopes,
-  saveInstanceSso,
+  providerIdFromCallbackPath,
+  removeSsoProvider,
   ssoOidcPlugins,
+  ssoProviderCreateSchema,
+  updateSsoProvider,
 } from "@/lib/auth/sso";
 import { SSO_SIGNUP_REFUSED, ssoLoginError } from "@/lib/auth/sso-login";
 
@@ -42,12 +51,13 @@ const TEST_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
-    id: "global",
+    id: "sso-1",
+    slug: "abc12345",
     enabled: true,
     issuer: "https://login.example.com/tenant",
     clientId: "saale",
     encryptedClientSecret: encrypt("secret"),
-    name: "",
+    name: "Company SSO",
     scopes: ["openid", "profile", "email"],
     allowedDomains: [],
     updatedByUserId: "admin-1",
@@ -56,19 +66,20 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** The row the last save asked Prisma to write. */
-function savedRow(): { create: Record<string, unknown>; update: Record<string, unknown> } {
-  const call = mockUpsert.mock.calls.at(-1);
-  if (!call) throw new Error("instanceSso.upsert was not called");
-  return call[0] as { create: Record<string, unknown>; update: Record<string, unknown> };
+function createdRow(): Record<string, unknown> {
+  const call = mockCreate.mock.calls.at(-1);
+  if (!call) throw new Error("instanceSso.create was not called");
+  return (call[0] as { data: Record<string, unknown> }).data;
 }
 
 beforeEach(() => {
   process.env.ENCRYPTION_KEY = TEST_KEY;
   _resetKey();
   invalidateSsoConfig();
+  mockFindMany.mockReset();
   mockFindUnique.mockReset();
-  mockUpsert.mockReset();
+  mockCreate.mockReset();
+  mockUpdate.mockReset();
   mockDeleteMany.mockReset();
 });
 
@@ -131,187 +142,208 @@ describe("normalizeScopes", () => {
   });
 });
 
+describe("callback paths", () => {
+  it("recognises a provider callback and reads its id", () => {
+    expect(isSsoCallbackPath("/callback/sso-abc12345")).toBe(true);
+    expect(providerIdFromCallbackPath("/callback/sso-abc12345")).toBe("sso-abc12345");
+  });
+
+  it("leaves every other path alone", () => {
+    expect(isSsoCallbackPath("/callback/telegram-oidc")).toBe(false);
+    expect(isSsoCallbackPath("/sign-in/social")).toBe(false);
+    expect(isSsoCallbackPath(undefined)).toBe(false);
+    expect(providerIdFromCallbackPath("/callback/telegram-oidc")).toBeNull();
+  });
+});
+
 describe("loadSsoConfig", () => {
-  it("is null until a provider is stored", async () => {
-    mockFindUnique.mockResolvedValue(null);
-    expect((await loadSsoConfig()).config).toBeNull();
+  it("is empty until a provider is stored", async () => {
+    mockFindMany.mockResolvedValue([]);
+    expect((await loadSsoConfig()).providers).toEqual([]);
   });
 
-  it("is null while the switch is off", async () => {
-    mockFindUnique.mockResolvedValue(row({ enabled: false }));
-    expect((await loadSsoConfig()).config).toBeNull();
+  it("drops a provider that is switched off, unfinished, or will not decrypt", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ id: "sso-1", slug: "one" }),
+      row({ id: "sso-2", slug: "two", enabled: false }),
+      row({ id: "sso-3", slug: "three", clientId: "" }),
+      row({ id: "sso-4", slug: "four", encryptedClientSecret: null }),
+      row({ id: "sso-5", slug: "five", encryptedClientSecret: "not-a-ciphertext" }),
+    ]);
+
+    const { providers } = await loadSsoConfig();
+
+    expect(providers.map((provider) => provider.providerId)).toEqual(["sso-one"]);
   });
 
-  it("is null without a client secret", async () => {
-    mockFindUnique.mockResolvedValue(row({ encryptedClientSecret: null }));
-    expect((await loadSsoConfig()).config).toBeNull();
-  });
+  it("reads a stored row into the provider", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ allowedDomains: ["Example.com"], scopes: ["profile"], name: "Contoso" }),
+    ]);
 
-  it("is null when the secret will not decrypt", async () => {
-    mockFindUnique.mockResolvedValue(row({ encryptedClientSecret: "not-a-ciphertext" }));
-    expect((await loadSsoConfig()).config).toBeNull();
-  });
+    const [config] = (await loadSsoConfig()).providers;
 
-  it("reads the stored row into the provider", async () => {
-    mockFindUnique.mockResolvedValue(
-      row({ allowedDomains: ["Example.com"], name: "Company SSO", scopes: ["profile"] }),
-    );
-
-    const { config } = await loadSsoConfig();
-
+    expect(config?.providerId).toBe("sso-abc12345");
     expect(config?.discoveryUrl).toBe(
       "https://login.example.com/tenant/.well-known/openid-configuration",
     );
     expect(config?.clientId).toBe("saale");
     expect(config?.clientSecret).toBe("secret");
-    expect(config?.name).toBe("Company SSO");
+    expect(config?.name).toBe("Contoso");
     expect(config?.scopes).toEqual(["openid", "profile"]);
     expect(config?.allowedDomains).toEqual(["example.com"]);
   });
 
   it("labels an unnamed provider", async () => {
-    mockFindUnique.mockResolvedValue(row());
-    expect((await loadSsoConfig()).config?.name).toBe("Single sign-on");
+    mockFindMany.mockResolvedValue([row({ name: "" })]);
+    expect((await loadSsoConfig()).providers[0]?.name).toBe("Single sign-on");
   });
 
-  it("keeps the same version while the stored row is unchanged", async () => {
-    mockFindUnique.mockResolvedValue(row());
+  it("keeps the same version while the stored list is unchanged", async () => {
+    mockFindMany.mockResolvedValue([row()]);
     const first = await loadSsoConfig();
 
-    const unchanged = await loadSsoConfig();
-    expect(unchanged.version).toBe(first.version);
+    mockFindMany.mockResolvedValue([row()]);
+    expect((await loadSsoConfig()).version).toBe(first.version);
 
-    mockFindUnique.mockResolvedValue(row({ clientId: "other" }));
-    const changed = await loadSsoConfig();
-    expect(changed.version).toBeGreaterThan(first.version);
-  });
-
-  it("bumps the version when the cache is dropped, so auth is rebuilt", async () => {
-    mockFindUnique.mockResolvedValue(row());
-    const first = await loadSsoConfig();
-
-    invalidateSsoConfig();
-
+    mockFindMany.mockResolvedValue([row({ clientId: "other" })]);
     expect((await loadSsoConfig()).version).toBeGreaterThan(first.version);
   });
 
-  it("keeps sign-in up when the row cannot be read", async () => {
-    mockFindUnique.mockRejectedValue(new Error("connection refused"));
-    expect((await loadSsoConfig()).config).toBeNull();
+  it("keeps sign-in up when the list cannot be read", async () => {
+    mockFindMany.mockRejectedValue(new Error("connection refused"));
+    expect((await loadSsoConfig()).providers).toEqual([]);
   });
 });
 
 describe("isSsoEmailAllowed", () => {
-  it("matches the address's domain", async () => {
-    mockFindUnique.mockResolvedValue(row({ allowedDomains: ["example.com"] }));
+  it("matches the address's domain on the provider that asked", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ slug: "one", allowedDomains: ["example.com"] }),
+      row({ slug: "two", allowedDomains: ["other.example"] }),
+    ]);
 
-    expect(await isSsoEmailAllowed("ada@example.com")).toBe(true);
-    expect(await isSsoEmailAllowed("Ada@Example.COM")).toBe(true);
-    expect(await isSsoEmailAllowed("ada@sub.example.com")).toBe(false);
-    expect(await isSsoEmailAllowed("ada@example.com.evil.test")).toBe(false);
+    expect(await isSsoEmailAllowed("ada@example.com", "sso-one")).toBe(true);
+    expect(await isSsoEmailAllowed("Ada@Example.COM", "sso-one")).toBe(true);
+    expect(await isSsoEmailAllowed("ada@sub.example.com", "sso-one")).toBe(false);
+    expect(await isSsoEmailAllowed("ada@example.com.evil.test", "sso-one")).toBe(false);
   });
 
-  it("refuses everything when no domain is listed", async () => {
-    mockFindUnique.mockResolvedValue(row());
-    expect(await isSsoEmailAllowed("ada@example.com")).toBe(false);
+  it("does not carry one provider's list over to another", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ slug: "one", allowedDomains: ["example.com"] }),
+      row({ slug: "two", allowedDomains: [] }),
+    ]);
+
+    expect(await isSsoEmailAllowed("ada@example.com", "sso-two")).toBe(false);
   });
 
-  it("refuses everything when the provider is not configured", async () => {
-    mockFindUnique.mockResolvedValue(null);
-    expect(await isSsoEmailAllowed("ada@example.com")).toBe(false);
+  it("refuses everything for a provider that is not registered", async () => {
+    mockFindMany.mockResolvedValue([row({ slug: "one", allowedDomains: ["example.com"] })]);
+    expect(await isSsoEmailAllowed("ada@example.com", "sso-gone")).toBe(false);
   });
 
   it("refuses an address with no domain", async () => {
-    mockFindUnique.mockResolvedValue(row({ allowedDomains: ["example.com"] }));
-    expect(await isSsoEmailAllowed("ada@")).toBe(false);
-    expect(await isSsoEmailAllowed("ada")).toBe(false);
+    mockFindMany.mockResolvedValue([row({ slug: "one", allowedDomains: ["example.com"] })]);
+    expect(await isSsoEmailAllowed("ada@", "sso-one")).toBe(false);
+    expect(await isSsoEmailAllowed("ada", "sso-one")).toBe(false);
   });
 });
 
 describe("ssoOidcPlugins", () => {
   it("registers nothing without a provider", () => {
-    expect(ssoOidcPlugins(null)).toEqual([]);
+    expect(ssoOidcPlugins([])).toEqual([]);
   });
 
-  it("registers the provider it is given", () => {
-    const [plugin] = ssoOidcPlugins({
-      discoveryUrl: "https://login.example.com/.well-known/openid-configuration",
-      clientId: "saale",
-      clientSecret: "secret",
-      name: "Company SSO",
-      scopes: ["openid", "profile", "email"],
-      allowedDomains: [],
-    });
-    const config = plugin?.options.config[0];
+  it("registers one entry per provider", () => {
+    const [plugin] = ssoOidcPlugins([
+      {
+        providerId: "sso-one",
+        discoveryUrl: "https://one.example.com/.well-known/openid-configuration",
+        clientId: "saale",
+        clientSecret: "secret",
+        name: "One",
+        scopes: ["openid"],
+        allowedDomains: [],
+      },
+      {
+        providerId: "sso-two",
+        discoveryUrl: "https://two.example.com/.well-known/openid-configuration",
+        clientId: "saale-two",
+        clientSecret: "secret-two",
+        name: "Two",
+        scopes: ["openid"],
+        allowedDomains: ["example.com"],
+      },
+    ]);
 
-    expect(config?.providerId).toBe("sso-oidc");
-    expect(config?.name).toBe("Company SSO");
-    expect(config?.clientId).toBe("saale");
-    expect(config?.requireIdTokenVerification).toBe(true);
-  });
+    const config = plugin?.options.config ?? [];
 
-  it("creates accounts only when a domain list opens the door", () => {
-    const base = {
-      discoveryUrl: "https://login.example.com/.well-known/openid-configuration",
-      clientId: "saale",
-      clientSecret: "secret",
-      name: "Single sign-on",
-      scopes: ["openid"],
-    };
-
-    expect(
-      ssoOidcPlugins({ ...base, allowedDomains: [] })[0]?.options.config[0]?.disableImplicitSignUp,
-    ).toBe(true);
-    expect(
-      ssoOidcPlugins({ ...base, allowedDomains: ["example.com"] })[0]?.options.config[0]
-        ?.disableImplicitSignUp,
-    ).toBe(false);
+    expect(config.map((entry) => entry.providerId)).toEqual(["sso-one", "sso-two"]);
+    expect(config[0]?.requireIdTokenVerification).toBe(true);
+    expect(config[0]?.disableImplicitSignUp).toBe(true);
+    expect(config[1]?.disableImplicitSignUp).toBe(false);
   });
 });
 
-describe("getSsoStatus", () => {
-  it("reports an unconfigured instance and the URI to register anyway", async () => {
-    mockFindUnique.mockResolvedValue(null);
-    const status = await getSsoStatus();
+describe("listSsoProviders", () => {
+  it("reports an unfinished provider and the URI to register anyway", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ issuer: "", clientId: "", encryptedClientSecret: null }),
+    ]);
+    const [provider] = await listSsoProviders();
 
-    expect(status.enabled).toBe(true);
-    expect(status.configured).toBe(false);
-    expect(status.hasClientSecret).toBe(false);
-    expect(status.discoveryUrl).toBeNull();
-    expect(status.scopes).toEqual(["openid", "profile", "email"]);
-    expect(status.redirectUri).toBe(buildSsoRedirectUri());
-    expect(status.redirectUri).toMatch(/\/api\/auth\/callback\/sso-oidc$/);
+    expect(provider?.configured).toBe(false);
+    expect(provider?.hasClientSecret).toBe(false);
+    expect(provider?.discoveryUrl).toBeNull();
+    expect(provider?.redirectUri).toBe(buildSsoRedirectUri("sso-abc12345"));
+    expect(provider?.redirectUri).toMatch(/\/api\/auth\/callback\/sso-abc12345$/);
   });
 
   it("reports what the panel stored, without the secret", async () => {
-    mockFindUnique.mockResolvedValue(
-      row({ allowedDomains: ["Example.com"], issuer: "https://login.example.com/tenant/" }),
-    );
-    const status = await getSsoStatus();
+    mockFindMany.mockResolvedValue([row({ allowedDomains: ["Example.com"] })]);
+    const [provider] = await listSsoProviders();
 
-    expect(status.configured).toBe(true);
-    expect(status.hasClientSecret).toBe(true);
-    expect(status.issuer).toBe("https://login.example.com/tenant/");
-    expect(status.discoveryUrl).toBe(
-      "https://login.example.com/tenant/.well-known/openid-configuration",
-    );
-    expect(status.allowedDomains).toEqual(["example.com"]);
-    expect(status).not.toHaveProperty("clientSecret");
+    expect(provider?.configured).toBe(true);
+    expect(provider?.hasClientSecret).toBe(true);
+    expect(provider?.allowedDomains).toEqual(["example.com"]);
+    expect(provider).not.toHaveProperty("clientSecret");
+    expect(provider).not.toHaveProperty("encryptedClientSecret");
   });
 
-  it("is not configured while the switch is off", async () => {
-    mockFindUnique.mockResolvedValue(row({ enabled: false }));
-    expect((await getSsoStatus()).configured).toBe(false);
+  it("lists every provider, ready or not", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ id: "sso-1", slug: "one" }),
+      row({ id: "sso-2", slug: "two", enabled: false }),
+    ]);
+    expect((await listSsoProviders()).map((provider) => provider.providerId)).toEqual([
+      "sso-one",
+      "sso-two",
+    ]);
   });
 });
 
-describe("saveInstanceSso", () => {
-  it("normalizes what was typed and encrypts the secret", async () => {
-    mockFindUnique.mockResolvedValue(null);
-    mockUpsert.mockResolvedValue({});
+describe("getSsoLoginProviders", () => {
+  it("offers a button only for a provider that is ready", async () => {
+    mockFindMany.mockResolvedValue([
+      row({ slug: "one", name: "Contoso" }),
+      row({ slug: "two", name: "Fabrikam", clientId: "" }),
+      row({ slug: "three", name: "Off", enabled: false }),
+    ]);
 
-    await saveInstanceSso(
+    expect(await getSsoLoginProviders()).toEqual([{ id: "sso-one", name: "Contoso" }]);
+  });
+});
+
+describe("createSsoProvider", () => {
+  it("gives the provider a slug, encrypts the secret and normalizes the rest", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      row({ ...data, updatedAt: new Date("2026-11-12T10:00:00Z") }),
+    );
+
+    const provider = await createSsoProvider(
       {
+        name: " Company SSO ",
         issuer: "login.example.com/tenant",
         clientId: " saale ",
         allowedDomains: ["Example.com", "@other.example"],
@@ -321,70 +353,111 @@ describe("saveInstanceSso", () => {
       "admin-1",
     );
 
-    const { create } = savedRow();
-    expect(create.issuer).toBe("https://login.example.com/tenant");
-    expect(create.clientId).toBe("saale");
-    expect(create.allowedDomains).toEqual(["example.com", "other.example"]);
-    expect(create.scopes).toEqual(["openid", "profile"]);
-    expect(create.updatedByUserId).toBe("admin-1");
-    expect(create.encryptedClientSecret).not.toBe("shhh");
-    expect(decrypt(create.encryptedClientSecret as string)).toBe("shhh");
+    const data = createdRow();
+    expect(String(data.slug)).toMatch(/^[0-9a-f]{12}$/);
+    expect(data.name).toBe("Company SSO");
+    expect(data.issuer).toBe("https://login.example.com/tenant");
+    expect(data.clientId).toBe("saale");
+    expect(data.allowedDomains).toEqual(["example.com", "other.example"]);
+    expect(data.scopes).toEqual(["openid", "profile"]);
+    expect(data.updatedByUserId).toBe("admin-1");
+    expect(data.encryptedClientSecret).not.toBe("shhh");
+    expect(decrypt(data.encryptedClientSecret as string)).toBe("shhh");
+    expect(provider.providerId).toBe(`sso-${String(data.slug)}`);
   });
 
+  it("adds a provider with nothing filled in yet", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      row({ ...data, updatedAt: new Date("2026-11-12T10:00:00Z") }),
+    );
+
+    const provider = await createSsoProvider({ name: "Later" }, "admin-1");
+
+    expect(provider.configured).toBe(false);
+    expect(createdRow().encryptedClientSecret).toBeNull();
+  });
+
+  it("refuses an issuer that is not an address", async () => {
+    await expect(
+      createSsoProvider({ name: "Bad", issuer: "ftp://login.example.com" }, "admin-1"),
+    ).rejects.toThrow(/http or https/);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("needs a name", () => {
+    expect(ssoProviderCreateSchema.safeParse({ name: "  " }).success).toBe(false);
+  });
+});
+
+describe("updateSsoProvider", () => {
   it("keeps a stored secret when the form leaves it empty", async () => {
     const stored = encrypt("stored");
     mockFindUnique.mockResolvedValue(row({ encryptedClientSecret: stored }));
-    mockUpsert.mockResolvedValue({});
+    mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      row({ ...data }),
+    );
 
-    await saveInstanceSso({ name: "Company SSO" }, "admin-1");
+    await updateSsoProvider("sso-1", { name: "Renamed" }, "admin-1");
 
-    expect(savedRow().update.encryptedClientSecret).toBe(stored);
-    expect(savedRow().update.name).toBe("Company SSO");
+    const data = (mockUpdate.mock.calls.at(-1)?.[0] as { data: Record<string, unknown> }).data;
+    expect(data.encryptedClientSecret).toBe(stored);
+    expect(data.name).toBe("Renamed");
   });
 
   it("forgets a secret cleared with null", async () => {
     mockFindUnique.mockResolvedValue(row());
-    mockUpsert.mockResolvedValue({});
+    mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      row({ ...data }),
+    );
 
-    await saveInstanceSso({ clientSecret: null }, "admin-1");
+    await updateSsoProvider("sso-1", { clientSecret: null }, "admin-1");
 
-    expect(savedRow().update.encryptedClientSecret).toBeNull();
+    const data = (mockUpdate.mock.calls.at(-1)?.[0] as { data: Record<string, unknown> }).data;
+    expect(data.encryptedClientSecret).toBeNull();
+  });
+
+  it("answers null for a provider that is gone", async () => {
+    mockFindUnique.mockResolvedValue(null);
+    expect(await updateSsoProvider("sso-gone", { name: "Ghost" }, "admin-1")).toBeNull();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("refuses an issuer that is not an address", async () => {
-    mockFindUnique.mockResolvedValue(null);
+    mockFindUnique.mockResolvedValue(row());
 
-    await expect(saveInstanceSso({ issuer: "ftp://login.example.com" }, "admin-1")).rejects.toThrow(
-      /http or https/,
-    );
-    expect(mockUpsert).not.toHaveBeenCalled();
+    await expect(
+      updateSsoProvider("sso-1", { issuer: "ftp://login.example.com" }, "admin-1"),
+    ).rejects.toThrow(/http or https/);
   });
 
-  it("forgets the cached provider, so the next sign-in sees the save", async () => {
-    mockFindUnique.mockResolvedValue(row());
+  it("forgets the cached list, so the next sign-in sees the save", async () => {
+    mockFindMany.mockResolvedValue([row({ clientId: "old" })]);
     await loadSsoConfig();
 
-    mockFindUnique.mockResolvedValue(row({ clientId: "changed" }));
-    mockUpsert.mockResolvedValue({});
-    await saveInstanceSso({ clientId: "changed" }, "admin-1");
+    mockFindUnique.mockResolvedValue(row({ clientId: "old" }));
+    mockUpdate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      row({ ...data }),
+    );
+    await updateSsoProvider("sso-1", { clientId: "new" }, "admin-1");
 
-    const { config } = await loadSsoConfig();
-    expect(config?.clientId).toBe("changed");
+    mockFindMany.mockResolvedValue([row({ clientId: "new" })]);
+    const { providers } = await loadSsoConfig();
+    expect(providers[0]?.clientId).toBe("new");
   });
 });
 
-describe("clearInstanceSso", () => {
-  it("deletes the row and drops the cached provider", async () => {
-    mockFindUnique.mockResolvedValue(row());
+describe("removeSsoProvider", () => {
+  it("deletes the row and drops the cached list", async () => {
+    mockFindMany.mockResolvedValue([row()]);
     await loadSsoConfig();
 
     mockDeleteMany.mockResolvedValue({ count: 1 });
-    await clearInstanceSso();
+    await removeSsoProvider("sso-1");
 
-    expect(mockDeleteMany).toHaveBeenCalledWith({ where: { id: "global" } });
+    expect(mockDeleteMany).toHaveBeenCalledWith({ where: { id: "sso-1" } });
 
-    mockFindUnique.mockResolvedValue(null);
-    expect((await loadSsoConfig()).config).toBeNull();
+    mockFindMany.mockResolvedValue([]);
+    expect((await loadSsoConfig()).providers).toEqual([]);
   });
 });
 

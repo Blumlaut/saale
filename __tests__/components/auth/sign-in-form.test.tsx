@@ -26,8 +26,14 @@ const signInUsername = vi.mocked(authClient.signIn.username);
 const signInEmail = vi.mocked(authClient.signIn.email);
 const signInSocial = vi.mocked(authClient.signIn.social);
 
-const ssoOff = { enabled: false, name: "Single sign-on" };
-const ssoOn = { enabled: true, name: "Company SSO" };
+const ssoOff = { providers: [] };
+const ssoOn = { providers: [{ id: "sso-abc12345", name: "Company SSO" }] };
+const ssoTwo = {
+  providers: [
+    { id: "sso-abc12345", name: "Company SSO" },
+    { id: "sso-def67890", name: "Contractors" },
+  ],
+};
 const telegramOff = { telegram: { enabled: false }, sso: ssoOff, signupsEnabled: true };
 const telegramOn = { telegram: { enabled: true }, sso: ssoOff, signupsEnabled: true };
 const signupsClosed = { telegram: { enabled: true }, sso: ssoOff, signupsEnabled: false };
@@ -202,15 +208,33 @@ describe("sign-in form", () => {
 
     await waitFor(() =>
       expect(signInSocial).toHaveBeenCalledWith({
-        provider: "sso-oidc",
+        provider: "sso-abc12345",
         callbackURL: "/dashboard/chat",
-        errorCallbackURL: "/auth/login?provider=sso-oidc",
+        errorCallbackURL: "/auth/login?provider=sso-abc12345",
+      }),
+    );
+  });
+
+  it("offers a button per provider, each signing in on its own", async () => {
+    signInSocial.mockResolvedValue({ data: null, error: null } as never);
+    render(<LoginForm {...telegramOff} sso={ssoTwo} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue with Contractors" }));
+
+    await waitFor(() =>
+      expect(signInSocial).toHaveBeenCalledWith({
+        provider: "sso-def67890",
+        callbackURL: "/dashboard/chat",
+        errorCallbackURL: "/auth/login?provider=sso-def67890",
       }),
     );
   });
 
   it("names the provider in a single sign-on failure", () => {
-    query.current = new URLSearchParams({ error: "account_not_linked", provider: "sso-oidc" });
+    query.current = new URLSearchParams({
+      error: "account_not_linked",
+      provider: "sso-abc12345",
+    });
     render(<LoginForm {...telegramOff} sso={ssoOn} />);
 
     expect(screen.getByText(/Company SSO account is not linked/)).toBeInTheDocument();

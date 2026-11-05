@@ -1,6 +1,6 @@
 /**
- * The browser-safe half of single sign-on: which provider to ask for and what
- * to say when it fails.
+ * The browser-safe half of single sign-on: which provider a sign-in asks for
+ * and what to say when it fails.
  *
  * Kept free of server imports. The login page is a client component, and the
  * refusal an account is turned away with is decided on the server but shown
@@ -9,8 +9,13 @@
 
 import { oauthLoginError } from "./oauth-login-error";
 
-/** The better-auth provider id. The callback lands on `/api/auth/callback/<id>`. */
-export const SSO_OIDC_PROVIDER_ID = "sso-oidc";
+/** Every provider id starts here; the rest names the stored provider. */
+export const SSO_PROVIDER_ID_PREFIX = "sso-";
+
+/** The better-auth provider id for a stored provider's slug. */
+export function ssoProviderId(slug: string): string {
+  return `${SSO_PROVIDER_ID_PREFIX}${slug}`;
+}
 
 /** What a sign-in is refused with when the address is not on the allowed domains. */
 export const SSO_SIGNUP_REFUSED = {

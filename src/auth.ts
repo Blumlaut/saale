@@ -24,7 +24,7 @@ import {
 } from "@/lib/auth/sign-in-throttle";
 import { linkTelegramFromOidcLogin, telegramOidcPlugins } from "@/lib/telegram/oidc";
 import {
-  SSO_CALLBACK_PATH,
+  isSsoCallbackPath,
   loadSsoConfig,
   ssoOidcPlugins,
   ssoTrustedProviders,
@@ -57,7 +57,7 @@ function trustedOriginsFromEnv(): string[] {
     .filter(Boolean);
 }
 
-function createAuth(sso: SsoOidcConfig | null) {
+function createAuth(sso: SsoOidcConfig[]) {
   return betterAuth({
     database: prismaAdapter(prisma, {
       provider: "postgresql",
@@ -162,7 +162,7 @@ function createAuth(sso: SsoOidcConfig | null) {
             // An address an admin typed, and one the company's identity provider
             // reported, are both vouched for by someone; neither waits on a
             // verification mail.
-            if (context?.path === ADMIN_CREATE_USER_PATH || context?.path === SSO_CALLBACK_PATH) {
+            if (context?.path === ADMIN_CREATE_USER_PATH || isSsoCallbackPath(context?.path)) {
               return { data: { ...user, emailVerified: true } };
             }
           },
@@ -243,10 +243,10 @@ let built: { version: number; auth: Auth } | null = null;
  * live in the database, so rebuilding costs a request nothing.
  */
 export async function getAuth(): Promise<Auth> {
-  const { config, version } = await loadSsoConfig();
+  const { providers, version } = await loadSsoConfig();
   if (built?.version === version) return built.auth;
 
-  const auth = createAuth(config);
+  const auth = createAuth(providers);
   built = { version, auth };
   return auth;
 }

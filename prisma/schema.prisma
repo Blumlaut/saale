@@ -581,20 +581,23 @@ model InstanceMail {
 
 // ─── Instance single sign-on ───────────────────────────────────
 
-/// The company identity provider the login page signs people in with.
+/// An identity provider the login page signs people in with.
 ///
-/// One provider per instance, configured in the admin panel. The client secret
-/// is encrypted with lib/crypto like a mail account's, and the admin API never
-/// echoes it back.
+/// A company can have more than one directory, so this is a list: each row is a
+/// provider with its own client credentials, its own callback and its own
+/// allowed domains. `slug` is what names the callback and never changes; the
+/// name is only what the button says.
 model InstanceSso {
-  id      String  @id @default("global")
+  id String @id @default(cuid())
+  /// Names the provider and its callback (`/api/auth/callback/sso-<slug>`).
+  slug    String  @unique
   enabled Boolean @default(true)
   /// The issuer URL, or its discovery document.
   issuer   String @default("")
   clientId String @default("")
   /// Encrypted with lib/crypto. Read only to build the provider.
   encryptedClientSecret String?  @db.Text
-  /// The sign-in button's label. Empty shows "Single sign-on".
+  /// The sign-in button's label.
   name                  String   @default("")
   /// Scopes a sign-in asks for. `openid` is added when it is missing.
   scopes                String[] @default(["openid", "profile", "email"])
@@ -602,6 +605,7 @@ model InstanceSso {
   allowedDomains        String[] @default([])
   /// Admin who last saved this configuration.
   updatedByUserId       String?
+  createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
   @@map("instance_sso")

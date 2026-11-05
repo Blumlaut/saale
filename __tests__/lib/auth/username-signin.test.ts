@@ -23,7 +23,7 @@ vi.mock("@/lib/db", () => ({
     // No relay: the verification mail sign-up asks for is skipped, not sent.
     instanceMail: { findUnique: async () => null },
     // No identity provider either, so single sign-on registers nothing.
-    instanceSso: { findUnique: async () => null },
+    instanceSso: { findMany: async () => [] },
   },
 }));
 

@@ -252,6 +252,40 @@ async function openRowMenu(page: Page, rowText: string) {
   await row.locator('[data-slot="dropdown-menu-trigger"]').click();
 }
 
+/**
+ * One stored identity provider, so the panel's rows and their overlays exist
+ * without a real issuer behind them.
+ */
+async function mockSsoProviders(page: Page) {
+  await page.route(/\/api\/admin\/sso$/, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({
+          json: {
+            providers: [
+              {
+                id: "sso-1",
+                providerId: "sso-abc12345",
+                name: "Company SSO",
+                enabled: true,
+                issuer: "https://login.a-very-long-provider-hostname.example.com/tenant",
+                clientId: "saale-console",
+                scopes: ["openid", "profile", "email"],
+                allowedDomains: ["example.com", "a-very-long-subdomain.example.com"],
+                configured: true,
+                hasClientSecret: true,
+                discoveryUrl:
+                  "https://login.a-very-long-provider-hostname.example.com/tenant/.well-known/openid-configuration",
+                redirectUri: "https://saale.example.com/api/auth/callback/sso-abc12345",
+                updatedAt: null,
+                updatedByUserId: null,
+              },
+            ],
+          },
+        })
+      : route.fallback(),
+  );
+}
+
 /** The seeded machine list always has at least one row to act on. */
 async function openMachineDialog(page: Page, selector: string) {
   await click(page, selector);
@@ -1479,36 +1513,30 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
-    name: "admin · remove single sign-on confirmation",
+    name: "admin · add identity provider",
+    path: "/admin/settings/sso",
+    sources: ["src/components/admin/admin-settings/sso-provider-sheet.tsx"],
+    open: async (page) => {
+      await click(page, 'button[aria-label="Add provider"]');
+    },
+  },
+  {
+    name: "admin · edit identity provider",
+    path: "/admin/settings/sso",
+    sources: ["src/components/admin/admin-settings/sso-provider-sheet.tsx"],
+    mock: mockSsoProviders,
+    open: async (page) => {
+      await click(page, 'div.group:has-text("Company SSO")');
+    },
+  },
+  {
+    name: "admin · remove identity provider confirmation",
     path: "/admin/settings/sso",
     sources: ["src/components/admin/admin-settings/sso-section.tsx"],
-    mock: async (page) => {
-      await page.route(/\/api\/admin\/sso$/, (route) =>
-        route.request().method() === "GET"
-          ? route.fulfill({
-              json: {
-                sso: {
-                  enabled: true,
-                  issuer: "https://login.a-very-long-provider-hostname.example.com/tenant",
-                  clientId: "saale-console",
-                  name: "Company SSO",
-                  scopes: ["openid", "profile", "email"],
-                  allowedDomains: ["example.com", "a-very-long-subdomain.example.com"],
-                  configured: true,
-                  hasClientSecret: true,
-                  discoveryUrl:
-                    "https://login.a-very-long-provider-hostname.example.com/tenant/.well-known/openid-configuration",
-                  redirectUri: "https://saale.example.com/api/auth/callback/sso-oidc",
-                  updatedAt: null,
-                  updatedByUserId: null,
-                },
-              },
-            })
-          : route.fallback(),
-      );
-    },
+    mock: mockSsoProviders,
     open: async (page) => {
-      await click(page, 'button:has-text("Remove")');
+      await openRowMenu(page, "Company SSO");
+      await click(page, '[role="menuitem"]:has-text("Remove")');
     },
   },
   {
