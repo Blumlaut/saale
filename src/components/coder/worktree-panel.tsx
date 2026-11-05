@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Download,
   FileText,
@@ -28,7 +29,6 @@ import { CommitDiffView } from "./commit-diff-view";
 import { PortsView } from "./ports-view";
 import { PROVISIONING_STEP_COPY } from "./provisioning-copy";
 import { SetupFailureNotice } from "./setup-failure-notice";
-import { TerminalView } from "./terminal-view";
 import type {
   CoderCommit,
   CoderProvisioning,
@@ -36,6 +36,11 @@ import type {
   CoderSessionState,
 } from "./use-coder-data";
 import { usePorts } from "./use-ports";
+
+/** xterm is a large library, and the panel is often read without a terminal open. */
+const TerminalView = dynamic(() => import("./terminal-view").then((m) => m.TerminalView), {
+  ssr: false,
+});
 
 function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }) {
   // Building the workspace is what makes the worktree, so the panel names the
@@ -160,9 +165,19 @@ export function WorktreePanel({
     setFileDirty(false);
   };
   const terminalRunRef = useRef<(command: string) => void>(() => {});
+  // A command asked for before the terminal has been opened waits for it.
+  const pendingTerminalRun = useRef<string | null>(null);
+  // The terminal stays mounted once opened, so its shell survives a tab switch.
+  const terminalOpened = tab === "terminal" || openedTabs.includes("terminal");
   // Lifted out of the tab, because the badge has to light while another tab is
   // open. The poll slows down when Ports is not the visible one.
   const ports = usePorts(sessionId, tab === "ports");
+
+  const launchInTerminal = (command: string) => {
+    if (terminalOpened) terminalRunRef.current(command);
+    else pendingTerminalRun.current = command;
+    openTab("terminal");
+  };
 
   return (
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -247,8 +262,7 @@ export function WorktreePanel({
               onRefresh={onRefresh}
               refreshing={refreshing}
               onRunScript={(command) => {
-                terminalRunRef.current(command);
-                openTab("terminal");
+                launchInTerminal(command);
               }}
               activeCommitSha={diffTarget?.commit.sha ?? null}
               onOpenCommitFile={(commit, path) => {
@@ -338,7 +352,9 @@ export function WorktreePanel({
           <PortsView view={ports} />
         </div>
 
-        {/* Outside the tab content: a tab switch must not stop a dev server. */}
+        {/* Outside the tab content: a tab switch must not stop a dev server.
+            Mounted on the first visit to the tab, so the coder pages that never
+            open a terminal do not load xterm. */}
         <div
           className={
             tab === "terminal"
@@ -346,15 +362,23 @@ export function WorktreePanel({
               : "hidden min-h-0 flex-1 flex-col overflow-hidden"
           }
         >
-          <TerminalView
-            sessionId={sessionId}
-            worktree={
-              state?.worktree ? { path: state.worktree.path, branch: state.worktree.branch } : null
-            }
-            registerRun={(run) => {
-              terminalRunRef.current = run;
-            }}
-          />
+          {terminalOpened && (
+            <TerminalView
+              sessionId={sessionId}
+              worktree={
+                state?.worktree
+                  ? { path: state.worktree.path, branch: state.worktree.branch }
+                  : null
+              }
+              registerRun={(run) => {
+                terminalRunRef.current = run;
+                if (pendingTerminalRun.current !== null) {
+                  run(pendingTerminalRun.current);
+                  pendingTerminalRun.current = null;
+                }
+              }}
+            />
+          )}
         </div>
       </Tabs>
     </GlassPanel>
