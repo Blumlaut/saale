@@ -1,37 +1,37 @@
 # Search
 
-Every place Saale looks something up, what it matches, and how well it tolerates a
-half-remembered query. The short version: there are three different mechanisms in
-use, none of them rank well, and only one of them is fuzzy at all.
+Every place Saale looks something up, and how a query is matched. All of it runs
+through one matcher in `src/lib/search/`, so a half-remembered word behaves the
+same in mail, chat, tasks, contacts, calendar and memory.
 
 ## Surfaces
 
 ### Agent tools
 
-| Tool              | Where                                            | Mechanism                        | Fields                                              | Ranked      | Typos  |
-| ----------------- | ------------------------------------------------ | -------------------------------- | --------------------------------------------------- | ----------- | ------ |
-| `chat_search`     | `lib/pi/tools/chat-tools.ts`                     | FTS `plainto_tsquery('english')` | `ChatMessage.content`                               | `ts_rank`   | no     |
-| `mail_search`     | `lib/pi/tools/mail-tools.ts`                     | ILIKE per term, OR'd together    | subject, bodyText, bodyPreview, fromEmail, fromName | date desc   | no     |
-| `contacts_search` | `lib/pi/tools/contact-tools.ts` → `listContacts` | ILIKE                            | name, email, company                                | name asc    | no     |
-| `calendar_search` | `lib/pi/tools/calendar-tools.ts`                 | ILIKE                            | summary, description, location                      | dtStart asc | no     |
-| `memory_search`   | `lib/pi/tools/memory-tools.ts`                   | FTS, ILIKE on error              | title, content                                      | `ts_rank`   | no     |
-| `task_search`     | `lib/pi/tools/task-tools.ts`                     | FTS                              | title, description                                  | `ts_rank`   | no     |
-| `web_search`      | `lib/pi/tools/web-tools.ts`                      | SearXNG                          | out of scope                                        | engine      | engine |
+| Tool              | Where                            | Matches                              | Rows |
+| ----------------- | -------------------------------- | ------------------------------------ | ---- |
+| `mail_search`     | `lib/pi/tools/mail-tools.ts`     | subject, sender, body                | 20   |
+| `chat_search`     | `lib/pi/tools/chat-tools.ts`     | message content, chat title          | 20   |
+| `contacts_search` | `lib/pi/tools/contact-tools.ts`  | name, email, company                 | 20   |
+| `calendar_search` | `lib/pi/tools/calendar-tools.ts` | title, location, description         | 20   |
+| `memory_search`   | `lib/pi/tools/memory-tools.ts`   | title, content                       | 10   |
+| `task_search`     | `lib/pi/tools/task-tools.ts`     | title, description                   | 100  |
+| `web_search`      | `lib/pi/tools/web-tools.ts`      | SearXNG, which does its own matching | -    |
 
 ### HTTP routes
 
-| Route                             | Mechanism                                   | Fields                                                            | Ranked         | Typos              |
-| --------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- | -------------- | ------------------ |
-| `GET /api/search`                 | pg_trgm `similarity()` + `%`, threshold 0.3 | `ChatSession.title`, email subject/fromName/fromEmail/bodyPreview | weighted score | short strings only |
-| `GET /api/email/messages?search=` | ILIKE                                       | subject, fromEmail, fromName                                      | no             | no                 |
-| `GET /api/contacts?search=`       | ILIKE via `listContacts`                    | name, email, company                                              | no             | no                 |
-| `GET /api/memories?search=`       | JavaScript `includes()` after paging        | title, content, tags                                              | no             | no                 |
+| Route                             | Matches                                               |
+| --------------------------------- | ----------------------------------------------------- |
+| `GET /api/search`                 | chat titles, chat messages, email subject/sender/body |
+| `GET /api/email/messages?search=` | email subject, sender, body                           |
+| `GET /api/contacts?search=`       | name, email, company                                  |
+| `GET /api/memories?search=`       | title, content                                        |
 
 ### UI
 
 | Surface                                                         | Reaches                               |
 | --------------------------------------------------------------- | ------------------------------------- |
-| ⌘K palette (`dashboard-nav`)                                    | `GET /api/search`, 300 ms debounce    |
+| ⌘K palette (`dashboard-nav`)                                    | `GET /api/search`                     |
 | Mail inbox search box                                           | `GET /api/email/messages?search=`     |
 | Contacts page                                                   | `includes()` over the fetched list    |
 | Settings → memories                                             | `GET /api/memories?search=`           |
@@ -41,158 +41,94 @@ use, none of them rank well, and only one of them is fuzzy at all.
 No search at all: the chat session list, the files browser, jobs, automations,
 the calendar page, and coder sessions.
 
-## What is wrong
+## How a query is matched
 
-### Whole-string trigram similarity barely matches anything
+A query splits into terms (`terms.ts`). Every term has to appear somewhere in the
+row, so each word you add narrows the result. Each term then matches through up
+to three arms, which cover different ways a word is half-remembered:
 
-`GET /api/search` compares the query against the entire stored string. pg_trgm
-scores short strings that share little length poorly, so a keyword in a normal
-subject line lands under the default 0.3 threshold and is dropped. Measured on a
-realistic set of subjects:
+| Arm       | Predicate                     | Catches                           | Index                |
+| --------- | ----------------------------- | --------------------------------- | -------------------- |
+| substring | `col ILIKE '%term%'`          | a fragment of a word (`invoic`)   | GIN trigram          |
+| full text | `tsvector @@ to_tsquery(...)` | word forms (`invoices`, `invoic`) | GIN on `to_tsvector` |
+| trigram   | `col %> term`                 | a misspelling (`invoce`)          | GIN trigram          |
 
-| Stored string                          | Query     | `similarity()` | Matched |
-| -------------------------------------- | --------- | -------------- | ------- |
-| `Receipt for your March invoice #4821` | `invoice` | 0.222          | no      |
-| `Receipt for your March invoice #4821` | `reciept` | 0.100          | no      |
-| `Weekly digest: 12 new pull requests`  | `invoice` | 0.000          | no      |
-| `invoice`                              | `invoice` | 1.000          | yes     |
+Rows come back ordered by relevance (`query.ts`): the full-text rank scaled by
+eight, plus the best column weight times the best arm, summed over the terms.
+Weights put a subject hit at three times a body hit, so an exact word in a
+subject always outranks the same word buried in text.
 
-The same comparison on email bodies is hopeless by construction: a 500-character
-`bodyPreview` against a one-word query scores 0.09. Bodies are in the `OR`, and
-they never match. Chat is worse: only `ChatSession.title` is searched, so ⌘K
-cannot find anything said inside a conversation.
+### Where the fuzzy arm stops
 
-### Full-text search is stemmed but exact about spelling
+The trigram arm only applies to terms of five characters or more. Short terms
+have too few trigrams to tell apart: `similarity('car', 'card')` is 0.75.
 
-`chat_search`, `task_search` and `memory_search` use `plainto_tsquery`, which
-handles plurals and word forms and fails on any typo:
+It fires at a word similarity of 0.4, set with `set_config` inside the query's
+transaction so the pooled connection is left alone. Measured on realistic
+subjects, misspellings land between 0.45 and 0.7 while unrelated words stay at or
+below 0.33:
 
-```
-plainto_tsquery('english', 'reciept')  → 'reciept'   -- never hits "receipt"
-plainto_tsquery('english', 'invoice')  → 'invoic'    -- hits "invoice", "invoices"
-```
+| Typo           | Best true match | Best false positive |
+| -------------- | --------------- | ------------------- |
+| `invoce`       | 0.57            | 0.08                |
+| `subscritpion` | 0.54            | 0.11                |
+| `paymnet`      | 0.50            | 0.33                |
+| `meating`      | 0.46            | 0.14                |
+| `dentst`       | 0.57            | 0.13                |
+| `fridy`        | 0.67            | 0.22                |
 
-Multiple words are AND'd, so one misspelled word in a three-word query returns
-nothing. A query made only of stop words produces an empty tsquery and matches
-nothing at all.
+Trigrams measure shared three-character runs, so a swap of two letters is not a
+near miss to them: `serach` scores 0.27 against `search`, and `reciept` 0.27
+against `receipt`. A swapped or heavily mangled word still has to be spelled
+properly, or found by its fragment.
 
-### ILIKE is a substring test, and the results are not ranked
+### Indexes
 
-`mail_search`, `contacts_search` and `calendar_search` do
-`contains(term)` per column. `"invoic"` finds `"invoice"` and `"reciept"` finds
-nothing. Ordering is not relevance at all:
+`prisma/migrations/20261111120000_add_search_indexes` adds a GIN trigram index
+per searched text column plus an expression index per weighted tsvector. The
+expressions in `sources.ts` have to stay byte for byte what the migration
+declares, or postgres quietly falls back to a sequential scan. On 50k rows:
 
-- `mail_search` sorts by date descending, so the best match can sit past `limit`.
-  Terms are OR'd, so `"invoice march"` returns every email holding either word,
-  newest first. That is the context-blowup direction.
-- `calendar_search` sorts by start date ascending with a hard `take: 20`, so old
-  events win over upcoming ones.
-- `contacts_search` sorts by name ascending with no scoring.
+| Query                                                          | Plan              | Time    |
+| -------------------------------------------------------------- | ----------------- | ------- |
+| `subject %> 'invoic'` (GIN trigram)                            | Bitmap Index Scan | 31 ms   |
+| `subject ILIKE '%invoic%'` (GIN trigram)                       | Bitmap Index Scan | 15 ms   |
+| `to_tsvector('english', subject \|\| body) @@ to_tsquery(...)` | Seq Scan          | 1345 ms |
 
-### The queries are not indexed
+The trigram indexes that `20260614141703_add_tasks` dropped are part of this
+migration too.
 
-The trigram indexes from `20260613000000_enable_pg_trgm` were dropped by
-`20260614141703_add_tasks` and never restored; only `ChatSession.title` had one
-anyway. The full-text tools compute `to_tsvector()` per row. On 50k rows:
+## What no longer goes wrong
 
-| Query                                 | Plan              | Time                      |
-| ------------------------------------- | ----------------- | ------------------------- |
-| `subject %> 'invoic'` (GIN trgm)      | Bitmap Index Scan | 31 ms                     |
-| `subject ILIKE '%invoic%'` (GIN trgm) | Bitmap Index Scan | 15 ms                     |
-| `to_tsvector('english', subject       |                   | body) @@ to_tsquery(...)` | Seq Scan | 1345 ms |
+- ⌘K matches inside chat messages, not only chat titles.
+- Email body matches exist. Whole-string trigram similarity scored a 500-character
+  preview 0.09 against a one-word query, so the old predicate never fired.
+- A keyword in a normal subject line matches: `"invoice"` against
+  `Receipt for your March invoice #4821` scored 0.222 under the old whole-string
+  comparison, below the 0.3 threshold.
+- Results are ordered by relevance, so the caller's `limit` keeps the best rows
+  instead of the newest ones.
+- `"invoice march"` means both words, where `mail_search` used to return every
+  email holding either.
+- Multi-word queries are stemmed and prefix-matched, so one misspelling no longer
+  empties the result.
+- `GET /api/memories?search=` searches in SQL. It used to filter in JavaScript
+  after paging, which hid rows past the first page and reported an unfiltered
+  total.
+- `calendar_search` honours its `limit`, and orders by relevance instead of
+  oldest first.
+- `task_search` builds its predicate correctly. It read
+  `trimmedQuery?.length ?? 0 > 0`, which evaluates as `number ?? boolean`.
+- An empty query returns nothing. Every tool reports zero rows rather than the
+  latest twenty of anything.
+- ⌘K email results open the message, not just the mailbox.
 
-Every ⌘K keystroke pause runs two unindexed scans, and every `chat_search`
-scans the whole message table. That is why the fuzzy path stays expensive.
+## Where it lives
 
-### Bugs found while mapping
+| File                    | Role                                                      |
+| ----------------------- | --------------------------------------------------------- |
+| `lib/search/terms.ts`   | term splitting, sanitising, the trigram gate              |
+| `lib/search/query.ts`   | SQL predicate, score, execution, count                    |
+| `lib/search/sources.ts` | one table per searchable model: fields, weights, tsvector |
 
-- `GET /api/memories?search=` filters in JavaScript after `take: limit`, so rows
-  past the page are invisible and `total` counts unfiltered rows.
-- `calendar_search` declares a `limit` parameter and ignores it (`queryEvents`
-  hardcodes `take: 20`).
-- `task_search` computes `hasQuery` as `trimmedQuery?.length ?? 0 > 0`, which
-  evaluates as `number ?? boolean`. It works by accident.
-- ⌘K email results navigate to `/dashboard/mail` without the message id.
-
-## Making it fuzzier without the noise
-
-Two arms per term, scored together. Precision comes from the first arm, tolerance
-from the second.
-
-**Arm 1, prefix FTS.** `to_tsquery` with `:*` on each term, AND'd. This is what
-makes partial typing work, and it produces no noise because it is still lexeme
-exact:
-
-| Query                | Hits                                       |
-| -------------------- | ------------------------------------------ |
-| `spotif:*`           | `Your Spotify subscription payment failed` |
-| `invoic:*`           | `Receipt for your March invoice #4821`     |
-| `pull:* & request:*` | `Weekly digest: 12 new pull requests`      |
-
-**Arm 2, word-level trigram, gated by term length.** `%`/`word_similarity` over
-the whole text, or `max(similarity(term, word))` over split words, with a floor
-that depends on length. Measured, per row of a six-message corpus:
-
-| Typo'd query   | Best true match | Highest false positive |
-| -------------- | --------------- | ---------------------- |
-| `invoce`       | 0.50            | 0.08                   |
-| `subscritpion` | 0.53            | 0.11                   |
-| `meating`      | 0.45            | 0.14                   |
-| `fridy`        | 0.44            | 0.22                   |
-| `reciept`      | 0.33            | 0.22                   |
-| `luch`         | 0.38            | 0.10                   |
-| `paymnet`      | 0.33            | 0.33                   |
-
-True typos sit between 0.33 and 0.53 while unrelated words stay at or below 0.22,
-except for the `paymnet`/`Receipt` pair at 0.33. A floor of 0.4 is quiet and
-catches three of the six typos. A floor of 0.3 catches five and starts pulling
-`paymnet` → `Receipt`.
-
-The gate matters more than the floor: short terms are trigram noise.
-`similarity('car', 'card')` is 0.75, and `word_similarity('met', 'Tuesday')` is
-0.20 but `word_similarity('car', 'card')` is 0.75. Terms of three characters or
-fewer should use substring matching only.
-
-Suggested floors:
-
-| Term length | Fuzzy floor          |
-| ----------- | -------------------- |
-| 1-3         | none, substring only |
-| 4           | 0.6                  |
-| 5+          | 0.4                  |
-
-**Score and rank.** `score = fts_hit ? 1 : 0` plus the arm 2 similarity, weighted
-per column, so an exact lexeme always outranks a fuzzy neighbour. Order by score
-and let `limit` fall where it lands.
-
-**AND across terms.** Require every term to match somewhere in the row. A query
-of `"invoice march"` should mean both words, which is the opposite of today's
-`mail_search`. Keep an option for a single-term OR only where a user is expected
-to type alternatives.
-
-**Fewer results, clearer reason.** A soft floor on the final score and a hard cap
-per source, so a typo'd query returns two good rows instead of forty mediocre
-ones. Each result should carry the matched field so the agent can tell a subject
-hit from a body hit.
-
-**Indexes.** One migration adding GIN trigram indexes on the searched text
-columns (chat title, email subject/bodyPreview/fromName/fromEmail, contact
-name/email/company, calendar summary/description/location, memory title/content)
-and expression GIN indexes on `to_tsvector('english', …)` for chat messages,
-tasks and memories. Search then costs milliseconds instead of seconds.
-
-**One matcher.** The per-term splitting, the floors and the scoring rules belong
-in `src/lib/search/`, with each tool passing the columns it cares about. Today
-`listContacts` and `contacts_search` are the same code, and the two memory paths
-have diverged.
-
-## Order of work
-
-1. `src/lib/search/`: term splitting, the two arms, the floors, a score builder.
-2. The index migration, including the trigram indexes that `add_tasks` dropped.
-3. Move the ILIKE tools onto the matcher: `mail_search`, `contacts_search`,
-   `calendar_search`.
-4. Move the FTS tools onto it: `chat_search`, `memory_search`, `task_search`.
-5. `GET /api/search`: search chat message content, use the matcher, return the
-   matched field.
-6. Fix the `/api/memories` paging bug and `calendar_search`'s ignored `limit`.
+A new searchable table is a spec in `sources.ts` plus its indexes in a migration.
