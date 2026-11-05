@@ -1,7 +1,7 @@
 import type { ChatAttachment, ChatMessage } from "@prisma/client";
 import type { AttachmentData, Message } from "@/components/chat/types";
 import { parseStoredToolCalls, redactToolCallsForShare } from "@/lib/chat/redact-tool-calls";
-import { parseTurnStats } from "@/lib/pi/turn-stats";
+import { parseTurnStats } from "@/lib/pi/turn-stats-schema";
 
 /**
  * DB row → client message shape.

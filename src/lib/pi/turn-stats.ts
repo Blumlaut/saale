@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 /**
  * What one assistant turn cost, and where its context went.
  *
@@ -25,55 +23,40 @@ const TRANSCRIPT_PARTS = ["tools", "userMessages", "responses"] as const;
 
 export type TurnStatsPart = (typeof TURN_STATS_PARTS)[number];
 
-/**
- * The parts of the context, including rows written before tool calls moved
- * into `tools` and the slice was called `toolResults`.
- */
-const contextPartsSchema = z
-  .object({
-    systemPrompt: z.number(),
-    tools: z.number().optional(),
-    toolResults: z.number().optional(),
-    userMessages: z.number(),
-    responses: z.number(),
-  })
-  .transform(({ toolResults, tools, ...rest }) => ({
-    ...rest,
-    tools: tools ?? toolResults ?? 0,
-  }));
-
-export const turnStatsSchema = z.object({
-  model: z.object({
-    provider: z.string(),
-    name: z.string(),
-    /** The model the provider actually ran, when it differs (a router or an alias). */
-    responseModel: z.string().nullish(),
-  }),
-  tokens: z.object({
-    input: z.number(),
-    output: z.number(),
-    cacheRead: z.number(),
-    cacheWrite: z.number(),
-  }),
-  cost: z.number(),
-  /** True when the provider reported the billed amount rather than a catalog estimate. */
-  costFromProvider: z.boolean(),
-  context: z.object({
-    tokens: z.number().nullable(),
-    window: z.number(),
-    parts: contextPartsSchema,
-  }),
-});
-
-export type TurnStats = z.infer<typeof turnStatsSchema>;
-
 /** Token counts per part, before or after scaling onto Pi's total. */
-export type ContextParts = TurnStats["context"]["parts"];
+export interface ContextParts {
+  systemPrompt: number;
+  tools: number;
+  userMessages: number;
+  responses: number;
+}
 
-/** Read a stored `ChatMessage.stats` column, or undefined when it holds something else. */
-export function parseTurnStats(value: unknown): TurnStats | undefined {
-  const parsed = turnStatsSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+/**
+ * One assistant turn's row in `ChatMessage.stats`. The stored column is read
+ * back through `turn-stats-schema.ts`, which holds the same shape as a zod
+ * schema.
+ */
+export interface TurnStats {
+  model: {
+    provider: string;
+    name: string;
+    /** The model the provider actually ran, when it differs (a router or an alias). */
+    responseModel?: string | null | undefined;
+  };
+  tokens: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
+  cost: number;
+  /** True when the provider reported the billed amount rather than a catalog estimate. */
+  costFromProvider: boolean;
+  context: {
+    tokens: number | null;
+    window: number;
+    parts: ContextParts;
+  };
 }
 
 /**

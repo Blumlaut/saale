@@ -4,11 +4,12 @@ import {
   buildTurnStats,
   estimateContextParts,
   mergeTurnStats,
-  parseTurnStats,
   scaleContextParts,
+  type ContextParts,
   type TranscriptMessageLike,
   type TurnStats,
 } from "@/lib/pi/turn-stats";
+import { parseTurnStats } from "@/lib/pi/turn-stats-schema";
 
 /**
  * The card shows Pi's context total and a breakdown it has to measure itself,
@@ -390,8 +391,7 @@ describe("estimateContextParts", () => {
 });
 
 describe("scaleContextParts", () => {
-  const sum = (parts: Record<string, number>) =>
-    Object.values(parts).reduce((acc, n) => acc + n, 0);
+  const sum = (parts: ContextParts) => Object.values(parts).reduce((acc, n) => acc + n, 0);
 
   it("shares the total out over the transcript and keeps the sum exact", () => {
     const scaled = scaleContextParts(
