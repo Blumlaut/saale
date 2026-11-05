@@ -30,6 +30,7 @@ import {
 import { StreamableHttpTransport } from "@earendil-works/pi-mcp";
 import { decrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { mergeOwnedRows } from "@/lib/shared-resources";
 import { getUploadsDir } from "@/lib/uploads";
 import { createMcpAuthProvider, type McpOAuthServer } from "./oauth";
 import { isMcpToolPolicy, mcpNameKey, type McpScope, type McpToolPolicy } from "./shared";
@@ -105,8 +106,21 @@ export interface McpSessionSettings {
 }
 
 /**
+ * The columns the extension needs from a row, whichever table it came from.
+ * `userId` is null for an instance-owned server, which has no OAuth sign-in.
+ */
+interface McpConnectable extends McpServerRow {
+  id: string;
+  userId: string | null;
+  toolPolicy: string;
+}
+
+/**
  * Load the enabled servers of one user, ready for the MCP extension.
- * Scoped to `userId`. a server row is only reachable through its owner.
+ *
+ * The set is the instance's shared servers plus the user's own. A user's server
+ * wins a name clash: Pi folds `-` and `_` into one character, so two servers of
+ * one key would contribute tool names nobody could tell apart.
  *
  * Nothing is loaded while the `mcp` category is off for the session: the switch
  * is what keeps a configured server out of a conversation. A server also only
@@ -121,34 +135,39 @@ export async function loadUserMcpServers(
   }
 
   const exposure = resolveCategoryExposure(settings.exposure, "mcp");
-  const servers = await prisma.mcpServer.findMany({
-    where: {
-      userId,
-      enabled: true,
-      ...(settings.scope === "chat" ? { chatEnabled: true } : { coderEnabled: true }),
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const scope = settings.scope === "chat" ? { chatEnabled: true } : { coderEnabled: true };
+  const order = { orderBy: { createdAt: "asc" } } as const;
+  const [ownRows, sharedRows] = await Promise.all([
+    prisma.mcpServer.findMany({ where: { userId, enabled: true, ...scope }, ...order }),
+    prisma.sharedMcpServer.findMany({ where: { enabled: true, ...scope }, ...order }),
+  ]);
+
+  const own: McpConnectable[] = ownRows;
+  const shared: McpConnectable[] = sharedRows.map((row) => ({ ...row, userId: null }));
+  const merged = mergeOwnedRows({ own, shared, keyOf: (row) => mcpNameKey(row.name) });
 
   const entries: McpServerEntry[] = [];
   const policies: Record<string, McpToolPolicy> = {};
   const oauthServers = new Map<string, McpOAuthServer>();
 
-  for (const server of servers) {
+  for (const { shared: isShared, ...server } of merged) {
     entries.push({
       name: server.name,
       config: toMcpServerConfig(server, exposure),
-      source: "Saale settings",
+      source: isShared ? "Instance settings" : "Saale settings",
       scope: "extension",
     });
     const key = mcpNameKey(server.name);
     policies[key] = isMcpToolPolicy(server.toolPolicy) ? server.toolPolicy : "ask";
-    oauthServers.set(key, {
-      id: server.id,
-      userId: server.userId,
-      name: server.name,
-      url: server.url,
-    });
+    // OAuth is stored per account, so only the user's own servers can sign in.
+    if (server.userId !== null) {
+      oauthServers.set(key, {
+        id: server.id,
+        userId: server.userId,
+        name: server.name,
+        url: server.url,
+      });
+    }
   }
 
   return { entries, policies, oauthServers };

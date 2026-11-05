@@ -16,8 +16,11 @@ export interface PromptEntry {
   /** Pi's convention: `<required>` and `[optional]`. */
   argumentHint: string | null;
   content: string;
-  /** Where it came from. The user's own rows win over a repo's files. */
-  source: "user" | "project";
+  /**
+   * Where it came from. The user's own rows win over the instance's, and both
+   * win over a repo's template files.
+   */
+  source: "user" | "shared" | "project";
 }
 
 /** A prompt as the composer lists it. */
@@ -37,9 +40,11 @@ export interface ScopedPrompt {
   /** `AppSettings`-style column value: one of `PROMPT_SCOPES`, or unset. */
   scope: string;
   content: string;
+  /** Written by an admin for the whole instance (`SharedPrompt`). */
+  shared?: boolean;
 }
 
-/** The user's prompts that belong in this chat. */
+/** The prompts that belong in this chat, tagged with where each one came from. */
 export function scopedPromptEntries(
   prompts: readonly ScopedPrompt[],
   isCoderChat: boolean,
@@ -53,7 +58,7 @@ export function scopedPromptEntries(
       description: prompt.description,
       argumentHint: prompt.argumentHint,
       content: prompt.content,
-      source: "user" as const,
+      source: prompt.shared ? ("shared" as const) : ("user" as const),
     }));
 }
 

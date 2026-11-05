@@ -23,6 +23,13 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    sharedMcpServer: {
+      findMany: vi.fn(async () => []),
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     mcpServer: {
       findMany: (...args: unknown[]) => mockFindMany(...args),
       findFirst: (...args: unknown[]) => mockFindFirst(...args),

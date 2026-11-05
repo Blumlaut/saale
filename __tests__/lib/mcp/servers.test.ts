@@ -5,10 +5,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { _resetKey, encrypt } from "@/lib/crypto";
 
 const mockFindMany = vi.fn();
+const mockSharedFindMany = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     mcpServer: {
       findMany: (...args: unknown[]) => mockFindMany(...args),
+    },
+    sharedMcpServer: {
+      findMany: (...args: unknown[]) => mockSharedFindMany(...args),
     },
   },
 }));
@@ -43,6 +47,7 @@ describe("MCP server loading", () => {
     vi.clearAllMocks();
     _resetKey();
     process.env.UPLOADS_DIR = "/tmp/saale-mcp-test";
+    mockSharedFindMany.mockResolvedValue([]);
   });
 
   it("only reads the user's enabled servers, in the scope the session runs in", async () => {
@@ -103,6 +108,38 @@ describe("MCP server loading", () => {
     expect(policies["home_assistant"]).toBe("allow");
     // An unrecognized stored value must not silently allow a server.
     expect(policies["docs"]).toBe("ask");
+  });
+
+  it("connects the instance's servers alongside the user's own", async () => {
+    mockFindMany.mockResolvedValue([row()]);
+    mockSharedFindMany.mockResolvedValue([
+      row({ id: "shared-1", userId: undefined, name: "docs", toolPolicy: "allow" }),
+    ]);
+
+    const { entries, policies, oauthServers } = await loadUserMcpServers(USER_ID, {
+      scope: "chat",
+    });
+
+    expect(mockSharedFindMany).toHaveBeenCalledWith({
+      where: { enabled: true, chatEnabled: true },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(entries.map((entry) => entry.name)).toEqual(["homeassistant", "docs"]);
+    expect(policies["docs"]).toBe("allow");
+    // OAuth is stored per account, so a shared server has no credential to map.
+    expect([...oauthServers.keys()]).toEqual(["homeassistant"]);
+  });
+
+  it("keeps the user's server when a shared one folds to the same name", async () => {
+    mockFindMany.mockResolvedValue([row({ name: "home-assistant", toolPolicy: "off" })]);
+    mockSharedFindMany.mockResolvedValue([
+      row({ id: "shared-1", userId: undefined, name: "home_assistant", toolPolicy: "allow" }),
+    ]);
+
+    const { entries, policies } = await loadUserMcpServers(USER_ID, { scope: "chat" });
+
+    expect(entries.map((entry) => entry.name)).toEqual(["home-assistant"]);
+    expect(policies).toEqual({ home_assistant: "off" });
   });
 
   it("skips the Authorization header when the stored token cannot be decrypted", async () => {
@@ -208,6 +245,7 @@ describe("createUserMcpExtension", () => {
     vi.clearAllMocks();
     _resetKey();
     process.env.UPLOADS_DIR = "/tmp/saale-mcp-test";
+    mockSharedFindMany.mockResolvedValue([]);
   });
 
   it("returns null when the user has no enabled servers", async () => {

@@ -111,6 +111,8 @@ export interface McpServerView {
   hasToken: boolean;
   /** Whether an OAuth credential is stored for this server. */
   hasOAuth: boolean;
+  /** Written by an admin for the whole instance, so the user cannot edit it. */
+  shared: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,7 +131,7 @@ export function toMcpServerView(
     createdAt: Date;
     updatedAt: Date;
   },
-  hasOAuth = false,
+  options: { hasOAuth?: boolean; shared?: boolean } = {},
 ): McpServerView {
   return {
     id: server.id,
@@ -141,7 +143,8 @@ export function toMcpServerView(
     chatEnabled: server.chatEnabled,
     coderEnabled: server.coderEnabled,
     hasToken: server.encryptedToken !== null,
-    hasOAuth,
+    hasOAuth: options.hasOAuth ?? false,
+    shared: options.shared ?? false,
     createdAt: server.createdAt.toISOString(),
     updatedAt: server.updatedAt.toISOString(),
   };

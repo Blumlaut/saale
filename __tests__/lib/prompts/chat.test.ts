@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => ({
   db: {
     chatSession: { findFirst: vi.fn() },
     prompt: { findMany: vi.fn() },
+    sharedPrompt: { findMany: vi.fn() },
     coderProject: { findFirst: vi.fn() },
   },
 }));
@@ -36,6 +37,7 @@ beforeEach(() => {
   hoisted.prompts = [prompt()];
   hoisted.db.chatSession.findFirst.mockImplementation(async () => hoisted.chatSession);
   hoisted.db.prompt.findMany.mockImplementation(async () => hoisted.prompts);
+  hoisted.db.sharedPrompt.findMany.mockResolvedValue([]);
   hoisted.db.coderProject.findFirst.mockResolvedValue(null);
 });
 
@@ -48,6 +50,31 @@ describe("promptsForChat", () => {
       where: { userId: "user-1" },
       orderBy: { name: "asc" },
     });
+  });
+
+  it("offers an instance prompt to every chat", async () => {
+    hoisted.db.sharedPrompt.findMany.mockResolvedValue([
+      prompt({ id: "shared-1", userId: undefined, name: "wip", content: "Write the notes." }),
+    ]);
+
+    const prompts = await promptsForChat("user-1", { id: "chat-1", projectId: null });
+
+    expect(prompts.map((p) => [p.name, p.source])).toEqual([
+      ["review", "user"],
+      ["wip", "shared"],
+    ]);
+  });
+
+  it("prefers the account's own prompt over an instance prompt of the same name", async () => {
+    hoisted.db.sharedPrompt.findMany.mockResolvedValue([
+      prompt({ id: "shared-1", userId: undefined, name: "review", content: "House version." }),
+    ]);
+
+    const prompts = await promptsForChat("user-1", { id: "chat-1", projectId: null });
+
+    expect(prompts.map((p) => [p.name, p.content, p.source])).toEqual([
+      ["review", "Review the staged changes. Focus on ${1:-correctness}.", "user"],
+    ]);
   });
 
   it("drops a prompt scoped to the other surface", async () => {
