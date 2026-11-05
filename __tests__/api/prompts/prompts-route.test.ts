@@ -11,6 +11,13 @@ const hoisted = vi.hoisted(() => ({
       update: vi.fn(),
       deleteMany: vi.fn(),
     },
+    sharedPrompt: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
 }));
 
@@ -74,6 +81,7 @@ beforeEach(() => {
   hoisted.db.prompt.findMany.mockResolvedValue([row()]);
   hoisted.db.prompt.findFirst.mockResolvedValue(null);
   hoisted.db.prompt.create.mockResolvedValue(row());
+  hoisted.db.sharedPrompt.findMany.mockResolvedValue([]);
 });
 
 describe("GET /api/prompts", () => {
@@ -86,6 +94,30 @@ describe("GET /api/prompts", () => {
       where: { userId: USER },
       orderBy: { name: "asc" },
     });
+  });
+
+  it("lists an instance prompt after the user's own, marked read-only", async () => {
+    hoisted.db.sharedPrompt.findMany.mockResolvedValue([
+      { ...row({ id: "shared-1", name: "wip" }) },
+    ]);
+
+    const body = await (await GET()).json();
+
+    expect(
+      body.prompts.map((prompt: { name: string; shared: boolean }) => [prompt.name, prompt.shared]),
+    ).toEqual([
+      ["review", false],
+      ["wip", true],
+    ]);
+  });
+
+  it("leaves out an instance prompt the user's own prompt shadows", async () => {
+    hoisted.db.sharedPrompt.findMany.mockResolvedValue([{ ...row({ id: "shared-1" }) }]);
+
+    const body = await (await GET()).json();
+
+    expect(body.prompts).toHaveLength(1);
+    expect(body.prompts[0].id).toBe("prompt-1");
   });
 
   it("refuses an unauthenticated request", async () => {
