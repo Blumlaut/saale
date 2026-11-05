@@ -179,13 +179,8 @@ describe("sendTelegramToUser", () => {
       BigInt("-1001234567890"),
       "Two new CVEs today",
     );
-    // The source chat gets a breadcrumb naming the group.
-    expect(mockRecordOutboundMessage).toHaveBeenCalledWith({
-      userId,
-      content: "Two new CVEs today",
-      sourceSessionId: null,
-      sentTo: "CVEs",
-    });
+    // No chat produced the post, so no chat gets a breadcrumb for it.
+    expect(mockRecordOutboundMessage).not.toHaveBeenCalled();
   });
 
   it("reports an unknown group with the reason the model can act on", async () => {

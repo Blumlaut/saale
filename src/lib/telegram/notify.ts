@@ -89,7 +89,7 @@ export async function deliverTelegramMessage(params: {
   // A private message no chat produced belongs to no chat, and the reply starts
   // one with the quoted text (see `processor.ts`). Writing it into the chat the
   // user happened to leave open would put it in a conversation it never had.
-  if (source || sentTo) {
+  if (source) {
     try {
       await recordOutboundMessage({ userId, content, sourceSessionId: source, sentTo });
     } catch (err) {

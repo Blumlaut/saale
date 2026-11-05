@@ -49,10 +49,8 @@ export async function resolveSourceChat(
  *    conversation context (custom entries convert to a user message for the
  *    model).
  *
- * `sourceSessionId` is the chat that sent the message. Without one the message
- * goes to the chat that spoke last, which is where a group post's breadcrumb
- * belongs; a private message with no chat is not recorded at all (see
- * `deliverTelegramMessage`).
+ * `sourceSessionId` is the chat that sent the message. A delivery no chat
+ * produced (a watcher, a reminder) is not recorded: it never came from a thread.
  *
  * `sentTo` is a group title. A group message is recorded as a one-line
  * breadcrumb instead of its full text: the chat that produced it needs to know
@@ -74,8 +72,7 @@ export async function recordOutboundMessage(params: {
   if (!content.trim()) return;
 
   const link = await getLinkByUserId(userId);
-  const source = await resolveSourceChat(userId, sourceSessionId);
-  const sessionId = source ?? link?.activeSessionId ?? null;
+  const sessionId = await resolveSourceChat(userId, sourceSessionId);
   if (!sessionId) return;
 
   const recorded = sentTo ? buildGroupBreadcrumb(content, sentTo) : content;
