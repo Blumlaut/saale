@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026.11.4 - 2026-11-05
+
+- let every resizable panel grow with the room (8f17df3c)
+- let the worktree panel grow with the window (927dea32)
+- link the update steps instead of printing them (b573bc24)
+- put the update commands above the notes (ed115d9b)
+- rework the changelog sheet (a9a68136)
+- cover the update sheet in the overlay list (ccd37443)
+- show an arrow when a newer release is out (abe7cef6)
+- read the newest release from github (2bd15600)
+- move the copy button out of chat (bf541fab)
+- share one version comparator (fb551dbe)
+- poll telegram when the webhook is refused (65961dbc)
+- drop the council tables and their rows (673a92e1)
+- remove the council feature (8d1f0925)
+- cover telegram routing, quotes and approvals (2dc63cbd)
+- leave an alert out of a chat until it is answered (b41279da)
+- send a chat run's tool approvals to telegram (667f03d4)
+- keep the replied-to telegram message in the transcript (cf9431a3)
+- start a chat when a telegram message continues none (158b28e0)
+- count wrong passwords against the account (f1d62f4b)
+- check ownership before a calendar connection test (a9707a82)
+
 ## 2026.11.3 - 2026-11-04
 
 - install pnpm before the release bump (aba9c534)
