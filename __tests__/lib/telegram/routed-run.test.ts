@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockChatSession,
   mockChatMessage,
+  mockAppSettings,
   mockGetPoolEntry,
   mockIsSessionBusy,
   mockEnsureChatAgent,
@@ -24,6 +25,7 @@ const {
   return {
     mockChatSession: { findFirst: vi.fn(), update: vi.fn() },
     mockChatMessage: { create: vi.fn() },
+    mockAppSettings: { findUnique: vi.fn() },
     mockGetPoolEntry: vi.fn(),
     mockIsSessionBusy: vi.fn(),
     mockEnsureChatAgent: vi.fn(),
@@ -42,7 +44,11 @@ const {
 });
 
 vi.mock("@/lib/db", () => ({
-  prisma: { chatSession: mockChatSession, chatMessage: mockChatMessage },
+  prisma: {
+    chatSession: mockChatSession,
+    chatMessage: mockChatMessage,
+    appSettings: mockAppSettings,
+  },
 }));
 
 vi.mock("@/lib/redis", () => ({
@@ -128,6 +134,7 @@ beforeEach(() => {
   mockChatSession.findFirst.mockResolvedValue(chat);
   mockChatSession.update.mockResolvedValue({});
   mockChatMessage.create.mockResolvedValue({ id: "msg-1" });
+  mockAppSettings.findUnique.mockResolvedValue({ telegramToolNotices: false });
   mockResolveChatModel.mockResolvedValue({ provider: "anthropic", name: "claude" });
   mockGetPoolEntry.mockReturnValue(undefined);
   mockIsSessionBusy.mockResolvedValue(false);
@@ -166,6 +173,14 @@ describe("runRoutedTelegramMessage", () => {
     expect(mockAttachTelegramSession).toHaveBeenCalledWith(userId, chatId, pooledSession);
     expect(mockRenderer.finish).toHaveBeenCalledWith(false);
     expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes the user's tool notice preference to the renderer", async () => {
+    mockAppSettings.findUnique.mockResolvedValue({ telegramToolNotices: true });
+
+    await runRoutedTelegramMessage(params);
+
+    expect(mockCreateRenderer).toHaveBeenCalledWith(expect.objectContaining({ toolNotices: true }));
   });
 
   it("stores the quoted message while naming the chat from the user's words", async () => {

@@ -146,6 +146,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
     telegramChatId,
     replyToMessageId: params.replyToMessageId,
     session: chat.id,
+    toolNotices: await toolNoticesWanted(userId),
   });
 
   let session: AgentSession | undefined;
@@ -248,4 +249,15 @@ async function isChatBusy(userId: string, sessionId: string): Promise<boolean> {
   const pooled = getPoolEntry(getPoolKey(userId, sessionId));
   if (pooled?.promptInFlight || pooled?.session.isStreaming === true) return true;
   return isSessionBusy(userId, sessionId);
+}
+
+/** Whether this user wants a Telegram line for every tool the agent runs. */
+async function toolNoticesWanted(userId: string): Promise<boolean> {
+  const settings = await prisma.appSettings
+    .findUnique({ where: { userId }, select: { telegramToolNotices: true } })
+    .catch((err) => {
+      console.error(`Failed to read the Telegram tool notices setting for ${userId}:`, err);
+      return null;
+    });
+  return settings?.telegramToolNotices ?? false;
 }

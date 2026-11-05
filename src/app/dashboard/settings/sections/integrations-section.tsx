@@ -21,6 +21,7 @@ import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/teleg
 import { GithubCard } from "@/components/integrations/github-card";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
 import { McpPanel } from "../components/mcp-panel";
+import { useUserSettings } from "../components/user-settings-provider";
 
 /** Delete confirmation descriptions per integration */
 const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
@@ -30,6 +31,7 @@ const DELETE_DESCRIPTIONS: Record<IntegrationId, string> = {
 
 export function IntegrationsSection() {
   const telegram = useTelegramIntegration();
+  const { settings, update, saveState } = useUserSettings();
 
   const initialLoading = telegram.loading;
 
@@ -98,6 +100,10 @@ export function IntegrationsSection() {
               removingChatId={telegram.removingChatId}
               onRemoveChat={telegram.removeChat}
               onLink={openTelegramDialog}
+              toolNotices={settings?.telegramToolNotices ?? false}
+              noticesDisabled={!settings}
+              noticesSaving={saveState === "saving"}
+              onToolNoticesChange={(on) => update({ telegramToolNotices: on })}
               onUnlink={() => {
                 setDeleteIntegrationId("telegram");
                 setDeleteAlertOpen(true);

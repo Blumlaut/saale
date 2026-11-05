@@ -29,8 +29,10 @@ export function createTelegramRunRenderer(params: {
   replyToMessageId?: number | undefined;
   /** The chat the run belongs to, so a shared path resolves against its worktree. */
   session?: string | undefined;
+  /** Whether a line goes out for every tool call, above the answer. */
+  toolNotices: boolean;
 }): TelegramRunRenderer {
-  const { userId, encryptedToken, telegramChatId, replyToMessageId, session } = params;
+  const { userId, encryptedToken, telegramChatId, replyToMessageId, session, toolNotices } = params;
 
   let turnIndex = 0;
   let currentTurnText = "";
@@ -87,7 +89,7 @@ export function createTelegramRunRenderer(params: {
           const sharedFile = sharedFileFromToolCall(event.toolName, event.args);
           if (sharedFile) sharedFiles.set(event.toolCallId, sharedFile);
 
-          if (!sentToolSummaries.has(event.toolCallId)) {
+          if (toolNotices && !sentToolSummaries.has(event.toolCallId)) {
             sentToolSummaries.add(event.toolCallId);
 
             resolveToolSummary(event.toolName, event.args, userId)

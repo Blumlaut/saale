@@ -32,13 +32,14 @@ import { createTelegramRunRenderer } from "@/lib/telegram/render";
 
 const chatId = BigInt("119075844");
 
-function renderer(session?: string) {
+function renderer(session?: string, toolNotices = true) {
   return createTelegramRunRenderer({
     userId: "user-1",
     encryptedToken: "enc",
     telegramChatId: chatId,
     replyToMessageId: 9,
     session,
+    toolNotices,
   });
 }
 
@@ -162,6 +163,36 @@ describe("createTelegramRunRenderer", () => {
       chatId,
       expect.stringContaining("Running a command"),
     );
+  });
+
+  it("leaves tool calls out of Telegram when notices are off", async () => {
+    const r = renderer(undefined, false);
+
+    r.onEvent({
+      type: "tool_execution_start",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "ls" },
+    } as unknown as AgentSessionEvent);
+    await r.finish(false);
+
+    expect(mockResolveToolSummary).not.toHaveBeenCalled();
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+  });
+
+  it("leaves tool calls out of Telegram when notices are off", async () => {
+    const r = renderer(undefined, false);
+
+    r.onEvent({
+      type: "tool_execution_start",
+      toolCallId: "call-1",
+      toolName: "bash",
+      args: { command: "ls" },
+    } as unknown as AgentSessionEvent);
+    await r.finish(false);
+
+    expect(mockResolveToolSummary).not.toHaveBeenCalled();
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
   });
 
   it("sends a file the agent showed", async () => {
