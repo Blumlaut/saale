@@ -140,6 +140,7 @@ async function seedPendingPluginDialog(page: Page): Promise<string> {
 }
 
 const MACHINE_DIALOG = "src/components/infra/machine-dialog.tsx";
+const MACHINE_LIST = "src/components/infra/machine-list.tsx";
 const NOTES_DIALOG = "src/components/infra/machine-notes-dialog.tsx";
 const MEMORIES_TAB = "src/app/dashboard/settings/sections/memories-section.tsx";
 const PROMPTS_TAB = "src/app/dashboard/settings/sections/prompts-section.tsx";
@@ -882,6 +883,12 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/infra",
     sources: [MACHINE_DIALOG],
     open: (page) => openMachineDialog(page, 'button[title="Edit"]'),
+  },
+  {
+    name: "infra · remove machine confirmation",
+    path: "/dashboard/infra",
+    sources: [MACHINE_LIST],
+    open: (page) => openMachineDialog(page, 'button[title="Remove"]'),
   },
   {
     name: "infra · machine notes",
