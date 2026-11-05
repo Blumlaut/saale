@@ -219,7 +219,7 @@ export function MailSection() {
               description={
                 mail?.hasPassword
                   ? "A password is stored. Type a new one to replace it."
-                  : "Stored encrypted, and never sent back to this page."
+                  : "Paste the password the relay asks for."
               }
             >
               <Input
