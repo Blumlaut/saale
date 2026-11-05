@@ -71,7 +71,8 @@ function watcherLabel(count: number): string {
 function formatDate(dateStr: string) {
   const date = new Date(dateStr);
   const now = new Date();
-  const diff = now.getTime() - date.getTime();
+  // a fresh chat can carry a timestamp a second ahead of this clock
+  const diff = Math.max(0, now.getTime() - date.getTime());
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
   if (days === 0) return "Today";

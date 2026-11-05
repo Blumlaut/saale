@@ -631,3 +631,18 @@ describe("SessionSidebar for a coder project", () => {
     expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/project-1");
   });
 });
+
+describe("SessionSidebar row dates", () => {
+  it("reads a chat stamped a moment ahead of the clock as today", async () => {
+    const ahead = new Date(NOW + 2000).toISOString();
+    mockSessions([
+      { ...session("s-new", "Brand new chat", 0), updatedAt: ahead, lastActivityAt: ahead },
+    ]);
+
+    render(<SessionSidebar />);
+
+    expect(await screen.findByText("Brand new chat")).toBeInTheDocument();
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.queryByText("-1 days ago")).not.toBeInTheDocument();
+  });
+});
