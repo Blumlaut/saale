@@ -52,6 +52,7 @@ function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
     defaultThinkingLevel: "default",
     theme: "system",
     compactActivity: true,
+    telegramToolNotices: false,
     agentCustomInstructions: null,
     coderCustomInstructions: null,
     emailWritingStyle: null,

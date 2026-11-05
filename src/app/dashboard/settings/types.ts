@@ -20,6 +20,8 @@ export interface UserSettings {
   theme: string;
   /** Collapse a turn's reasoning and tool calls into one compact line each. */
   compactActivity: boolean;
+  /** Send Telegram a line for every tool call, above the agent's answer. */
+  telegramToolNotices: boolean;
   agentCustomInstructions: string | null;
   /** Instructions for coder chats, in place of `agentCustomInstructions`. */
   coderCustomInstructions: string | null;
