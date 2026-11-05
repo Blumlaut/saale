@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createMemory, serializeMemory } from "@/lib/memory/store";
+import { countMemories, searchMemories } from "@/lib/search/sources";
 
 /**
  * GET /api/memories. List user's memories with optional filters
@@ -23,6 +24,23 @@ export async function GET(request: NextRequest) {
   if (collection) where.collection = collection;
   if (tag) where.tags = { has: tag };
 
+  const trimmedSearch = search?.trim();
+
+  if (trimmedSearch) {
+    const filters = { collection, tags: tag ? [tag] : undefined };
+    const [memories, total] = await Promise.all([
+      searchMemories(authResult.user.id, trimmedSearch, { ...filters, limit, offset }),
+      countMemories(authResult.user.id, trimmedSearch, filters),
+    ]);
+
+    return NextResponse.json({
+      memories: memories.map(serializeMemory),
+      total,
+      limit,
+      offset,
+    });
+  }
+
   const [memories, total] = await Promise.all([
     prisma.memory.findMany({
       where,
@@ -33,20 +51,8 @@ export async function GET(request: NextRequest) {
     prisma.memory.count({ where }),
   ]);
 
-  // Full-text filter on client side if search provided
-  let filtered = memories;
-  if (search) {
-    const q = search.toLowerCase();
-    filtered = memories.filter(
-      (m) =>
-        m.title.toLowerCase().includes(q) ||
-        m.content.toLowerCase().includes(q) ||
-        m.tags.some((t) => t.toLowerCase().includes(q)),
-    );
-  }
-
   return NextResponse.json({
-    memories: filtered.map(serializeMemory),
+    memories: memories.map(serializeMemory),
     total,
     limit,
     offset,

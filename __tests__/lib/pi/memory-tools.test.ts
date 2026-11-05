@@ -16,13 +16,17 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+vi.mock("@/lib/search/sources", () => ({ searchMemories: vi.fn() }));
+
 // Import mocks for assertions
 import * as db from "@/lib/db";
+import { searchMemories } from "@/lib/search/sources";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockMemory = db.prisma.memory as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockQueryRaw = db.prisma.$queryRaw as any;
+const mockSearchMemories = searchMemories as unknown as ReturnType<typeof vi.fn>;
 
 // Import after mocks
 import { createMemoryTools } from "@/lib/pi/tools/memory-tools";
@@ -117,12 +121,12 @@ describe("createMemoryTools", () => {
   });
 
   describe("memory_search", () => {
-    it("returns results via full-text search", async () => {
+    it("returns ranked results from the matcher", async () => {
       const tools = createMemoryTools(userId);
       const search = tools.find((t) => t.name === "memory_search")!;
 
       const mem = makeMemory();
-      mockQueryRaw.mockResolvedValue([{ ...mem, rank: 0.95 }]);
+      mockSearchMemories.mockResolvedValue([{ ...mem, score: 0.95 }]);
       mockMemory.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await callExecute(search.execute, { query: "dark mode" });
@@ -130,7 +134,11 @@ describe("createMemoryTools", () => {
 
       expect(text.count).toBe(1);
       expect(text.memories[0].title).toBe("User prefers dark mode");
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchMemories).toHaveBeenCalledWith(userId, "dark mode", {
+        collection: undefined,
+        tags: undefined,
+        limit: 10,
+      });
 
       // The value a codemode script or watcher tick receives: no parsing, and no
       // UI metadata mixed in.
@@ -163,91 +171,34 @@ describe("createMemoryTools", () => {
       expect(text.error).toBe("Query is empty");
     });
 
-    it("falls back to Prisma ORM when FTS throws", async () => {
-      const tools = createMemoryTools(userId);
-      const search = tools.find((t) => t.name === "memory_search")!;
-
-      const mem = makeMemory();
-      mockQueryRaw.mockRejectedValue(new Error("plainto_tsquery: invalid query"));
-      mockMemory.findMany.mockResolvedValue([mem]);
-      mockMemory.updateMany.mockResolvedValue({ count: 1 });
-
-      const result = await callExecute(search.execute, { query: "weird-chars!" });
-      const text = JSON.parse((result.content[0] as { text: string }).text);
-
-      expect(text.count).toBe(1);
-      expect(text.memories[0].title).toBe("User prefers dark mode");
-      expect(mockMemory.findMany).toHaveBeenCalled();
-    });
-
-    it("includes collection filter in fallback query", async () => {
-      const tools = createMemoryTools(userId);
-      const search = tools.find((t) => t.name === "memory_search")!;
-
-      mockQueryRaw.mockRejectedValue(new Error("FTS error"));
-      mockMemory.findMany.mockResolvedValue([]);
-
-      await callExecute(search.execute, {
-        query: "test",
-        collection: "preferences",
-      });
-
-      expect(mockMemory.findMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          userId,
-          collection: "preferences",
-          OR: expect.arrayContaining([
-            expect.objectContaining({ title: expect.any(Object) }),
-            expect.objectContaining({ content: expect.any(Object) }),
-          ]),
-        }),
-        orderBy: { updatedAt: "desc" },
-        take: 10,
-      });
-    });
-
-    it("includes tags filter in fallback query", async () => {
-      const tools = createMemoryTools(userId);
-      const search = tools.find((t) => t.name === "memory_search")!;
-
-      mockQueryRaw.mockRejectedValue(new Error("FTS error"));
-      mockMemory.findMany.mockResolvedValue([]);
-
-      await callExecute(search.execute, {
-        query: "test",
-        tags: ["ui", "settings"],
-      });
-
-      expect(mockMemory.findMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          tags: { hasSome: ["ui", "settings"] },
-        }),
-        orderBy: { updatedAt: "desc" },
-        take: 10,
-      });
-    });
-
     it("respects custom limit", async () => {
       const tools = createMemoryTools(userId);
       const search = tools.find((t) => t.name === "memory_search")!;
 
-      mockQueryRaw.mockResolvedValue([]);
+      mockSearchMemories.mockResolvedValue([]);
 
       await callExecute(search.execute, { query: "test", limit: 5 });
 
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchMemories).toHaveBeenCalledWith(userId, "test", {
+        collection: undefined,
+        tags: undefined,
+        limit: 5,
+      });
     });
 
     it("caps limit at 50", async () => {
       const tools = createMemoryTools(userId);
       const search = tools.find((t) => t.name === "memory_search")!;
 
-      mockQueryRaw.mockResolvedValue([]);
+      mockSearchMemories.mockResolvedValue([]);
 
       await callExecute(search.execute, { query: "test", limit: 999 });
 
-      // The LIMIT clause is passed to $queryRaw  verify the call was made
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchMemories).toHaveBeenCalledWith(userId, "test", {
+        collection: undefined,
+        tags: undefined,
+        limit: 50,
+      });
     });
 
     it("increments accessCount for returned memories", async () => {
@@ -256,9 +207,9 @@ describe("createMemoryTools", () => {
 
       const mem1 = makeMemory({ id: "mem-1" });
       const mem2 = makeMemory({ id: "mem-2" });
-      mockQueryRaw.mockResolvedValue([
-        { ...mem1, rank: 1 },
-        { ...mem2, rank: 0.5 },
+      mockSearchMemories.mockResolvedValue([
+        { ...mem1, score: 1 },
+        { ...mem2, score: 0.5 },
       ]);
       mockMemory.updateMany.mockResolvedValue({ count: 2 });
 
@@ -274,7 +225,7 @@ describe("createMemoryTools", () => {
       const tools = createMemoryTools(userId);
       const search = tools.find((t) => t.name === "memory_search")!;
 
-      mockQueryRaw.mockResolvedValue([]);
+      mockSearchMemories.mockResolvedValue([]);
 
       await callExecute(search.execute, { query: "nonexistent" });
 
@@ -286,7 +237,7 @@ describe("createMemoryTools", () => {
       const search = tools.find((t) => t.name === "memory_search")!;
 
       const mem = makeMemory();
-      mockQueryRaw.mockResolvedValue([{ ...mem, rank: 0.95 }]);
+      mockSearchMemories.mockResolvedValue([{ ...mem, score: 0.95 }]);
       mockMemory.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await callExecute(search.execute, { query: "test" });
@@ -300,7 +251,7 @@ describe("createMemoryTools", () => {
       const tools = createMemoryTools(userId);
       const search = tools.find((t) => t.name === "memory_search")!;
 
-      mockQueryRaw.mockResolvedValue([]);
+      mockSearchMemories.mockResolvedValue([]);
 
       await callExecute(search.execute, {
         query: "test",
@@ -308,7 +259,11 @@ describe("createMemoryTools", () => {
         tags: ["ui"],
       });
 
-      expect(mockQueryRaw).toHaveBeenCalled();
+      expect(mockSearchMemories).toHaveBeenCalledWith(userId, "test", {
+        collection: "facts",
+        tags: ["ui"],
+        limit: 10,
+      });
     });
   });
 
