@@ -9,6 +9,12 @@ import {
   findDuplicateTasks,
 } from "@/lib/tasks/task-api-helpers";
 
+/**
+ * A matched task costs the reader a few lines, so a search returns the best few.
+ * The unfiltered listing is what returns every task.
+ */
+const SEARCH_RESULT_LIMIT = 25;
+
 /** A task as every task tool reports it. the shared wire shape from taskToResponse. */
 const taskSchema = Type.Object({
   id: Type.String(),
@@ -238,7 +244,7 @@ export function createTaskTools(userId: string): ToolDefinition[] {
             priority: params.priority,
             tag: params.tag,
             dueBefore: params.dueBefore ? new Date(params.dueBefore) : undefined,
-            limit: 100,
+            limit: SEARCH_RESULT_LIMIT,
           });
 
           return {

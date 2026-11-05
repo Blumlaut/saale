@@ -1,6 +1,7 @@
 import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { defineStructuredTool } from "@/lib/pi/tools/tool-result";
+import { snippetAround } from "@/lib/search/snippet";
 import { searchChatMessages } from "@/lib/search/sources";
 import { deleteChatSession } from "@/lib/chat/delete-session";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
@@ -9,6 +10,9 @@ import { readWorkspaceFile } from "@/lib/files/workspace-file";
  * Create a chat search tool with userId injection.
  * Returns a factory function that creates the tool with the userId baked in.
  */
+/** Lines one chat may contribute, so one busy conversation cannot fill the page. */
+const MAX_HITS_PER_CHAT = 3;
+
 /** One matching message, with the chat it came from. */
 const CHAT_HIT_SCHEMA = Type.Object({
   sessionId: Type.String(),
@@ -83,23 +87,30 @@ export function createChatSearchTool(userId: string) {
         return { value: { query: params.query, count: 0, results: [] }, details: { count: 0 } };
       }
 
-      const results = await searchChatMessages(userId, params.query, {
-        limit: Math.min(params.limit ?? 20, 100),
+      const limit = Math.min(params.limit ?? 20, 100);
+
+      // Over-fetch so one busy chat cannot fill the whole page with its own
+      // matches, then keep the best few lines from each.
+      const hits = await searchChatMessages(userId, params.query, { limit: limit * 4 });
+      const perSession = new Map<string, number>();
+      const picked = hits.filter((hit) => {
+        const seen = perSession.get(hit.sessionId) ?? 0;
+        if (seen >= MAX_HITS_PER_CHAT) return false;
+        perSession.set(hit.sessionId, seen + 1);
+        return true;
       });
 
+      const results = picked.slice(0, limit).map((r) => ({
+        sessionId: r.sessionId,
+        sessionTitle: r.sessionTitle,
+        messageId: r.id,
+        role: r.role,
+        content: snippetAround(r.content, params.query, 300),
+        date: r.createdAt.toISOString(),
+      }));
+
       return {
-        value: {
-          query: params.query,
-          count: results.length,
-          results: results.map((r) => ({
-            sessionId: r.sessionId,
-            sessionTitle: r.sessionTitle,
-            messageId: r.id,
-            role: r.role,
-            content: r.content,
-            date: r.createdAt.toISOString(),
-          })),
-        },
+        value: { query: params.query, count: results.length, results },
         details: { count: results.length },
       };
     },

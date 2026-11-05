@@ -144,7 +144,7 @@ export function searchChatMessages(
     ],
     tsvector: CHAT_MESSAGE_TSVECTOR,
     select: Prisma.sql`c.id, c."sessionId", s.title AS "sessionTitle", c.role,
-      left(c.content, 300) AS content, c."createdAt"`,
+      left(c.content, 600) AS content, c."createdAt"`,
     orderBy: Prisma.sql`c."createdAt" DESC`,
     limit: opts.limit,
   });

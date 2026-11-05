@@ -7,6 +7,7 @@ import { decrypt } from "@/lib/crypto";
 import { sendMailForAccount } from "@/lib/email/send-mail";
 import { learnContactsFromSend } from "@/lib/contacts/contacts";
 import { searchMail } from "@/lib/search/sources";
+import { snippetAround } from "@/lib/search/snippet";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { getUploadsDir } from "@/lib/uploads";
@@ -643,7 +644,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           from: formatFrom(e.fromName, e.fromEmail),
           subject: e.subject,
           date: e.date.toISOString(),
-          preview: (e.bodyPreview ?? "").slice(0, 200),
+          preview: snippetAround(e.bodyPreview ?? "", params.query, 200),
           read: e.isRead,
           folder: e.folder,
         }));

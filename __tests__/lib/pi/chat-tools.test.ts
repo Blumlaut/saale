@@ -22,6 +22,11 @@ vi.mock("@/lib/chat/create-session", () => ({
   createChatSessionRow: (...args: unknown[]) => mockCreateChatSessionRow(...args),
 }));
 
+const mockSearchChatMessages = vi.fn();
+vi.mock("@/lib/search/sources", () => ({
+  searchChatMessages: (...args: unknown[]) => mockSearchChatMessages(...args),
+}));
+
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 vi.mock("@/lib/sandbox/client", () => ({ isConfigured: () => false }));
 
@@ -60,6 +65,63 @@ describe("createChatTools", () => {
   it("exposes search, respond, create and delete", () => {
     const names = createChatTools(USER_ID, CALLER_SESSION).map((t) => t.name);
     expect(names).toEqual(["chat_search", "chat_respond", "chat_create", "chat_delete"]);
+  });
+
+  describe("chat_search", () => {
+    function hit(sessionId: string, id: string, content: string) {
+      return {
+        id,
+        sessionId,
+        sessionTitle: `Chat ${sessionId}`,
+        role: "user",
+        content,
+        createdAt: new Date("2026-01-01"),
+        score: 3,
+      };
+    }
+
+    it("keeps a handful of lines per chat so one conversation cannot fill the page", async () => {
+      mockSearchChatMessages.mockResolvedValue([
+        hit("chat-1", "m1", "invoice one"),
+        hit("chat-1", "m2", "invoice two"),
+        hit("chat-1", "m3", "invoice three"),
+        hit("chat-1", "m4", "invoice four"),
+        hit("chat-2", "m5", "invoice five"),
+      ]);
+
+      const result = await callExecute(toolNamed("chat_search").execute, { query: "invoice" });
+      const value = result.structuredContent as { results: Array<{ messageId: string }> };
+
+      expect(value.results.map((r) => r.messageId)).toEqual(["m1", "m2", "m3", "m5"]);
+    });
+
+    it("over-fetches so the trimmed page is still full", async () => {
+      mockSearchChatMessages.mockResolvedValue([]);
+
+      await callExecute(toolNamed("chat_search").execute, { query: "invoice", limit: 5 });
+
+      expect(mockSearchChatMessages).toHaveBeenCalledWith(USER_ID, "invoice", { limit: 20 });
+    });
+
+    it("centres the excerpt on the match", async () => {
+      mockSearchChatMessages.mockResolvedValue([
+        hit("chat-1", "m1", `${"filler ".repeat(80)}the invoice for March`),
+      ]);
+
+      const result = await callExecute(toolNamed("chat_search").execute, { query: "invoice" });
+      const value = result.structuredContent as { results: Array<{ content: string }> };
+
+      expect(value.results[0]?.content).toContain("invoice");
+      expect(value.results[0]?.content.startsWith("…")).toBe(true);
+    });
+
+    it("returns nothing rather than recent history for a blank query", async () => {
+      const result = await callExecute(toolNamed("chat_search").execute, { query: "  " });
+      const value = result.structuredContent as { count: number };
+
+      expect(value.count).toBe(0);
+      expect(mockSearchChatMessages).not.toHaveBeenCalled();
+    });
   });
 
   it("asks before either write, and never asks for search", () => {

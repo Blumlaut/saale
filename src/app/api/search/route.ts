@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
+import { snippetAround } from "@/lib/search/snippet";
 import { searchChatMessages, searchChatSessions, searchUserMail } from "@/lib/search/sources";
 
 /**
@@ -21,22 +22,6 @@ interface PaletteResult {
   date: string;
   score: number;
   metadata?: Record<string, unknown>;
-}
-
-/** A body excerpt around the first word that matched, so the snippet shows why. */
-function snippetAround(text: string, query: string, length: number): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  if (flat.length <= length) return flat;
-
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const lower = flat.toLowerCase();
-  const at = terms.reduce((best, term) => {
-    const index = lower.indexOf(term);
-    return index >= 0 && (best < 0 || index < best) ? index : best;
-  }, -1);
-
-  const start = at <= 0 ? 0 : Math.max(0, at - Math.floor(length / 3));
-  return `${start > 0 ? "…" : ""}${flat.slice(start, start + length)}…`;
 }
 
 export async function GET(request: NextRequest) {

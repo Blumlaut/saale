@@ -258,7 +258,7 @@ describe("createTaskTools", () => {
         priority: undefined,
         tag: undefined,
         dueBefore: undefined,
-        limit: 100,
+        limit: 25,
       });
       expect(mockTask.findMany).not.toHaveBeenCalled();
     });
@@ -282,7 +282,7 @@ describe("createTaskTools", () => {
         priority: "high",
         tag: "work",
         dueBefore: new Date("2026-01-01"),
-        limit: 100,
+        limit: 25,
       });
     });
 

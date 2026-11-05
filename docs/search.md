@@ -98,6 +98,22 @@ declares, or postgres quietly falls back to a sequential scan. On 50k rows:
 The trigram indexes that `20260614141703_add_tasks` dropped are part of this
 migration too.
 
+### Keeping the result list short
+
+Three things stop a search from burying the reader:
+
+- Every term must match, so adding a word narrows.
+- Relevance ordering, so the caller's cap keeps the best rows and not the newest.
+- A cap per source: 20 rows for mail, chat, contacts and calendar, 10 for memory,
+  25 for task search. The unfiltered task listing still returns everything.
+
+`chat_search` also keeps at most three lines from any one chat, so a single busy
+conversation cannot fill the page.
+
+A result carries an excerpt centred on the matched words (`lib/search/snippet.ts`),
+not the head of the text. Mail previews, chat lines and palette results all use
+it, so the reader sees why the row matched without asking for more rows.
+
 ## What no longer goes wrong
 
 - ⌘K matches inside chat messages, not only chat titles.
