@@ -33,6 +33,23 @@ describe("renderAccountMail", () => {
     expect(html.split(`href="${PARTS.url}"`)).toHaveLength(3);
   });
 
+  it("sits the button in the middle of the card", () => {
+    const { html } = renderAccountMail(PARTS);
+
+    expect(html).toContain('<p class="mail-button-row" style="margin:0 0 24px;text-align:center">');
+    expect(html).toContain(`<a href="${PARTS.url}" class="mail-button"`);
+  });
+
+  it("asks the client for a dark version and repaints itself for one", () => {
+    const { html } = renderAccountMail(PARTS);
+
+    expect(html).toContain('<meta name="color-scheme" content="light dark">');
+    expect(html).toContain("@media (prefers-color-scheme: dark)");
+    // The inline styles are the light theme, so every dark rule has to win over them.
+    expect(html).toContain(".mail-button { background:#ff7a2e !important;");
+    expect(html).toContain(".mail-page { background:#0b0b0c !important;");
+  });
+
   it("escapes the instance name the admin typed", () => {
     const { html } = renderAccountMail({ ...PARTS, instanceName: 'Ada & "Sons" <ltd>' });
 
