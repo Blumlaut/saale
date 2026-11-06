@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// The gate remembers the decision model's verdicts in Redis.
+vi.mock("@/lib/redis", () => import("../../helpers/in-memory-redis"));
+
 const mockIsAutoApproveActive = vi.fn();
 vi.mock("@/lib/pi/auto-approve", () => ({
   isAutoApproveActive: (...args: unknown[]) => mockIsAutoApproveActive(...args),
@@ -14,6 +17,7 @@ vi.mock("@/lib/pi/tool-approval-gate", async (importOriginal) => {
   };
 });
 
+import { resetMockRedis } from "../../helpers/in-memory-redis";
 import { isApprovalScopeGranted } from "@/lib/pi/approval-scope";
 import { createToolApprovalExtension } from "@/lib/pi/tool-approval-extension";
 import type { ToolApprovalOptions } from "@/lib/pi/tool-approval-extension";
@@ -34,7 +38,7 @@ interface ToolCallEvent {
 
 type Handler = (
   event: ToolCallEvent,
-  ctx: { signal?: AbortSignal | undefined },
+  ctx: { signal?: AbortSignal | undefined; modelRegistry?: unknown },
 ) => Promise<unknown>;
 
 /**
@@ -52,6 +56,8 @@ function setup(
     tools?: RegistryTool[];
     active?: string[];
     gate?: Partial<ToolApprovalOptions>;
+    /** What the gate's decision model lookup and call answer. */
+    registry?: { found?: boolean; classify?: (context: unknown) => Promise<unknown> };
   } = {},
 ) {
   const handlers: Record<string, Handler> = {};
@@ -72,6 +78,13 @@ function setup(
 
   const sessionId = uniqueId("session");
   const emitApprovalRequest = vi.fn();
+  const registry = {
+    findOfType: () => (options.registry?.found === false ? undefined : { id: "kev" }),
+    classify: (_model: unknown, context: unknown) =>
+      options.registry?.classify
+        ? options.registry.classify(context)
+        : Promise.resolve({ answers: {}, stopReason: "error" }),
+  };
   createToolApprovalExtension({
     userId: "user-1",
     sessionId,
@@ -89,7 +102,8 @@ function setup(
     call: (
       event: Omit<ToolCallEvent, "toolCallId"> & { toolCallId?: string },
       signal?: AbortSignal,
-    ) => onToolCall({ toolCallId: uniqueId("call"), ...event }, { signal }),
+    ) =>
+      onToolCall({ toolCallId: uniqueId("call"), ...event }, { signal, modelRegistry: registry }),
     onToolResult: handlers["tool_result"] as unknown as (
       event: Record<string, unknown>,
     ) => Promise<unknown>,
@@ -99,6 +113,7 @@ function setup(
 describe("tool approval gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMockRedis();
     mockIsAutoApproveActive.mockResolvedValue(false);
     mockRequestToolApproval.mockResolvedValue("approved");
   });
@@ -255,6 +270,73 @@ describe("tool approval gate", () => {
       expect(await call({ toolName: "infra_exec", input: { command: "ls" } })).toBeUndefined();
       await call({ toolName: "infra_exec", input: { command: "rm -rf /var/www" } });
       expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
+    // The decision model answers the question the command checks approximate:
+    // its verdict is the decision, and only a missing answer falls back.
+    it("runs a risky command the decision model judges safe", async () => {
+      const { call } = setup({
+        gate: {
+          toolPolicies: { bash: "auto" },
+          decisionModel: { provider: "custom-llamacpp", id: "kev" },
+        },
+        registry: {
+          classify: async () => ({
+            answers: { risky: { type: "bool", probability: 0.02 } },
+            stopReason: "stop",
+          }),
+        },
+      });
+
+      expect(await call({ toolName: "bash", input: { command: "rm -rf /tmp/x" } })).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
+    it("asks about a safe command the decision model judges risky", async () => {
+      const { call } = setup({
+        gate: {
+          toolPolicies: { bash: "auto" },
+          decisionModel: { provider: "custom-llamacpp", id: "kev" },
+        },
+        registry: {
+          classify: async () => ({
+            answers: { risky: { type: "bool", probability: 0.93 } },
+            stopReason: "stop",
+          }),
+        },
+      });
+
+      await call({ toolName: "bash", input: { command: "ls -la" } });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to the command checks when the model is gone", async () => {
+      const { call } = setup({
+        gate: {
+          toolPolicies: { bash: "auto" },
+          decisionModel: { provider: "custom-llamacpp", id: "kev" },
+        },
+        registry: { found: false },
+      });
+
+      expect(await call({ toolName: "bash", input: { command: "ls -la" } })).toBeUndefined();
+      await call({ toolName: "bash", input: { command: "rm -rf /tmp/x" } });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the command checks when no decision model is configured", async () => {
+      const { call } = setup({
+        gate: { toolPolicies: { bash: "auto" } },
+        registry: {
+          classify: async () => ({
+            answers: { risky: { type: "bool", probability: 0.93 } },
+            stopReason: "stop",
+          }),
+        },
+      });
+
+      expect(await call({ toolName: "bash", input: { command: "ls -la" } })).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
     });
 
     it("treats auto on any other tool as allow", async () => {

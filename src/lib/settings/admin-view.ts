@@ -29,6 +29,8 @@ export interface AdminSettingsView {
   voiceEnabled: boolean;
   voiceModel: string | null;
   voiceLanguage: string | null;
+  /** Decision model that judges what Auto would run, as `provider:model`. */
+  approvalDecisionModel: string | null;
 }
 
 export function serializeAdminSettings(settings: AdminSettings): AdminSettingsView {
@@ -54,5 +56,6 @@ export function serializeAdminSettings(settings: AdminSettings): AdminSettingsVi
     voiceEnabled: settings.voiceEnabled,
     voiceModel: settings.voiceModel,
     voiceLanguage: settings.voiceLanguage,
+    approvalDecisionModel: settings.approvalDecisionModel,
   };
 }

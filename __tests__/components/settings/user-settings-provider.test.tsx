@@ -31,6 +31,8 @@ const stored: UserSettings = {
   coderToolConfig: null,
   toolPolicies: null,
   toolExposure: null,
+  approvalDecisionModel: null,
+  instanceApprovalDecisionModel: null,
   pushNotifications: null,
 };
 

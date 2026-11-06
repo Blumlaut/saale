@@ -8,34 +8,8 @@ export type { ToolPolicy };
 import type { NotificationPreferences } from "@/lib/notifications/preferences";
 export type { NotificationPreferences };
 
-export interface PurposeModelSelection {
-  provider: string;
-  model: string;
-}
-
-export interface UserSettings {
-  defaultModelProvider: string;
-  defaultModelName: string;
-  defaultThinkingLevel: string;
-  theme: string;
-  /** Collapse a turn's reasoning and tool calls into one compact line each. */
-  compactActivity: boolean;
-  /** Send Telegram a line for every tool call, above the agent's answer. */
-  telegramToolNotices: boolean;
-  agentCustomInstructions: string | null;
-  /** Instructions for coder chats, in place of `agentCustomInstructions`. */
-  coderCustomInstructions: string | null;
-  emailWritingStyle: string | null;
-  purposeModelOverrides: Record<string, PurposeModelSelection> | null;
-  disabledModels: string[] | null; // Array of "provider:modelId" strings
-  defaultToolConfig: ToolConfig | null;
-  /** Category on/off for new coder chats. */
-  coderToolConfig: ToolConfig | null;
-  toolPolicies: Record<string, ToolPolicy> | null;
-  toolExposure: ToolExposureConfig | null;
-  /** Sparse push switches: a category equal to its default is left out. */
-  pushNotifications: Partial<NotificationPreferences> | null;
-}
+// The settings contract is declared beside the serializer that answers with it.
+export type { PurposeModelSelection, UserSettings } from "@/lib/settings/user-view";
 
 export interface AvailableModel {
   id: string;

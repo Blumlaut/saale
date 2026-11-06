@@ -9,6 +9,7 @@ import { readPluginConfig } from "./plugins";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createExtensionUiContext } from "@/lib/plugin-ui/ui-context";
 import { createSaaleAgentSession, resolveAgentCwd } from "./agent-session";
+import type { DecisionModelRef } from "./decision-model";
 import { sessionWorkspace } from "./project-context";
 import { buildSessionDeps, type ToolConfig } from "./session";
 import type { ToolExposureConfig } from "./tool-categories";
@@ -59,6 +60,8 @@ export async function createPersistentSession(options: {
   /** Approval channel for the tools Pi extensions register; without it they are neither connected nor gated. */
   emitApprovalRequest?: ((request: ApprovalRequest) => void) | undefined;
   toolPolicies?: Record<string, string> | null | undefined;
+  /** The decision model that judges what `auto` would run on its own. */
+  approvalDecisionModel?: DecisionModelRef | null | undefined;
   /**
    * Judge shell commands by the workspace instead of the safety classifier.
    * Set for a coder chat, whose boundary is the workspace rather than a safe
@@ -131,6 +134,7 @@ export async function createPersistentSession(options: {
               userId: options.userId,
               sessionId: options.sessionId,
               toolPolicies: options.toolPolicies,
+              decisionModel: options.approvalDecisionModel,
               mcpScope: options.mcpScope,
               ...(options.commandScope ? { commandScope: options.commandScope } : {}),
               emitApprovalRequest: options.emitApprovalRequest,

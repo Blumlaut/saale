@@ -1,31 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { normalizeToolExposure } from "@/lib/pi/tool-exposure";
 import { applyUserSettingsPatch, ensureUserSettings, SettingsError } from "@/lib/settings/update";
-import type { AppSettings } from "@prisma/client";
-
-/** Serialize AppSettings to the shape sent to the frontend. */
-function serializeSettings(settings: AppSettings) {
-  return {
-    defaultModelProvider: settings.defaultModelProvider,
-    defaultModelName: settings.defaultModelName,
-    defaultThinkingLevel: settings.defaultThinkingLevel,
-    theme: settings.theme,
-    compactActivity: settings.compactActivity,
-    telegramToolNotices: settings.telegramToolNotices,
-    agentCustomInstructions: settings.agentCustomInstructions,
-    coderCustomInstructions: settings.coderCustomInstructions,
-    emailWritingStyle: settings.emailWritingStyle,
-    purposeModelOverrides: settings.purposeModelOverrides,
-    disabledModels: settings.disabledModels,
-    defaultToolConfig: settings.defaultToolConfig,
-    coderToolConfig: settings.coderToolConfig,
-    toolPolicies: settings.toolPolicies,
-    toolExposure: normalizeToolExposure(settings.toolExposure),
-    pushNotifications: settings.pushNotifications,
-  };
-}
+import { serializeUserSettings } from "@/lib/settings/user-view";
 
 /**
  * GET /api/settings. Get user settings
@@ -36,7 +13,7 @@ export async function GET() {
 
   const settings = await ensureUserSettings(authResult.user.id);
 
-  return NextResponse.json({ settings: serializeSettings(settings) });
+  return NextResponse.json({ settings: await serializeUserSettings(settings) });
 }
 
 /**
@@ -68,7 +45,7 @@ export async function PATCH(request: NextRequest) {
       authResult.user.id,
       body as Record<string, unknown>,
     );
-    return NextResponse.json({ settings: serializeSettings(settings) });
+    return NextResponse.json({ settings: await serializeUserSettings(settings) });
   } catch (err) {
     if (err instanceof SettingsError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

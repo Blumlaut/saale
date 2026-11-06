@@ -518,6 +518,27 @@ function toolPolicyProperties(): UserProperty[] {
   }));
 }
 
+/** A reference as stored: `provider:model`, or null to clear it. */
+function normalizeModelReference(value: unknown): string | null {
+  const reference = splitModelReference(value === null ? null : String(value));
+  return reference ? formatModelReference(reference.provider, reference.name) : null;
+}
+
+/** `tools.approvalDecisionModel`. the model that judges what Auto would run. */
+const APPROVAL_DECISION_MODEL_PROPERTY: UserProperty = {
+  key: "tools.approvalDecisionModel",
+  group: GROUP.tools,
+  label: "Approval decision model",
+  description:
+    'Decision model that judges the tool calls the Auto policy would run on its own, as "provider:model". Set to null to follow the instance default. With neither set, the built-in command checks decide.',
+  columns: ["approvalDecisionModel"],
+  apply: "sessions",
+  scope: "user",
+  schema: modelReferenceSchema,
+  read: (row) => row.approvalDecisionModel,
+  write: (_row, value) => ({ approvalDecisionModel: normalizeModelReference(value) }),
+};
+
 /**
  * `coder.tools.category.<key>.enabled`. whether a category is on for new coder
  * chats, where the default set is the worktree tools and little else.
@@ -719,6 +740,19 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
       if (!reference) return { globalModelProvider: "", globalModelName: "" };
       return { globalModelProvider: reference.provider, globalModelName: reference.name };
     },
+  },
+  {
+    key: "admin.approvalDecisionModel",
+    group: GROUP.models,
+    label: "Approval decision model",
+    description:
+      'Decision model that judges the tool calls the Auto policy would run on its own, for accounts that have not picked one, as "provider:model". Set to null to leave the built-in command checks.',
+    columns: ["approvalDecisionModel"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: modelReferenceSchema,
+    read: (row) => row.approvalDecisionModel,
+    write: (_row, value) => ({ approvalDecisionModel: normalizeModelReference(value) }),
   },
   {
     key: "admin.providerModels",
@@ -1039,6 +1073,7 @@ export const USER_PROPERTIES: readonly UserProperty[] = [
   ...categoryEnabledProperties(),
   ...categoryExposureProperties(),
   ...toolPolicyProperties(),
+  APPROVAL_DECISION_MODEL_PROPERTY,
   ...coderCategoryProperties(),
   ...sidebarProperties(),
   ...notificationProperties(),

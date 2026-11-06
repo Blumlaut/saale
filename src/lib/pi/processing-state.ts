@@ -10,6 +10,7 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { createUserMcpExtension } from "@/lib/mcp/servers";
+import type { DecisionModelRef } from "./decision-model";
 import { createToolApprovalExtension } from "./tool-approval-extension";
 import {
   globalPluginPaths,
@@ -285,6 +286,8 @@ export interface AgentResourceOptions {
     /** Set for a coder chat: shell commands are judged by the workspace. */
     commandScope?: "workspace" | undefined;
     emitApprovalRequest: (request: ApprovalRequest) => void;
+    /** The decision model that judges what `auto` would run (see `decision-model.ts`). */
+    decisionModel?: DecisionModelRef | null | undefined;
   };
 }
 
@@ -326,6 +329,7 @@ export async function createAgentResourceLoader(
           ? { commandScope: { root: options.workspace.root, cwd: options.workspace.cwd } }
           : {}),
         emitApprovalRequest: interactive.emitApprovalRequest,
+        ...(interactive.decisionModel ? { decisionModel: interactive.decisionModel } : {}),
       }),
     );
 

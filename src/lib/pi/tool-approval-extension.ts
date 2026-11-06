@@ -20,8 +20,10 @@
  *    (see `approval-scope.ts`).
  * 4. A call already covered by the script approval the user gave. runs.
  * 5. `auto` on a command-aware tool (`bash`, `infra_exec`). the command decides;
- *    risky ones ask, safe ones run. A coder chat judges the command by the
- *    workspace instead (see `escapesWorkspace`).
+ *    risky ones ask, safe ones run. A decision model, when one is configured,
+ *    answers that question instead and the command checks stay its fallback. A
+ *    coder chat judges the command by the workspace instead (see
+ *    `escapesWorkspace`).
  * 6. `ask`. the user decides.
  * 7. `allow`. runs.
  *
@@ -42,6 +44,7 @@ import { grantApprovalScope, isApprovalScopeGranted, releaseApprovalScope } from
 import { isAutoApproveActive } from "./auto-approve";
 import { classifyCommand, escapesWorkspace, type WorkspaceScope } from "./command-classifier";
 import { readScriptToolReferences, resolveReferencedTools } from "./codemode-script";
+import { judgeToolCall, type DecisionModelRef } from "./decision-model";
 import {
   APPROVAL_TIMEOUT_MS,
   requestToolApproval,
@@ -71,6 +74,11 @@ export interface ToolApprovalOptions {
   commandScope?: WorkspaceScope | undefined;
   /** Where an approval request goes: the web session bus, a Telegram card, … */
   emitApprovalRequest: (request: ApprovalRequest) => void;
+  /**
+   * The decision model that judges what `auto` would run on its own. Unset, the
+   * command checks decide (`classifyCommand`).
+   */
+  decisionModel?: DecisionModelRef | null | undefined;
 }
 
 /** Build the gate applied to every tool call of a session. */
@@ -169,10 +177,24 @@ async function decideCall(
       if (command && !escapesWorkspace(command, options.commandScope)) return undefined;
       if (policies.toolPolicies?.[toolName] === "allow") return undefined;
     } else {
-      const classification = command
-        ? classifyCommand(command)
-        : { safety: "risky" as const, reason: "no command provided" };
-      if (classification.safety !== "risky") return undefined;
+      const verdict = options.decisionModel
+        ? await judgeToolCall({
+            model: options.decisionModel,
+            registry: ctx.modelRegistry,
+            toolName,
+            input,
+            signal: ctx.signal,
+          })
+        : null;
+      if (verdict === "safe") return undefined;
+      // Only an answer the model did not give falls back to the command checks:
+      // a "risky" verdict is the model asking for the user.
+      if (verdict === null) {
+        const classification = command
+          ? classifyCommand(command)
+          : { safety: "risky" as const, reason: "no command provided" };
+        if (classification.safety !== "risky") return undefined;
+      }
     }
   } else if (policy !== "ask") {
     return undefined;

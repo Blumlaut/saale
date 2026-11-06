@@ -14,6 +14,11 @@ vi.mock("@/lib/db", () => ({
   prisma: { appSettings: { findUnique: (...args: unknown[]) => mockFindUnique(...args) } },
 }));
 
+const mockResolveApprovalDecisionModel = vi.fn();
+vi.mock("@/lib/pi/decision-model", () => ({
+  resolveApprovalDecisionModel: (...args: unknown[]) => mockResolveApprovalDecisionModel(...args),
+}));
+
 const mockResolveModelForPurpose = vi.fn();
 vi.mock("@/lib/pi/model-resolution", () => ({
   resolveModelForPurpose: (...args: unknown[]) => mockResolveModelForPurpose(...args),
@@ -46,6 +51,7 @@ describe("chat session factory", () => {
     vi.clearAllMocks();
     process.env.UPLOADS_DIR = "/tmp/saale-test-uploads";
     mockCreatePersistentSession.mockResolvedValue({ session: { id: "agent-session" } });
+    mockResolveApprovalDecisionModel.mockResolvedValue(null);
     mockFindUnique.mockResolvedValue({
       agentCustomInstructions: "Be brief.",
       coderCustomInstructions: "Never add a dependency without asking.",
@@ -66,6 +72,17 @@ describe("chat session factory", () => {
       expect(settings.toolExposure).toEqual({ jobs: "direct" });
     });
 
+    it("carries the decision model the gate judges Auto calls with", async () => {
+      mockResolveApprovalDecisionModel.mockResolvedValue({
+        provider: "custom-llamacpp",
+        id: "kev",
+      });
+
+      const settings = await loadChatUserSettings("user-1");
+
+      expect(settings.approvalDecisionModel).toEqual({ provider: "custom-llamacpp", id: "kev" });
+    });
+
     it("returns nulls when the user has no settings row", async () => {
       mockFindUnique.mockResolvedValue(null);
       const settings = await loadChatUserSettings("user-2");
@@ -74,6 +91,7 @@ describe("chat session factory", () => {
         coderCustomInstructions: null,
         toolPolicies: null,
         toolExposure: null,
+        approvalDecisionModel: null,
       });
     });
   });
@@ -111,6 +129,7 @@ describe("chat session factory", () => {
         customInstructions: "Be brief.",
         toolPolicies: { bash: "ask" },
         toolExposure: { email: "deferred" },
+        approvalDecisionModel: { provider: "custom-llamacpp", id: "kev" },
         emitApprovalRequest,
       });
 
@@ -123,6 +142,8 @@ describe("chat session factory", () => {
       expect(options.emitApprovalRequest).toBe(emitApprovalRequest);
       expect(options.toolPolicies).toEqual({ bash: "ask" });
       expect(options.toolExposure).toEqual({ email: "deferred" });
+      // The gate is built with the session, so the model it asks is fixed here too.
+      expect(options.approvalDecisionModel).toEqual({ provider: "custom-llamacpp", id: "kev" });
       expect(options.mcp).toBe(true);
       expect(options.modelProvider).toBe("anthropic");
       expect(options.modelName).toBe("claude-sonnet-4-5");

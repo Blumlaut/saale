@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
 import { getSessionDir } from "./agent-pool";
+import { resolveApprovalDecisionModel, type DecisionModelRef } from "./decision-model";
 import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
@@ -33,6 +34,8 @@ export interface ChatUserSettings {
   toolPolicies: Record<string, string> | null;
   /** Per-category exposure. how each category's tools reach the model. */
   toolExposure: ToolExposureConfig | null;
+  /** The decision model that judges what `auto` would run on its own. */
+  approvalDecisionModel: DecisionModelRef | null;
 }
 
 /** Load the user settings that shape a chat agent session. */
@@ -44,6 +47,7 @@ export async function loadChatUserSettings(userId: string): Promise<ChatUserSett
       coderCustomInstructions: true,
       toolPolicies: true,
       toolExposure: true,
+      approvalDecisionModel: true,
     },
   });
   return {
@@ -51,6 +55,7 @@ export async function loadChatUserSettings(userId: string): Promise<ChatUserSett
     coderCustomInstructions: settings?.coderCustomInstructions ?? null,
     toolPolicies: (settings?.toolPolicies as Record<string, string> | null) ?? null,
     toolExposure: normalizeToolExposure(settings?.toolExposure),
+    approvalDecisionModel: await resolveApprovalDecisionModel(settings?.approvalDecisionModel),
   };
 }
 
@@ -94,6 +99,8 @@ export interface CreateChatAgentSessionOptions {
   toolPolicies: Record<string, string> | null | undefined;
   /** Per-category exposure (`AppSettings.toolExposure`). */
   toolExposure: ToolExposureConfig | null | undefined;
+  /** The decision model that judges what `auto` would run on its own. */
+  approvalDecisionModel?: DecisionModelRef | null | undefined;
   /**
    * Approval channel for the session's tool calls. Every call goes through the
    * gate this feeds (`lib/pi/tool-approval-extension.ts`).
@@ -191,6 +198,7 @@ export async function createChatAgentSession(
     ...(chatSession.thinkingLevel ? { thinkingLevel: chatSession.thinkingLevel } : {}),
     emitApprovalRequest: options.emitApprovalRequest,
     toolPolicies,
+    approvalDecisionModel: options.approvalDecisionModel,
     mcp: true,
     mcpScope: chatSession.projectId ? "coder" : "chat",
     ...(chatSession.projectId ? { commandScope: "workspace" as const } : {}),
