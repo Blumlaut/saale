@@ -85,6 +85,16 @@ describe("sign-in form", () => {
     expect(signInEmail).not.toHaveBeenCalled();
   });
 
+  it("offers the way to a forgotten password without submitting the form", () => {
+    render(<LoginForm {...telegramOff} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+
+    expect(router.push).toHaveBeenCalledWith("/auth/forgot-password");
+    expect(signInUsername).not.toHaveBeenCalled();
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
   it("routes an email address to email sign-in", async () => {
     signInEmail.mockResolvedValue({ data: null, error: null } as never);
     render(<LoginForm {...telegramOff} />);

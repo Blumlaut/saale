@@ -286,7 +286,17 @@ function LoginFields({ telegram, sso, signupsEnabled }: LoginFormProps) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => router.push("/auth/forgot-password")}
+                  >
+                    Forgot password?
+                  </Button>
+                </div>
                 <Input
                   id="password"
                   type="password"
