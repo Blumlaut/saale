@@ -9,14 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import {
-  AlertCircle,
-  Building2,
-  ChevronRight,
-  KeyRound,
-  MessageCircle,
-  ShieldCheck,
-} from "lucide-react";
+import { Building2, ChevronRight, KeyRound, MessageCircle, ShieldCheck } from "lucide-react";
+import { ErrorBanner } from "@/components/auth/form-banner";
 import { authClient } from "@/lib/auth-client";
 import { safeNextPath } from "@/lib/auth/redirect";
 import { isTotpCode } from "@/lib/auth/totp";
@@ -41,15 +35,6 @@ export interface LoginFormProps {
   sso: SsoLoginOptions;
   /** Whether someone with no account yet could create one here. the copy for a failed Telegram login depends on it. */
   signupsEnabled: boolean;
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
-      <AlertCircle className="h-4 w-4 shrink-0" />
-      <span className="min-w-0 break-words">{message}</span>
-    </div>
-  );
 }
 
 function TwoFactorForm({ onVerified }: { onVerified: () => void }) {

@@ -13,7 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, CheckCircle, Copy, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { CheckCircle, Copy, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { ErrorBanner } from "@/components/auth/form-banner";
 import { authClient } from "@/lib/auth-client";
 import { isTotpCode, parseTotpSecret } from "@/lib/auth/totp";
 
@@ -40,15 +41,6 @@ const TITLES: Record<TwoFactorDialogMode, { title: string; description: string }
     description: "Generate a new set of one-time backup codes",
   },
 };
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div className="bg-destructive/10 text-destructive flex items-center gap-2 rounded-full px-4 py-2.5 text-sm">
-      <AlertCircle className="h-4 w-4 shrink-0" />
-      <span className="min-w-0 break-words">{message}</span>
-    </div>
-  );
-}
 
 function BackupCodesList({ codes }: { codes: string[] }) {
   const [copied, setCopied] = useState(false);
