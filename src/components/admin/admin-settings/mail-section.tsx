@@ -66,8 +66,8 @@ function draftOf(mail: InstanceMailStatus): MailDraft {
 /**
  * The relay Saale sends its own mail through.
  *
- * Verification links, password resets and invitations leave through it, so this
- * is what a deployment configures before any of those can reach a person.
+ * Verification links and password resets leave through it, so this is what a
+ * deployment configures before either can reach a person.
  */
 export function MailSection() {
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -318,8 +318,8 @@ export function MailSection() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Remove the mail relay?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Verification links, password resets and invitations stop going out until a relay
-                  is configured again.
+                  Verification links and password resets stop going out until a relay is configured
+                  again.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

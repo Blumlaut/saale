@@ -5,10 +5,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockFindUnique, mockUpsert, mockDeleteMany } = vi.hoisted(() => ({
+const { mockFindUnique, mockUpsert, mockDeleteMany, mockSendMail } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockUpsert: vi.fn(),
   mockDeleteMany: vi.fn(),
+  mockSendMail: vi.fn(),
+}));
+
+vi.mock("nodemailer", () => ({
+  default: {
+    createTransport: () => ({ sendMail: mockSendMail }),
+  },
+}));
+
+vi.mock("@/lib/branding/workspace", () => ({
+  getWorkspaceName: async () => "Acme Console",
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -27,6 +38,7 @@ import {
   instanceMailStatus,
   saveInstanceMail,
   sendInstanceMail,
+  sendInstanceMailTest,
 } from "@/lib/email/instance-mail";
 
 const TEST_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -190,5 +202,28 @@ describe("sendInstanceMail", () => {
     const result = await sendInstanceMail({ to: "ada@example.com", subject: "Hi", text: "Hi" });
 
     expect(result.sent).toBe(false);
+  });
+});
+
+describe("sendInstanceMailTest", () => {
+  it("wears the instance's frame, with nothing to click", async () => {
+    mockFindUnique.mockResolvedValue(row());
+    mockSendMail.mockResolvedValue({});
+
+    await expect(sendInstanceMailTest("ada@example.com")).resolves.toEqual({ sent: true });
+
+    const message = mockSendMail.mock.calls.at(-1)?.[0] as {
+      subject: string;
+      text: string;
+      html: string;
+    };
+    expect(message.subject).toBe("Acme Console can send mail");
+    expect(message.html).toContain("Sent by Acme Console");
+    expect(message.html).toContain("This is a test message from your instance.");
+    expect(message.html).toContain("@media (prefers-color-scheme: dark)");
+    expect(message.html).not.toContain("mail-button-row");
+    expect(message.text).toContain(
+      "Verification links and password resets go out through this relay.",
+    );
   });
 });

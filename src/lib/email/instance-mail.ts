@@ -1,17 +1,19 @@
 /**
  * The instance's own mail: one SMTP relay, configured in the admin panel.
  *
- * Verification links, password resets and invitations leave through it. A
- * deployment with nothing configured sends nothing, and every caller copes with
- * that instead of failing: an instance has to be usable before it has a mail
- * server, which is how the first account gets created.
+ * Verification links and password resets leave through it. A deployment with
+ * nothing configured sends nothing, and every caller copes with that instead of
+ * failing: an instance has to be usable before it has a mail server, which is
+ * how the first account gets created.
  */
 
 import nodemailer from "nodemailer";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { getWorkspaceName } from "@/lib/branding/workspace";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { sanitizeHeader } from "./header";
+import { renderAccountMail } from "./mail-template";
 import {
   MAIL_SECURITIES,
   type InstanceMailSettings,
@@ -244,9 +246,12 @@ export async function clearInstanceMail(): Promise<void> {
  * comes back rather than only reaching the log.
  */
 export async function sendInstanceMailTest(to: string): Promise<InstanceMailResult> {
-  return sendInstanceMail({
-    to,
-    subject: "Saale can send mail",
-    text: "This is a test message from your Saale instance. Verification links, password resets and invitations will leave through this relay.",
+  const instanceName = await getWorkspaceName();
+  const { text, html } = renderAccountMail({
+    instanceName,
+    heading: "This is a test message from your instance.",
+    note: "Verification links and password resets go out through this relay.",
   });
+
+  return sendInstanceMail({ to, subject: `${instanceName} can send mail`, text, html });
 }

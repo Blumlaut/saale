@@ -50,6 +50,25 @@ describe("renderAccountMail", () => {
     expect(html).toContain(".mail-page { background:#0b0b0c !important;");
   });
 
+  it("leaves the button out when the message has nothing to link to", () => {
+    const { text, html } = renderAccountMail({
+      instanceName: PARTS.instanceName,
+      heading: "This is a test message from your instance.",
+      note: "Verification links and password resets go out through this relay.",
+    });
+
+    expect(html).not.toContain("mail-button-row");
+    expect(html).not.toContain("paste this into a browser");
+    expect(html).toContain("Sent by Acme Console");
+    expect(text.split("\n")).toEqual([
+      "This is a test message from your instance.",
+      "",
+      "Verification links and password resets go out through this relay.",
+      "",
+      "Acme Console",
+    ]);
+  });
+
   it("escapes the instance name the admin typed", () => {
     const { html } = renderAccountMail({ ...PARTS, instanceName: 'Ada & "Sons" <ltd>' });
 

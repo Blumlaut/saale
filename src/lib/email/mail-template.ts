@@ -62,8 +62,9 @@ export interface AccountMailParts {
   instanceName: string;
   /** The sentence above the button. */
   heading: string;
-  url: string;
-  linkLabel: string;
+  /** Where the button leads. A message with nothing to link to leaves it out. */
+  url?: string;
+  linkLabel?: string;
   /** The small print: how long the link lasts, and what to do if it was not you. */
   note: string;
 }
@@ -82,9 +83,17 @@ export function renderAccountMail({
   note,
 }: AccountMailParts): RenderedAccountMail {
   const name = escapeHtml(instanceName);
-  const href = escapeHtml(url);
+  const link = url && linkLabel ? { href: escapeHtml(url), label: escapeHtml(linkLabel) } : null;
 
-  const text = [heading, "", url, "", note, "", instanceName].join("\n");
+  const text = [heading, "", ...(url ? [url, ""] : []), note, "", instanceName].join("\n");
+
+  const buttonRow = link
+    ? `<p class="mail-button-row" style="margin:0 0 24px;text-align:center"><a href="${link.href}" class="mail-button" style="display:inline-block;background:${ACCENT};color:${INK};font-family:${FONT};font-size:15px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px">${link.label}</a></p>\n`
+    : "";
+
+  const fallbackRow = link
+    ? `<tr><td align="left" class="mail-fine" style="padding:16px 4px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${INK_FAINT};word-break:break-all">If the button does nothing, paste this into a browser:<br><a href="${link.href}" class="mail-link" style="color:${INK_MUTED}">${link.href}</a></td></tr>\n`
+    : "";
 
   const html = `<!doctype html>
 <html lang="en">
@@ -102,13 +111,11 @@ ${DARK_STYLE}
 <tr><td style="padding:32px;font-family:${FONT}">
 <p class="mail-brand" style="margin:0 0 24px;font-size:17px;font-weight:700;letter-spacing:-0.01em;color:${INK}"><span style="color:${ACCENT}">&#8250;</span> ${name}</p>
 <p class="mail-ink" style="margin:0 0 24px;font-size:15px;line-height:1.6;color:${INK}">${escapeHtml(heading)}</p>
-<p class="mail-button-row" style="margin:0 0 24px;text-align:center"><a href="${href}" class="mail-button" style="display:inline-block;background:${ACCENT};color:${INK};font-family:${FONT};font-size:15px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px">${escapeHtml(linkLabel)}</a></p>
-<p class="mail-note" style="margin:0;font-size:13px;line-height:1.6;color:${INK_MUTED}">${escapeHtml(note)}</p>
+${buttonRow}<p class="mail-note" style="margin:0;font-size:13px;line-height:1.6;color:${INK_MUTED}">${escapeHtml(note)}</p>
 </td></tr>
 </table>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:520px">
-<tr><td align="left" class="mail-fine" style="padding:16px 4px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${INK_FAINT};word-break:break-all">If the button does nothing, paste this into a browser:<br><a href="${href}" class="mail-link" style="color:${INK_MUTED}">${href}</a></td></tr>
-<tr><td align="left" class="mail-fine" style="padding:8px 4px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${INK_FAINT}">Sent by ${name}</td></tr>
+${fallbackRow}<tr><td align="left" class="mail-fine" style="padding:8px 4px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${INK_FAINT}">Sent by ${name}</td></tr>
 </table>
 </td></tr>
 </table>
