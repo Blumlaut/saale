@@ -41,8 +41,17 @@ vi.mock("@/components/providers/model-limits-sheet", () => ({
   ModelLimitsSheet: () => null,
 }));
 
+// The pickers carry their state on the element, so a case can read what one
+// would show without opening it.
 vi.mock("@/components/shared/model-picker", () => ({
-  ModelPicker: () => null,
+  ModelPicker: (props: { placeholder?: string; fallback?: string; value: string }) => (
+    <span
+      data-testid="model-picker"
+      data-placeholder={props.placeholder ?? ""}
+      data-fallback={props.fallback ?? ""}
+      data-value={props.value}
+    />
+  ),
 }));
 
 // The thinking levels come from a request of their own; the cases here are
@@ -106,6 +115,12 @@ async function openInventory(): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: /^Models/ }));
   await screen.findByText("Fixture Co");
 }
+
+/** The picker the decision row owns, told apart by its placeholder. */
+const decisionPicker = () =>
+  screen
+    .getAllByTestId("model-picker")
+    .find((picker) => picker.getAttribute("data-placeholder") === "Built-in checks")!;
 
 const providerSwitch = (name: string) =>
   screen.getByRole("switch", { name: `Show or hide every model of ${name}` });
@@ -180,18 +195,31 @@ describe("settings · models", () => {
     expect(update).toHaveBeenCalledWith({ disabledModels: ["fixture:fixture-b"] });
   });
 
-  it("names the instance default while no decision model is picked", () => {
+  it("names the instance default in the picker while nothing is picked", () => {
     settingsState.current = { ...baseSettings, instanceApprovalDecisionModel: "custom:judge" };
     render(<ModelsSection />);
 
     expect(screen.getByText("Decision model")).toBeInTheDocument();
-    expect(screen.getByText("Follows the instance default: custom:judge")).toBeInTheDocument();
+    expect(decisionPicker()).toHaveAttribute("data-fallback", "custom/judge");
+    expect(decisionPicker()).toHaveAttribute("data-value", "");
   });
 
-  it("says the built-in checks decide when neither side picks one", () => {
+  it("leaves the picker to its placeholder when neither side picks one", () => {
     render(<ModelsSection />);
 
-    expect(screen.getByText("Not set. The built-in command checks decide.")).toBeInTheDocument();
+    expect(decisionPicker()).toHaveAttribute("data-fallback", "");
+  });
+
+  it("shows the picked model over the instance default", () => {
+    settingsState.current = {
+      ...baseSettings,
+      approvalDecisionModel: "custom:judge",
+      instanceApprovalDecisionModel: "other:judge",
+    };
+    render(<ModelsSection />);
+
+    expect(decisionPicker()).toHaveAttribute("data-value", "custom/judge");
+    expect(decisionPicker()).toHaveAttribute("data-fallback", "other/judge");
   });
 
   it("clears the pick back to the instance default", () => {

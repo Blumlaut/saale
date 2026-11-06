@@ -238,7 +238,7 @@ export function ModelAvailability() {
                   onChange={setDecisionModel}
                   fallback={null}
                   endpoint="/api/admin/providers/models"
-                  description="Judges the tool calls Auto would run on its own, for accounts that have not picked one. It reads the tool name and its arguments, and a call it cannot judge goes to the user."
+                  description="Judges the tool calls Auto would run on its own, for accounts that have not picked one."
                 />
               </GlassPanelContent>
             </GlassPanel>

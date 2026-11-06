@@ -1,11 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { toPickerModelId, toStoredModelId } from "@/lib/pi/model-ref";
 import { cn } from "@/lib/utils";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, type LucideIcon } from "lucide-react";
 
 /** The look the settings pages give a picker's trigger. */
 const CONTROL_TRIGGER =
@@ -15,56 +14,51 @@ export interface DecisionModelFieldProps {
   /** The picked model as `provider:model`, or null while the fallback applies. */
   value: string | null;
   onChange: (value: string | null) => void;
-  /** What applies while nothing is picked, named in the hint line. */
+  /** The model that applies while nothing is picked, as `provider:model`. */
   fallback: string | null;
-  /** What the fallback is, for the hint line's start: "the instance default", … */
-  fallbackLabel?: string;
   /** Where the model list comes from: the account's providers or the instance's. */
   endpoint: string;
   label?: string;
-  description?: string;
+  /** The line under the label. null leaves it out, for a row in a list of them. */
+  description?: string | null;
+  /** Shown before the label, as the rows of a list carry one. */
+  icon?: LucideIcon;
 }
 
 /**
  * The decision model that judges what Auto would run, on the page that owns the
- * setting: the account's own on Settings → Tools, the instance default on the
+ * setting: the account's own on Settings → Models, the instance default on the
  * admin model page.
  */
 export function DecisionModelField({
   value,
   onChange,
   fallback,
-  fallbackLabel = "the instance default",
   endpoint,
   label = "Decision model",
-  description = "Judges the tool calls Auto would run on its own. It reads the tool name and its arguments, and a call it cannot judge goes to you.",
+  description = "Judges the tool calls Auto would run on its own.",
+  icon: Icon,
 }: DecisionModelFieldProps) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <Label className="text-sm font-medium">{label}</Label>
-        <p className="text-muted-foreground text-xs">{description}</p>
-        {!value && (
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            {fallback
-              ? `Follows ${fallbackLabel}: ${fallback}`
-              : "Not set. The built-in command checks decide."}
-          </p>
-        )}
+      <div className="flex min-w-0 items-start gap-2.5">
+        {Icon ? <Icon className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" /> : null}
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{label}</p>
+          {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}
+        </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
-        <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
-          <ModelPicker
-            type="classifier"
-            value={value ? toPickerModelId(value) : ""}
-            onChange={(next) => onChange(next ? toStoredModelId(next) : null)}
-            placeholder="Built-in checks"
-            endpoint={endpoint}
-            triggerClassName="w-full"
-            className={CONTROL_TRIGGER}
-          />
-        </div>
+      <div className="flex min-w-0 items-center gap-2 sm:shrink-0">
+        <ModelPicker
+          type="classifier"
+          value={value ? toPickerModelId(value) : ""}
+          onChange={(next) => onChange(next ? toStoredModelId(next) : null)}
+          placeholder="Built-in checks"
+          fallback={fallback ? toPickerModelId(fallback) : ""}
+          endpoint={endpoint}
+          className={cn(CONTROL_TRIGGER, "sm:w-56")}
+        />
         <Button
           variant="ghost"
           size="icon"

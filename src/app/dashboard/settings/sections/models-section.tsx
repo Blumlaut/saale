@@ -28,7 +28,15 @@ import { useModelThinkingLevels } from "@/hooks/use-thinking-levels";
 import { formatTokens } from "@/lib/format";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { Brain, ChevronDown, Eye, Loader2, RotateCcw, SlidersHorizontal } from "lucide-react";
+import {
+  Brain,
+  ChevronDown,
+  Eye,
+  Loader2,
+  RotateCcw,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import { AutosavedPage } from "../components/save-state";
 import { ProviderManagement } from "../components/provider-management";
 import { useUserSettings } from "../components/user-settings-provider";
@@ -285,20 +293,6 @@ export function ModelsSection() {
 
           <Separator />
 
-          {/* The model that judges what Auto would run on its own */}
-          <div>
-            <DecisionModelField
-              key={`decision-${pickerKey}`}
-              value={settings.approvalDecisionModel ?? null}
-              onChange={(value) => update({ approvalDecisionModel: value })}
-              fallback={settings.instanceApprovalDecisionModel ?? null}
-              fallbackLabel="the instance default"
-              endpoint="/api/providers/models"
-            />
-          </div>
-
-          <Separator />
-
           {/* One picker per kind of work */}
           <div className="space-y-4">
             <div>
@@ -350,6 +344,19 @@ export function ModelsSection() {
                   </div>
                 );
               })}
+
+              {/* Judging what Auto runs is work of its own, so it takes a row here */}
+              <div className="py-3 last:pb-0">
+                <DecisionModelField
+                  key={`decision-${pickerKey}`}
+                  icon={ShieldCheck}
+                  description={null}
+                  value={settings.approvalDecisionModel ?? null}
+                  onChange={(value) => update({ approvalDecisionModel: value })}
+                  fallback={settings.instanceApprovalDecisionModel ?? null}
+                  endpoint="/api/providers/models"
+                />
+              </div>
             </div>
           </div>
 
