@@ -413,6 +413,45 @@ describe("buildModelRuntime", () => {
       );
     });
 
+    // A decision model answers `/v1/systemone`; Pi only calls it as a
+    // classifier, and a chat picker must never offer it.
+    it("registers a decision model as a classifier, not a chat model", async () => {
+      stubEndpointRow({});
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: "qwen3-32b",
+                architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+              },
+              {
+                id: "kev",
+                architecture: { input_modalities: ["text"], output_modalities: ["decisions"] },
+              },
+            ],
+          }),
+        }),
+      );
+      const runtime = stubRuntime();
+
+      const { models } = await buildModelRuntime("user-1");
+
+      const [, config] = vi.mocked(runtime.registerProvider).mock.calls[0]! as [
+        string,
+        { models: Array<Record<string, unknown>>; classifiers?: Record<string, unknown> },
+      ];
+      expect(config.models.map((model) => model.id)).toEqual(["qwen3-32b", "kev"]);
+      expect(config.models[1]).toEqual(
+        expect.objectContaining({ type: "classifier", api: "typesafe-system-one" }),
+      );
+      expect(Object.keys(config.classifiers ?? {})).toEqual(["typesafe-system-one"]);
+      expect(models.map((model) => model.id)).toEqual(["qwen3-32b"]);
+    });
+
     it("keeps an unknown model conservative and a catalog hit verbatim", async () => {
       stubEndpointRow({});
       stubModelListing(["local-model", "claude-sonnet"]);

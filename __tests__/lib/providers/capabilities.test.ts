@@ -172,6 +172,34 @@ describe("parseEndpointListing", () => {
     ]);
   });
 
+  // llama.cpp states a decision model's output modality, which is how a model
+  // that answers `/v1/systemone` is told apart from one that chats.
+  it("marks a model that produces decisions", () => {
+    expect(
+      parseEndpointListing({
+        data: [
+          {
+            id: "kev",
+            architecture: { input_modalities: ["text"], output_modalities: ["decisions"] },
+          },
+          {
+            id: "qwen3",
+            architecture: { input_modalities: ["text"], output_modalities: ["text"] },
+          },
+          { id: "old-server" },
+        ],
+      }).models,
+    ).toEqual([
+      {
+        id: "kev",
+        capabilities: { vision: false },
+        decisionModel: true,
+      },
+      { id: "qwen3", capabilities: { vision: false } },
+      { id: "old-server", capabilities: {} },
+    ]);
+  });
+
   it("treats a payload with no data array as an empty listing", () => {
     expect(parseEndpointListing({ error: "nope" })).toEqual({ models: [], loadOnDemand: false });
     expect(parseEndpointListing(null)).toEqual({ models: [], loadOnDemand: false });

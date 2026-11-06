@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { buildModelRuntime } from "@/lib/pi/models";
+import { buildModelRuntime, listClassifierModels } from "@/lib/pi/models";
 import {
   configuredLimits,
   parseModelCapabilityMap,
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     buildModelRuntime(authResult.user.id),
     readEndpointRows({ kind: "user", userId: authResult.user.id }),
   ]);
+  const classifiers = await listClassifierModels(modelRuntime);
 
   // What the user set per model on each endpoint, so the editor can tell an
   // override from an inherited value.
@@ -93,6 +94,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     providers,
     models: byProvider,
+    // Decision models, for the one picker that takes one.
+    classifiers,
     totalModels: displayModels.length,
     disabledModels: Array.from(disabledSet),
     // Per endpoint: the defaults a model's own value falls back to.

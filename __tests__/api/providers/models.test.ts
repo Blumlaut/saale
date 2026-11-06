@@ -16,6 +16,7 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/pi/models", () => ({
   buildModelRuntime: vi.fn(),
+  listClassifierModels: vi.fn(),
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
@@ -32,6 +33,7 @@ describe("GET /api/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
+    vi.mocked(models.listClassifierModels).mockResolvedValue({});
   });
 
   /* ── Auth ── */

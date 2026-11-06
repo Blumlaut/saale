@@ -1,3 +1,4 @@
+import { classify } from "@earendil-works/pi-ai/api/typesafe-system-one";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { prisma } from "@/lib/db";
@@ -191,13 +192,41 @@ function defineDiscoveredModel(
 }
 
 /**
+ * A decision model from an endpoint's listing.
+ *
+ * It answers typed questions about a state instead of chatting, so Pi lists it
+ * as a classifier rather than a chat model. The approval gate asks it about the
+ * calls Auto would run (see `decision-model.ts`).
+ */
+function defineDecisionModel(
+  id: string,
+  options: { limits: ProviderModelLimits; capabilities: ModelCapabilityMap },
+): ProviderModelDefinition {
+  const { limits, capabilities } = options;
+  return {
+    id,
+    name: id,
+    type: "classifier",
+    api: "typesafe-system-one",
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: resolveModelLimits({
+      model: configuredLimits(capabilities, id),
+      endpoint: limits,
+    }).contextWindow,
+  };
+}
+
+/**
  * Register a provider from its `/models` listing.
  *
  * Used for Saale's own OpenAI-compatible endpoints, whose models Pi cannot know.
  * The admin model browser registers the global endpoints the same way, so both
  * see the same models.
  *
- * @returns The model ids the provider listed (empty when discovery failed).
+ * @returns The chat model ids the provider listed (empty when discovery failed).
+ *   Its decision models are registered as classifiers, which the chat model
+ *   pickers never list.
  */
 export async function registerDiscoveredModels(
   runtime: ModelRuntime,
@@ -215,6 +244,7 @@ export async function registerDiscoveredModels(
   const listing = await fetchEndpointListing(baseUrl, options.apiKey);
   const capabilities = options.capabilities ?? {};
   const reported = new Map(listing.models.map((model) => [model.id, model.capabilities]));
+  const chatModels = listing.models.filter((model) => !model.decisionModel);
 
   runtime.registerProvider(options.provider, {
     name: options.name?.trim() || CUSTOM_PROVIDER_LABEL,
@@ -224,17 +254,24 @@ export async function registerDiscoveredModels(
     ...(listing.models.length > 0
       ? {
           models: listing.models.map((model) =>
-            defineDiscoveredModel(runtime, options.provider, model.id, {
-              limits: options.limits,
-              capabilities,
-              reported: reported.get(model.id),
-            }),
+            model.decisionModel
+              ? defineDecisionModel(model.id, { limits: options.limits, capabilities })
+              : defineDiscoveredModel(runtime, options.provider, model.id, {
+                  limits: options.limits,
+                  capabilities,
+                  reported: reported.get(model.id),
+                }),
           ),
         }
       : {}),
+    // `/v1/systemone` is TypeSafe's protocol, so Pi's own implementation calls
+    // the decision models the endpoint serves.
+    ...(listing.models.some((model) => model.decisionModel)
+      ? { classifiers: { "typesafe-system-one": { classify } } }
+      : {}),
   });
 
-  return listing.models.map((model) => model.id);
+  return chatModels.map((model) => model.id);
 }
 
 /**
@@ -355,6 +392,35 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
       : allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
 
   return { modelRuntime, models };
+}
+
+/** A classifier model the UI can offer: an id, and what to call it. */
+export interface ClassifierModelSummary {
+  id: string;
+  name: string;
+}
+
+/**
+ * The decision models a runtime can call, grouped by provider.
+ *
+ * Classifiers are a separate list in Pi: a decision model answers typed
+ * questions instead of chatting, so it is never offered where a chat model is
+ * picked and never reached through `getModel`.
+ */
+export async function listClassifierModels(
+  runtime: ModelRuntime,
+): Promise<Record<string, ClassifierModelSummary[]>> {
+  try {
+    const available = await runtime.getAvailableOfType("classifier");
+    const byProvider: Record<string, ClassifierModelSummary[]> = {};
+    for (const model of available) {
+      (byProvider[model.provider] ??= []).push({ id: model.id, name: model.name });
+    }
+    return byProvider;
+  } catch (err) {
+    console.error("Failed to list the classifier models:", err);
+    return {};
+  }
 }
 
 /** Build the model runtime for one user, with every provider they can reach. */

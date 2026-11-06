@@ -195,6 +195,11 @@ export interface ListedModel {
   id: string;
   /** Whatever the listing stated; empty when it said nothing. */
   capabilities: ModelCapabilities;
+  /**
+   * The endpoint says the model answers typed questions natively, which is what
+   * llama.cpp's `/v1/systemone` serves (see `decision-model.ts`).
+   */
+  decisionModel?: true;
 }
 
 export interface EndpointListing {
@@ -245,6 +250,12 @@ function listedVision(entry: Record<string, unknown>): boolean | undefined {
   return typeof vision === "boolean" ? vision : undefined;
 }
 
+/** Whether a listing entry says the model produces decisions rather than text. */
+function listedDecisionModel(entry: Record<string, unknown>): boolean {
+  const modalities = asRecord(entry.architecture)?.output_modalities;
+  return Array.isArray(modalities) && modalities.includes("decisions");
+}
+
 /**
  * Read an OpenAI-compatible `/models` payload.
  *
@@ -275,7 +286,11 @@ export function parseEndpointListing(payload: unknown): EndpointListing {
     const vision = listedVision(entry!);
     if (vision !== undefined) capabilities.vision = vision;
 
-    models.push({ id, capabilities });
+    models.push({
+      id,
+      capabilities,
+      ...(listedDecisionModel(entry!) ? { decisionModel: true as const } : {}),
+    });
   }
 
   return { models, loadOnDemand };
