@@ -73,6 +73,15 @@ describe("ModelPicker", () => {
     );
   });
 
+  // The setting is live even when the endpoint stopped serving the model, so the
+  // placeholder would say nothing is picked.
+  it("names a picked model the list does not carry", async () => {
+    render(<ModelPicker value="ollama/qwen3-coder" onChange={() => {}} placeholder="No Model" />);
+
+    await waitFor(() => expect(screen.getByTitle("qwen3-coder")).toHaveTextContent("qwen3-coder"));
+    expect(screen.queryByText("No Model")).not.toBeInTheDocument();
+  });
+
   it("names the model to a screen reader when only the icon is drawn", async () => {
     render(
       <ModelPicker

@@ -20,6 +20,15 @@ export interface ModelInfo {
   contextWindow: number | undefined;
 }
 
+/** One entry of either list: a chat model, or a decision model. */
+type PickerEntry = {
+  id: string;
+  name: string;
+  reasoning?: boolean;
+  vision?: boolean;
+  contextWindow?: number;
+};
+
 interface ModelsApiResponse {
   models: Record<
     string,
@@ -31,6 +40,8 @@ interface ModelsApiResponse {
       contextWindow?: number;
     }>
   >;
+  /** Decision models, which never appear among the chat models. */
+  classifiers?: Record<string, Array<{ id: string; name: string }>>;
   providers?: Array<{ id: string; name: string }>;
 }
 
@@ -62,6 +73,11 @@ interface ModelPickerProps {
    * providers, which the user endpoint does not serve.
    */
   endpoint?: string;
+  /**
+   * Which models to offer: a chat model answers, a classifier judges typed
+   * questions (the approval decision model).
+   */
+  type?: "chat" | "classifier";
 }
 
 /**
@@ -81,6 +97,7 @@ export function ModelPicker({
   compact = false,
   hideLabelWhenNarrow = false,
   endpoint = "/api/providers/models",
+  type = "chat",
   triggerClassName,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
@@ -94,21 +111,23 @@ export function ModelPicker({
     fetchJson<ModelsApiResponse>(endpoint)
       .then((data) => {
         const all: ModelInfo[] = [];
-        if (data.models) {
-          for (const [provider, modelsList] of Object.entries(data.models)) {
-            const providerName =
-              (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
-            for (const m of modelsList) {
-              all.push({
-                id: m.id,
-                name: m.name,
-                provider,
-                providerName,
-                reasoning: m.reasoning,
-                vision: m.vision,
-                contextWindow: m.contextWindow,
-              });
-            }
+        // A classifier has no badges to show: it neither reasons before
+        // answering nor reads images.
+        const groups: Record<string, PickerEntry[]> =
+          type === "classifier" ? (data.classifiers ?? {}) : (data.models ?? {});
+        for (const [provider, modelsList] of Object.entries(groups)) {
+          const providerName =
+            (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
+          for (const m of modelsList) {
+            all.push({
+              id: m.id,
+              name: m.name,
+              provider,
+              providerName,
+              reasoning: m.reasoning,
+              vision: m.vision,
+              contextWindow: m.contextWindow,
+            });
           }
         }
         setModels(all);
@@ -118,7 +137,7 @@ export function ModelPicker({
         console.error("Failed to load the models for the picker:", err);
         setLoading(false);
       });
-  }, [endpoint]);
+  }, [endpoint, type]);
 
   // Reset search and highlight when opening
   useEffect(() => {
@@ -171,6 +190,9 @@ export function ModelPicker({
   }, [filteredGroups]);
 
   const selected = models.find((m) => `${m.provider}/${m.id}` === value);
+  // A picked model the listing no longer serves still reads as picked: the
+  // setting is live, and the placeholder would claim nothing is.
+  const pickedLabel = selected?.name ?? (value ? value.slice(value.indexOf("/") + 1) : null);
   // The fallback can be missing from the list (a disabled model, a provider the
   // user has no key for), so the reference itself stands in for its name.
   const fallbackModel = fallback
@@ -210,7 +232,7 @@ export function ModelPicker({
       */}
       <PopoverTrigger
         className={triggerClassName}
-        aria-label={`Model: ${loading ? "loading" : (selected?.name ?? fallbackLabel ?? placeholder)}`}
+        aria-label={`Model: ${loading ? "loading" : (pickedLabel ?? fallbackLabel ?? placeholder)}`}
       >
         <span
           className={cn(
@@ -221,7 +243,7 @@ export function ModelPicker({
             compact ? "min-w-0" : "",
             className,
           )}
-          title={selected?.name ?? (fallbackLabel ? `Default: ${fallbackLabel}` : undefined)}
+          title={pickedLabel ?? (fallbackLabel ? `Default: ${fallbackLabel}` : undefined)}
         >
           {loading ? (
             <Loader2 className="text-muted-foreground animate-shrink h-3.5 w-3.5" />
@@ -234,7 +256,7 @@ export function ModelPicker({
               hideLabelWhenNarrow && "hidden @[30rem]:block",
             )}
           >
-            {loading ? "Loading..." : (selected?.name ?? fallbackLabel ?? placeholder)}
+            {loading ? "Loading..." : (pickedLabel ?? fallbackLabel ?? placeholder)}
           </span>
           <ChevronDown
             className={cn(
@@ -277,6 +299,13 @@ export function ModelPicker({
             ) : !hasResults && search ? (
               <div className="py-8 text-center">
                 <p className="text-muted-foreground text-sm">No models found</p>
+              </div>
+            ) : !hasResults && type === "classifier" ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">No decision models</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Add a llama.cpp endpoint that serves one
+                </p>
               </div>
             ) : !hasResults ? (
               <div className="py-8 text-center">
@@ -365,7 +394,8 @@ export function ModelPicker({
             <Separator />
             <div className="px-3 py-1.5">
               <span className="text-muted-foreground text-[11px]">
-                {totalFiltered} model{totalFiltered !== 1 ? "s" : ""} available
+                {totalFiltered} {type === "classifier" ? "decision " : ""}model
+                {totalFiltered !== 1 ? "s" : ""} available
               </span>
             </div>
           </>

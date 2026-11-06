@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DecisionModelField } from "@/components/shared/decision-model-field";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Page, PageAction, PageActions, PageScroll, PageStatus } from "@/components/layout/page";
 import {
@@ -45,6 +46,8 @@ export function ModelAvailability() {
   const [modelSearch, setModelSearch] = useState("");
   /** The instance's fallback model, as `provider/model`. */
   const [defaultModel, setDefaultModel] = useState("");
+  /** The decision model that judges what Auto would run, as `provider:model`. */
+  const [decisionModel, setDecisionModel] = useState<string | null>(null);
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
@@ -97,6 +100,7 @@ export function ModelAvailability() {
         ? `${adminSettings.globalModelProvider}/${adminSettings.globalModelName}`
         : "",
     );
+    setDecisionModel(adminSettings.approvalDecisionModel);
     setModelEnabled(fromGlobalProviderModels(adminSettings.globalProviderModels));
   }, [adminSettings]);
 
@@ -162,8 +166,9 @@ export function ModelAvailability() {
       globalProviderModels,
       globalModelProvider: defaultModel ? (provider ?? "") : "",
       globalModelName: defaultModel ? modelName : "",
+      approvalDecisionModel: decisionModel,
     });
-  }, [adminSettings, availableModels, modelEnabled, defaultModel, save]);
+  }, [adminSettings, availableModels, modelEnabled, defaultModel, decisionModel, save]);
 
   const isLoading = modelsLoading && settingsLoading;
 
@@ -222,6 +227,19 @@ export function ModelAvailability() {
                     endpoint="/api/admin/providers/models"
                   />
                 </div>
+              </GlassPanelContent>
+            </GlassPanel>
+
+            {/* What Auto runs on its own, for the accounts without a pick */}
+            <GlassPanel>
+              <GlassPanelContent>
+                <DecisionModelField
+                  value={decisionModel}
+                  onChange={setDecisionModel}
+                  fallback={null}
+                  endpoint="/api/admin/providers/models"
+                  description="Judges the tool calls Auto would run on its own, for accounts that have not picked one. It reads the tool name and its arguments, and a call it cannot judge goes to the user."
+                />
               </GlassPanelContent>
             </GlassPanel>
 

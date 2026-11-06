@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
+import { DecisionModelField } from "@/components/shared/decision-model-field";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { ScopeSwitches, ToolScopeHeader } from "@/components/shared/tool-scopes";
 import { Label } from "@/components/ui/label";
@@ -44,6 +45,7 @@ export function ToolsSection() {
   const coderToolConfig = resolveCoderToolConfig(settings?.coderToolConfig);
   const toolPolicies = (settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>;
   const toolExposure = (settings?.toolExposure ?? {}) as ToolExposureConfig;
+  const decisionModel = settings?.approvalDecisionModel ?? null;
   const uncategorizedTools = getUncategorizedTools();
   const mcp = useMcpServers();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -318,6 +320,20 @@ export function ToolsSection() {
               </div>
             </div>
           )}
+
+          {/* What Auto runs on its own, judged by a model instead of the command */}
+          <div className="px-4 pb-4 md:px-6">
+            <Separator className="mx-2" />
+            <div className="pt-3">
+              <DecisionModelField
+                value={decisionModel}
+                onChange={(value) => update({ approvalDecisionModel: value })}
+                fallback={settings?.instanceApprovalDecisionModel ?? null}
+                fallbackLabel="the instance default"
+                endpoint="/api/providers/models"
+              />
+            </div>
+          </div>
         </GlassPanelContent>
       </GlassPanel>
     </AutosavedPage>
