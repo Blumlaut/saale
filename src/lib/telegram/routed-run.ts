@@ -186,6 +186,7 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
         sessionId: chat.id,
         session: entry.session,
         usageKind: chatUsageKind(chat),
+        messageId: userMessage.id,
       });
     } catch (err) {
       unsubscribe();

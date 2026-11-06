@@ -1,4 +1,5 @@
-import { holdSendQueue, isSessionActive, unregisterActiveSession } from "@/lib/redis";
+import { holdSendQueue, isSessionActive } from "@/lib/redis";
+import { endChatRun } from "@/lib/chat/run-record";
 import { get, getPoolKey } from "@/lib/pi/agent-pool";
 import { requestSessionAbort } from "@/lib/pi/abort-request";
 
@@ -52,7 +53,8 @@ export async function stopChatGeneration(userId: string, sessionId: string): Pro
     // (eviction handles cleanup)
   }
 
-  // Clear Redis tracking (works across instances)
-  await unregisterActiveSession(userId, sessionId);
+  // Clear the run: its liveness flag (works across instances) and the record the
+  // boot pass would otherwise resume.
+  await endChatRun(userId, sessionId);
   return true;
 }

@@ -6,14 +6,9 @@ import {
   getPendingPrompt,
   isSendQueueHeld,
   isSessionActive,
-  unregisterActiveSession,
 } from "@/lib/redis";
 import { resolveModelForPurpose } from "@/lib/pi/model-resolution";
-import { chatUsageKind } from "@/lib/usage/record";
-import { readImageAsBase64 } from "@/lib/image-attachment";
-import type { ImageContent } from "@/lib/pi/message-replay";
 import { get as getPoolEntry, getDispatcher, getPoolKey } from "@/lib/pi/agent-pool";
-import { applyPendingHistoryRewind, rewindDuplicatePrompt } from "@/lib/pi/message-rewind";
 import {
   decideStaleGenerationAction,
   decideStreamAction,
@@ -24,20 +19,15 @@ import { getLastBufferedEvent, isTerminalBufferedEvent } from "@/lib/pi/sse-buff
 import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { isClosedControllerError } from "@/lib/pi/sse-controller";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
+import { countQueuedMessages, publishQueueUpdate, queueMessage } from "@/lib/chat/queue";
+import { endChatRun } from "@/lib/chat/run-record";
 import {
-  beginChatRun,
-  dispatchChatRun,
-  ensureChatAgent,
-  type PooledChatSession,
-} from "@/lib/chat/agent-run";
-import {
-  claimNextQueuedMessage,
-  countQueuedMessages,
-  publishQueueUpdate,
-  queueMessage,
-  restoreQueuedMessage,
-} from "@/lib/chat/queue";
-import { drainSendQueue } from "@/lib/chat/drain-queue";
+  createChatQueueDrain,
+  dispatchPreparedChatRun,
+  prepareChatRun,
+  type ChatPromptTarget,
+  type PreparedChatRun,
+} from "@/lib/chat/run-prompt";
 import { getPendingApprovals, toApprovalPayload } from "@/lib/pi/tool-approval-gate";
 
 const SSE_HEADERS = {
@@ -201,7 +191,7 @@ export async function GET(
   }
 
   if (action.type === "prompt" && (!modelProvider || !modelName)) {
-    unregisterActiveSession(authResult.userId, sessionId).catch(console.error);
+    endChatRun(authResult.userId, sessionId).catch(console.error);
     log("decision", "no model configured. returning error stream");
     const encoder = new TextEncoder();
     const errorEvent = encoder.encode(
@@ -270,179 +260,37 @@ export async function GET(
 
   // ── Prompt helpers ────────────────────────────────────────────────────
   // One code path prompts every message: the message a POST claimed, and
-  // every message the send queue drains afterwards.
+  // every message the send queue drains afterwards (see run-prompt.ts).
 
-  /** A message this connection can hand to the agent. */
-  interface PromptTarget {
-    id: string;
-    content: string;
-    attachments: { storagePath: string; mimeType: string }[];
-  }
+  const model =
+    modelProvider && modelName ? { provider: modelProvider, name: modelName } : undefined;
 
-  interface PreparedRun {
-    entry: PooledChatSession;
-    target: PromptTarget;
-    images: ImageContent[];
-  }
+  const prepareRun = (target: ChatPromptTarget): Promise<PreparedChatRun | null> =>
+    prepareChatRun({ userId: authResult.userId, chatSession, model, target, log });
 
-  /**
-   * Collect vision content for a message's image attachments. Non-image files
-   * are referenced by path in the message content instead (the agent reads
-   * them from its workspace).
-   */
-  const loadPromptImages = async (
-    attachments: PromptTarget["attachments"],
-  ): Promise<ImageContent[]> => {
-    const images: ImageContent[] = [];
-    for (const att of attachments) {
-      if (!att.mimeType.startsWith("image/")) continue;
-      try {
-        const { data, mimeType } = await readImageAsBase64(authResult.userId, att.storagePath);
-        images.push({ type: "image" as const, data, mimeType });
-      } catch (err) {
-        console.error("Failed to load image for message:", err);
-      }
-    }
-    return images;
-  };
-
-  /**
-   * Claim this process's pooled agent for a message and make it runnable:
-   * guard against a double prompt, register the generation (so other
-   * connections observe instead of prompting), clear the previous run's
-   * buffered events, wire DB persistence, and pre-load images.
-   *
-   * Returns null when a prompt is already in flight in this process. the
-   * caller must not claim work it cannot deliver.
-   */
-  const prepareRun = async (target: PromptTarget): Promise<PreparedRun | null> => {
-    const { entry, existedAlready } = await ensureChatAgent({
+  const dispatchRun = (run: PreparedChatRun): Promise<boolean> =>
+    dispatchPreparedChatRun({
       userId: authResult.userId,
-      sessionId,
       chatSession,
-      ...(modelProvider && modelName
-        ? { model: { provider: modelProvider, name: modelName } }
-        : {}),
-      log,
-    });
-
-    if (existedAlready) {
-      log("pool", `hit. lastPromptedMessageId=${entry.lastPromptedMessageId}`);
-    }
-
-    // Same-process double-prompt guard (recovery path race).
-    if (entry.promptInFlight) return null;
-
-    // Claim synchronously before any further awaits.
-    entry.promptInFlight = true;
-    entry.lastPromptedMessageId = target.id;
-
-    // A run that died mid-flight (restart, crash) left its prompt in the
-    // transcript with no reply, and this recovery is about to re-prompt it:
-    // rewind first so the prompt replaces that entry instead of appending a
-    // second copy of the same message (see message-rewind.ts).
-    if (await rewindDuplicatePrompt(entry.session, { content: target.content })) {
-      log("rewind", `transcript already held message ${target.id}. rewound before it`);
-    }
-
-    // An edited message still has the history its edit deleted in the agent
-    // transcript. rewind it, or the prompt lands as a brand new message after
-    // the old conversation (see message-rewind.ts).
-    const rewind = await applyPendingHistoryRewind(sessionId, entry.session, target.id);
-    if (rewind !== "nothing-pending") {
-      log("rewind", `${rewind} for message ${target.id}`);
-    }
-
-    // Publish the generation, clear stale buffered events, and wire DB
-    // persistence. shared with the `chat_respond` tool's server-side runs.
-    await beginChatRun({
-      userId: authResult.userId,
-      sessionId,
-      session: entry.session,
-      usageKind: chatUsageKind(chatSession),
-    });
-
-    const images = await loadPromptImages(target.attachments);
-    log("prompt", `claimed prompt for message ${target.id}`);
-    return { entry, target, images };
-  };
-
-  /**
-   * Dispatch a prepared run and resolve when it has fully settled
-   * (`agent_settled`. after any error retry, auto-compaction, or queued
-   * continuation).
-   *
-   * Uses session.prompt(). the same path the Pi TUI uses. NOT
-   * session.agent.prompt(): the session wrapper runs the SDK's pre-prompt
-   * compaction check and post-run processing, and only settles when the run
-   * is truly finished. The custom system prompt survives the per-turn prompt
-   * resolution because it comes from the session's resource loader.
-   */
-  const dispatchRun = async (run: PreparedRun): Promise<boolean> => {
-    return dispatchChatRun({
-      userId: authResult.userId,
-      sessionId,
-      entry: run.entry,
-      content: run.target.content,
-      images: run.images,
+      run,
       log,
       onRunFailed: closeStream,
     });
-  };
 
-  /**
-   * Deliver every queued message, one run each.
-   *
-   * Runs server-side, so queued messages are answered even when every client
-   * has navigated away: the drain is chained off the previous run's settle,
-   * and the promise chain outlives the SSE connection.
-   */
-  const drainQueue = async (): Promise<void> => {
-    await drainSendQueue({
-      isPromptInFlight: () => getPoolEntry(poolKey)?.promptInFlight === true,
-      // A stopped session does not send: the hold is released by the user's
-      // next message or by pushing a queued one.
-      claimNext: async () =>
-        (await isSendQueueHeld(sessionId)) ? null : claimNextQueuedMessage(sessionId),
-      run: async (message) => {
-        let prepared: PreparedRun | null;
-        try {
-          prepared = await prepareRun({
-            id: message.id,
-            content: message.content,
-            attachments: message.attachments,
-          });
-        } catch (err) {
-          console.error(`Failed to prepare queued message ${message.id}:`, err);
-          return false;
-        }
-        if (!prepared) return false;
-        log("queue", `delivering queued message ${message.id}`);
-        await dispatchRun(prepared);
-        return true;
-      },
-      restore: (message) => restoreQueuedMessage(sessionId, message.id, message.queuedAt),
-      publishQueue: () => publishQueueUpdate(sessionId),
-      log: (message) => log("queue", message),
-    });
-  };
-
-  /**
-   * Drain without letting a failure escape: the callers are fire-and-forget
-   * (a settled run, an idle connection), and an unhandled rejection there has
-   * nowhere to surface.
-   */
-  const drainQueueSafely = (): void => {
-    drainQueue().catch((err) => {
-      console.error(`Send queue drain failed for session ${sessionId}:`, err);
-    });
-  };
+  /** Deliver whatever the user queued behind the current run; never throws. */
+  const drainQueue = createChatQueueDrain({
+    userId: authResult.userId,
+    chatSession,
+    model,
+    log,
+    onRunFailed: closeStream,
+  });
 
   // ── Prompt path: claim, pool, wire persistence ────────────────────────
   // The prompt is claimed atomically (GETDEL of the pending-prompt key) so
   // concurrent connections never double-prompt. `promptInFlight` on the pool
   // entry guards the recovery path (no pending key) within this process.
-  let pendingRun: PreparedRun | null = null;
+  let pendingRun: PreparedChatRun | null = null;
 
   if (action.type === "prompt" && lastMessage && lastMessage.role === "user") {
     const claim = await claimPendingPrompt(sessionId);
@@ -485,6 +333,10 @@ export async function GET(
    * and this process has no run of its own, settle every client and close the
    * stream: the browser reconnects, the fresh request re-decides with the dead
    * generation off the books, and the unanswered message is prompted again.
+   *
+   * A reconnecting client is one way back to an interrupted run; the boot pass
+   * is the other, for the chats nobody came back to
+   * (see resume-interrupted-runs.ts).
    *
    * The buffered `done` check keeps a normally finished run from looking dead
    *. its client already settled from the `done` the decision emits.
@@ -551,7 +403,7 @@ export async function GET(
             // land in the buffer and a returning client replays them.
             if (action.type === "prompt" && pendingRun) {
               log("stream", "client gone before dispatch. running anyway");
-              void dispatchRun(pendingRun).then(drainQueueSafely);
+              void dispatchRun(pendingRun).then(drainQueue);
             }
             return;
           }
@@ -579,7 +431,7 @@ export async function GET(
             // strand messages in the send queue. Deliver them now that the
             // session is idle. and keep the connection open, the drain
             // streams through this same dispatcher.
-            if (queuedCount > 0) drainQueueSafely();
+            if (queuedCount > 0) drainQueue();
             return;
           }
 
@@ -589,7 +441,7 @@ export async function GET(
           // queue drains. messages submitted during this run are delivered
           // next, in order.
           if (action.type === "prompt" && pendingRun) {
-            void dispatchRun(pendingRun).then(drainQueueSafely);
+            void dispatchRun(pendingRun).then(drainQueue);
             return;
           }
 

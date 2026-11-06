@@ -34,12 +34,10 @@ vi.mock("@/lib/pi/tool-approval-gate", () => ({
 }));
 
 const mockRegister = vi.fn();
-const mockUnregister = vi.fn();
 const mockMarkBuilding = vi.fn();
 const mockClearBuilding = vi.fn();
 vi.mock("@/lib/redis", () => ({
   registerActiveSession: (...args: unknown[]) => mockRegister(...args),
-  unregisterActiveSession: (...args: unknown[]) => mockUnregister(...args),
   markAgentBuilding: (...args: unknown[]) => mockMarkBuilding(...args),
   clearAgentBuilding: (...args: unknown[]) => mockClearBuilding(...args),
 }));
@@ -66,6 +64,13 @@ vi.mock("@/lib/pi/compaction-defer", () => ({
 const mockClearToolState = vi.fn();
 vi.mock("@/lib/chat/active-tool-state", () => ({
   clearActiveToolState: (...args: unknown[]) => mockClearToolState(...args),
+}));
+
+const mockMarkRunInFlight = vi.fn();
+const mockEndChatRun = vi.fn();
+vi.mock("@/lib/chat/run-record", () => ({
+  markChatRunInFlight: (...args: unknown[]) => mockMarkRunInFlight(...args),
+  endChatRun: (...args: unknown[]) => mockEndChatRun(...args),
 }));
 
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "@/lib/chat/agent-run";
@@ -251,12 +256,24 @@ describe("beginChatRun", () => {
     mockRegister.mockResolvedValue(undefined);
     mockResetEvents.mockResolvedValue(undefined);
     mockWaitTeardown.mockResolvedValue(undefined);
+    mockMarkRunInFlight.mockResolvedValue(undefined);
   });
 
   it("registers the generation and wires persistence", async () => {
     const session = { id: "agent-session" } as unknown as AgentSession;
-    await beginChatRun({ userId: USER_ID, sessionId: SESSION_ID, session, usageKind: "chat" });
+    await beginChatRun({
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      session,
+      usageKind: "chat",
+      messageId: "message-1",
+    });
 
+    expect(mockMarkRunInFlight).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      messageId: "message-1",
+    });
     expect(mockClearToolState).toHaveBeenCalledWith(SESSION_ID, USER_ID);
     expect(mockRegister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
     expect(mockWirePersistence).toHaveBeenCalledWith(SESSION_ID, USER_ID, session, "chat");
@@ -275,6 +292,7 @@ describe("beginChatRun", () => {
       sessionId: SESSION_ID,
       session: {} as unknown as AgentSession,
       usageKind: "chat",
+      messageId: "message-1",
     });
 
     expect(mockWirePersistence).toHaveBeenCalled();
@@ -287,7 +305,7 @@ describe("dispatchChatRun", () => {
     mockSubmitDeferring.mockImplementation(async (_session: unknown, run: () => unknown) => run());
     mockPublish.mockResolvedValue(1);
     mockResetEvents.mockResolvedValue(undefined);
-    mockUnregister.mockResolvedValue(undefined);
+    mockEndChatRun.mockResolvedValue(undefined);
   });
 
   it("prompts the session and releases the claim on success", async () => {
@@ -337,7 +355,7 @@ describe("dispatchChatRun", () => {
     expect(ok).toBe(false);
     expect(entry.promptInFlight).toBe(false);
     expect(entry.lastPromptedMessageId).toBeNull();
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
     expect(mockPublish).toHaveBeenCalledWith(
       SESSION_ID,
       "error",

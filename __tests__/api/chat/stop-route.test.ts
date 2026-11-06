@@ -11,14 +11,14 @@ import { NextRequest } from "next/server";
 const {
   mockRequireChatSessionOwner,
   mockIsSessionActive,
-  mockUnregister,
+  mockEndChatRun,
   mockGet,
   mockAbort,
   mockHoldSendQueue,
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockIsSessionActive: vi.fn(),
-  mockUnregister: vi.fn(),
+  mockEndChatRun: vi.fn(),
   mockGet: vi.fn(),
   mockAbort: vi.fn(),
   mockHoldSendQueue: vi.fn(),
@@ -28,9 +28,10 @@ vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOw
 
 vi.mock("@/lib/redis", () => ({
   isSessionActive: mockIsSessionActive,
-  unregisterActiveSession: mockUnregister,
   holdSendQueue: mockHoldSendQueue,
 }));
+
+vi.mock("@/lib/chat/run-record", () => ({ endChatRun: mockEndChatRun }));
 
 vi.mock("@/lib/pi/agent-pool", () => ({
   get: mockGet,
@@ -56,7 +57,7 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
     clearSessionAbort(USER_ID, SESSION_ID);
     mockRequireChatSessionOwner.mockResolvedValue({ ok: true, userId: USER_ID, session: {} });
     mockIsSessionActive.mockResolvedValue(true);
-    mockUnregister.mockResolvedValue(undefined);
+    mockEndChatRun.mockResolvedValue(undefined);
     mockGet.mockReturnValue({ session: { abort: mockAbort, isStreaming: true } });
     mockHoldSendQueue.mockResolvedValue(undefined);
   });
@@ -84,7 +85,7 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
     expect(mockAbort).toHaveBeenCalled();
     expect(wasSessionAbortRequested(USER_ID, SESSION_ID)).toBe(true);
     await expect(res.json()).resolves.toEqual({ stopped: true });
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
   });
 
   it("still cancels a streaming session when the Redis flag is missing", async () => {
@@ -107,7 +108,7 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
 
     expect(mockAbort).not.toHaveBeenCalled();
     expect(wasSessionAbortRequested(USER_ID, SESSION_ID)).toBe(false);
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
   });
 
   it("does nothing when no generation is running", async () => {
@@ -118,6 +119,6 @@ describe("POST /api/chat/sessions/[sessionId]/stop", () => {
 
     expect(mockAbort).not.toHaveBeenCalled();
     expect(wasSessionAbortRequested(USER_ID, SESSION_ID)).toBe(false);
-    expect(mockUnregister).not.toHaveBeenCalled();
+    expect(mockEndChatRun).not.toHaveBeenCalled();
   });
 });

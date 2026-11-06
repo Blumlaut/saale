@@ -394,7 +394,7 @@ export async function POST(
     }
 
     // Register in Redis so the 409 guard works before the SSE connection is made.
-    // Cleared by unregisterActiveSession on agent_end or stop.
+    // Cleared when the run settles, fails, or is stopped.
     await registerActiveSession(authResult.userId, sessionId);
 
     // Claim the prompt: the SSE connection for this message is the expected

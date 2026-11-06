@@ -31,6 +31,7 @@ vi.mock("@/lib/redis", async () => {
 
 const mockChatSessionUpdate = vi.fn();
 const mockChatMessageDeleteMany = vi.fn();
+const mockChatRunDeleteMany = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatSession: {
@@ -38,6 +39,9 @@ vi.mock("@/lib/db", () => ({
     },
     chatMessage: {
       deleteMany: (...args: unknown[]) => mockChatMessageDeleteMany(...args),
+    },
+    chatRun: {
+      deleteMany: (...args: unknown[]) => mockChatRunDeleteMany(...args),
     },
   },
 }));
@@ -739,6 +743,11 @@ describe("createSessionEventTracker", () => {
 
     expect(published.map((p) => p.event)).toContain("done");
     expect(mockUnregisterActiveSession).toHaveBeenCalledWith("u1", "s1");
+    // The run record goes with the flag: the boot pass must not resume a run
+    // that settled.
+    expect(mockChatRunDeleteMany).toHaveBeenCalledWith({
+      where: { sessionId: "s1", userId: "u1" },
+    });
     expect(mockChatSessionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "s1" },

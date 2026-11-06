@@ -26,10 +26,13 @@ vi.mock("@/lib/db", () => ({
 }));
 
 const mockIsSessionActive = vi.fn();
-const mockUnregister = vi.fn();
 vi.mock("@/lib/redis", () => ({
   isSessionActive: (...args: unknown[]) => mockIsSessionActive(...args),
-  unregisterActiveSession: (...args: unknown[]) => mockUnregister(...args),
+}));
+
+const mockEndChatRun = vi.fn();
+vi.mock("@/lib/chat/run-record", () => ({
+  endChatRun: (...args: unknown[]) => mockEndChatRun(...args),
 }));
 
 const mockGetPoolEntry = vi.fn();
@@ -101,7 +104,7 @@ describe("respondInChat", () => {
     mockPublish.mockResolvedValue(1);
     mockWaitTeardown.mockResolvedValue(undefined);
     mockIsSessionActive.mockResolvedValue(false);
-    mockUnregister.mockResolvedValue(undefined);
+    mockEndChatRun.mockResolvedValue(undefined);
     mockGetPoolEntry.mockReturnValue(undefined);
     mockEnsureChatAgent.mockResolvedValue({ entry, existedAlready: false });
     mockBeginChatRun.mockResolvedValue(undefined);
@@ -134,6 +137,7 @@ describe("respondInChat", () => {
       sessionId: TARGET,
       session: entry.session,
       usageKind: "chat",
+      messageId: "msg-1",
     });
     // The posted message must show up in a chat that is open elsewhere.
     expect(mockPublish).toHaveBeenCalledWith(TARGET, "messages_changed", {});
@@ -255,7 +259,7 @@ describe("respondInChat", () => {
 
     // The chat must not look busy after a failed run.
     expect(entry.promptInFlight).toBe(false);
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, TARGET);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, TARGET);
     expect(mockWaitTeardown).not.toHaveBeenCalled();
   });
 

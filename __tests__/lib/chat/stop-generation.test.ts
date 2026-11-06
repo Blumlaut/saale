@@ -9,12 +9,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 const mockIsSessionActive = vi.fn();
-const mockUnregister = vi.fn();
 const mockHoldSendQueue = vi.fn();
 vi.mock("@/lib/redis", () => ({
   isSessionActive: (...args: unknown[]) => mockIsSessionActive(...args),
-  unregisterActiveSession: (...args: unknown[]) => mockUnregister(...args),
   holdSendQueue: (...args: unknown[]) => mockHoldSendQueue(...args),
+}));
+
+const mockEndChatRun = vi.fn();
+vi.mock("@/lib/chat/run-record", () => ({
+  endChatRun: (...args: unknown[]) => mockEndChatRun(...args),
 }));
 
 const mockGet = vi.fn();
@@ -46,7 +49,7 @@ function pooled(options: { streaming: boolean; promptInFlight: boolean }) {
 describe("stopChatGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUnregister.mockResolvedValue(undefined);
+    mockEndChatRun.mockResolvedValue(undefined);
     mockHoldSendQueue.mockResolvedValue(undefined);
   });
 
@@ -56,7 +59,7 @@ describe("stopChatGeneration", () => {
 
     await expect(stopChatGeneration(USER_ID, SESSION_ID)).resolves.toBe(false);
     expect(mockHoldSendQueue).not.toHaveBeenCalled();
-    expect(mockUnregister).not.toHaveBeenCalled();
+    expect(mockEndChatRun).not.toHaveBeenCalled();
   });
 
   it("aborts a run that is claimed but not yet inside the agent loop", async () => {
@@ -68,7 +71,7 @@ describe("stopChatGeneration", () => {
 
     expect(mockRequestAbort).toHaveBeenCalledWith(USER_ID, SESSION_ID);
     expect(entry.session.abort).toHaveBeenCalled();
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
   });
 
   it("aborts a streaming run and pauses the send queue", async () => {
@@ -80,7 +83,7 @@ describe("stopChatGeneration", () => {
 
     expect(mockHoldSendQueue).toHaveBeenCalledWith(SESSION_ID);
     expect(entry.session.abort).toHaveBeenCalled();
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
   });
 
   it("still clears the flag when the run is only known through Redis", async () => {
@@ -90,6 +93,6 @@ describe("stopChatGeneration", () => {
     mockGet.mockReturnValue(undefined);
 
     await expect(stopChatGeneration(USER_ID, SESSION_ID)).resolves.toBe(true);
-    expect(mockUnregister).toHaveBeenCalledWith(USER_ID, SESSION_ID);
+    expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
   });
 });

@@ -51,11 +51,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { publishQueueUpdate } from "@/lib/chat/queue";
-import {
-  ACTIVE_SESSION_HEARTBEAT_MS,
-  registerActiveSession,
-  unregisterActiveSession,
-} from "@/lib/redis";
+import { endChatRun } from "@/lib/chat/run-record";
+import { ACTIVE_SESSION_HEARTBEAT_MS, registerActiveSession } from "@/lib/redis";
 import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
 import { readContextUsage } from "./context-usage";
 import { normalizeToolResult } from "./message-replay";
@@ -901,13 +898,13 @@ export function createSessionEventTracker(
         settledFinalized = true;
         clearSessionAbort(userId, sessionId);
 
-        // Unregister the active session and bump the message count once.
-        // Assistant output is real chat activity. advance lastActivityAt
+        // End the run (liveness flag and run record) and bump the message count
+        // once. Assistant output is real chat activity. advance lastActivityAt
         // too (the UI's sort/display timestamp). Note: tool_execution_
         // start/end do NOT touch it, so tool calls alone never move a chat
         // to the top of the list.
         void Promise.all([
-          unregisterActiveSession(userId, sessionId),
+          endChatRun(userId, sessionId),
           prisma.chatSession.update({
             where: { id: sessionId },
             data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },

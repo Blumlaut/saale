@@ -24,16 +24,12 @@ import {
 } from "@/lib/pi/chat-session-factory";
 import { createChatApprovalEmitter } from "@/lib/pi/tool-approval-gate";
 import { ensureWorktree } from "@/lib/coder/worktrees";
-import {
-  clearAgentBuilding,
-  markAgentBuilding,
-  registerActiveSession,
-  unregisterActiveSession,
-} from "@/lib/redis";
+import { clearAgentBuilding, markAgentBuilding, registerActiveSession } from "@/lib/redis";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
 import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
+import { endChatRun, markChatRunInFlight } from "@/lib/chat/run-record";
 import { notifyChatFinished } from "@/lib/notifications/chat-finished";
 import type { UsageKind } from "@/lib/usage/record";
 
@@ -108,8 +104,9 @@ export async function ensureChatAgent(options: {
 
 /**
  * Claim a chat's agent for one run: publish the generation as active (so other
- * connections observe instead of prompting, and Stop can find it), clear the
- * previous run's buffered events, and wire DB persistence + stream publishing.
+ * connections observe instead of prompting, and Stop can find it), record the
+ * run so a restart can resume it, clear the previous run's buffered events, and
+ * wire DB persistence + stream publishing.
  *
  * The caller must have set `entry.promptInFlight` first. that is the
  * same-process double-prompt guard.
@@ -119,8 +116,10 @@ export async function beginChatRun(options: {
   sessionId: string;
   session: AgentSession;
   usageKind: UsageKind;
+  /** The user message this run answers, for the boot pass to resume it. */
+  messageId: string;
 }): Promise<void> {
-  const { userId, sessionId, session, usageKind } = options;
+  const { userId, sessionId, session, usageKind, messageId } = options;
 
   // This run starts with no tool in flight. A previous run that died left its
   // tool bookkeeping in the DB. clearing it keeps a refresh from showing a
@@ -129,6 +128,7 @@ export async function beginChatRun(options: {
     console.error(`Failed to clear stale active tool state for ${sessionId}:`, err);
   });
 
+  await markChatRunInFlight({ sessionId, userId, messageId });
   await registerActiveSession(userId, sessionId);
   await resetSessionEvents(sessionId);
 
@@ -215,7 +215,7 @@ export async function dispatchChatRun(options: {
     entry.promptInFlight = false;
     entry.lastPromptedMessageId = null;
     console.error("session.prompt() failed:", err);
-    unregisterActiveSession(options.userId, options.sessionId).catch(console.error);
+    endChatRun(options.userId, options.sessionId).catch(console.error);
     publishSessionEvent(options.sessionId, "error", {
       message: err instanceof Error ? err.message : String(err),
     }).catch(console.error);

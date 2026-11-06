@@ -21,7 +21,8 @@
  */
 
 import { prisma } from "@/lib/db";
-import { isSessionActive, unregisterActiveSession } from "@/lib/redis";
+import { isSessionActive } from "@/lib/redis";
+import { endChatRun } from "@/lib/chat/run-record";
 import { get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import { publishSessionEvent } from "@/lib/pi/session-events";
@@ -114,6 +115,7 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
       sessionId: chatSession.id,
       session: entry.session,
       usageKind: chatUsageKind(chatSession),
+      messageId: userMessage.id,
     });
 
     // Let any client that has this chat open show the posted message right
@@ -135,8 +137,8 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
     if (!settled) {
       entry.promptInFlight = false;
       entry.lastPromptedMessageId = null;
-      await unregisterActiveSession(userId, chatSession.id).catch((err) => {
-        console.error(`Failed to unregister ${chatSession.id} after a failed run:`, err);
+      await endChatRun(userId, chatSession.id).catch((err) => {
+        console.error(`Failed to end the run of ${chatSession.id} after a failure:`, err);
       });
     }
   }

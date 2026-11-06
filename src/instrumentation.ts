@@ -7,6 +7,10 @@
  * directory beside the old one and split a user's files. `register` is the one
  * hook that completes before the server is ready to handle requests.
  *
+ * A start also means the previous process's chat runs are gone (see
+ * `resume-interrupted-runs.ts`), so those are picked back up here, once the rest
+ * of the stack has had a moment to come up.
+ *
  * The worker and the sandbox service do the same thing on their own startup;
  * the migration is idempotent and safe to run concurrently.
  */
@@ -17,4 +21,9 @@ export async function register(): Promise<void> {
 
   const { migrateWorkspaceIdentitiesOnBoot } = await import("@/lib/sandbox/legacy-identities");
   await migrateWorkspaceIdentitiesOnBoot("web");
+
+  // The pass loads Pi and the tool registry when it has a run to resume, so
+  // boot waits for none of it.
+  const { scheduleInterruptedRunRecovery } = await import("@/lib/chat/resume-interrupted-runs");
+  scheduleInterruptedRunRecovery();
 }
