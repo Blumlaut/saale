@@ -179,4 +179,27 @@ describe("settings · models", () => {
 
     expect(update).toHaveBeenCalledWith({ disabledModels: ["fixture:fixture-b"] });
   });
+
+  it("names the instance default while no decision model is picked", () => {
+    settingsState.current = { ...baseSettings, instanceApprovalDecisionModel: "custom:judge" };
+    render(<ModelsSection />);
+
+    expect(screen.getByText("Decision model")).toBeInTheDocument();
+    expect(screen.getByText("Follows the instance default: custom:judge")).toBeInTheDocument();
+  });
+
+  it("says the built-in checks decide when neither side picks one", () => {
+    render(<ModelsSection />);
+
+    expect(screen.getByText("Not set. The built-in command checks decide.")).toBeInTheDocument();
+  });
+
+  it("clears the pick back to the instance default", () => {
+    settingsState.current = { ...baseSettings, approvalDecisionModel: "custom:judge" };
+    render(<ModelsSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear the decision model" }));
+
+    expect(update).toHaveBeenCalledWith({ approvalDecisionModel: null });
+  });
 });

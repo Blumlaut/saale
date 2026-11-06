@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ModelPicker } from "@/components/shared/model-picker";
+import { DecisionModelField } from "@/components/shared/decision-model-field";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -280,6 +281,20 @@ export function ModelsSection() {
                 </p>
               </div>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* The model that judges what Auto would run on its own */}
+          <div>
+            <DecisionModelField
+              key={`decision-${pickerKey}`}
+              value={settings.approvalDecisionModel ?? null}
+              onChange={(value) => update({ approvalDecisionModel: value })}
+              fallback={settings.instanceApprovalDecisionModel ?? null}
+              fallbackLabel="the instance default"
+              endpoint="/api/providers/models"
+            />
           </div>
 
           <Separator />
