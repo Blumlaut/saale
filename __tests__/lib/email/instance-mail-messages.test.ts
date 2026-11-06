@@ -59,6 +59,15 @@ describe("sendPasswordResetMail", () => {
     expect(message.text).toMatch(/asked to reset/);
     expect(message.text).toContain(URL);
     expect(message.html).toContain(URL);
+    expect(message.html).toContain("Choose a new password");
+  });
+
+  it("wears the instance's name, not Saale's", async () => {
+    await sendPasswordResetMail("ada@example.com", URL);
+
+    const message = sentMessage();
+    expect(message.html).toContain("Acme Console");
+    expect(message.html).not.toContain(">Saale<");
   });
 
   it("passes on what the relay answered", async () => {
