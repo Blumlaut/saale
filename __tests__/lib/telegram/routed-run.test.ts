@@ -164,6 +164,7 @@ describe("runRoutedTelegramMessage", () => {
       sessionId,
       session: pooledSession,
       usageKind: "chat",
+      messageId: "msg-1",
     });
     expect(mockDispatchChatRun).toHaveBeenCalledWith(
       expect.objectContaining({ userId, sessionId, entry, content: "what did that alert mean?" }),
