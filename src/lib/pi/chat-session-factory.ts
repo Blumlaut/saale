@@ -6,7 +6,8 @@ import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
 import { buildCoderSystemPrompt } from "./coder-prompt";
-import { commitAttributionLine } from "./commit-attribution";
+import { sessionEnvValues } from "./session-env";
+import { commitAttributionLine, resolveAttributionLine } from "./commit-attribution";
 import { resolveCoderToolConfig, resolveCoderToolPolicies } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import { previewConfig } from "@/lib/preview/config";
@@ -120,19 +121,22 @@ export interface CreateChatAgentSessionOptions {
  * The trailer a coder chat starts with, or `null` when the instance has none.
  *
  * Read straight from the row rather than through `ensureAdminSettings`: this
- * runs while a session is being built, and a read must not create a row.
+ * runs while a session is being built, and a read must not create a row. The
+ * `SAALE_*` variables are filled in here, so the prompt asks for finished text.
  */
-async function readCommitAttributionLine(): Promise<string | null> {
+async function readCommitAttributionLine(
+  values: Readonly<Record<string, string | null | undefined>>,
+): Promise<string | null> {
   const row = await prisma.adminSettings.findUnique({
     where: { id: "global" },
     select: { commitAttributionEnabled: true, commitAttributionText: true },
   });
-  return row
-    ? commitAttributionLine({
-        enabled: row.commitAttributionEnabled,
-        text: row.commitAttributionText,
-      })
-    : null;
+  if (!row) return null;
+  const line = commitAttributionLine({
+    enabled: row.commitAttributionEnabled,
+    text: row.commitAttributionText,
+  });
+  return line === null ? null : resolveAttributionLine(line, values);
 }
 
 /** The prompt a session starts with: the coder one for a project chat. */
@@ -144,6 +148,8 @@ async function buildSessionPrompt(options: {
   toolConfig: ToolConfig;
   toolExposure: ToolExposureConfig | null | undefined;
   checkoutMode?: ChatMode | undefined;
+  /** What the `SAALE_*` variables hold for this chat, for the prompt. */
+  sessionEnv: Record<string, string>;
 }): Promise<string> {
   const [sandboxEnvNames, searchSources] = await Promise.all([
     listSandboxEnvNames(options.userId),
@@ -177,7 +183,7 @@ async function buildSessionPrompt(options: {
     ? buildCoderSystemPrompt({
         ...shared,
         checkout: options.checkoutMode,
-        attribution: await readCommitAttributionLine(),
+        attribution: await readCommitAttributionLine(options.sessionEnv),
       })
     : buildAgentSystemPrompt(shared);
 }
@@ -234,6 +240,12 @@ export async function createChatAgentSession(
       toolConfig,
       toolExposure: options.toolExposure,
       ...(options.checkoutMode ? { checkoutMode: options.checkoutMode } : {}),
+      sessionEnv: sessionEnvValues({
+        sessionId,
+        modelId: model?.name,
+        modelProvider: model?.provider,
+        thinkingLevel: chatSession.thinkingLevel,
+      }),
     }),
   });
 

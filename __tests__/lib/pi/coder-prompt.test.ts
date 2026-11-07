@@ -26,10 +26,13 @@ describe("buildCoderSystemPrompt git rules", () => {
   it("asks for the instance's trailer once it has one", () => {
     const withAttribution = buildCoderSystemPrompt({
       toolConfig: { terminal: true },
-      attribution: "Co-Authored-By: Saale ($SAALE_MODEL)",
+      attribution: "Co-Authored-By: Saale (deepseek-v4.1-flash)",
     });
-    expect(withAttribution).toContain("after a blank line: `Co-Authored-By: Saale ($SAALE_MODEL)`");
-    expect(withAttribution).toContain("let the shell expand the variables");
+    expect(withAttribution).toContain(
+      "after a blank line: `Co-Authored-By: Saale (deepseek-v4.1-flash)`",
+    );
+    expect(withAttribution).toContain("Write it exactly as it appears here");
+    expect(withAttribution).not.toContain("the shell expand");
     expect(withAttribution).not.toContain("No attribution trailers");
   });
 

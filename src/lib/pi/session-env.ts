@@ -8,16 +8,29 @@
 
 import { get as getPooledSession, getPoolKey } from "./agent-pool";
 
+/** What the variables hold, once the chat's model and thinking level are known. */
+export function sessionEnvValues(parts: {
+  sessionId: string;
+  modelId?: string | null | undefined;
+  modelProvider?: string | null | undefined;
+  thinkingLevel?: string | null | undefined;
+}): Record<string, string> {
+  const env: Record<string, string> = { SAALE_CHAT_ID: parts.sessionId };
+  if (parts.modelId && parts.modelProvider) {
+    env.SAALE_MODEL = parts.modelId;
+    env.SAALE_MODEL_PROVIDER = parts.modelProvider;
+  }
+  if (parts.thinkingLevel) env.SAALE_THINKING_LEVEL = parts.thinkingLevel;
+  return env;
+}
+
 /** The variables for one command in `sessionId`'s workspace. */
 export function sessionEnvVars(userId: string, sessionId: string): Record<string, string> {
   const session = getPooledSession(getPoolKey(userId, sessionId))?.session;
-  const model = session?.model;
-
-  const env: Record<string, string> = { SAALE_CHAT_ID: sessionId };
-  if (model) {
-    env.SAALE_MODEL = model.id;
-    env.SAALE_MODEL_PROVIDER = model.provider;
-  }
-  if (session) env.SAALE_THINKING_LEVEL = session.thinkingLevel;
-  return env;
+  return sessionEnvValues({
+    sessionId,
+    modelId: session?.model?.id,
+    modelProvider: session?.model?.provider,
+    thinkingLevel: session?.thinkingLevel,
+  });
 }

@@ -1,8 +1,9 @@
 /**
  * The trailer a coder chat puts on the commits it writes.
  *
- * The admin sets the line; a coder chat writes it verbatim, and the shell
- * expands the `SAALE_*` variables Saale exports for the command.
+ * The admin sets the line, naming `SAALE_*` variables in it. Saale fills those
+ * in before the chat starts, so the prompt carries the finished line and the
+ * agent writes it as plain text. Nothing downstream asks a shell to expand it.
  *
  * No database import: the admin section reads this module in the browser.
  */
@@ -32,4 +33,17 @@ export interface CommitAttributionSetting {
 export function commitAttributionLine(setting: CommitAttributionSetting): string | null {
   if (!setting.enabled) return null;
   return (setting.text ?? "").trim() || DEFAULT_ATTRIBUTION_LINE;
+}
+
+/**
+ * `line` with every `$NAME` replaced by its value.
+ *
+ * A name without a value stays as it was written, so a chat without a model
+ * still shows the admin which variable went unfilled.
+ */
+export function resolveAttributionLine(
+  line: string,
+  values: Readonly<Record<string, string | null | undefined>>,
+): string {
+  return line.replace(/\$([A-Z][A-Z0-9_]*)/g, (match, name: string) => values[name] || match);
 }

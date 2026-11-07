@@ -703,7 +703,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     key: "admin.commitAttributionText",
     group: GROUP.coder,
     label: "Attribution line",
-    description: `The trailer every commit a coder chat writes ends with. A variable such as $SAALE_MODEL is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
+    description: `The trailer every commit a coder chat writes ends with. A variable such as $SAALE_MODEL is filled in before the chat starts. Empty writes "${DEFAULT_ATTRIBUTION_LINE}". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
     columns: ["commitAttributionText"],
     apply: "allSessions",
     scope: "admin",

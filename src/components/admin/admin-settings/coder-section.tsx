@@ -45,7 +45,7 @@ export function CoderSection() {
         <SettingsRow
           htmlFor="commit-attribution-line"
           label="Attribution line"
-          description={`One trailer, on one line. A variable in it is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}".`}
+          description={`One trailer, on one line. A variable in it is filled in before the chat starts. Empty writes "${DEFAULT_ATTRIBUTION_LINE}".`}
         >
           <Input
             id="commit-attribution-line"
