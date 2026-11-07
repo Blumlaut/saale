@@ -33,7 +33,7 @@ export interface AdminSettingsView {
   approvalDecisionModel: string | null;
   /** Whether a coder chat is told to end every commit with `commitAttributionText`. */
   commitAttributionEnabled: boolean;
-  /** The trailer line, with `{chat}` left for the chat's id. */
+  /** The trailer line, with the `SAALE_*` variables left for the shell. */
   commitAttributionText: string;
 }
 

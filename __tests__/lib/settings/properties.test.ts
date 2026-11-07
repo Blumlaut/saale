@@ -209,7 +209,9 @@ describe("settings validation", () => {
   it("validates the commit attribution switch and line", () => {
     expect(accepts("admin.commitAttributionEnabled", true)).toBe(true);
     expect(accepts("admin.commitAttributionEnabled", "on")).toBe(false);
-    expect(accepts("admin.commitAttributionText", "Co-Authored-By: Saale ({chat})")).toBe(true);
+    expect(accepts("admin.commitAttributionText", "Co-Authored-By: Saale ($SAALE_MODEL)")).toBe(
+      true,
+    );
     expect(accepts("admin.commitAttributionText", "")).toBe(true);
     expect(accepts("admin.commitAttributionText", "two\nlines")).toBe(false);
     expect(accepts("admin.commitAttributionText", "x".repeat(201))).toBe(false);
