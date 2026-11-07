@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026.11.6 - 2026-11-07
+
+- put the decision row among the per-task rows (3a47ddd5)
+- move the decision model pick to models (7cdc4cb7)
+- pick the decision model in tools and admin models (c97f8826)
+- judge auto tool calls with a decision model (2576d970)
+- register endpoint decision models as classifiers (e40ce53b)
+- keep instance mail in its two modules (d71d6098)
+- frame the relay test mail too (82858808)
+- expect the message id in the routed run (bb7cbb73)
+- follow the reader's colour scheme in mail (c7541e4d)
+- set a new password from the mail link (ceb271c6)
+- offer a way back from a forgotten password (5e72580c)
+- share the auth form banners (a11131ce)
+- frame the account mails with the instance style (956a9d67)
+- resume chats a restart killed (3681de21)
+
 ## 2026.11.5 - 2026-11-06
 
 - read the provider's domains in the sign-up test (6561d948)
