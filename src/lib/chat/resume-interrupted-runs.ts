@@ -117,12 +117,17 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
   });
   if (!target || target.role !== "user") return "dropped";
 
-  // Something landed after this run claimed the prompt: the model replied (the
-  // run did its job) or began a tool turn (whose side effects already happened).
-  // Prompting the message again would repeat both. What the chat held before the
-  // claim belongs to earlier runs and does not make this one answered.
+  // A saved turn with text after the claim is a reply the user already has: the
+  // run did its job, and prompting the message again would answer it twice.
+  // Tool-only turns are not, so a run that died between tool calls is resumed
+  // and the model picks the work back up.
   const reply = await prisma.chatMessage.findFirst({
-    where: { sessionId, role: "assistant", createdAt: { gt: startedAt } },
+    where: {
+      sessionId,
+      role: "assistant",
+      createdAt: { gt: startedAt },
+      content: { not: "" },
+    },
     select: { id: true },
   });
   if (reply) return "dropped";

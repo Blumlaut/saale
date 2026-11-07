@@ -136,11 +136,30 @@ describe("resumeInterruptedChatRuns", () => {
 
     expect(mockFindMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        where: { sessionId: SESSION_ID, role: "assistant", createdAt: { gt: RUN.startedAt } },
+        where: expect.objectContaining({
+          sessionId: SESSION_ID,
+          role: "assistant",
+          createdAt: { gt: RUN.startedAt },
+          content: { not: "" },
+        }),
       }),
     );
     expect(mockPrepare).not.toHaveBeenCalled();
     expect(report.dropped).toEqual([SESSION_ID]);
+  });
+
+  it("resumes a run that only got as far as tool calls", async () => {
+    // A turn saved with tool calls and no text is the model's work in progress,
+    // so the user has no reply yet and the run picks up where it stopped.
+    mockFindMessage
+      .mockReset()
+      .mockResolvedValueOnce({ role: "user", ...TARGET })
+      .mockResolvedValueOnce(null);
+
+    const report = await resumeInterruptedChatRuns();
+
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(report.resumed).toEqual([SESSION_ID]);
   });
 
   it("resumes a message only earlier runs answered", async () => {
