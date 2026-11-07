@@ -23,6 +23,16 @@ describe("buildCoderSystemPrompt git rules", () => {
     expect(prompt).toContain("Run the project's own checks");
   });
 
+  it("asks for the instance's trailer once it has one", () => {
+    const withAttribution = buildCoderSystemPrompt({
+      toolConfig: { terminal: true },
+      attribution: "Co-Authored-By: Saale (c-1a2b)",
+    });
+    expect(withAttribution).toContain("exactly as written: `Co-Authored-By: Saale (c-1a2b)`");
+    expect(withAttribution).toContain("after a blank line");
+    expect(withAttribution).not.toContain("No attribution trailers");
+  });
+
   it("forbids force, unsolicited pushes and history rewrites", () => {
     expect(prompt).toContain("Never pass `--force`");
     expect(prompt).toContain("Never push unless the user asks");

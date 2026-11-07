@@ -83,6 +83,12 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       description: "What a regular account can use by default",
     },
     {
+      id: "coder",
+      href: "/admin/settings/coder",
+      label: "Coder",
+      description: "The attribution every coder commit carries",
+    },
+    {
       id: "branding",
       href: "/admin/settings/branding",
       label: "Branding",

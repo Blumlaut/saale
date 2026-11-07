@@ -6,6 +6,7 @@ import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
 import { buildCoderSystemPrompt } from "./coder-prompt";
+import { readCommitAttributionLine } from "./commit-attribution";
 import { resolveCoderToolConfig, resolveCoderToolPolicies } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import { previewConfig } from "@/lib/preview/config";
@@ -118,6 +119,7 @@ export interface CreateChatAgentSessionOptions {
 /** The prompt a session starts with: the coder one for a project chat. */
 async function buildSessionPrompt(options: {
   userId: string;
+  sessionId: string;
   projectId: string | null;
   customInstructions: string | null;
   coderCustomInstructions: string | null | undefined;
@@ -154,7 +156,11 @@ async function buildSessionPrompt(options: {
     ...(searchSources ? { searchSources } : {}),
   };
   return options.projectId
-    ? buildCoderSystemPrompt({ ...shared, checkout: options.checkoutMode })
+    ? buildCoderSystemPrompt({
+        ...shared,
+        checkout: options.checkoutMode,
+        attribution: await readCommitAttributionLine(options.sessionId),
+      })
     : buildAgentSystemPrompt(shared);
 }
 
@@ -204,6 +210,7 @@ export async function createChatAgentSession(
     ...(chatSession.projectId ? { commandScope: "workspace" as const } : {}),
     systemPrompt: await buildSessionPrompt({
       userId,
+      sessionId,
       projectId: chatSession.projectId,
       customInstructions: options.customInstructions,
       coderCustomInstructions: options.coderCustomInstructions,

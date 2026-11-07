@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AdminSettings, AppSettings } from "@prisma/client";
+
+import {
+  adminSettingsRow as adminRow,
+  userSettingsRow as userRow,
+} from "../../helpers/settings-rows";
 
 const mocks = vi.hoisted(() => ({
   findUser: vi.fn(),
@@ -40,68 +44,6 @@ import {
 } from "@/lib/settings/update";
 
 const USER_ID = "user-1";
-
-function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    id: "settings-1",
-    userId: USER_ID,
-    defaultModelProvider: "",
-    defaultModelName: "",
-    defaultThinkingLevel: "default",
-    theme: "system",
-    compactActivity: true,
-    telegramToolNotices: false,
-    agentCustomInstructions: null,
-    coderCustomInstructions: null,
-    emailWritingStyle: null,
-    purposeModelOverrides: null,
-    disabledModels: null,
-    defaultToolConfig: null,
-    coderToolConfig: null,
-    toolPolicies: null,
-    toolExposure: null,
-    approvalDecisionModel: null,
-    sidebarItems: null,
-    pushNotifications: null,
-    features: null,
-    updatedAt: new Date(0),
-    ...overrides,
-  };
-}
-
-function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
-  return {
-    id: "global",
-    signupsEnabled: true,
-    minPasswordLength: 8,
-    requireTwoFactor: false,
-    webSearchEngines: [],
-    webSearchCategories: ["general"],
-    webSearchSafeSearch: 0,
-    webSearchLanguage: "all",
-    webSearchResultsPerCall: 10,
-    webFetchMaxChars: 50_000,
-    webFetchTimeoutMs: 15_000,
-    webFetchMaxRedirects: 5,
-    voiceEnabled: true,
-    voiceModel: null,
-    voiceLanguage: null,
-    approvalDecisionModel: null,
-    globalModelProvider: "",
-    globalModelName: "",
-    globalProviderModels: null,
-    featureDefaults: null,
-    piPluginsDir: "",
-    piPluginsEnabled: false,
-    piPluginsUi: false,
-    piPluginStates: null,
-    themeColors: null,
-    workspaceName: "",
-    brandingAvatar: "",
-    updatedAt: new Date(0),
-    ...overrides,
-  };
-}
 
 /** Arguments of the last call to a mock. */
 function lastArgs(mock: ReturnType<typeof vi.fn>): Record<string, unknown> {

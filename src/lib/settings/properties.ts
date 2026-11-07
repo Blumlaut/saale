@@ -78,6 +78,7 @@ import {
   type ToolCategoryKey,
 } from "@/lib/pi/tool-categories";
 import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
+import { MAX_ATTRIBUTION_LENGTH, ATTRIBUTION_CHAT_PLACEHOLDER } from "@/lib/pi/commit-attribution";
 import { ALL_TOOL_INFOS, type ToolPolicy } from "@/lib/pi/tool-infos";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
@@ -686,6 +687,40 @@ export function normalizePluginStates(value: unknown): Record<string, { enabled:
 }
 
 const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
+  {
+    key: "admin.commitAttributionEnabled",
+    group: GROUP.coder,
+    label: "Commit attribution",
+    description:
+      "Whether a coder chat is told to end every commit message it writes with the attribution line.",
+    columns: ["commitAttributionEnabled"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: z.boolean(),
+    read: (row) => row.commitAttributionEnabled,
+    write: (_row, value) => ({ commitAttributionEnabled: Boolean(value) }),
+  },
+  {
+    key: "admin.commitAttributionText",
+    group: GROUP.coder,
+    label: "Attribution line",
+    description: `The line a coder chat is told to end every commit message with, written as a trailer. ${ATTRIBUTION_CHAT_PLACEHOLDER} becomes the chat's id. An empty line writes "Co-Authored-By: <workspace name>". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
+    columns: ["commitAttributionText"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: z
+      .string()
+      .trim()
+      .max(MAX_ATTRIBUTION_LENGTH, `Use ${MAX_ATTRIBUTION_LENGTH} characters or fewer.`)
+      .refine(
+        (value) => !/[\r\n]/.test(value),
+        "Use one line: the trailer sits on its own line in the message.",
+      ),
+    read: (row) => row.commitAttributionText,
+    write: (_row, value) => ({
+      commitAttributionText: typeof value === "string" ? value.trim() : "",
+    }),
+  },
   {
     key: "admin.signupsEnabled",
     group: GROUP.admin,

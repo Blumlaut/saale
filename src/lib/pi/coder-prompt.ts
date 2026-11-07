@@ -21,18 +21,22 @@ The checkout is the whole of your filesystem authority. Every path outside it is
 
 const GIT_PROMPT = `Git:
 - Commit as work lands, in small commits that each do one thing.
-- The subject line is imperative and shorter than 50 characters. No attribution trailers and no "Generated with" footer.
-- Run the project's own checks (tests, lint, typecheck) before you commit, and fix what they report.
-- Never pass \`--force\` to a git command.
-- Never push unless the user asks for it.
-- Never rewrite history that exists on a remote.`;
+- The subject line is imperative and shorter than 50 characters.
+- Run the project's own checks (tests, lint, typecheck) before you commit, and fix what they report.`;
+
+/** What a commit message does and does not say about who wrote it. */
+function attributionRule(line: string | null): string {
+  return line
+    ? `- End every commit message with this trailer, after a blank line and exactly as written: \`${line}\`. It is the only attribution in the message: no "Generated with" footer and no other trailer.`
+    : '- No attribution trailers and no "Generated with" footer.';
+}
 
 /** The git rules, with who owns the branch when the checkout is shared. */
-function gitPrompt(sharedCheckout: boolean): string {
+function gitPrompt(sharedCheckout: boolean, attribution: string | null): string {
   const branchRule = sharedCheckout
     ? "- The checkout is shared with every other chat of this project, so leave its branch alone."
     : "- Only this worktree's branch is yours to change.";
-  return `${GIT_PROMPT}\n${branchRule}`;
+  return `${GIT_PROMPT}\n${attributionRule(attribution)}\n- Never pass \`--force\` to a git command.\n- Never push unless the user asks for it.\n- Never rewrite history that exists on a remote.\n${branchRule}`;
 }
 
 /**
@@ -88,6 +92,8 @@ export function buildCoderSystemPrompt(options: {
   searchSources?: SearchSources | undefined;
   /** The checkout the chat runs in: its own worktree, or the project's one. */
   checkout?: "worktree" | "repo" | undefined;
+  /** The trailer every commit ends with, or null when the instance has none. */
+  attribution?: string | null | undefined;
 }): string {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const envNames = options.sandboxEnvNames ?? [];
@@ -97,7 +103,7 @@ export function buildCoderSystemPrompt(options: {
   const sections = [
     shared ? SHARED_CHECKOUT_IDENTITY_PROMPT : CODER_IDENTITY_PROMPT,
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
-    gitPrompt(shared),
+    gitPrompt(shared, options.attribution ?? null),
     devServerPrompt(options.previewDomain),
     envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
     shared ? SHARED_CHECKOUT_REPORTING_PROMPT : REPORTING_PROMPT,

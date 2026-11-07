@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { Prisma, type AdminSettings, type AppSettings } from "@prisma/client";
+import { Prisma, type AppSettings } from "@prisma/client";
 import {
   ADMIN_PROPERTIES,
   ALL_PROPERTIES,
@@ -12,6 +12,10 @@ import {
 import { ALL_TOOL_INFOS } from "@/lib/pi/tool-infos";
 import { TOOL_CATEGORIES } from "@/lib/pi/tool-categories";
 import { getAllPurposes } from "@/lib/pi/purposes";
+import {
+  adminSettingsRow as adminRow,
+  userSettingsRow as userRow,
+} from "../../helpers/settings-rows";
 import {
   isSidebarNavPinned,
   normalizeSidebarNav,
@@ -43,68 +47,6 @@ function scalarColumns(model: string): string[] {
 }
 
 /** A bare AppSettings row with Prisma's defaults, for projection tests. */
-function userRow(overrides: Partial<AppSettings> = {}): AppSettings {
-  return {
-    id: "settings-1",
-    userId: "user-1",
-    defaultModelProvider: "",
-    defaultModelName: "",
-    defaultThinkingLevel: "default",
-    theme: "system",
-    compactActivity: true,
-    telegramToolNotices: false,
-    agentCustomInstructions: null,
-    coderCustomInstructions: null,
-    emailWritingStyle: null,
-    purposeModelOverrides: null,
-    disabledModels: null,
-    defaultToolConfig: null,
-    coderToolConfig: null,
-    toolPolicies: null,
-    toolExposure: null,
-    approvalDecisionModel: null,
-    sidebarItems: null,
-    pushNotifications: null,
-    features: null,
-    updatedAt: new Date(0),
-    ...overrides,
-  };
-}
-
-/** A bare AdminSettings row with Prisma's defaults. */
-function adminRow(overrides: Partial<AdminSettings> = {}): AdminSettings {
-  return {
-    id: "global",
-    signupsEnabled: true,
-    minPasswordLength: 8,
-    requireTwoFactor: false,
-    webSearchEngines: [],
-    webSearchCategories: ["general"],
-    webSearchSafeSearch: 0,
-    webSearchLanguage: "all",
-    webSearchResultsPerCall: 10,
-    webFetchMaxChars: 50_000,
-    webFetchTimeoutMs: 15_000,
-    webFetchMaxRedirects: 5,
-    voiceEnabled: true,
-    voiceModel: null,
-    voiceLanguage: null,
-    approvalDecisionModel: null,
-    globalModelProvider: "",
-    globalModelName: "",
-    globalProviderModels: null,
-    featureDefaults: null,
-    piPluginsDir: "",
-    piPluginsEnabled: false,
-    piPluginsUi: false,
-    piPluginStates: null,
-    themeColors: null,
-    workspaceName: "",
-    brandingAvatar: "",
-    updatedAt: new Date(0),
-    ...overrides,
-  };
-}
 
 /** Apply a property write to a row, the way the writers do. */
 function apply(property: UserProperty, row: AppSettings, value: unknown): AppSettings {
@@ -262,6 +204,15 @@ describe("settings validation", () => {
       true,
     );
     expect(accepts("admin.brandingAvatar", "../../etc/passwd")).toBe(false);
+  });
+
+  it("validates the commit attribution switch and line", () => {
+    expect(accepts("admin.commitAttributionEnabled", true)).toBe(true);
+    expect(accepts("admin.commitAttributionEnabled", "on")).toBe(false);
+    expect(accepts("admin.commitAttributionText", "Co-Authored-By: Saale ({chat})")).toBe(true);
+    expect(accepts("admin.commitAttributionText", "")).toBe(true);
+    expect(accepts("admin.commitAttributionText", "two\nlines")).toBe(false);
+    expect(accepts("admin.commitAttributionText", "x".repeat(201))).toBe(false);
   });
 
   it("requires provider:model for model references", () => {
