@@ -61,6 +61,8 @@ const ADMIN_PAGES = [
   "/admin/settings/sso",
   "/admin/settings/mail",
   "/admin/settings/features",
+  "/admin/settings/shared-mcp",
+  "/admin/settings/shared-prompts",
   "/admin/settings/coder",
   "/admin/settings/branding",
   "/admin/settings/telegram",

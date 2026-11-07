@@ -42,6 +42,8 @@ const PAGES: { path: string; prepare?: (page: Page) => Promise<void> }[] = [
   { path: "/admin/plugins/logs" },
   { path: "/admin/settings/signups" },
   { path: "/admin/settings/features" },
+  { path: "/admin/settings/shared-mcp" },
+  { path: "/admin/settings/shared-prompts" },
   { path: "/admin/settings/coder" },
   { path: "/admin/settings/branding" },
   { path: "/admin/settings/search" },

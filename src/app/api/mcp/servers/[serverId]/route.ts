@@ -1,23 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { encrypt } from "@/lib/crypto";
-import { prisma } from "@/lib/db";
-import { clearMcpOAuthCredential, clearMcpOAuthFlow, hasMcpOAuthCredential } from "@/lib/mcp/oauth";
-import { evictUserSessions } from "@/lib/pi/agent-pool";
-import {
-  isMcpToolPolicy,
-  mcpNameKey,
-  MCP_SCOPES,
-  toMcpServerView,
-  validateMcpServerName,
-  validateMcpUrl,
-} from "@/lib/mcp/shared";
-
-/** Look up a server the caller owns. */
-async function findOwnedServer(userId: string, serverId: string) {
-  return prisma.mcpServer.findFirst({ where: { id: serverId, userId } });
-}
+import { deleteMcpServer, updateMcpServer, userMcpServers } from "@/lib/mcp/store";
+import { toMcpServerView } from "@/lib/mcp/shared";
 
 /**
  * PATCH /api/mcp/servers/:serverId. update a server.
@@ -31,85 +16,19 @@ export async function PATCH(
 ) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
-  const userId = authResult.user.id;
 
   const { serverId } = await params;
-  const existing = await findOwnedServer(userId, serverId);
-  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const result = await updateMcpServer(
+    userMcpServers(authResult.user.id),
+    serverId,
+    await request.json(),
+  );
+  if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  const body = (await request.json()) as Record<string, unknown>;
-  const data: Record<string, unknown> = {};
-
-  if (body.name !== undefined) {
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const nameError = validateMcpServerName(name);
-    if (nameError) return NextResponse.json({ error: nameError }, { status: 400 });
-
-    const others = await prisma.mcpServer.findMany({
-      where: { userId, id: { not: serverId } },
-      select: { name: true },
-    });
-    if (others.some((server) => mcpNameKey(server.name) === mcpNameKey(name))) {
-      return NextResponse.json(
-        { error: `A server named "${name}" is already configured.` },
-        { status: 409 },
-      );
-    }
-    data.name = name;
-  }
-
-  if (body.url !== undefined) {
-    const url = typeof body.url === "string" ? body.url.trim() : "";
-    const urlError = validateMcpUrl(url);
-    if (urlError) return NextResponse.json({ error: urlError }, { status: 400 });
-    data.url = url;
-  }
-
-  if (body.description !== undefined) {
-    data.description = typeof body.description === "string" ? body.description.trim() : "";
-  }
-
-  if (body.toolPolicy !== undefined) {
-    if (!isMcpToolPolicy(body.toolPolicy)) {
-      return NextResponse.json({ error: "Unknown approval setting." }, { status: 400 });
-    }
-    data.toolPolicy = body.toolPolicy;
-  }
-
-  if (body.enabled !== undefined) {
-    if (typeof body.enabled !== "boolean") {
-      return NextResponse.json({ error: "enabled must be a boolean" }, { status: 400 });
-    }
-    data.enabled = body.enabled;
-  }
-
-  for (const scope of MCP_SCOPES) {
-    const field = scope === "chat" ? "chatEnabled" : "coderEnabled";
-    const value = body[field];
-    if (value === undefined) continue;
-    if (typeof value !== "boolean") {
-      return NextResponse.json({ error: `${field} must be a boolean` }, { status: 400 });
-    }
-    data[field] = value;
-  }
-
-  if (body.token !== undefined) {
-    const token = typeof body.token === "string" ? body.token.trim() : "";
-    data.encryptedToken = token ? encrypt(token) : null;
-  }
-
-  const server = await prisma.mcpServer.update({ where: { id: serverId, userId }, data });
-
-  // OAuth credentials belong to the endpoint they were issued for. Pi ignores
-  // state for another URL anyway; deleting it keeps the list honest and forces
-  // a fresh sign-in against the new server.
-  const urlChanged = typeof data.url === "string" && data.url !== existing.url;
-  if (urlChanged) await clearMcpOAuthCredential(userId, serverId);
-
-  await evictUserSessions(userId);
-
-  const hasOAuth = urlChanged ? false : await hasMcpOAuthCredential(userId, serverId);
-  return NextResponse.json({ server: toMcpServerView(server, hasOAuth) });
+  return NextResponse.json({
+    server: toMcpServerView(result.server, { hasOAuth: result.hasOAuth }),
+  });
 }
 
 /**
@@ -121,17 +40,10 @@ export async function DELETE(
 ) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
-  const userId = authResult.user.id;
 
   const { serverId } = await params;
-
-  const deleted = await prisma.mcpServer.deleteMany({ where: { id: serverId, userId } });
-  if (deleted.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  // The credential row cascades with the server; the short-lived sign-in state
-  // does not, so forget it explicitly.
-  await clearMcpOAuthFlow(serverId);
-  await evictUserSessions(userId);
+  const deleted = await deleteMcpServer(userMcpServers(authResult.user.id), serverId);
+  if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({ ok: true });
 }

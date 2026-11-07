@@ -6,6 +6,7 @@ import {
   normalizePromptInput,
   serializePrompt,
   updatePrompt,
+  userPrompts,
 } from "@/lib/prompts/store";
 
 /** PATCH /api/prompts/[id]. Replace a prompt the user owns. */
@@ -18,7 +19,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const input = normalizePromptInput(await request.json());
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: 400 });
 
-  const result = await updatePrompt(authResult.user.id, id, input.value);
+  const result = await updatePrompt(userPrompts(authResult.user.id), id, input.value);
   if (!result) return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.conflict ? 409 : 400 });
@@ -37,7 +38,7 @@ export async function DELETE(
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
-  const deleted = await deletePrompt(authResult.user.id, id);
+  const deleted = await deletePrompt(userPrompts(authResult.user.id), id);
   if (!deleted) return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
 
   return NextResponse.json({ success: true });

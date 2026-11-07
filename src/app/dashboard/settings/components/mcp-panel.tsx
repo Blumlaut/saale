@@ -3,10 +3,8 @@
 import { useState } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Pencil, Plug, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plug, Plus } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,22 +17,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
 import { isCategoryEnabled } from "@/lib/pi/tool-categories";
+import { McpServerRow } from "@/components/mcp/mcp-server-row";
+import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
+import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
 import { useUserSettings } from "./user-settings-provider";
-import { McpServerSheet } from "./mcp-server-sheet";
-
-const POLICY_LABELS: Record<string, string> = {
-  ask: "Ask",
-  allow: "Allow",
-  off: "Blocked",
-};
-
-/** Where a server connects, or null when that is both scopes. */
-function scopeLabel(server: McpServer): string | null {
-  if (server.chatEnabled && server.coderEnabled) return null;
-  if (server.chatEnabled) return "Chat only";
-  if (server.coderEnabled) return "Coder only";
-  return "Nowhere";
-}
 
 /**
  * Settings → MCP. A server configured here connects to every agent session the
@@ -151,70 +137,22 @@ export function McpPanel() {
               {servers.map((server, index) => (
                 <div key={server.id}>
                   {index > 0 && <Separator />}
-                  <div className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">{server.name}</span>
-                        <Badge variant="secondary" className="shrink-0">
-                          {POLICY_LABELS[server.toolPolicy] ?? "Ask"}
-                        </Badge>
-                        {server.hasToken && (
-                          <Badge variant="outline" className="shrink-0">
-                            Token
-                          </Badge>
-                        )}
-                        {server.hasOAuth && (
-                          <Badge variant="outline" className="shrink-0">
-                            OAuth
-                          </Badge>
-                        )}
-                        {server.enabled && scopeLabel(server) && (
-                          <Badge variant="outline" className="shrink-0">
-                            {scopeLabel(server)}
-                          </Badge>
-                        )}
-                        {!server.enabled && (
-                          <Badge variant="outline" className="shrink-0">
-                            Disabled
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-muted-foreground mt-1 text-xs break-all">{server.url}</p>
-                      {server.description && (
-                        <p className="text-muted-foreground mt-0.5 text-xs">{server.description}</p>
-                      )}
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-1">
-                      {busyId === server.id ? (
-                        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                      ) : (
-                        <Switch
-                          checked={server.enabled}
-                          onCheckedChange={(checked) => void handleToggle(server, checked)}
-                          aria-label={`Enable ${server.name}`}
+                  <McpServerRow
+                    server={server}
+                    actions={
+                      // A shared server is the instance's: the account can see it
+                      // and use its tools, but not edit or remove it.
+                      server.shared ? null : (
+                        <McpServerRowActions
+                          server={server}
+                          busy={busyId === server.id}
+                          onToggle={(enabled) => void handleToggle(server, enabled)}
+                          onEdit={() => openEdit(server)}
+                          onDelete={() => setPendingDelete(server)}
                         />
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label={`Edit ${server.name}`}
-                        onClick={() => openEdit(server)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive h-8 w-8"
-                        aria-label={`Remove ${server.name}`}
-                        onClick={() => setPendingDelete(server)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                      )
+                    }
+                  />
                 </div>
               ))}
             </div>

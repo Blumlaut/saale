@@ -19,6 +19,8 @@ export interface McpServer {
   hasToken: boolean;
   /** Whether an OAuth credential is stored for this server. */
   hasOAuth: boolean;
+  /** Written by an admin for the whole instance: the account cannot edit it. */
+  shared: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,11 +90,16 @@ export function useMcpServers() {
     void loadServers();
   }, [loadServers]);
 
-  const createServer = useCallback(async (input: McpServerInput): Promise<McpServer> => {
-    const data = await postJson<{ server: McpServer }>("/api/mcp/servers", input);
-    setServers((prev) => [...prev, data.server]);
-    return data.server;
-  }, []);
+  const createServer = useCallback(
+    async (input: McpServerInput): Promise<McpServer> => {
+      const data = await postJson<{ server: McpServer }>("/api/mcp/servers", input);
+      // Re-read rather than append: the list is the account's servers and the
+      // instance's, and only the server knows where a new one lands.
+      await loadServers();
+      return data.server;
+    },
+    [loadServers],
+  );
 
   const updateServer = useCallback(
     async (id: string, input: McpServerInput): Promise<McpServer> => {
@@ -103,10 +110,14 @@ export function useMcpServers() {
     [],
   );
 
-  const deleteServer = useCallback(async (id: string): Promise<void> => {
-    await deleteJson(`/api/mcp/servers/${id}`);
-    setServers((prev) => prev.filter((server) => server.id !== id));
-  }, []);
+  const deleteServer = useCallback(
+    async (id: string): Promise<void> => {
+      await deleteJson(`/api/mcp/servers/${id}`);
+      // Removing the account's server of a shared name reveals the shared one.
+      await loadServers();
+    },
+    [loadServers],
+  );
 
   /**
    * Connect to a server and list its tools.

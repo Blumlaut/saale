@@ -81,12 +81,28 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       href: "/admin/settings/features",
       label: "Features",
       description: "What a regular account can use by default",
+      action: "settings",
+    },
+    {
+      id: "shared-mcp",
+      href: "/admin/settings/shared-mcp",
+      label: "MCP servers",
+      description: "MCP servers every account connects",
+      action: "settings",
+    },
+    {
+      id: "shared-prompts",
+      href: "/admin/settings/shared-prompts",
+      label: "Prompts",
+      description: "Slash commands every account can send",
+      action: "settings",
     },
     {
       id: "coder",
       href: "/admin/settings/coder",
       label: "Coder",
       description: "The attribution every coder commit carries",
+      action: "settings",
     },
     {
       id: "branding",

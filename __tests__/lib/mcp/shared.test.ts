@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { mergeOwnedRows } from "@/lib/shared-resources";
 import {
   isMcpToolPolicy,
+  MCP_TOOL_PREFIX,
   mcpNameKey,
   mcpServerFromToolName,
   normalizeMcpServerName,
@@ -148,5 +150,39 @@ describe("toMcpServerView", () => {
 
   it("falls back to ask for a policy it does not understand", () => {
     expect(toMcpServerView({ ...row, toolPolicy: "yolo" }).toolPolicy).toBe("ask");
+  });
+});
+
+describe("tool names of a merged server set", () => {
+  /** A tool of one server, named the way Pi names it. */
+  function toolName(server: string, tool: string): string {
+    return `${MCP_TOOL_PREFIX}${server}__${tool}`;
+  }
+
+  it("leaves every merged server its own namespace", () => {
+    // The instance lists a server the user already has under the other spelling.
+    const merged = mergeOwnedRows({
+      own: [{ name: "home-assistant" }],
+      shared: [{ name: "home_assistant" }, { name: "docs" }],
+      keyOf: (server) => mcpNameKey(server.name),
+    });
+
+    const namespaces = merged.map((server) => mcpNameKey(server.name));
+    expect(new Set(namespaces).size).toBe(merged.length);
+    expect(merged.map((server) => toolName(server.name, "search"))).toEqual([
+      "mcp__home-assistant__search",
+      "mcp__docs__search",
+    ]);
+  });
+
+  it("maps a tool name back to the server that contributes it", () => {
+    const merged = mergeOwnedRows({
+      own: [],
+      shared: [{ name: "docs" }, { name: "home-assistant" }],
+    });
+
+    for (const server of merged) {
+      expect(mcpServerFromToolName(toolName(server.name, "search"))).toBe(server.name);
+    }
   });
 });

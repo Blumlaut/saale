@@ -9,6 +9,7 @@
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { parseCommand } from "@/lib/commands/parse";
 import { prisma } from "@/lib/db";
+import { mergeOwnedRows } from "@/lib/shared-resources";
 import { chatPromptDirectory, readProjectPrompts, type PromptChat } from "./project";
 import {
   expandPrompt,
@@ -18,22 +19,26 @@ import {
   type PromptEntry,
   type PromptPickerItem,
 } from "./resolve";
-import { listUserPrompts } from "./store";
+import { INSTANCE_PROMPTS, listPrompts, userPrompts } from "./store";
 
 export type { PromptChat } from "./project";
 export type { PromptEntry, PromptMatch, PromptPickerItem } from "./resolve";
 
-/** Every prompt offered in a chat, the user's own first. */
+/** Every prompt offered in a chat: the user's own, then the instance's, then the repo's. */
 export async function promptsForChat(
   userId: string,
   chatSession: PromptChat,
 ): Promise<PromptEntry[]> {
-  const [rows, cwd] = await Promise.all([
-    listUserPrompts(userId),
+  const [own, shared, cwd] = await Promise.all([
+    listPrompts(userPrompts(userId)),
+    listPrompts(INSTANCE_PROMPTS),
     chatPromptDirectory(userId, chatSession),
   ]);
   const project = await readProjectPrompts(cwd);
-  return mergePromptEntries(scopedPromptEntries(rows, chatSession.projectId !== null), project);
+  return mergePromptEntries(
+    scopedPromptEntries(mergeOwnedRows({ own, shared }), chatSession.projectId !== null),
+    project,
+  );
 }
 
 /** What the composer lists for a chat. */

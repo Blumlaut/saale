@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { ScopeSwitches, ToolScopeHeader } from "@/components/shared/tool-scopes";
@@ -243,6 +244,11 @@ export function ToolsSection() {
                                 >
                                   <div className="min-w-0 flex-1">
                                     <span className="text-sm">{server.name}</span>
+                                    {server.shared && (
+                                      <Badge variant="outline" className="ml-2 shrink-0">
+                                        Shared
+                                      </Badge>
+                                    )}
                                     {!server.enabled && (
                                       <span className="text-muted-foreground text-xs"> - off</span>
                                     )}
@@ -257,7 +263,7 @@ export function ToolsSection() {
                                       label={server.name}
                                       chat={server.chatEnabled}
                                       coder={server.coderEnabled}
-                                      disabled={!server.enabled}
+                                      disabled={!server.enabled || server.shared}
                                       onChatChange={(checked) =>
                                         void handleMcpScopeChange(server, { chatEnabled: checked })
                                       }

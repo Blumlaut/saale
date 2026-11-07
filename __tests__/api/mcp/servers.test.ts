@@ -12,6 +12,7 @@ const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
 const mockDeleteMany = vi.fn();
 const mockEvictUserSessions = vi.fn();
+const mockSharedFindMany = vi.fn();
 const mockOAuthFindMany = vi.fn();
 const mockOAuthFindFirst = vi.fn();
 const mockOAuthDeleteMany = vi.fn();
@@ -23,6 +24,13 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   prisma: {
+    sharedMcpServer: {
+      findMany: (...args: unknown[]) => mockSharedFindMany(...args),
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(),
+    },
     mcpServer: {
       findMany: (...args: unknown[]) => mockFindMany(...args),
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
@@ -101,6 +109,7 @@ describe("/api/mcp/servers", () => {
     auth();
     mockEvictUserSessions.mockResolvedValue(0);
     mockFindMany.mockResolvedValue([]);
+    mockSharedFindMany.mockResolvedValue([]);
     mockOAuthFindMany.mockResolvedValue([]);
     mockOAuthFindFirst.mockResolvedValue(null);
   });
@@ -127,6 +136,28 @@ describe("/api/mcp/servers", () => {
       name: "homeassistant",
       hasToken: false,
       hasOAuth: true,
+    });
+  });
+
+  it("lists the instance's servers after the caller's own, without their sign-in", async () => {
+    mockFindMany.mockResolvedValue([serverRow()]);
+    mockSharedFindMany.mockResolvedValue([
+      serverRow({ id: "shared-1", userId: undefined, name: "docs" }),
+    ]);
+
+    const body = await (await GET()).json();
+
+    expect(
+      body.servers.map((server: { name: string; shared: boolean }) => [server.name, server.shared]),
+    ).toEqual([
+      ["homeassistant", false],
+      ["docs", true],
+    ]);
+    expect(body.servers[1].hasOAuth).toBe(false);
+    // Only the caller's own server can carry a stored sign-in.
+    expect(mockOAuthFindMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, serverId: { in: ["srv-1"] } },
+      select: { serverId: true },
     });
   });
 

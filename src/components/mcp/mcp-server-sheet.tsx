@@ -45,13 +45,15 @@ interface McpServerSheetProps {
   /** The server being edited, or null when adding. */
   server: McpServer | null;
   onSave: (input: McpServerInput) => Promise<unknown>;
-  onTest: (id: string, input: { url: string; token?: string }) => Promise<McpTestResult>;
-  /** Begin an OAuth sign-in for a saved server. */
-  onStartOAuth: (id: string) => Promise<McpOAuthStart>;
-  /** Poll a running OAuth sign-in. */
-  onOAuthStatus: (id: string) => Promise<McpOAuthStatus>;
-  /** Forget a server's OAuth sign-in. */
-  onSignOutOAuth: (id: string) => Promise<void>;
+  /** Connect to an unsaved or edited server and list its tools. Omit to hide the test. */
+  onTest?: (id: string, input: { url: string; token?: string }) => Promise<McpTestResult>;
+  /**
+   * A browser sign-in belongs to one account, so the admin's shared-server form
+   * leaves all three of these out and the sheet shows no sign-in block.
+   */
+  onStartOAuth?: (id: string) => Promise<McpOAuthStart>;
+  onOAuthStatus?: (id: string) => Promise<McpOAuthStatus>;
+  onSignOutOAuth?: (id: string) => Promise<void>;
 }
 
 export function McpServerSheet({
@@ -64,6 +66,8 @@ export function McpServerSheet({
   onOAuthStatus,
   onSignOutOAuth,
 }: McpServerSheetProps) {
+  /** The sheet offers a sign-in only where every part of it is available. */
+  const canSignIn = Boolean(onStartOAuth && onOAuthStatus && onSignOutOAuth);
   const isEditing = server !== null;
 
   const [name, setName] = useState("");
@@ -128,7 +132,7 @@ export function McpServerSheet({
   // Follow a browser sign-in until it settles or the sheet closes.
   useEffect(() => {
     const serverId = server?.id;
-    if (!open || oauthPhase !== "pending" || !serverId) return;
+    if (!open || oauthPhase !== "pending" || !serverId || !onOAuthStatus) return;
 
     let cancelled = false;
     const poll = setInterval(() => {
@@ -158,6 +162,7 @@ export function McpServerSheet({
   }, [open, oauthPhase, server?.id, onOAuthStatus]);
 
   const handleTest = useCallback(async () => {
+    if (!onTest) return;
     const urlError = validateMcpUrl(url.trim());
     if (urlError) {
       setFieldError({ field: "url", message: urlError });
@@ -183,7 +188,7 @@ export function McpServerSheet({
   }, [onTest, server, token, url]);
 
   const handleSignIn = useCallback(async () => {
-    if (!server) return;
+    if (!server || !onStartOAuth) return;
     setOauthBusy(true);
     setOauthError(null);
     setTestResult(null);
@@ -212,7 +217,7 @@ export function McpServerSheet({
   }, [onStartOAuth, server]);
 
   const handleSignOut = useCallback(async () => {
-    if (!server) return;
+    if (!server || !onSignOutOAuth) return;
     setOauthBusy(true);
     setOauthError(null);
     try {
@@ -372,86 +377,88 @@ export function McpServerSheet({
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm">OAuth sign-in</Label>
-              {!isEditing ? (
-                <p className="text-muted-foreground text-xs">
-                  Save this server first, then sign in here.
-                </p>
-              ) : oauthPhase === "pending" ? (
-                <div className="space-y-2">
-                  <p className="text-muted-foreground flex items-center gap-2 text-xs">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Waiting for you to finish signing in…
+            {canSignIn && (
+              <div className="space-y-2">
+                <Label className="text-sm">OAuth sign-in</Label>
+                {!isEditing ? (
+                  <p className="text-muted-foreground text-xs">
+                    Save this server first, then sign in here.
                   </p>
-                  {oauthUrl && (
-                    <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
-                      <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
-                      <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
-                    </div>
-                  )}
-                  <div className="flex flex-wrap gap-2">
+                ) : oauthPhase === "pending" ? (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground flex items-center gap-2 text-xs">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Waiting for you to finish signing in…
+                    </p>
                     {oauthUrl && (
-                      <Button size="sm" variant="secondary" asChild>
-                        <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Open sign-in page
-                        </a>
-                      </Button>
+                      <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
+                        <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
+                        <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
+                      </div>
                     )}
+                    <div className="flex flex-wrap gap-2">
+                      {oauthUrl && (
+                        <Button size="sm" variant="secondary" asChild>
+                          <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open sign-in page
+                          </a>
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleSignIn}
+                        disabled={oauthBusy}
+                      >
+                        Start over
+                      </Button>
+                    </div>
+                  </div>
+                ) : hasOAuth || oauthPhase === "succeeded" ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Signed in
+                    </span>
                     <Button
                       type="button"
-                      size="sm"
                       variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={handleSignOut}
+                      disabled={oauthBusy}
+                    >
+                      Sign out
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-9 text-xs font-medium"
                       onClick={handleSignIn}
                       disabled={oauthBusy}
                     >
-                      Start over
+                      {oauthBusy ? (
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                      )}
+                      Sign in
                     </Button>
+                    <p className="text-muted-foreground text-xs">
+                      For servers that ask clients to sign in. A stored access token is used instead
+                      of OAuth.
+                    </p>
                   </div>
-                </div>
-              ) : hasOAuth || oauthPhase === "succeeded" ? (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    Signed in
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={handleSignOut}
-                    disabled={oauthBusy}
-                  >
-                    Sign out
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="h-9 text-xs font-medium"
-                    onClick={handleSignIn}
-                    disabled={oauthBusy}
-                  >
-                    {oauthBusy ? (
-                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                    )}
-                    Sign in
-                  </Button>
-                  <p className="text-muted-foreground text-xs">
-                    For servers that ask clients to sign in. A stored access token is used instead
-                    of OAuth.
-                  </p>
-                </div>
-              )}
-              {oauthError && <p className="text-destructive text-xs">{oauthError}</p>}
-            </div>
+                )}
+                {oauthError && <p className="text-destructive text-xs">{oauthError}</p>}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label className="text-sm">Description</Label>
@@ -567,20 +574,22 @@ export function McpServerSheet({
           </div>
 
           <div className="flex shrink-0 gap-2 border-t px-6 py-4">
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-9 text-xs font-medium"
-              onClick={handleTest}
-              disabled={testing || saving || !url.trim()}
-            >
-              {testing ? (
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <PlugZap className="mr-2 h-3.5 w-3.5" />
-              )}
-              Test
-            </Button>
+            {onTest && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-9 text-xs font-medium"
+                onClick={handleTest}
+                disabled={testing || saving || !url.trim()}
+              >
+                {testing ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <PlugZap className="mr-2 h-3.5 w-3.5" />
+                )}
+                Test
+              </Button>
+            )}
             <Button
               type="button"
               className="h-9 flex-1 text-xs font-medium"

@@ -9,6 +9,13 @@ vi.mock("@/lib/db", () => ({
       update: vi.fn(),
       deleteMany: vi.fn(),
     },
+    sharedPrompt: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
 }));
 
@@ -16,14 +23,21 @@ import * as db from "@/lib/db";
 import {
   createPrompt,
   deletePrompt,
+  INSTANCE_PROMPTS,
+  listPrompts,
   normalizePromptInput,
   serializePrompt,
   updatePrompt,
+  userPrompts,
   type PromptInput,
 } from "@/lib/prompts/store";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockPrompt = db.prisma.prompt as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockShared = db.prisma.sharedPrompt as any;
+
+const OWNER = userPrompts("user-1");
 
 const VALID: PromptInput = {
   name: "review",
@@ -136,7 +150,7 @@ describe("createPrompt", () => {
     mockPrompt.findFirst.mockResolvedValue(null);
     mockPrompt.create.mockResolvedValue(row());
 
-    const result = await createPrompt("user-1", VALID);
+    const result = await createPrompt(OWNER, VALID);
 
     expect(mockPrompt.create).toHaveBeenCalledWith({ data: { userId: "user-1", ...VALID } });
     expect(result).toEqual({ ok: true, prompt: row() });
@@ -145,7 +159,7 @@ describe("createPrompt", () => {
   it("refuses a name the user already uses", async () => {
     mockPrompt.findFirst.mockResolvedValue(row());
 
-    const result = await createPrompt("user-1", VALID);
+    const result = await createPrompt(OWNER, VALID);
 
     expect(result).toEqual({
       ok: false,
@@ -159,7 +173,7 @@ describe("createPrompt", () => {
     mockPrompt.findFirst.mockResolvedValue(null);
     mockPrompt.create.mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
 
-    const result = await createPrompt("user-1", VALID);
+    const result = await createPrompt(OWNER, VALID);
 
     expect(result).toMatchObject({ ok: false, conflict: true });
   });
@@ -168,7 +182,7 @@ describe("createPrompt", () => {
     mockPrompt.findFirst.mockResolvedValue(null);
     mockPrompt.create.mockRejectedValue(new Error("db down"));
 
-    await expect(createPrompt("user-1", VALID)).rejects.toThrow("db down");
+    await expect(createPrompt(OWNER, VALID)).rejects.toThrow("db down");
   });
 });
 
@@ -176,7 +190,7 @@ describe("updatePrompt", () => {
   it("returns null for a prompt the user does not own", async () => {
     mockPrompt.findFirst.mockResolvedValue(null);
 
-    expect(await updatePrompt("user-1", "prompt-2", VALID)).toBeNull();
+    expect(await updatePrompt(OWNER, "prompt-2", VALID)).toBeNull();
     expect(mockPrompt.update).not.toHaveBeenCalled();
   });
 
@@ -186,7 +200,7 @@ describe("updatePrompt", () => {
       .mockResolvedValueOnce(row({ id: "prompt-1" }));
     mockPrompt.update.mockResolvedValue(row({ name: "review" }));
 
-    const result = await updatePrompt("user-1", "prompt-1", VALID);
+    const result = await updatePrompt(OWNER, "prompt-1", VALID);
 
     expect(mockPrompt.update).toHaveBeenCalledWith({
       where: { id: "prompt-1", userId: "user-1" },
@@ -200,7 +214,7 @@ describe("updatePrompt", () => {
       .mockResolvedValueOnce(row({ id: "prompt-1" }))
       .mockResolvedValueOnce(row({ id: "prompt-2" }));
 
-    const result = await updatePrompt("user-1", "prompt-1", VALID);
+    const result = await updatePrompt(OWNER, "prompt-1", VALID);
 
     expect(result).toMatchObject({ ok: false, conflict: true });
     expect(mockPrompt.update).not.toHaveBeenCalled();
@@ -211,10 +225,49 @@ describe("deletePrompt", () => {
   it("reports whether a row was removed", async () => {
     mockPrompt.deleteMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
 
-    expect(await deletePrompt("user-1", "prompt-1")).toBe(true);
-    expect(await deletePrompt("user-1", "prompt-9")).toBe(false);
+    expect(await deletePrompt(OWNER, "prompt-1")).toBe(true);
+    expect(await deletePrompt(OWNER, "prompt-9")).toBe(false);
     expect(mockPrompt.deleteMany).toHaveBeenCalledWith({
       where: { id: "prompt-1", userId: "user-1" },
     });
+  });
+});
+
+describe("instance prompts", () => {
+  it("lists them from their own table, with no owner filter", async () => {
+    mockShared.findMany.mockResolvedValue([{ ...row(), userId: undefined }]);
+
+    await listPrompts(INSTANCE_PROMPTS);
+
+    expect(mockShared.findMany).toHaveBeenCalledWith({ orderBy: { name: "asc" } });
+    expect(mockPrompt.findMany).not.toHaveBeenCalled();
+  });
+
+  it("writes a new one without an owner column", async () => {
+    mockShared.findFirst.mockResolvedValue(null);
+    mockShared.create.mockResolvedValue(row());
+
+    const result = await createPrompt(INSTANCE_PROMPTS, VALID);
+
+    expect(mockShared.create).toHaveBeenCalledWith({ data: VALID });
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("names the instance when the name is taken", async () => {
+    mockShared.findFirst.mockResolvedValue(row());
+
+    expect(await createPrompt(INSTANCE_PROMPTS, VALID)).toEqual({
+      ok: false,
+      error: "The instance already has a prompt named /review.",
+      conflict: true,
+    });
+    expect(mockShared.create).not.toHaveBeenCalled();
+  });
+
+  it("deletes by id alone, so no account can stand in for the owner", async () => {
+    mockShared.deleteMany.mockResolvedValue({ count: 1 });
+
+    expect(await deletePrompt(INSTANCE_PROMPTS, "shared-1")).toBe(true);
+    expect(mockShared.deleteMany).toHaveBeenCalledWith({ where: { id: "shared-1" } });
   });
 });

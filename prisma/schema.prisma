@@ -375,6 +375,26 @@ model Prompt {
   @@map("Prompt")
 }
 
+/// A prompt the instance offers every account, so a workspace's house commands
+/// are written once. Instance-owned rows live in their own table: a query that
+/// carries `userId` cannot reach one, so no owner check can be forgotten.
+///
+/// A user's own prompt of the same name hides this one (see `prompts/resolve`).
+model SharedPrompt {
+  id           String   @id @default(cuid())
+  /// The `/name` every account types. Lowercase, the slash parser's charset.
+  name         String   @unique @db.VarChar(40)
+  description  String   @db.VarChar(100)
+  argumentHint String?  @db.VarChar(100)
+  /// "any" | "chat" | "coder"
+  scope        String   @default("any")
+  content      String   @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("shared_prompt")
+}
+
 // ─── Email ─────────────────────────────────────────────────────
 
 model EmailAccount {
@@ -1219,6 +1239,33 @@ model McpServer {
   @@unique([userId, name])
   @@index([userId])
   @@map("McpServer")
+}
+
+/// An MCP server the instance offers every account. Same shape as `McpServer`
+/// without an owner, and its own table for the same reason as `SharedPrompt`:
+/// an owner-scoped query cannot reach a shared row.
+///
+/// A shared server authenticates with a stored bearer token. OAuth sign-in is
+/// per account, so it stays on the user's own servers.
+model SharedMcpServer {
+  id             String   @id @default(cuid())
+  /// Server name; names the tools it contributes (`mcp__<name>__<tool>`).
+  name           String   @unique @db.VarChar(64)
+  /// Streamable HTTP endpoint, e.g. https://homeassistant.local:8123/api/mcp
+  url            String   @db.Text
+  /// One-line summary of what the server offers, shown to the model.
+  description    String   @default("")
+  /// Bearer token sent as the Authorization header (AES-256-GCM via lib/crypto).
+  encryptedToken String?  @db.Text
+  /// How this server's tool calls are approved: "ask" | "allow" | "off".
+  toolPolicy     String   @default("ask")
+  enabled        Boolean  @default(true)
+  chatEnabled    Boolean  @default(true)
+  coderEnabled   Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("shared_mcp_server")
 }
 
 /// OAuth credentials for one MCP server: Pi's client registration, tokens and

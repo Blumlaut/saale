@@ -3,26 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -31,70 +12,42 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Loader2, MoreVertical, Pencil, Plus, Trash2, FileText } from "lucide-react";
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { Loader2, Plus, FileText } from "lucide-react";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import {
-  PROMPT_ARGUMENT_HINT_MAX,
-  PROMPT_DESCRIPTION_MAX,
-  PROMPT_NAME_MAX,
-  PROMPT_SCOPES,
-  PROMPT_SCOPE_LABELS,
-  type PromptScope,
-} from "@/lib/prompts/rules";
+  EMPTY_PROMPT_DRAFT,
+  PromptDialog,
+  type PromptDraft,
+} from "@/components/prompts/prompt-dialog";
+import { PromptRow, type PromptRowData } from "@/components/prompts/prompt-row";
+import { PromptRowActions } from "@/components/prompts/prompt-row-actions";
 
-interface PromptRow {
-  id: string;
-  name: string;
-  description: string;
-  argumentHint: string | null;
-  scope: PromptScope;
+/** The prompt as the user's list receives it. */
+interface PromptItem extends PromptRowData {
   content: string;
   updatedAt: string;
 }
 
-/** The form's state. `id` absent means a new prompt. */
-interface Draft {
-  id?: string;
-  name: string;
-  description: string;
-  argumentHint: string;
-  scope: PromptScope;
-  content: string;
-}
-
-const EMPTY_DRAFT: Draft = {
-  name: "",
-  description: "",
-  argumentHint: "",
-  scope: "any",
-  content: "",
-};
-
 /**
- * The user's reusable prompts: the `/name` commands a chat offers besides the
- * built-in ones.
+ * The account's reusable prompts, and the ones the instance offers.
+ *
+ * The instance's are read-only: an admin writes them for everyone, so a user can
+ * see where a `/name` came from but cannot edit or delete it.
  */
 export function PromptsSection() {
-  const [prompts, setPrompts] = useState<PromptRow[]>([]);
+  const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<PromptDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<PromptRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PromptItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const loadPrompts = useCallback(async () => {
     try {
-      const data = await fetchJson<{ prompts: PromptRow[] }>("/api/prompts");
+      const data = await fetchJson<{ prompts: PromptItem[] }>("/api/prompts");
       setPrompts(data.prompts ?? []);
     } catch (err) {
       console.error("Failed to load prompts:", err);
@@ -144,7 +97,7 @@ export function PromptsSection() {
     }
   };
 
-  const openDraft = (prompt?: PromptRow) => {
+  const openDraft = (prompt?: PromptItem) => {
     setError(null);
     setDraft(
       prompt
@@ -156,7 +109,7 @@ export function PromptsSection() {
             scope: prompt.scope,
             content: prompt.content,
           }
-        : EMPTY_DRAFT,
+        : EMPTY_PROMPT_DRAFT,
     );
   };
 
@@ -178,7 +131,8 @@ export function PromptsSection() {
             <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
               Prompts you send as <span className="font-mono">/name</span> in a chat. A coder chat
               also offers the templates in its checkout&apos;s{" "}
-              <span className="font-mono">.pi/prompts</span>.
+              <span className="font-mono">.pi/prompts</span>. The shared ones come from your
+              workspace and are read-only here.
             </p>
           </div>
 
@@ -198,55 +152,18 @@ export function PromptsSection() {
               {prompts.map((prompt, index) => (
                 <div key={prompt.id}>
                   {index > 0 && <Separator />}
-                  <div className="group hover:bg-accent/60 flex items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-mono text-sm font-medium">
-                          /{prompt.name}
-                        </span>
-                        {prompt.argumentHint ? (
-                          <span className="text-muted-foreground truncate text-xs">
-                            {prompt.argumentHint}
-                          </span>
-                        ) : null}
-                        <Badge variant="secondary" className="rounded-full px-2 py-0 text-[10px]">
-                          {PROMPT_SCOPE_LABELS[prompt.scope] ?? "Any chat"}
-                        </Badge>
-                      </div>
-                      <p className="text-muted-foreground mt-1 truncate text-xs">
-                        {prompt.description}
-                      </p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={(triggerProps) => (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className={cn("shrink-0", ROW_ACTION)}
-                            {...triggerProps}
-                          >
-                            <MoreVertical />
-                            <span className="sr-only">Actions for /{prompt.name}</span>
-                          </Button>
-                        )}
-                      />
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openDraft(prompt)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setDeleteTarget(prompt)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                  <PromptRow
+                    prompt={prompt}
+                    actions={
+                      prompt.shared ? null : (
+                        <PromptRowActions
+                          name={prompt.name}
+                          onEdit={() => openDraft(prompt)}
+                          onDelete={() => setDeleteTarget(prompt)}
+                        />
+                      )
+                    }
+                  />
                 </div>
               ))}
             </div>
@@ -254,126 +171,15 @@ export function PromptsSection() {
         </GlassPanelContent>
       </GlassPanel>
 
-      <Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
-        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>{draft?.id ? "Edit prompt" : "New prompt"}</DialogTitle>
-            <DialogDescription>
-              A saved prompt shows up in a chat&apos;s <span className="font-mono">/</span> menu, so
-              you can send it without typing it out.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="min-h-0 space-y-4 overflow-y-auto">
-            <div className="space-y-2">
-              <Label htmlFor="prompt-name">Name</Label>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground font-mono text-sm">/</span>
-                <Input
-                  id="prompt-name"
-                  value={draft?.name ?? ""}
-                  maxLength={PROMPT_NAME_MAX}
-                  placeholder="review"
-                  className="font-mono"
-                  onChange={(e) =>
-                    setDraft((current) =>
-                      current ? { ...current, name: e.target.value } : current,
-                    )
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="prompt-description">Description</Label>
-              <Input
-                id="prompt-description"
-                value={draft?.description ?? ""}
-                maxLength={PROMPT_DESCRIPTION_MAX}
-                placeholder="Review the staged changes"
-                onChange={(e) =>
-                  setDraft((current) =>
-                    current ? { ...current, description: e.target.value } : current,
-                  )
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="prompt-scope">Offered in</Label>
-              <Select
-                value={draft?.scope ?? "any"}
-                onValueChange={(value) =>
-                  setDraft((current) =>
-                    current ? { ...current, scope: value as PromptScope } : current,
-                  )
-                }
-              >
-                <SelectTrigger id="prompt-scope" className="w-full">
-                  <SelectValue>{PROMPT_SCOPE_LABELS[draft?.scope ?? "any"]}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PROMPT_SCOPES.map((scope) => (
-                    <SelectItem key={scope} value={scope}>
-                      {PROMPT_SCOPE_LABELS[scope]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="prompt-hint">Example arguments</Label>
-              <Input
-                id="prompt-hint"
-                value={draft?.argumentHint ?? ""}
-                maxLength={PROMPT_ARGUMENT_HINT_MAX}
-                placeholder="path to review, or a focus area"
-                onChange={(e) =>
-                  setDraft((current) =>
-                    current ? { ...current, argumentHint: e.target.value } : current,
-                  )
-                }
-              />
-              <p className="text-muted-foreground text-xs">
-                Shown beside the name in the <span className="font-mono">/</span> menu.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="prompt-content">Prompt</Label>
-              <Textarea
-                id="prompt-content"
-                value={draft?.content ?? ""}
-                placeholder="Review the staged changes. Focus on ${1:-correctness and security}."
-                className="min-h-40 text-sm"
-                onChange={(e) =>
-                  setDraft((current) =>
-                    current ? { ...current, content: e.target.value } : current,
-                  )
-                }
-              />
-              <p className="text-muted-foreground text-xs">
-                <span className="font-mono">$1</span> is the first word you type after the name,{" "}
-                <span className="font-mono">$@</span> is all of it.{" "}
-                <span className="font-mono">{"${1:-fallback}"}</span> covers when you type nothing.
-              </p>
-            </div>
-
-            {error && <p className="text-destructive text-sm">{error}</p>}
-          </div>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDraft(null)}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {draft?.id ? "Save" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PromptDialog
+        open={draft !== null}
+        draft={draft}
+        saving={saving}
+        error={error}
+        onChange={setDraft}
+        onOpenChange={(open) => !open && setDraft(null)}
+        onSave={() => void save()}
+      />
 
       <AlertDialog
         open={deleteTarget !== null}
