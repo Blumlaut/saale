@@ -25,10 +25,12 @@ import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { startFakeMcpServer, type FakeMcpServer } from "../../helpers/fake-mcp-server";
 
 const mockFindMany = vi.fn();
+const mockSharedFindMany = vi.fn();
 const mockOAuthFindUnique = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     mcpServer: { findMany: (...args: unknown[]) => mockFindMany(...args) },
+    sharedMcpServer: { findMany: (...args: unknown[]) => mockSharedFindMany(...args) },
     mcpOAuthCredential: { findUnique: (...args: unknown[]) => mockOAuthFindUnique(...args) },
   },
 }));
@@ -55,6 +57,7 @@ async function waitForMcpTools(session: { getCallableToolNames(): string[] }) {
 describe("MCP servers in an agent session", () => {
   beforeAll(async () => {
     mockOAuthFindUnique.mockResolvedValue(null);
+    mockSharedFindMany.mockResolvedValue([]);
     fake = await startFakeMcpServer({
       tools: [
         { name: "HassTurnOn", description: "Turn something on" },

@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, Loader2, Plus } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Page, PageAction, PageActions, PageScroll } from "@/components/layout/page";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { useAdminCollection } from "@/hooks/use-admin-collection";
 import {
   EMPTY_PROMPT_DRAFT,
@@ -14,6 +12,7 @@ import {
   type PromptDraft,
 } from "@/components/prompts/prompt-dialog";
 import { PromptRow, type PromptRowData } from "@/components/prompts/prompt-row";
+import { PromptRowActions } from "@/components/prompts/prompt-row-actions";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 /** The prompt as the admin list receives it. */
@@ -100,41 +99,23 @@ export function SharedPromptsSection() {
                 <div key={prompt.id}>
                   {index > 0 && <Separator />}
                   <PromptRow
-                    prompt={{ ...prompt, shared: false }}
+                    prompt={prompt}
                     actions={
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn("h-8 w-8", ROW_ACTION)}
-                          aria-label={`Edit /${prompt.name}`}
-                          onClick={() => {
-                            setError(null);
-                            setDraft({
-                              id: prompt.id,
-                              name: prompt.name,
-                              description: prompt.description,
-                              argumentHint: prompt.argumentHint ?? "",
-                              scope: prompt.scope,
-                              content: prompt.content,
-                            });
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn(
-                            "text-destructive hover:text-destructive h-8 w-8",
-                            ROW_ACTION,
-                          )}
-                          aria-label={`Delete /${prompt.name}`}
-                          onClick={() => setPendingDelete(prompt)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <PromptRowActions
+                        name={prompt.name}
+                        onEdit={() => {
+                          setError(null);
+                          setDraft({
+                            id: prompt.id,
+                            name: prompt.name,
+                            description: prompt.description,
+                            argumentHint: prompt.argumentHint ?? "",
+                            scope: prompt.scope,
+                            content: prompt.content,
+                          });
+                        }}
+                        onDelete={() => setPendingDelete(prompt)}
+                      />
                     }
                   />
                 </div>

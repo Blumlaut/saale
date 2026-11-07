@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Pencil, Plug, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plug, Plus } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Page, PageAction, PageActions, PageScroll } from "@/components/layout/page";
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { toast } from "sonner";
 import { useAdminCollection } from "@/hooks/use-admin-collection";
 import type { McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 import { McpServerRow } from "@/components/mcp/mcp-server-row";
+import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
 import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
@@ -52,6 +51,7 @@ export function SharedMcpServersSection() {
       await update(server.id, { enabled });
     } catch (err) {
       console.error("Failed to toggle the shared MCP server:", err);
+      toast.error("Could not change the server");
     } finally {
       setBusyId(null);
     }
@@ -92,41 +92,16 @@ export function SharedMcpServersSection() {
                   <McpServerRow
                     server={server}
                     actions={
-                      <>
-                        {busyId === server.id ? (
-                          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                        ) : (
-                          <Switch
-                            checked={server.enabled}
-                            onCheckedChange={(checked) => void toggle(server, checked)}
-                            aria-label={`Enable ${server.name}`}
-                          />
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn("h-8 w-8", ROW_ACTION)}
-                          aria-label={`Edit ${server.name}`}
-                          onClick={() => {
-                            setEditing(server);
-                            setSheetOpen(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={cn(
-                            "text-destructive hover:text-destructive h-8 w-8",
-                            ROW_ACTION,
-                          )}
-                          aria-label={`Delete ${server.name}`}
-                          onClick={() => setPendingDelete(server)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <McpServerRowActions
+                        server={server}
+                        busy={busyId === server.id}
+                        onToggle={(enabled) => void toggle(server, enabled)}
+                        onEdit={() => {
+                          setEditing(server);
+                          setSheetOpen(true);
+                        }}
+                        onDelete={() => setPendingDelete(server)}
+                      />
                     }
                   />
                 </div>

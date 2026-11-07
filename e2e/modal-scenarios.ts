@@ -1735,7 +1735,10 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/admin/settings/shared-prompts",
     sources: ["src/components/shared/confirm-dialog.tsx"],
     mock: mockSharedPrompts,
-    open: (page) => click(page, 'button[aria-label="Delete /review"]'),
+    open: async (page) => {
+      await click(page, 'button[aria-label="Actions for /review"]');
+      await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
   },
   {
     name: "console · changelog",

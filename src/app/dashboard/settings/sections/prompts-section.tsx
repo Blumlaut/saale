@@ -12,14 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Loader2, MoreVertical, Pencil, Plus, Trash2, FileText } from "lucide-react";
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { Loader2, Plus, FileText } from "lucide-react";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import {
   EMPTY_PROMPT_DRAFT,
@@ -27,6 +20,7 @@ import {
   type PromptDraft,
 } from "@/components/prompts/prompt-dialog";
 import { PromptRow, type PromptRowData } from "@/components/prompts/prompt-row";
+import { PromptRowActions } from "@/components/prompts/prompt-row-actions";
 
 /** The prompt as the user's list receives it. */
 interface PromptItem extends PromptRowData {
@@ -137,7 +131,8 @@ export function PromptsSection() {
             <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
               Prompts you send as <span className="font-mono">/name</span> in a chat. A coder chat
               also offers the templates in its checkout&apos;s{" "}
-              <span className="font-mono">.pi/prompts</span>.
+              <span className="font-mono">.pi/prompts</span>. The shared ones come from your
+              workspace and are read-only here.
             </p>
           </div>
 
@@ -161,34 +156,11 @@ export function PromptsSection() {
                     prompt={prompt}
                     actions={
                       prompt.shared ? null : (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={(triggerProps) => (
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className={cn("shrink-0", ROW_ACTION)}
-                                {...triggerProps}
-                              >
-                                <MoreVertical />
-                                <span className="sr-only">Actions for /{prompt.name}</span>
-                              </Button>
-                            )}
-                          />
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openDraft(prompt)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeleteTarget(prompt)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <PromptRowActions
+                          name={prompt.name}
+                          onEdit={() => openDraft(prompt)}
+                          onDelete={() => setDeleteTarget(prompt)}
+                        />
                       )
                     }
                   />
