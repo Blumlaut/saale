@@ -6,7 +6,7 @@ import { resolveModelForPurpose } from "./model-resolution";
 import { createPersistentSession } from "./persistent-session";
 import { buildAgentSystemPrompt } from "./processing-state";
 import { buildCoderSystemPrompt } from "./coder-prompt";
-import { readCommitAttributionLine } from "./commit-attribution";
+import { commitAttributionLine } from "./commit-attribution";
 import { resolveCoderToolConfig, resolveCoderToolPolicies } from "./coder-tools";
 import { listSandboxEnvNames } from "@/lib/sandbox/env";
 import { previewConfig } from "@/lib/preview/config";
@@ -114,6 +114,24 @@ export interface CreateChatAgentSessionOptions {
   workspaceCwd?: string | undefined;
   /** Which checkout `workspaceCwd` is, for the prompt a coder chat starts with. */
   checkoutMode?: ChatMode | undefined;
+}
+
+/**
+ * The trailer a coder chat starts with, or `null` when the instance has none.
+ *
+ * Read straight from the row rather than through `ensureAdminSettings`: this
+ * runs while a session is being built, and a read must not create a row.
+ */
+async function readCommitAttributionLine(chatId: string): Promise<string | null> {
+  const row = await prisma.adminSettings.findUnique({
+    where: { id: "global" },
+    select: {
+      commitAttributionEnabled: true,
+      commitAttributionText: true,
+      workspaceName: true,
+    },
+  });
+  return row ? commitAttributionLine(row, chatId) : null;
 }
 
 /** The prompt a session starts with: the coder one for a project chat. */

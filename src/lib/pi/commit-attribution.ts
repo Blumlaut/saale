@@ -5,9 +5,10 @@
  * here so one line can name the chat that made the commit. With the switch on
  * and no line of its own, a chat still says who wrote the commit and names the
  * workspace.
+ *
+ * No database import: the admin section reads these constants in the browser.
  */
 
-import { prisma } from "@/lib/db";
 import { normalizeWorkspaceName } from "@/lib/branding/workspace-name";
 
 /** Where the chat's id goes in the admin's line. */
@@ -29,25 +30,8 @@ export function commitAttributionLine(
   chatId: string,
 ): string | null {
   if (!setting.enabled) return null;
-  const name = normalizeWorkspaceName(setting.workspaceName);
-  const text = (setting.text ?? "").trim() || `Co-Authored-By: ${name}`;
+  const text =
+    (setting.text ?? "").trim() ||
+    `Co-Authored-By: ${normalizeWorkspaceName(setting.workspaceName)}`;
   return text.replaceAll(ATTRIBUTION_CHAT_PLACEHOLDER, chatId);
-}
-
-/**
- * The line for one chat, read from the row.
- *
- * Read straight from the row rather than through `ensureAdminSettings`: this
- * runs while a session is being built, and a read must not create a row.
- */
-export async function readCommitAttributionLine(chatId: string): Promise<string | null> {
-  const row = await prisma.adminSettings.findUnique({
-    where: { id: "global" },
-    select: {
-      commitAttributionEnabled: true,
-      commitAttributionText: true,
-      workspaceName: true,
-    },
-  });
-  return commitAttributionLine(row ?? {}, chatId);
 }
