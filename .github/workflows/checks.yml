@@ -8,7 +8,9 @@ name: checks
 # it runs project-wide with a build-info cache, which makes a re-run cheap. The
 # production dependency check is the other: a runtime import that lives in
 # `devDependencies` only fails once the image runs, so it links the tree the way
-# the image does and looks for every import there.
+# the image does and looks for every import there. The client boundary check is
+# project-wide for the same reason: an import chain only breaks the browser
+# bundle once it is followed to the end.
 #
 # Installing is the expensive part of a cold run, so it is cached twice:
 # `node_modules` itself (keyed on the lockfile) and pnpm's store along with the
@@ -185,6 +187,13 @@ jobs:
       - name: Test the touched suites
         if: steps.files.outputs.tests == 'true'
         run: xargs -0 -a "$RUNNER_TEMP/tests.txt" pnpm exec vitest run --reporter=dot
+
+      # A "use client" module that reaches `@/lib/db` or a node builtin fails
+      # the image build, and only the whole import graph shows it, so this runs
+      # on every code diff rather than only when its own file is touched.
+      - name: Check the client boundary
+        if: steps.files.outputs.code == 'true'
+        run: pnpm exec vitest run __tests__/client-boundary.test.ts --reporter=dot
 
       - name: Nothing to check
         if: steps.files.outputs.any == 'false'

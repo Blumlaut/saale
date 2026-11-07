@@ -111,6 +111,14 @@ the error string.
 `<Link>` — all invalid HTML and a hydration error. Use a styled `<span>` or the
 Button's own `onClick`. Unsure? Inspect the DOM.
 
+## The client boundary
+
+Everything a `"use client"` module imports is bundled for the browser, so a
+chain that reaches `@/lib/db` or a node builtin fails the image build. Keep the
+browser-safe half of a module in one that imports no database (`src/lib/pi/
+commit-attribution.ts` is the reference). `__tests__/client-boundary.test.ts`
+follows every client entry and names the chain.
+
 ## Settings
 
 - Declared once in `src/lib/settings/properties.ts` — key, columns, validation,
