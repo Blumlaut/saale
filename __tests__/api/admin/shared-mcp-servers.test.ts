@@ -121,13 +121,14 @@ describe("shared MCP servers are the instance's rows", () => {
     expect(mocks.evictAllSessions).toHaveBeenCalled();
   });
 
-  it("lists the shared servers as read-only rows", async () => {
+  it("lists the instance's servers, in the order they were added", async () => {
     mocks.findMany.mockResolvedValue([row()]);
 
     const body = await (await GET()).json();
 
+    expect(mocks.findMany).toHaveBeenCalledWith({ orderBy: { createdAt: "asc" } });
     expect(body.servers).toHaveLength(1);
-    expect(body.servers[0]).toMatchObject({ name: "home-assistant", shared: true });
+    expect(body.servers[0]).toMatchObject({ name: "home-assistant", hasToken: false });
   });
 
   it("refuses a name the instance already offers", async () => {

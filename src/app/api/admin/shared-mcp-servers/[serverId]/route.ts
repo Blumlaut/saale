@@ -17,7 +17,7 @@ export async function PATCH(
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  return NextResponse.json({ server: toMcpServerView(result.server, { shared: true }) });
+  return NextResponse.json({ server: toMcpServerView(result.server) });
 }
 
 /** DELETE /api/admin/shared-mcp-servers/:serverId. remove a shared server. */

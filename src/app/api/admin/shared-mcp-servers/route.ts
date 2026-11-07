@@ -16,7 +16,7 @@ export async function GET() {
 
   const servers = await listMcpServers(INSTANCE_MCP_SERVERS);
   return NextResponse.json({
-    servers: servers.map((server) => toMcpServerView(server, { shared: true })),
+    servers: servers.map((server) => toMcpServerView(server)),
   });
 }
 
@@ -32,8 +32,5 @@ export async function POST(request: NextRequest) {
   const result = await createMcpServer(INSTANCE_MCP_SERVERS, await request.json());
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 
-  return NextResponse.json(
-    { server: toMcpServerView(result.server, { shared: true }) },
-    { status: 201 },
-  );
+  return NextResponse.json({ server: toMcpServerView(result.server) }, { status: 201 });
 }
