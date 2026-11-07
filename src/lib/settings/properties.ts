@@ -691,8 +691,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     key: "admin.commitAttributionEnabled",
     group: GROUP.coder,
     label: "Commit attribution",
-    description:
-      "Whether a coder chat is told to end every commit message it writes with the attribution line.",
+    description: "Adds the attribution line to every commit a coder chat writes.",
     columns: ["commitAttributionEnabled"],
     apply: "allSessions",
     scope: "admin",
@@ -704,7 +703,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     key: "admin.commitAttributionText",
     group: GROUP.coder,
     label: "Attribution line",
-    description: `The line a coder chat is told to end every commit message with, written as a trailer. Name a variable such as $SAALE_MODEL and the shell fills it in when the commit is made, so the line names the model that wrote it. Empty writes "${DEFAULT_ATTRIBUTION_LINE}". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
+    description: `The trailer every commit a coder chat writes ends with. A variable such as $SAALE_MODEL is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
     columns: ["commitAttributionText"],
     apply: "allSessions",
     scope: "admin",

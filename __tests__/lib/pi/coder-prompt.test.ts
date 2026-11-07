@@ -29,7 +29,7 @@ describe("buildCoderSystemPrompt git rules", () => {
       attribution: "Co-Authored-By: Saale ($SAALE_MODEL)",
     });
     expect(withAttribution).toContain("after a blank line: `Co-Authored-By: Saale ($SAALE_MODEL)`");
-    expect(withAttribution).toContain("let the shell fill the variables in");
+    expect(withAttribution).toContain("let the shell expand the variables");
     expect(withAttribution).not.toContain("No attribution trailers");
   });
 

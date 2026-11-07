@@ -101,7 +101,7 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       id: "coder",
       href: "/admin/settings/coder",
       label: "Coder",
-      description: "The attribution every coder commit carries",
+      description: "The trailer every coder commit ends with",
       action: "settings",
     },
     {

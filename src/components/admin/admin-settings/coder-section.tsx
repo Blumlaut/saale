@@ -34,7 +34,7 @@ export function CoderSection() {
         <SettingsRow
           htmlFor="commit-attribution"
           label="Attribution trailer"
-          description="Every commit a coder chat writes ends with the line below. The chat is told this in its prompt, so it decides the message it writes."
+          description="Adds the line below to every commit a coder chat writes."
         >
           <Switch
             id="commit-attribution"
@@ -45,7 +45,7 @@ export function CoderSection() {
         <SettingsRow
           htmlFor="commit-attribution-line"
           label="Attribution line"
-          description={`One trailer, on one line. It runs through the shell, so a variable in it is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}".`}
+          description={`One trailer, on one line. A variable in it is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}".`}
         >
           <Input
             id="commit-attribution-line"
@@ -57,7 +57,7 @@ export function CoderSection() {
           />
         </SettingsRow>
         <div className="text-muted-foreground px-4 pb-3 text-xs">
-          <p className="mb-1">A line can name these variables:</p>
+          <p className="mb-1">The line can name these variables:</p>
           <ul className="space-y-0.5">
             {ATTRIBUTION_VARIABLES.map((variable) => (
               <li key={variable.name}>

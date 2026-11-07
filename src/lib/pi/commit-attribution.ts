@@ -1,28 +1,26 @@
 /**
  * The trailer a coder chat puts on the commits it writes.
  *
- * The admin sets the line and a coder chat writes it verbatim, leaving the
- * `SAALE_*` variables Saale puts in its environment for the shell to expand at
- * commit time. Filling them in here would pin the model the chat started with,
- * and `/model` can change that mid-session.
+ * The admin sets the line; a coder chat writes it verbatim, and the shell
+ * expands the `SAALE_*` variables Saale exports for the command.
  *
  * No database import: the admin section reads this module in the browser.
  */
 
 import { DEFAULT_WORKSPACE_NAME } from "@/lib/branding/workspace-name";
 
-/** Room for a co-author line with a url, little enough to stay a trailer. */
+/** Long enough for a co-author line with a url. */
 export const MAX_ATTRIBUTION_LENGTH = 200;
 
-/** The variables a line can name, and what a commit is saying with each. */
+/** The variables a line can name, and what each holds. */
 export const ATTRIBUTION_VARIABLES = [
-  { name: "SAALE_MODEL", what: "the model answering in the chat" },
-  { name: "SAALE_MODEL_PROVIDER", what: "the provider serving that model" },
+  { name: "SAALE_MODEL", what: "the model that answered in the chat" },
+  { name: "SAALE_MODEL_PROVIDER", what: "the provider serving it" },
   { name: "SAALE_THINKING_LEVEL", what: "the thinking level it runs at" },
   { name: "SAALE_CHAT_ID", what: "the chat the commit belongs to" },
 ] as const;
 
-/** What a chat writes when the switch is on and the admin left the line empty. */
+/** The line a chat writes when the admin set none. */
 export const DEFAULT_ATTRIBUTION_LINE = `Co-Authored-By: ${DEFAULT_WORKSPACE_NAME} ($SAALE_MODEL)`;
 
 export interface CommitAttributionSetting {

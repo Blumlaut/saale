@@ -27,7 +27,7 @@ const GIT_PROMPT = `Git:
 /** What a commit message does and does not say about who wrote it. */
 function attributionRule(line: string | null): string {
   return line
-    ? `- End every commit message with this trailer, after a blank line: \`${line}\`. It is the only attribution in the message: no "Generated with" footer and no other trailer.\n- Write the trailer exactly as given and let the shell fill the variables in. A \`$\` still sitting in the message after the commit means it did not, so amend it.`
+    ? `- End every commit message with this trailer, after a blank line: \`${line}\`. It is the only attribution in the message: no "Generated with" footer and no other trailer.\n- Write the trailer exactly as given and let the shell expand the variables. A \`$\` left in the message after the commit means it did not, so amend the message.`
     : '- No attribution trailers and no "Generated with" footer.';
 }
 
