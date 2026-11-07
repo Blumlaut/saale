@@ -26,10 +26,10 @@ describe("buildCoderSystemPrompt git rules", () => {
   it("asks for the instance's trailer once it has one", () => {
     const withAttribution = buildCoderSystemPrompt({
       toolConfig: { terminal: true },
-      attribution: "Co-Authored-By: Saale (c-1a2b)",
+      attribution: "Co-Authored-By: Saale ($SAALE_MODEL)",
     });
-    expect(withAttribution).toContain("exactly as written: `Co-Authored-By: Saale (c-1a2b)`");
-    expect(withAttribution).toContain("after a blank line");
+    expect(withAttribution).toContain("after a blank line: `Co-Authored-By: Saale ($SAALE_MODEL)`");
+    expect(withAttribution).toContain("let the shell fill the variables in");
     expect(withAttribution).not.toContain("No attribution trailers");
   });
 

@@ -122,22 +122,22 @@ export interface CreateChatAgentSessionOptions {
  * Read straight from the row rather than through `ensureAdminSettings`: this
  * runs while a session is being built, and a read must not create a row.
  */
-async function readCommitAttributionLine(chatId: string): Promise<string | null> {
+async function readCommitAttributionLine(): Promise<string | null> {
   const row = await prisma.adminSettings.findUnique({
     where: { id: "global" },
-    select: {
-      commitAttributionEnabled: true,
-      commitAttributionText: true,
-      workspaceName: true,
-    },
+    select: { commitAttributionEnabled: true, commitAttributionText: true },
   });
-  return row ? commitAttributionLine(row, chatId) : null;
+  return row
+    ? commitAttributionLine({
+        enabled: row.commitAttributionEnabled,
+        text: row.commitAttributionText,
+      })
+    : null;
 }
 
 /** The prompt a session starts with: the coder one for a project chat. */
 async function buildSessionPrompt(options: {
   userId: string;
-  sessionId: string;
   projectId: string | null;
   customInstructions: string | null;
   coderCustomInstructions: string | null | undefined;
@@ -177,7 +177,7 @@ async function buildSessionPrompt(options: {
     ? buildCoderSystemPrompt({
         ...shared,
         checkout: options.checkoutMode,
-        attribution: await readCommitAttributionLine(options.sessionId),
+        attribution: await readCommitAttributionLine(),
       })
     : buildAgentSystemPrompt(shared);
 }
@@ -228,7 +228,6 @@ export async function createChatAgentSession(
     ...(chatSession.projectId ? { commandScope: "workspace" as const } : {}),
     systemPrompt: await buildSessionPrompt({
       userId,
-      sessionId,
       projectId: chatSession.projectId,
       customInstructions: options.customInstructions,
       coderCustomInstructions: options.coderCustomInstructions,

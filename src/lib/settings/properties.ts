@@ -78,7 +78,7 @@ import {
   type ToolCategoryKey,
 } from "@/lib/pi/tool-categories";
 import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
-import { MAX_ATTRIBUTION_LENGTH, ATTRIBUTION_CHAT_PLACEHOLDER } from "@/lib/pi/commit-attribution";
+import { DEFAULT_ATTRIBUTION_LINE, MAX_ATTRIBUTION_LENGTH } from "@/lib/pi/commit-attribution";
 import { ALL_TOOL_INFOS, type ToolPolicy } from "@/lib/pi/tool-infos";
 import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
@@ -704,7 +704,7 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     key: "admin.commitAttributionText",
     group: GROUP.coder,
     label: "Attribution line",
-    description: `The line a coder chat is told to end every commit message with, written as a trailer. ${ATTRIBUTION_CHAT_PLACEHOLDER} becomes the chat's id. An empty line writes "Co-Authored-By: <workspace name>". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
+    description: `The line a coder chat is told to end every commit message with, written as a trailer. Name a variable such as $SAALE_MODEL and the shell fills it in when the commit is made, so the line names the model that wrote it. Empty writes "${DEFAULT_ATTRIBUTION_LINE}". Up to ${MAX_ATTRIBUTION_LENGTH} characters, on one line.`,
     columns: ["commitAttributionText"],
     apply: "allSessions",
     scope: "admin",

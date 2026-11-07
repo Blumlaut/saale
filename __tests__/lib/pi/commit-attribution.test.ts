@@ -1,50 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { commitAttributionLine } from "@/lib/pi/commit-attribution";
-import { DEFAULT_WORKSPACE_NAME } from "@/lib/branding/workspace-name";
+import { commitAttributionLine, DEFAULT_ATTRIBUTION_LINE } from "@/lib/pi/commit-attribution";
 
 /**
- * The line an instance puts on its coder commits: the admin owns the words, the
- * chat owns the id. Off, a chat is told nothing at all.
+ * The line an instance puts on its coder commits. Off, a chat is told nothing.
+ * On, the admin's words are passed through untouched: the `SAALE_*` variables
+ * in them are the shell's to expand when the commit is made.
  */
 
 describe("commitAttributionLine", () => {
   it("is nothing while the trailer switch is off", () => {
-    expect(commitAttributionLine({ enabled: false, text: "Co-Authored-By: Saale" }, "c-1")).toBe(
-      null,
-    );
+    expect(commitAttributionLine({ enabled: false, text: "Attributed-to: Saale" })).toBe(null);
     // A row no admin has written yet carries neither field.
-    expect(commitAttributionLine({}, "c-1")).toBe(null);
+    expect(commitAttributionLine({})).toBe(null);
   });
 
-  it("fills the chat id in where the line asks for it", () => {
+  it("passes the admin's line through for the shell to expand", () => {
     expect(
-      commitAttributionLine({ enabled: true, text: "Co-Authored-By: Saale ({chat})" }, "c-9f2a1b"),
-    ).toBe("Co-Authored-By: Saale (c-9f2a1b)");
-    expect(
-      commitAttributionLine({ enabled: true, text: "{chat} made this ({chat})" }, "c-9f2a1b"),
-    ).toBe("c-9f2a1b made this (c-9f2a1b)");
+      commitAttributionLine({
+        enabled: true,
+        text: "Co-Authored-By: Saale ($SAALE_MODEL via $SAALE_MODEL_PROVIDER)",
+      }),
+    ).toBe("Co-Authored-By: Saale ($SAALE_MODEL via $SAALE_MODEL_PROVIDER)");
   });
 
-  it("leaves a line that names no chat as written", () => {
-    expect(commitAttributionLine({ enabled: true, text: "Attributed-to: Saale" }, "c-1")).toBe(
-      "Attributed-to: Saale",
-    );
-  });
-
-  it("names the workspace when the admin wrote no line", () => {
-    expect(commitAttributionLine({ enabled: true, text: "  " }, "c-1")).toBe(
-      `Co-Authored-By: ${DEFAULT_WORKSPACE_NAME}`,
-    );
-    expect(commitAttributionLine({ enabled: true, workspaceName: "Harderwijk" }, "c-1")).toBe(
-      "Co-Authored-By: Harderwijk",
-    );
-    expect(commitAttributionLine({ enabled: true, workspaceName: "  ", text: "" }, "c-1")).toBe(
-      `Co-Authored-By: ${DEFAULT_WORKSPACE_NAME}`,
-    );
+  it("names the model when the admin wrote no line", () => {
+    expect(commitAttributionLine({ enabled: true, text: "  " })).toBe(DEFAULT_ATTRIBUTION_LINE);
+    expect(commitAttributionLine({ enabled: true })).toBe(DEFAULT_ATTRIBUTION_LINE);
+    expect(DEFAULT_ATTRIBUTION_LINE).toContain("$SAALE_MODEL");
   });
 
   it("trims the line the admin pasted in", () => {
-    expect(commitAttributionLine({ enabled: true, text: "  Co-Authored-By: Saale  " }, "c-1")).toBe(
+    expect(commitAttributionLine({ enabled: true, text: "  Co-Authored-By: Saale  " })).toBe(
       "Co-Authored-By: Saale",
     );
   });

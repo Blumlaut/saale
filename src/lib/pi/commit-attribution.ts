@@ -1,37 +1,37 @@
 /**
  * The trailer a coder chat puts on the commits it writes.
  *
- * An admin sets the line the instance wants, and the chat's id is filled in
- * here so one line can name the chat that made the commit. With the switch on
- * and no line of its own, a chat still says who wrote the commit and names the
- * workspace.
+ * The admin sets the line and a coder chat writes it verbatim, leaving the
+ * `SAALE_*` variables Saale puts in its environment for the shell to expand at
+ * commit time. Filling them in here would pin the model the chat started with,
+ * and `/model` can change that mid-session.
  *
- * No database import: the admin section reads these constants in the browser.
+ * No database import: the admin section reads this module in the browser.
  */
 
-import { normalizeWorkspaceName } from "@/lib/branding/workspace-name";
-
-/** Where the chat's id goes in the admin's line. */
-export const ATTRIBUTION_CHAT_PLACEHOLDER = "{chat}";
+import { DEFAULT_WORKSPACE_NAME } from "@/lib/branding/workspace-name";
 
 /** Room for a co-author line with a url, little enough to stay a trailer. */
 export const MAX_ATTRIBUTION_LENGTH = 200;
 
+/** The variables a line can name, and what a commit is saying with each. */
+export const ATTRIBUTION_VARIABLES = [
+  { name: "SAALE_MODEL", what: "the model answering in the chat" },
+  { name: "SAALE_MODEL_PROVIDER", what: "the provider serving that model" },
+  { name: "SAALE_THINKING_LEVEL", what: "the thinking level it runs at" },
+  { name: "SAALE_CHAT_ID", what: "the chat the commit belongs to" },
+] as const;
+
+/** What a chat writes when the switch is on and the admin left the line empty. */
+export const DEFAULT_ATTRIBUTION_LINE = `Co-Authored-By: ${DEFAULT_WORKSPACE_NAME} ($SAALE_MODEL)`;
+
 export interface CommitAttributionSetting {
   enabled?: boolean | null;
   text?: string | null;
-  /** The instance name, for a line that names nobody. */
-  workspaceName?: string | null;
 }
 
-/** The line a chat's commits end with, or `null` when the admin turned it off. */
-export function commitAttributionLine(
-  setting: CommitAttributionSetting,
-  chatId: string,
-): string | null {
+/** The line a coder chat writes on every commit, or `null` when it is off. */
+export function commitAttributionLine(setting: CommitAttributionSetting): string | null {
   if (!setting.enabled) return null;
-  const text =
-    (setting.text ?? "").trim() ||
-    `Co-Authored-By: ${normalizeWorkspaceName(setting.workspaceName)}`;
-  return text.replaceAll(ATTRIBUTION_CHAT_PLACEHOLDER, chatId);
+  return (setting.text ?? "").trim() || DEFAULT_ATTRIBUTION_LINE;
 }

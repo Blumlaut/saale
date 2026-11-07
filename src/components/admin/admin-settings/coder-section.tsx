@@ -4,7 +4,11 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { PageSection } from "@/components/layout/page";
-import { ATTRIBUTION_CHAT_PLACEHOLDER, MAX_ATTRIBUTION_LENGTH } from "@/lib/pi/commit-attribution";
+import {
+  ATTRIBUTION_VARIABLES,
+  DEFAULT_ATTRIBUTION_LINE,
+  MAX_ATTRIBUTION_LENGTH,
+} from "@/lib/pi/commit-attribution";
 import { SettingsRow } from "./settings-rows";
 import { AdminSettingsFrame } from "./settings-frame";
 import { useAdminSettings } from "./use-admin-settings";
@@ -41,17 +45,27 @@ export function CoderSection() {
         <SettingsRow
           htmlFor="commit-attribution-line"
           label="Attribution line"
-          description={`One trailer, on one line. ${ATTRIBUTION_CHAT_PLACEHOLDER} becomes the chat's id. Empty writes "Co-Authored-By: <workspace name>".`}
+          description={`One trailer, on one line. It runs through the shell, so a variable in it is filled in when the commit is made. Empty writes "${DEFAULT_ATTRIBUTION_LINE}".`}
         >
           <Input
             id="commit-attribution-line"
             value={attributionText}
             maxLength={MAX_ATTRIBUTION_LENGTH}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Co-Authored-By: Saale ({chat})"
+            placeholder={DEFAULT_ATTRIBUTION_LINE}
             className="h-8 w-full text-sm sm:w-64"
           />
         </SettingsRow>
+        <div className="text-muted-foreground px-4 pb-3 text-xs">
+          <p className="mb-1">A line can name these variables:</p>
+          <ul className="space-y-0.5">
+            {ATTRIBUTION_VARIABLES.map((variable) => (
+              <li key={variable.name}>
+                <code className="font-mono">${variable.name}</code>: {variable.what}
+              </li>
+            ))}
+          </ul>
+        </div>
       </PageSection>
     </AdminSettingsFrame>
   );
