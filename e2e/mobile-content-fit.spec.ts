@@ -69,8 +69,6 @@ test.describe("mobile content fit", () => {
     );
 
     await gotoAndSettle(page, "/dashboard/settings/models");
-    // The inventory lives under a fold, and only the fold's title names it.
-    await page.locator('button:has-text("Hide the models you never pick.")').click();
     await expect(page.getByText("DeepSeek Reasoner").first()).toBeVisible();
 
     // Reveal the list, then measure every rendered (visible) model name.

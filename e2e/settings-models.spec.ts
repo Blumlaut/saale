@@ -51,8 +51,6 @@ test.describe("settings · models", () => {
     try {
       await gotoAndSettle(page, "/dashboard/settings/models", { quietNetwork: true });
 
-      await page.getByRole("button", { name: /^Models/ }).click();
-
       const providerSwitch = page.getByRole("switch", {
         name: `Show or hide every model of ${PROVIDER_NAME}`,
       });

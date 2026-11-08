@@ -73,15 +73,14 @@ function splitModelValue(value: string): { provider: string; model: string } | n
  * Settings → Models.
  *
  * The choice per task comes first: one searchable picker each, with the default
- * as the fallback. The inventory (every model of every provider) is a secondary
- * concern, so it sits folded away at the bottom.
+ * as the fallback. The inventory (every model of every provider) follows below,
+ * in a fold that starts open.
  */
 export function ModelsSection() {
   const { settings, update, saveState } = useUserSettings();
   const purposes = useMemo(() => getAllPurposes(), []);
 
-  // The inventory lives below, and is only fetched once someone opens it.
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(true);
   const [inventoryLoaded, setInventoryLoaded] = useState(false);
   const [allModels, setAllModels] = useState<FullModelInfo[]>([]);
   const [search, setSearch] = useState("");
@@ -387,7 +386,7 @@ export function ModelsSection() {
               <span className="min-w-0">
                 <span className="block text-base font-medium">Models</span>
                 <span className="text-muted-foreground block text-sm">
-                  Hide the models you never pick.
+                  Hide the models you never pick, and change their settings.
                 </span>
               </span>
               <ChevronDown
