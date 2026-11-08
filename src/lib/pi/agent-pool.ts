@@ -9,6 +9,8 @@ interface PooledSession {
   lastPromptedMessageId: string | null; // ChatMessage.id from DB. prevents double-prompting
   /** True while a prompt() call for this session is in flight (same-process race guard). */
   promptInFlight: boolean;
+  /** The built prompt is out of date: the eviction pass rebuilds this session. */
+  rebuildPending?: boolean;
   lastActive: number; // Date.now(). for idle eviction
 }
 
@@ -162,18 +164,31 @@ export async function remove(key: string): Promise<void> {
 }
 
 /**
+ * Mark a pooled session for a rebuild once it is between runs.
+ *
+ * The change that made it stale is already in the row, so the rebuild after the
+ * eviction picks it up. A run in flight is never touched.
+ */
+export function markRebuildPending(key: string): void {
+  const entry = pool.get(key);
+  if (entry) entry.rebuildPending = true;
+}
+
+/**
  * Evict idle sessions (not accessed within MAX_IDLE_MS and not streaming).
- * Also enforces the hard pool size cap by evicting the oldest idle sessions.
+ * Also evicts a session a settings change made stale, and enforces the hard
+ * pool size cap by evicting the oldest idle sessions.
  */
 export async function evictIdle(): Promise<void> {
   const now = Date.now();
   const toEvict: string[] = [];
 
-  // Collect idle sessions for eviction
+  // Collect idle sessions for eviction, and any a settings change marked stale:
+  // its model, level and prompt are only rebuilt with a new session.
   for (const [key, entry] of pool) {
-    if (now - entry.lastActive > MAX_IDLE_MS && !entry.session.isStreaming) {
-      toEvict.push(key);
-    }
+    if (entry.session.isStreaming || entry.promptInFlight) continue;
+    const idle = now - entry.lastActive > MAX_IDLE_MS;
+    if (idle || entry.rebuildPending) toEvict.push(key);
   }
 
   // Evict collected sessions

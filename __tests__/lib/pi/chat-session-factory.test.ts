@@ -10,8 +10,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 const mockFindUnique = vi.fn();
+const mockAdminSettingsFindUnique = vi.fn();
 vi.mock("@/lib/db", () => ({
-  prisma: { appSettings: { findUnique: (...args: unknown[]) => mockFindUnique(...args) } },
+  prisma: {
+    appSettings: { findUnique: (...args: unknown[]) => mockFindUnique(...args) },
+    adminSettings: { findUnique: (...args: unknown[]) => mockAdminSettingsFindUnique(...args) },
+  },
 }));
 
 const mockResolveApprovalDecisionModel = vi.fn();
@@ -186,6 +190,36 @@ describe("chat session factory", () => {
       );
       expect(chatPrompt).toContain("Be brief.");
       expect(chatPrompt).not.toContain("Never add a dependency without asking.");
+    });
+
+    it("writes the trailer with the chat's own model already filled in", async () => {
+      mockAdminSettingsFindUnique.mockResolvedValue({
+        commitAttributionEnabled: true,
+        commitAttributionText: "",
+      });
+
+      await createChatAgentSession({
+        userId: "user-1",
+        sessionId: "chat-coder",
+        chatSession: {
+          ...CHAT,
+          projectId: "project-1",
+          modelProvider: "openai",
+          modelName: "gpt-6",
+        },
+        customInstructions: null,
+        toolPolicies: null,
+        toolExposure: null,
+        emitApprovalRequest: vi.fn(),
+      });
+
+      const prompt = String(
+        (mockCreatePersistentSession.mock.calls[0]![0] as Record<string, unknown>).systemPrompt,
+      );
+      // The agent copies this line as plain text, so the variables have to be
+      // resolved before they reach it: a heredoc does not expand them.
+      expect(prompt).toContain("after a blank line: `Co-Authored-By: Saale (gpt-6)`");
+      expect(prompt).not.toContain("$SAALE_MODEL");
     });
 
     it("hands a coder chat the workspace scope and its own policies", async () => {

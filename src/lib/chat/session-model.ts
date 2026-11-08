@@ -5,8 +5,8 @@ import { syncPooledAgentSession } from "@/lib/pi/sync-pooled-session";
  * Switch a chat session's model and apply it to the live agent immediately.
  *
  * Shared by the session PATCH route and the `/model` command so both paths
- * change the model the same way. including pushing it into the pooled agent
- * session, which is otherwise only rebuilt after eviction.
+ * change the model the same way: the pooled agent session is dropped, so the
+ * next message rebuilds it with the new model and a prompt that names it.
  */
 export async function setChatSessionModel(params: {
   userId: string;

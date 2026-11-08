@@ -4,10 +4,11 @@ import { NextRequest } from "next/server";
 /**
  * PATCH /api/chat/sessions/:id must reach the chat's live agent session.
  *
- * The pool holds one AgentSession per chat whose model, thinking level and tool
- * loadout are fixed when it is built. Writing only to the database left the
- * running session on the old settings until eviction  up to 30 minutes  so a
- * user who switched models kept getting answers from the previous one.
+ * The pool holds one AgentSession per chat whose model, thinking level, tool
+ * loadout and system prompt are fixed when it is built. Writing only to the
+ * database left the running session on the old settings until eviction  up to
+ * 30 minutes  so a user who switched models kept getting answers from the
+ * previous one.
  */
 
 const {
@@ -17,7 +18,7 @@ const {
   mockGetPooledSession,
   mockRemove,
   mockGetPoolKey,
-  mockBuildModelRuntime,
+  mockMarkRebuildPending,
 } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockUpdate: vi.fn(),
@@ -25,7 +26,7 @@ const {
   mockGetPooledSession: vi.fn(),
   mockRemove: vi.fn(),
   mockGetPoolKey: (userId: string, sessionId: string) => `${userId}:${sessionId}`,
-  mockBuildModelRuntime: vi.fn(),
+  mockMarkRebuildPending: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
@@ -41,11 +42,10 @@ vi.mock("@/lib/pi/agent-pool", () => ({
   get: mockGetPooledSession,
   remove: mockRemove,
   getPoolKey: mockGetPoolKey,
+  markRebuildPending: mockMarkRebuildPending,
   getSessionDir: (userId: string, sessionId: string) =>
     `/tmp/uploads/pi_sessions/${userId}/${sessionId}`,
 }));
-
-vi.mock("@/lib/pi/models", () => ({ buildModelRuntime: mockBuildModelRuntime }));
 
 vi.mock("@/lib/image-attachment", () => ({
   deleteAllImages: vi.fn().mockResolvedValue(undefined),
@@ -69,8 +69,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   return {
     isStreaming: false,
     promptInFlight: false,
-    setModel: vi.fn().mockResolvedValue(undefined),
-    setThinkingLevel: vi.fn(),
     ...overrides,
   };
 }
@@ -97,57 +95,59 @@ beforeEach(() => {
 });
 
 describe("PATCH session  live agent session", () => {
-  it("switches the model on the pooled agent session", async () => {
-    const session = makeSession();
-    mockGetPooledSession.mockReturnValue({ session });
-    const model = { provider: "openai", id: "gpt-6" };
-    mockBuildModelRuntime.mockResolvedValue({
-      modelRuntime: { getModel: vi.fn().mockReturnValue(model) },
-    });
+  it("drops the pooled session when the model changes", async () => {
+    mockGetPooledSession.mockReturnValue({ session: makeSession() });
 
     const res = await patch({ modelProvider: "openai", modelName: "gpt-6" });
 
     expect(res.status).toBe(200);
-    expect(session.setModel).toHaveBeenCalledWith(model);
+    expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:${SESSION_ID}`);
   });
 
-  it("applies a thinking-level change", async () => {
-    const session = makeSession();
-    mockGetPooledSession.mockReturnValue({ session });
+  it("drops the pooled session when the thinking level changes", async () => {
+    mockGetPooledSession.mockReturnValue({ session: makeSession() });
 
     await patch({ thinkingLevel: "high" });
 
-    expect(session.setThinkingLevel).toHaveBeenCalledWith("high");
+    expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:${SESSION_ID}`);
   });
 
-  it("leaves the agent alone for Saale's 'default' level", async () => {
-    const session = makeSession();
-    mockGetPooledSession.mockReturnValue({ session });
+  it("drops the pooled session when the level goes back to Pi's own", async () => {
+    // "default" is a stored setting rather than a level, so the rebuild is what
+    // hands Pi no opinion at all.
+    mockGetPooledSession.mockReturnValue({ session: makeSession() });
 
     await patch({ thinkingLevel: "default" });
 
-    expect(session.setThinkingLevel).not.toHaveBeenCalled();
+    expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:${SESSION_ID}`);
   });
 
   it("drops the pooled session when the tool loadout changes", async () => {
-    // Tools are resolved from the config when the session is built, so the
-    // loadout cannot be changed in place  the next message rebuilds it.
-    const session = makeSession();
-    mockGetPooledSession.mockReturnValue({ session });
+    mockGetPooledSession.mockReturnValue({ session: makeSession() });
 
     await patch({ toolConfig: { terminal: false, memory: true } });
 
     expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:${SESSION_ID}`);
-    expect(session.setModel).not.toHaveBeenCalled();
   });
 
   it("never drops a session that is mid-run", async () => {
-    const session = makeSession({ isStreaming: true });
-    mockGetPooledSession.mockReturnValue({ session });
+    // Disposal would abort the run and drop every connected client's stream, so
+    // the session is marked and the eviction pass rebuilds it.
+    mockGetPooledSession.mockReturnValue({ session: makeSession({ isStreaming: true }) });
 
-    await patch({ toolConfig: { terminal: false, memory: true } });
+    await patch({ modelProvider: "openai", modelName: "gpt-6" });
 
     expect(mockRemove).not.toHaveBeenCalled();
+    expect(mockMarkRebuildPending).toHaveBeenCalledWith(`${USER_ID}:${SESSION_ID}`);
+  });
+
+  it("leaves the pool alone for a change that touches nothing", async () => {
+    mockGetPooledSession.mockReturnValue({ session: makeSession() });
+
+    await patch({ title: "Renamed" });
+
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(mockMarkRebuildPending).not.toHaveBeenCalled();
   });
 
   it("does nothing when the chat has no pooled session", async () => {
@@ -156,7 +156,8 @@ describe("PATCH session  live agent session", () => {
     const res = await patch({ modelProvider: "openai", modelName: "gpt-6" });
 
     expect(res.status).toBe(200);
-    expect(mockBuildModelRuntime).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(mockMarkRebuildPending).not.toHaveBeenCalled();
   });
 });
 

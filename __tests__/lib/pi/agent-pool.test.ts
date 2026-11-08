@@ -11,6 +11,7 @@ import {
   getDispatcher,
   getPoolSize,
   getPoolKeys,
+  markRebuildPending,
   shutdown,
 } from "@/lib/pi/agent-pool";
 
@@ -344,6 +345,38 @@ describe("agent-pool", () => {
       expect(running.dispose).not.toHaveBeenCalled();
       expect(getPoolKeys()).toContain("user-1:running");
       expect(getPoolSize()).toBeLessThanOrEqual(100);
+    });
+
+    // A settings change during a run cannot evict the session it would abort,
+    // so it marks it instead. The next pass must pick that up.
+    it("evicts a session marked for a rebuild even while it is active", async () => {
+      const mockSession = createMockAgentSession();
+      const poolKey = "user-1:session-abc";
+      await createAndPool(poolKey, async () => ({
+        session: asAgentSession(mockSession),
+        sessionDir: "/tmp/test",
+      }));
+
+      markRebuildPending(poolKey);
+      await evictIdle();
+
+      expect(getPoolSize()).toBe(0);
+      expect(mockSession.dispose).toHaveBeenCalled();
+    });
+
+    it("keeps a session marked for a rebuild while it is streaming", async () => {
+      const mockSession = createMockAgentSession(true);
+      const poolKey = "user-1:session-abc";
+      await createAndPool(poolKey, async () => ({
+        session: asAgentSession(mockSession),
+        sessionDir: "/tmp/test",
+      }));
+
+      markRebuildPending(poolKey);
+      await evictIdle();
+
+      expect(getPoolKeys()).toContain(poolKey);
+      expect(mockSession.dispose).not.toHaveBeenCalled();
     });
 
     it("evicts idle non-streaming sessions", async () => {
