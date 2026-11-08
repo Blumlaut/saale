@@ -877,10 +877,10 @@ test.describe("coder panel", () => {
     const page = await context.newPage();
     await mockCoder(page);
     // git refuses to remove a worktree that still holds uncommitted work.
-    await page.route(/\/api\/chat\/sessions\/bulk$/, (route) =>
+    await page.route(/\/api\/chat\/sessions\/delete$/, (route) =>
       route.fulfill({
         json: {
-          deleted: [],
+          queued: [],
           failed: [{ sessionId: CHAT_ID, error: "error: the working tree is dirty" }],
         },
       }),

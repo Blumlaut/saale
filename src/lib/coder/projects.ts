@@ -74,6 +74,7 @@ const CHAT_ROW_SELECT = {
   prDraft: true,
   prUrl: true,
   prCheckedAt: true,
+  deletingAt: true,
   coderWorktree: { select: { path: true, branch: true, status: true } },
 } as const;
 
@@ -129,6 +130,8 @@ export interface CoderProjectChat {
   pinned: boolean;
   /** "user", or "watcher" for a chat a watcher fire opened. */
   origin: string;
+  /** The chat is on its way out, so the row is greyed and goes nowhere. */
+  deleting: boolean;
   worktree: { path: string; branch: string; status: string } | null;
   /** What `gh` last said about the branch, null when there is none. */
   pullRequest: CoderPullRequestSummary | null;
@@ -368,6 +371,7 @@ type ChatRow = {
   prDraft: boolean | null;
   prUrl: string | null;
   prCheckedAt: Date | null;
+  deletingAt: Date | null;
   coderWorktree: { path: string; branch: string; status: string } | null;
 };
 
@@ -391,6 +395,7 @@ function mapChat(row: ChatRow): CoderProjectChat {
     lastActivityAt: row.lastActivityAt,
     pinned: row.pinned,
     origin: row.origin,
+    deleting: row.deletingAt !== null,
     worktree: row.coderWorktree,
     pullRequest: mapPullRequest(row),
     pullRequestCheckedAt: row.prCheckedAt,
@@ -672,6 +677,7 @@ function serializeChat(chat: CoderProjectChat, generating: ReadonlySet<string>) 
     pinned: chat.pinned,
     isGenerating: generating.has(chat.id),
     origin: chat.origin,
+    deleting: chat.deleting,
     worktree: chat.worktree,
     pullRequest: chat.pullRequest,
   };

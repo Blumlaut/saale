@@ -287,7 +287,7 @@ export async function discardChatSessions(
   ids: string[],
 ): Promise<void> {
   for (const id of ids) {
-    await request.delete(`/api/chat/sessions/${id}`).catch((err) => {
+    await request.post("/api/chat/sessions/delete", { data: { ids: [id] } }).catch((err) => {
       console.error(`e2e: cleaning up chat ${id} failed`, err);
     });
   }

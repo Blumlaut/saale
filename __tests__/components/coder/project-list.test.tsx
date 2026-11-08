@@ -30,7 +30,7 @@ const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
 import { ProjectList } from "@/components/coder/project-list";
-import { broadcastSessionsDeleted } from "@/lib/chat/session-events";
+import { broadcastSessionsDeleting } from "@/lib/chat/session-events";
 
 const NOW = new Date().toISOString();
 
@@ -41,6 +41,7 @@ function chat(id: string, title: string, extra: { pinned?: boolean; pullRequest?
     lastActivityAt: NOW,
     pinned: extra.pinned ?? false,
     isGenerating: false,
+    deleting: false,
     origin: "user",
     worktree: { path: `/worktrees/${id}`, branch: `wt/${id}`, status: "active" },
     pullRequest: extra.pullRequest ?? null,
@@ -178,7 +179,7 @@ describe("ProjectList", () => {
     await screen.findByText("Fix the build");
 
     mocks.fetchJson.mockResolvedValue({ projects: [project("p-2", "Attrition", [])] });
-    act(() => broadcastSessionsDeleted(["s-1"]));
+    act(() => broadcastSessionsDeleting(["s-1"]));
 
     await waitFor(() => expect(screen.queryByText("Fix the build")).not.toBeInTheDocument());
   });

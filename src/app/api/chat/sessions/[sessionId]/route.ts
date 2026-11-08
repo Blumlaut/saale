@@ -2,10 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireChatSessionOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { autoDeleteChatSession, deleteChatSession } from "@/lib/chat/delete-session";
-import { CoderCleanupError } from "@/lib/coder/worktree-removal";
-import { cleanupRefusalResponse } from "@/lib/coder/cleanup-response";
-import { forceRequested } from "@/lib/coder/force-delete";
+import { autoDeleteChatSession } from "@/lib/chat/delete-session";
 import { syncPooledAgentSession } from "@/lib/pi/sync-pooled-session";
 
 /**
@@ -94,47 +91,6 @@ export async function PATCH(
       toolConfig: updated.toolConfig,
     },
   });
-}
-
-/**
- * Delete a chat session and all its messages + attachments.
- * Used by both DELETE and sendBeacon (POST with _method=DELETE).
- *
- * The work lives in `deleteChatSession` so the `chat_delete` tool removes a
- * chat exactly the same way. files, DB rows, pooled agent and transcript.
- */
-async function deleteSession(request: NextRequest, params: Promise<{ sessionId: string }>) {
-  const { sessionId } = await params;
-
-  const authResult = await requireChatSessionOwner(sessionId);
-  if (!authResult.ok) return authResult.response;
-
-  try {
-    await deleteChatSession(authResult.userId, sessionId, forceRequested(request.url));
-  } catch (err) {
-    console.error(`Failed to delete chat session ${sessionId}:`, err);
-    // A worktree git will not let go keeps the chat. the reason is the answer.
-    if (err instanceof CoderCleanupError) return cleanupRefusalResponse(err);
-    return NextResponse.json(
-      {
-        error: "Failed to delete chat",
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      { status: 500 },
-    );
-  }
-
-  return NextResponse.json({ ok: true });
-}
-
-/**
- * DELETE /api/chat/sessions/:sessionId. Delete a session and all its messages
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> },
-) {
-  return deleteSession(request, params);
 }
 
 /**

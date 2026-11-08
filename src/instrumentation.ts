@@ -9,7 +9,8 @@
  *
  * A start also means the previous process's chat runs are gone (see
  * `resume-interrupted-runs.ts`), so those are picked back up here, once the rest
- * of the stack has had a moment to come up.
+ * of the stack has had a moment to come up. Chat deletions that were marked and
+ * never finished get a sweep of their own.
  *
  * The worker and the sandbox service do the same thing on their own startup;
  * the migration is idempotent and safe to run concurrently.
@@ -26,4 +27,7 @@ export async function register(): Promise<void> {
   // boot waits for none of it.
   const { scheduleInterruptedRunRecovery } = await import("@/lib/chat/resume-interrupted-runs");
   scheduleInterruptedRunRecovery();
+
+  const { startDeleteSweep } = await import("@/lib/chat/delete-runner");
+  startDeleteSweep();
 }

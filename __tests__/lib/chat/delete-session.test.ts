@@ -70,13 +70,7 @@ vi.mock("@/lib/coder/processes", () => ({
   stopChatProcesses: (...args: unknown[]) => mockStopChatProcesses(...args),
 }));
 
-import {
-  autoDeleteChatSession,
-  deleteChatSession,
-  deleteChatSessions,
-} from "@/lib/chat/delete-session";
-import { CoderCleanupError } from "@/lib/coder/worktree-removal";
-import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
+import { autoDeleteChatSession, deleteChatSession } from "@/lib/chat/delete-session";
 
 const USER_ID = "user-1";
 const SESSION_ID = "chat-1";
@@ -211,105 +205,6 @@ describe("deleteChatSession", () => {
 
     expect(mockRemoveChatWorktree).not.toHaveBeenCalled();
     expect(mockStopChatProcesses).not.toHaveBeenCalled();
-  });
-});
-
-describe("deleteChatSessions", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({
-      title: where.id,
-    }));
-    mockFindMany.mockResolvedValue([]);
-    mockDeleteMany.mockResolvedValue({ count: 1 });
-    mockDeleteAllImages.mockResolvedValue(undefined);
-    mockWatcherFindMany.mockResolvedValue([]);
-    mockRemove.mockResolvedValue(undefined);
-    mockRm.mockResolvedValue(undefined);
-    mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
-  });
-
-  it("deletes every chat in the batch, each scoped to its owner", async () => {
-    const result = await deleteChatSessions(USER_ID, ["chat-1", "chat-2"]);
-
-    expect(result).toEqual({ deleted: ["chat-1", "chat-2"], failed: [] });
-    expect(mockDeleteMany).toHaveBeenCalledWith({ where: { id: "chat-2", userId: USER_ID } });
-    expect(mockRemove).toHaveBeenCalledWith(`${USER_ID}:chat-2`);
-  });
-
-  it("keeps going when one chat is not the user's", async () => {
-    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "someone-elses-chat" ? null : { title: where.id },
-    );
-
-    const result = await deleteChatSessions(USER_ID, ["chat-1", "someone-elses-chat", "chat-2"]);
-
-    expect(result.deleted).toEqual(["chat-1", "chat-2"]);
-    expect(result.failed).toEqual([
-      { sessionId: "someone-elses-chat", error: "Chat not found: someone-elses-chat" },
-    ]);
-    // The batch is not aborted: the chats around the failure still went.
-    expect(mockDeleteMany).toHaveBeenCalledTimes(2);
-  });
-
-  it("counts a repeated id once", async () => {
-    const result = await deleteChatSessions(USER_ID, ["chat-1", "chat-1"]);
-
-    expect(result).toEqual({ deleted: ["chat-1"], failed: [] });
-    expect(mockDeleteMany).toHaveBeenCalledTimes(1);
-  });
-
-  it("tells the caller which refusal a force delete would override", async () => {
-    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
-    mockRemoveChatWorktree.mockRejectedValue(
-      new CoderCleanupError(
-        "fatal: contains modified or untracked files, use --force to delete it",
-        409,
-        WORKTREE_KEPT_CODE,
-      ),
-    );
-
-    const result = await deleteChatSessions(USER_ID, ["chat-1"]);
-
-    expect(result.deleted).toEqual([]);
-    expect(result.failed).toEqual([
-      {
-        sessionId: "chat-1",
-        error: "fatal: contains modified or untracked files, use --force to delete it",
-        code: WORKTREE_KEPT_CODE,
-      },
-    ]);
-    // The chat and its checkout survive, ready for the confirmed retry.
-    expect(mockDeleteMany).not.toHaveBeenCalled();
-  });
-
-  it("passes force on to every chat in the batch", async () => {
-    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({
-      title: where.id,
-      projectId: "project-1",
-    }));
-
-    await deleteChatSessions(USER_ID, ["chat-1", "chat-2"], true);
-
-    expect(mockRemoveChatWorktree.mock.calls).toEqual([
-      [USER_ID, "chat-1", true],
-      [USER_ID, "chat-2", true],
-    ]);
-  });
-
-  it("unschedules only the watchers of the chats that actually went", async () => {
-    mockFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "someone-elses-chat" ? null : { title: where.id },
-    );
-    mockWatcherFindMany.mockImplementation(async ({ where }: { where: { sessionId: string } }) =>
-      where.sessionId === "chat-1" ? [{ id: `watcher-${where.sessionId}` }] : [],
-    );
-
-    const result = await deleteChatSessions(USER_ID, ["chat-1", "someone-elses-chat", "chat-2"]);
-
-    expect(result.deleted).toEqual(["chat-1", "chat-2"]);
-    expect(mockUnscheduleWatcher).toHaveBeenCalledTimes(1);
-    expect(mockUnscheduleWatcher).toHaveBeenCalledWith("watcher-chat-1");
   });
 });
 

@@ -4,6 +4,7 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { useLongPress } from "@/hooks/use-long-press";
-import { Check, CheckSquare, Loader2, MoreVertical, Pin, PinOff, Trash2, Bot } from "lucide-react";
+import { Check, CheckSquare, MoreVertical, Pin, PinOff, Trash2, Bot } from "lucide-react";
 
 /**
  * One row of a chat list, shared by the chat sidebar and the coder panel.
@@ -38,7 +39,10 @@ export interface ChatListRowProps {
   accessories?: ReactNode;
   active?: boolean;
   pinned?: boolean;
-  /** Swaps the row menu's icon for a spinner while a delete runs. */
+  /**
+   * The server is removing this chat. The row dims and goes nowhere until it
+   * is gone, and the row menu's icon becomes the spinner that says so.
+   */
   deleting?: boolean;
   selection?: ChatRowSelection;
   onTogglePin?: () => void;
@@ -117,10 +121,17 @@ export function ChatListRow({
   return (
     <div
       data-slot="session-row"
+      aria-busy={deleting || undefined}
       className={cn(
         "group relative flex items-center gap-1 rounded-lg text-sm transition-colors duration-150 select-none",
         !selection?.selecting && "pr-1",
-        selection?.selected ? "bg-primary/10" : active ? "bg-accent/70" : "hover:bg-accent/60",
+        deleting
+          ? "pointer-events-none opacity-60"
+          : selection?.selected
+            ? "bg-primary/10"
+            : active
+              ? "bg-accent/70"
+              : "hover:bg-accent/60",
       )}
       onPointerDown={hold.onPointerDown}
       onPointerMove={hold.onPointerMove}
@@ -184,7 +195,7 @@ export function ChatRowMenu({
             aria-label={`Actions for ${title}`}
             {...triggerProps}
           >
-            {deleting ? <Loader2 className="animate-spin" /> : <MoreVertical />}
+            {deleting ? <Spinner label="Deleting" /> : <MoreVertical />}
           </Button>
         )}
       />

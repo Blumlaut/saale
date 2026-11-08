@@ -10,16 +10,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Spinner } from "@/components/ui/spinner";
 import { PinnedChatGroup, ChatListRow, WatcherChatBadge } from "@/components/chat/chat-list";
 import { useOnResume } from "@/hooks/use-on-resume";
-import { fetchJson, postJson } from "@/lib/http";
+import { useDeletingPoll } from "@/hooks/use-deleting-poll";
+import { fetchJson } from "@/lib/http";
 import {
-  broadcastSessionsDeleted,
   CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
-  CHAT_SESSIONS_DELETED_EVENT,
+  CHAT_SESSIONS_DELETING_EVENT,
   CHAT_WATCHERS_EVENT,
 } from "@/lib/chat/session-events";
 import { saveChatPin } from "@/lib/chat/pin";
-import { forcedRetryError, isForcedRetry } from "@/lib/coder/force-delete";
+import { deleteFailure, requestChatDelete } from "@/lib/chat/delete-chat";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { splitPinnedSessions, splitSessionsByActivity } from "@/lib/chat/session-recency";
 import {
@@ -44,6 +44,8 @@ interface ChatSession {
   updatedAt: string;
   lastActivityAt?: string;
   isGenerating?: boolean;
+  /** The server is removing this chat, so the row is greyed and goes nowhere. */
+  deleting?: boolean;
   forkedFromSessionId?: string;
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
@@ -59,10 +61,13 @@ interface CoderProjectHeader {
   defaultBranch: string;
 }
 
-/** Answer of the bulk delete endpoint. ids that went, ids that did not. */
-interface BulkDeleteResponse {
-  deleted: string[];
-  failed: Array<{ sessionId: string; error: string; code?: string }>;
+/** The same list with these rows marked (or unmarked) as on their way out. */
+function markDeleting(
+  sessions: ChatSession[],
+  ids: ReadonlySet<string>,
+  deleting: boolean,
+): ChatSession[] {
+  return sessions.map((session) => (ids.has(session.id) ? { ...session, deleting } : session));
 }
 
 function watcherLabel(count: number): string {
@@ -109,7 +114,6 @@ export function SessionSidebar({
   // The pending delete's ids. one from the row menu, several from the
   // selection bar. so both paths run through the same confirmation.
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
-  const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
   const listUrl = projectId
     ? `/api/chat/sessions?projectId=${encodeURIComponent(projectId)}`
@@ -151,12 +155,8 @@ export function SessionSidebar({
     // A watcher bound to a chat rides along with it on delete, so the mark has
     // to appear and vanish as watchers come and go elsewhere in the app.
     const onWatchers = () => fetchSessions();
-    const onDeleted = (event: Event) => {
-      const ids = (event as CustomEvent<{ ids?: string[] }>).detail?.ids;
-      if (!ids || ids.length === 0) return;
-      const gone = new Set(ids);
-      setSessions((prev) => prev.filter((session) => !gone.has(session.id)));
-    };
+    // A delete started in another list greys the same rows here.
+    const onDeleting = () => fetchSessions();
     // A pin made in the other copy of this list (phone sheet, desktop panel)
     // moves the row here too.
     const onPinned = (event: Event) => {
@@ -169,12 +169,12 @@ export function SessionSidebar({
     };
 
     window.addEventListener(CHAT_RENAMED_EVENT, onRenamed);
-    window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
+    window.addEventListener(CHAT_SESSIONS_DELETING_EVENT, onDeleting);
     window.addEventListener(CHAT_PINNED_EVENT, onPinned);
     window.addEventListener(CHAT_WATCHERS_EVENT, onWatchers);
     return () => {
       window.removeEventListener(CHAT_RENAMED_EVENT, onRenamed);
-      window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, onDeleted);
+      window.removeEventListener(CHAT_SESSIONS_DELETING_EVENT, onDeleting);
       window.removeEventListener(CHAT_PINNED_EVENT, onPinned);
       window.removeEventListener(CHAT_WATCHERS_EVENT, onWatchers);
     };
@@ -190,45 +190,49 @@ export function SessionSidebar({
     return () => window.removeEventListener("keydown", handler);
   }, [selecting]);
 
-  // One delete for one or many: the bulk endpoint takes both, and a failed
-  // single delete reports like a failed batch.
-  const deleteChats = async (ids: string[], force: boolean) => {
-    setDeletingIds(ids);
-    let result: BulkDeleteResponse;
-    try {
-      result = await postJson<BulkDeleteResponse>(
-        "/api/chat/sessions/bulk",
-        force ? { ids, force: true } : { ids },
-      );
-    } catch (err) {
-      console.error("Failed to delete chat sessions:", err);
-      throw err;
-    } finally {
-      setDeletingIds([]);
-    }
+  // A chat on its way out leaves the list when the server has removed it, not
+  // when the request lands, so the row is asked about until it is gone.
+  useDeletingPoll(
+    sessions.some((session) => session.deleting),
+    fetchSessions,
+  );
 
-    const deleted = new Set(result.deleted);
-    broadcastSessionsDeleted(result.deleted);
+  // One delete for one or many: the endpoint takes a list, and a failed single
+  // delete reports like a failed batch.
+  const deleteChats = async (ids: string[], force: boolean) => {
+    // The rows grey as the user says so, and come back if the delete does not
+    // start: a plain chat is gone before a refetch could ever mark it.
+    const asked = new Set(ids);
+    setSessions((prev) => markDeleting(prev, asked, true));
+
+    const result = await requestChatDelete(ids, force).catch((err: unknown) => {
+      setSessions((prev) => markDeleting(prev, asked, false));
+      throw err;
+    });
+
+    const going = new Set(result.queued);
+    setSessions((prev) =>
+      markDeleting(prev, new Set(result.failed.map((f) => f.sessionId)), false),
+    );
+
     const survivors = result.failed.map((failure) => failure.sessionId);
     // Whatever survived stays picked, and stays in the box, so the retry that
     // confirms the discard targets only the chats still there.
     setSelectedIds(new Set(survivors));
     setPendingDelete(survivors.length > 0 ? survivors : null);
-    if (activeSessionId && deleted.has(activeSessionId)) {
+    if (activeSessionId && going.has(activeSessionId)) {
       router.push(projectId ? `/dashboard/coder/${projectId}` : "/dashboard/chat");
     }
     if (result.failed.length === 0) return;
 
     const reason = result.failed[0]?.error ?? "Could not delete the chat";
-    if (deleted.size > 0) {
+    if (result.queued.length > 0) {
       toast.error(
-        `Deleted ${deleted.size} of ${ids.length} chats. the rest are still selected: ${reason}`,
+        `Deleting ${result.queued.length} of ${ids.length} chats. the rest are still selected: ${reason}`,
       );
     }
     // The box shows the reason, and asks again when a confirmation overrides it.
-    throw result.failed.every((failure) => isForcedRetry(failure.code))
-      ? forcedRetryError(reason)
-      : new Error(reason);
+    throw deleteFailure(result.failed);
   };
 
   const requestDelete = (ids: string[]) => setPendingDelete(ids);
@@ -292,7 +296,7 @@ export function SessionSidebar({
       title={session.title}
       active={session.id === activeSessionId}
       pinned={session.pinned}
-      deleting={deletingIds.includes(session.id)}
+      deleting={session.deleting ?? false}
       accessories={
         <>
           {session.isGenerating && (
@@ -469,10 +473,9 @@ export function SessionSidebar({
             size="sm"
             className="h-8 shrink-0"
             aria-label={`Delete ${selectedCount} selected ${selectedCount === 1 ? "chat" : "chats"}`}
-            disabled={deletingIds.length > 0}
             onClick={() => requestDelete([...selectedIds])}
           >
-            {deletingIds.length > 0 ? <Loader2 className="animate-spin" /> : <Trash2 />}
+            <Trash2 />
             Delete
           </Button>
         </div>

@@ -28,7 +28,7 @@ import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { ChatRowMenu, WatcherChatBadge } from "@/components/chat/chat-list";
 import { startChatSession } from "@/lib/chat-session";
-import { deleteChat } from "@/lib/chat/delete-chat";
+import { deleteFailure, requestChatDelete } from "@/lib/chat/delete-chat";
 import { saveChatPin } from "@/lib/chat/pin";
 import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
@@ -165,7 +165,13 @@ export function ProjectList() {
       <div
         key={chat.id}
         data-slot="session-row"
-        className={cn(BOARD_ROW, CHAT_ROW, BOARD_COLUMNS, "hover:bg-accent/60")}
+        aria-busy={chat.deleting || undefined}
+        className={cn(
+          BOARD_ROW,
+          CHAT_ROW,
+          BOARD_COLUMNS,
+          chat.deleting ? "pointer-events-none opacity-60" : "hover:bg-accent/60",
+        )}
       >
         <Link
           href={`/dashboard/coder/${project.id}/${chat.id}`}
@@ -200,6 +206,7 @@ export function ProjectList() {
           <ChatRowMenu
             title={title}
             pinned={chat.pinned}
+            deleting={chat.deleting}
             onTogglePin={() => void togglePin(chat)}
             onDelete={() => setDeletingChat(chat)}
           />
@@ -378,7 +385,8 @@ export function ProjectList() {
         onCancel={() => setDeletingChat(null)}
         onDelete={async (chat, force) => {
           try {
-            await deleteChat(chat.id, force);
+            const { failed } = await requestChatDelete([chat.id], force);
+            if (failed.length > 0) throw deleteFailure(failed);
           } catch (err) {
             console.error(`Failed to delete coder chat ${chat.id}:`, err);
             throw err;

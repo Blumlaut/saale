@@ -5,6 +5,7 @@ import { act, render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { broadcastWatchersChanged } from "@/lib/chat/session-events";
+import { DELETING_POLL_MS } from "@/hooks/use-deleting-poll";
 import { LONG_PRESS_MS } from "@/hooks/use-long-press";
 
 /**
@@ -63,28 +64,41 @@ const PROJECT: ProjectHeader = {
   defaultBranch: "main",
 };
 
-/** Server answer for a bulk delete  ids that went, ids that did not. */
-type BulkResponse = {
-  deleted: string[];
+/** Server answer for a delete: ids on their way out, ids it could not start. */
+type DeleteAnswer = {
+  queued: string[];
   failed: Array<{ sessionId: string; error: string; code?: string }>;
 };
 
 /** The list URL the last mock answered, so a test can assert on the call. */
 let listUrl = "/api/chat/sessions";
 
+/** The list the server answers with now, so a test can retire a row. */
+let listSessions: Array<Record<string, unknown>> = SESSIONS;
+
+/** The chats the server is still removing, which its list answers mark. */
+let deletingNow = new Set<string>();
+
 function mockSessions(
-  sessions = SESSIONS,
-  bulk?: BulkResponse | BulkResponse[],
+  sessions: Array<Record<string, unknown>> = SESSIONS,
+  answer?: DeleteAnswer | DeleteAnswer[],
   project?: ProjectHeader,
 ) {
+  listSessions = sessions;
+  deletingNow = new Set();
   listUrl = project ? `/api/chat/sessions?projectId=${project.id}` : "/api/chat/sessions";
   // A list of answers answers one request each. the second one is the retry.
-  const answers = Array.isArray(bulk) ? [...bulk] : null;
+  const answers = Array.isArray(answer) ? [...answer] : null;
   fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/chat/sessions/bulk") {
+    if (url === "/api/chat/sessions/delete") {
       const { ids } = JSON.parse(String(init?.body)) as { ids: string[]; force?: boolean };
-      const answer = answers?.shift() ?? bulk ?? { deleted: ids, failed: [] };
-      return new Response(JSON.stringify(answer), { status: 200 });
+      const reply: DeleteAnswer = answers?.shift() ??
+        (Array.isArray(answer) ? { queued: [], failed: [] } : answer) ?? {
+          queued: ids,
+          failed: [],
+        };
+      for (const id of reply.queued) deletingNow.add(id);
+      return new Response(JSON.stringify(reply), { status: 200 });
     }
     // Pin/unpin rides on the chat's own PATCH.
     if (url.startsWith("/api/chat/sessions/") && init?.method === "PATCH") {
@@ -92,9 +106,23 @@ function mockSessions(
       return new Response(JSON.stringify({ session: { pinned: body.pinned } }), { status: 200 });
     }
     expect(url).toBe(listUrl);
+    // A chat the server is removing comes back marked, which is the greyed row.
+    const sessions = listSessions.map((chat) =>
+      deletingNow.has(String(chat.id)) ? { ...chat, deleting: true } : chat,
+    );
     return new Response(JSON.stringify({ sessions, project: project ?? null }), { status: 200 });
   });
   vi.stubGlobal("fetch", fetchMock);
+}
+
+/** The list as the server has it now: a chat it removed is no longer in it. */
+function serveList(sessions: Array<Record<string, unknown>>) {
+  listSessions = sessions;
+}
+
+/** The row a title sits in, which is what a delete marks. */
+function rowOf(title: string) {
+  return screen.getByText(title).closest("[data-slot=session-row]") as HTMLElement;
 }
 
 /** A chat of a project: the same row, with the checkout it runs in. */
@@ -227,15 +255,38 @@ describe("SessionSidebar older chats", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.queryByText("Stale chat")).not.toBeInTheDocument());
+    // The row stays while the server removes it, greyed and out of reach.
+    await waitFor(() => expect(rowOf("Stale chat")).toHaveAttribute("aria-busy", "true"));
+    expect(rowOf("Stale chat")).toHaveClass("pointer-events-none");
     expect(screen.getByText("Ancient chat")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/chat/sessions/bulk",
+      "/api/chat/sessions/delete",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ ids: ["s-stale"] }),
       }),
     );
+  });
+
+  it("drops the row once the server has removed the chat", async () => {
+    mockSessions([session("s-doomed", "Doomed chat", 0.2), session("s-kept", "Kept chat", 0.3)], {
+      queued: ["s-doomed"],
+      failed: [],
+    });
+
+    await renderSidebar(undefined, "Doomed chat");
+    await revealRowActions("Doomed chat");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete chat" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(rowOf("Doomed chat")).toHaveAttribute("aria-busy", "true"));
+
+    // The list is asked again while a row is on its way out, and stops asking
+    // once the server has nothing left to remove.
+    serveList([session("s-kept", "Kept chat", 0.3)]);
+    await waitFor(() => expect(screen.queryByText("Doomed chat")).not.toBeInTheDocument(), {
+      timeout: DELETING_POLL_MS * 2,
+    });
+    expect(screen.getByText("Kept chat")).toBeInTheDocument();
   });
 
   it("warns in the confirmation box when the chat has watchers attached", async () => {
@@ -254,16 +305,16 @@ describe("SessionSidebar older chats", () => {
   it("asks again before discarding a checkout's uncommitted changes", async () => {
     mockSessions(SESSIONS, [
       {
-        deleted: [],
+        queued: [],
         failed: [
           {
             sessionId: "s-fresh",
-            error: "fatal: contains modified or untracked files, use --force to delete it",
+            error: "The checkout has changes that were never committed.",
             code: WORKTREE_KEPT_CODE,
           },
         ],
       },
-      { deleted: ["s-fresh"], failed: [] },
+      { queued: ["s-fresh"], failed: [] },
     ]);
     await renderSidebar();
 
@@ -275,20 +326,22 @@ describe("SessionSidebar older chats", () => {
     const again = await screen.findByRole("button", { name: "Delete anyway" });
     expect(screen.getByText(/discarding this chat's uncommitted changes/)).toBeInTheDocument();
     expect(screen.getByText("Fresh chat")).toBeInTheDocument();
+    // The row came back out of the grey: nothing is deleting it.
+    expect(rowOf("Fresh chat")).not.toHaveAttribute("aria-busy");
     expect(toastError).not.toHaveBeenCalled();
 
     fireEvent.click(again);
 
-    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      "/api/chat/sessions/bulk",
+    await waitFor(() => expect(rowOf("Fresh chat")).toHaveAttribute("aria-busy", "true"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/chat/sessions/delete",
       expect.objectContaining({ body: JSON.stringify({ ids: ["s-fresh"], force: true }) }),
     );
   });
 
   it("shows a failure it cannot force instead of offering a retry", async () => {
     mockSessions(SESSIONS, {
-      deleted: [],
+      queued: [],
       failed: [{ sessionId: "s-fresh", error: "Chat not found: s-fresh" }],
     });
     await renderSidebar();
@@ -361,12 +414,13 @@ describe("SessionSidebar multi-select", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
-    expect(screen.queryByText("Recent chat")).not.toBeInTheDocument();
+    // Both rows stay, greyed, until the server has removed them.
+    await waitFor(() => expect(rowOf("Fresh chat")).toHaveAttribute("aria-busy", "true"));
+    expect(rowOf("Recent chat")).toHaveAttribute("aria-busy", "true");
     // The selection ends with the deleted chats  the toolbar goes back to a title.
     expect(screen.getByText("Conversations")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/chat/sessions/bulk",
+      "/api/chat/sessions/delete",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ ids: ["s-fresh", "s-recent"] }),
@@ -472,7 +526,7 @@ describe("SessionSidebar multi-select", () => {
 
   it("keeps a chat that failed to delete selected for a retry", async () => {
     mockSessions(SESSIONS, {
-      deleted: ["s-fresh"],
+      queued: ["s-fresh"],
       failed: [{ sessionId: "s-recent", error: "Chat not found: s-recent" }],
     });
     await renderSidebar();
@@ -482,8 +536,8 @@ describe("SessionSidebar multi-select", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.queryByText("Fresh chat")).not.toBeInTheDocument());
-    expect(screen.getByText("Recent chat")).toBeInTheDocument();
+    await waitFor(() => expect(rowOf("Fresh chat")).toHaveAttribute("aria-busy", "true"));
+    expect(rowOf("Recent chat")).not.toHaveAttribute("aria-busy");
     expect(screen.getByText("1 selected")).toBeInTheDocument();
     expect(toastError).toHaveBeenCalledWith(expect.stringContaining("1 of 2"));
   });
@@ -619,15 +673,17 @@ describe("SessionSidebar for a coder project", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete 2 selected chats" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.queryByText("Ship it")).not.toBeInTheDocument());
+    // Both rows stay, greyed, until the server has removed them.
+    await waitFor(() => expect(rowOf("Ship it")).toHaveAttribute("aria-busy", "true"));
+    expect(rowOf("Fix the sidebar")).toHaveAttribute("aria-busy", "true");
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/chat/sessions/bulk",
+      "/api/chat/sessions/delete",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ ids: ["s-1", "s-2"] }),
       }),
     );
-    // The open chat is gone with them, so the project page takes over.
+    // The open chat is on its way out with them, so the project page takes over.
     expect(routerMock.push).toHaveBeenCalledWith("/dashboard/coder/project-1");
   });
 });

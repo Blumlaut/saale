@@ -26,8 +26,7 @@ import { getProvisioning } from "@/lib/coder/provisioning";
 import { loadChatCheckout } from "@/lib/coder/checkout";
 import { stopChatProcesses } from "@/lib/coder/processes";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
-import { removeChatWorktree, CoderCleanupError } from "@/lib/coder/worktree-removal";
-import type { CleanupCode } from "@/lib/coder/force-delete";
+import { removeChatWorktree } from "@/lib/coder/worktree-removal";
 
 /** The deleted chat's title, for a confirmation message. */
 export interface DeletedChat {
@@ -36,12 +35,6 @@ export interface DeletedChat {
 
 /** What the automatic delete did, and why when it did nothing. */
 export type AutoDeleteResult = { deleted: true } | { deleted: false; kept: AutoDeleteKeepReason };
-
-/** Outcome of a multi-chat delete: what went, and what is still there. */
-export interface BulkDeleteResult {
-  deleted: string[];
-  failed: Array<{ sessionId: string; error: string; code?: CleanupCode }>;
-}
 
 /**
  * Delete one of a user's chats and everything that belongs to it.
@@ -105,39 +98,6 @@ export async function deleteChatSession(
   }
 
   return { title: session.title };
-}
-
-/**
- * Delete several of a user's chats.
- *
- * A chat that cannot be removed (an id from another account, a file that will
- * not unlink) must not abort the batch. the caller gets back what went and
- * what did not, so it can leave the failures selected for a retry.
- */
-export async function deleteChatSessions(
-  userId: string,
-  sessionIds: string[],
-  force: boolean = false,
-): Promise<BulkDeleteResult> {
-  const deleted: string[] = [];
-  const failed: BulkDeleteResult["failed"] = [];
-
-  // A repeated id would report a "not found" failure on its second pass.
-  for (const sessionId of new Set(sessionIds)) {
-    try {
-      await deleteChatSession(userId, sessionId, force);
-      deleted.push(sessionId);
-    } catch (err) {
-      console.error(`Failed to delete chat session ${sessionId}:`, err);
-      failed.push({
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-        ...(err instanceof CoderCleanupError && err.code ? { code: err.code } : {}),
-      });
-    }
-  }
-
-  return { deleted, failed };
 }
 
 /**

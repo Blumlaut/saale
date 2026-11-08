@@ -7,8 +7,9 @@ import { createChatSession } from "@/lib/chat-session";
 import {
   CHAT_PINNED_EVENT,
   CHAT_RENAMED_EVENT,
-  CHAT_SESSIONS_DELETED_EVENT,
+  CHAT_SESSIONS_DELETING_EVENT,
 } from "@/lib/chat/session-events";
+import { useDeletingPoll } from "@/hooks/use-deleting-poll";
 
 /** How a project hands its chats their checkout. */
 export type CoderChatMode = "worktree" | "repo";
@@ -35,6 +36,8 @@ export interface CoderProjectChat {
   lastActivityAt: string;
   pinned: boolean;
   isGenerating: boolean;
+  /** The server is removing this chat, so the row is greyed and goes nowhere. */
+  deleting: boolean;
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
   worktree: { path: string; branch: string; status: string } | null;
@@ -169,13 +172,13 @@ export function useListRefresh(key: string | null = null): string {
     }, LIST_POLL_MS);
 
     window.addEventListener(CHAT_RENAMED_EVENT, bump);
-    window.addEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+    window.addEventListener(CHAT_SESSIONS_DELETING_EVENT, bump);
     window.addEventListener(CHAT_PINNED_EVENT, bump);
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener(CHAT_RENAMED_EVENT, bump);
-      window.removeEventListener(CHAT_SESSIONS_DELETED_EVENT, bump);
+      window.removeEventListener(CHAT_SESSIONS_DELETING_EVENT, bump);
       window.removeEventListener(CHAT_PINNED_EVENT, bump);
       window.removeEventListener("focus", onFocus);
     };
@@ -243,7 +246,14 @@ export function useProjects() {
     "/api/coder/projects",
     refreshKey,
   );
-  return { projects: data?.projects ?? [], loading, error, reload };
+  const projects = data?.projects ?? [];
+  // A chat on its way out leaves its project when the server has removed it, so
+  // the row is asked about until it is gone.
+  useDeletingPoll(
+    projects.some((project) => project.chats.some((chat) => chat.deleting)),
+    reload,
+  );
+  return { projects, loading, error, reload };
 }
 
 /**

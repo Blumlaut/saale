@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
       origin: true,
       coderWorktree: { select: { branch: true } },
       _count: { select: { scriptWatchers: true } },
+      deletingAt: true,
     },
   });
 
@@ -71,6 +72,8 @@ export async function GET(request: NextRequest) {
       messageCount: s.messageCount,
       watcherCount: s._count.scriptWatchers,
       isGenerating: activeSessionIds.has(s.id),
+      // The chat is on its way out: the list greys the row and stops offering it.
+      deleting: s.deletingAt !== null,
       origin: s.origin,
       worktree: s.coderWorktree ? { branch: s.coderWorktree.branch } : null,
       createdAt: s.createdAt.toISOString(),

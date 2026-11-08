@@ -207,11 +207,18 @@ model ChatSession {
   prUrl               String?         @db.VarChar(2048)
   /// When `gh` last answered, null for a chat nothing has asked about yet.
   prCheckedAt         DateTime?
+  /// Set when the user asked for this chat to go. The row stays, greyed, until
+  /// the removal finishes.
+  deletingAt          DateTime?
+  /// The user agreed to lose what the chat's checkout holds, so the removal
+  /// must not stop to ask.
+  deletingForce       Boolean         @default(false)
 
   @@index([userId, createdAt])
   @@index([projectId, lastActivityAt])
   @@index([shareToken])
   @@index([origin, originId])
+  @@index([deletingAt])
   @@map("ChatSession")
 }
 

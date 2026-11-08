@@ -11,20 +11,20 @@
 /** A chat's title changed. Dispatched once the new title is on the server. */
 export const CHAT_RENAMED_EVENT = "chat-renamed";
 
-/**
- * Chats are gone. `detail.ids` carries them, so a list can prune the rows
- * itself instead of paying a refetch.
- */
-export const CHAT_SESSIONS_DELETED_EVENT = "chat-sessions-deleted";
-
 /** Tell every chat list that a title changed. */
 export function broadcastChatRenamed(): void {
   window.dispatchEvent(new CustomEvent(CHAT_RENAMED_EVENT));
 }
 
-/** Tell every chat list which chats were deleted. */
-export function broadcastSessionsDeleted(ids: readonly string[]): void {
-  window.dispatchEvent(new CustomEvent(CHAT_SESSIONS_DELETED_EVENT, { detail: { ids } }));
+/**
+ * Chats the server is removing. They stay in the lists, greyed, until the rows
+ * are gone, so a list that hears this reads itself again.
+ */
+export const CHAT_SESSIONS_DELETING_EVENT = "chat-sessions-deleting";
+
+/** Tell every chat list which chats are on their way out. */
+export function broadcastSessionsDeleting(ids: readonly string[]): void {
+  window.dispatchEvent(new CustomEvent(CHAT_SESSIONS_DELETING_EVENT, { detail: { ids } }));
 }
 
 /**

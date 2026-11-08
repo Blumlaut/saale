@@ -54,6 +54,7 @@ const STORED_ROW = {
   temporary: false,
   messageCount: 2,
   origin: "user",
+  deletingAt: null,
   coderWorktree: null,
   createdAt: NOW,
   updatedAt: NOW,
@@ -164,6 +165,16 @@ describe("GET /api/chat/sessions", () => {
     const body = (await res.json()) as { sessions: Array<{ isGenerating: boolean }> };
 
     expect(body.sessions[0]?.isGenerating).toBe(true);
+  });
+
+  it("marks a chat the server is still removing", async () => {
+    mockFindMany.mockResolvedValue([{ ...STORED_ROW, deletingAt: new Date() }]);
+
+    const res = await GET(listRequest());
+    const body = (await res.json()) as { sessions: Array<{ deleting: boolean }> };
+
+    // The row stays in the list, greyed, until the removal finishes.
+    expect(body.sessions[0]?.deleting).toBe(true);
   });
 
   it("returns the pin state and sorts pinned chats first", async () => {
