@@ -7,7 +7,6 @@ import {
   Folder,
   FolderGit2,
   FolderOpen,
-  Loader2,
   MessageSquare,
   MessageSquarePlus,
   MoreVertical,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -175,12 +175,7 @@ export function ProjectList() {
           <span className="truncate text-sm">{title}</span>
           {chat.pinned && <Pin className="text-muted-foreground h-3 w-3 shrink-0" />}
           {chat.origin === "watcher" && <WatcherChatBadge />}
-          {chat.isGenerating && (
-            <Loader2
-              className="text-primary h-3 w-3 shrink-0 animate-spin"
-              aria-label="Generating"
-            />
-          )}
+          {chat.isGenerating && <Spinner className="text-primary h-3 w-3" label="Generating" />}
         </Link>
         <span
           data-slot="chat-branch"

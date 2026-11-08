@@ -11,6 +11,7 @@ import {
   useImperativeHandle,
 } from "react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { ChatWelcome } from "./chat-empty-state";
 import { Textarea } from "@/components/ui/textarea";
 import { downloadFile } from "@/lib/download";
@@ -956,7 +957,7 @@ function lastAssistantGroupId(groups: readonly MessageGroup[]): string | null {
   return null;
 }
 
-/** One step's prose: the answer bubble, a provider error, or progress dots. */
+/** One step's prose: the answer bubble, a provider error, or the busy spinner. */
 const AssistantMessageBody = memo(function AssistantMessageBody({
   message,
   isStreaming,
@@ -998,7 +999,7 @@ const AssistantMessageBody = memo(function AssistantMessageBody({
         <div
           className={`bg-muted border-border flex items-center gap-1 rounded-2xl border px-4 py-3 ${bubble}`}
         >
-          <span className="animate-pulse">...</span>
+          <Spinner className="text-muted-foreground h-4 w-4" label="Writing the answer" />
         </div>
       )}
     </>

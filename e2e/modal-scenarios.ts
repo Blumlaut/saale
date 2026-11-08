@@ -1330,8 +1330,6 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockConfigurableModels,
     open: async (page) => {
       await openSettingsSection(page, "models");
-      // The inventory lives under a fold, and only the fold's title names it.
-      await click(page, 'button:has-text("Hide the models you never pick.")');
       await click(page, '[title="Set this model\'s context window and output cap"]');
     },
   },
