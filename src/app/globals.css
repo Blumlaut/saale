@@ -382,24 +382,6 @@ These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
   color: #e6c07b;
 }
 
-/* ===== Streaming indicator. subtle breathing dot ===== */
-
-@keyframes pulse-dot {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.25);
-  }
-}
-
-.animate-pulse-dot {
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
 /* ===== Response just arrived. sharp pop then dissolve ===== */
 
 @keyframes pop-dot {

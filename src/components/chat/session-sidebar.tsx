@@ -7,6 +7,7 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Spinner } from "@/components/ui/spinner";
 import { PinnedChatGroup, ChatListRow, WatcherChatBadge } from "@/components/chat/chat-list";
 import { useOnResume } from "@/hooks/use-on-resume";
 import { fetchJson, postJson } from "@/lib/http";
@@ -295,7 +296,7 @@ export function SessionSidebar({
       accessories={
         <>
           {session.isGenerating && (
-            <span className="text-muted-foreground animate-pulse-dot -ml-0.5 h-1 w-1 shrink-0 rounded-full bg-current" />
+            <Spinner className="text-muted-foreground -ml-0.5 h-3 w-3" label="Generating" />
           )}
           {session.forkedFromSessionId && (
             <GitBranch className="text-muted-foreground h-3 w-3 shrink-0" />
