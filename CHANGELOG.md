@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026.11.7 - 2026-11-08
+
+- open the model list by default (cd218efc)
+- use one spinner for running chats (ed325e84)
+- rebuild a pooled session when its settings change (8eec6453)
+- resolve the attribution line before the prompt (8215d895)
+- say what the attribution settings do (fdb756e2)
+- resume a run that stopped between tool calls (4ebddef9)
+- say what the attribution line names (e260d205)
+- name the model in the attribution line (9ea0157a)
+- guard the client boundary in a test (bd03dea1)
+- keep the attribution constants client-safe (d04f2257)
+- carry the instance's attribution in coder commits (b422274e)
+- add the commit attribution columns (3d3e9fd1)
+- cover the merged server list in the user route (512b64bc)
+- drop the shared badge from the admin server list (a075def4)
+- share the row actions and mark shared rows read-only (d21a0172)
+- cover shared prompts in the prompts api (f6184409)
+- test the instance prompt store (12de46ba)
+- cover the shared resource pages in the e2e guards (551c7bf8)
+- add admin sections for shared servers and prompts (43cdf07f)
+- merge instance rows into a user's servers and prompts (80e35d04)
+- add instance-owned mcp server and prompt tables (89f481de)
+
 ## 2026.11.6 - 2026-11-07
 
 - put the decision row among the per-task rows (3a47ddd5)
