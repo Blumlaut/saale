@@ -110,9 +110,10 @@ const INVENTORY = {
   endpointLimits: {},
 };
 
-/** Open the folded inventory, which is where the switches live. */
+/** The inventory is where the switches live. It starts open, and this makes sure. */
 async function openInventory(): Promise<void> {
-  fireEvent.click(screen.getByRole("button", { name: /^Models/ }));
+  const fold = screen.getByRole("button", { name: /^Models/ });
+  if (fold.getAttribute("aria-expanded") !== "true") fireEvent.click(fold);
   await screen.findByText("Fixture Co");
 }
 
