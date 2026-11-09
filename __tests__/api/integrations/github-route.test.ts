@@ -26,6 +26,7 @@ const app = vi.hoisted(() => {
     pollGithubAppLogin: vi.fn(),
     readGithubAppCredentials: vi.fn(),
     readGithubAppStatus: vi.fn(),
+    refreshGithubInstallations: vi.fn(),
     signOutGithubApp: vi.fn(),
     startGithubAppLogin: vi.fn(),
   };
@@ -70,6 +71,7 @@ beforeEach(() => {
   app.readGithubAppCredentials.mockResolvedValue({ appId: "1", enabled: true, slug: "saale" });
   app.pollGithubAppLogin.mockResolvedValue({ state: "idle" });
   app.readGithubAppStatus.mockResolvedValue({ ...AUTHORIZED_APP });
+  app.refreshGithubInstallations.mockResolvedValue(AUTHORIZED_APP.installations);
 });
 
 // ─── Reading both sources ───────────────────────────────────────────────────

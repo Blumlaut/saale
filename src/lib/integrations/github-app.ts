@@ -66,6 +66,16 @@ const POLL_FLOOR_MS = 1_000;
 /** Installations whose repository list is refreshed in one sync. */
 const MAX_REPOSITORY_SYNCS = 50;
 
+/**
+ * How long a read trusts the stored installations.
+ *
+ * The card asks for the status while a sign-in runs and whenever the tab is
+ * looked at, so a sync per read would mean two GitHub calls per installation
+ * every few seconds. A minute is short enough that an installation made in a
+ * browser shows up on its own.
+ */
+const INSTALLATION_SYNC_TTL_SECONDS = 60;
+
 /** An admin's complete credential set, before it is verified. */
 export interface GithubAppInput {
   appId: string;
@@ -587,6 +597,34 @@ export async function syncGithubInstallations(
   });
 
   return readGithubInstallations(userId);
+}
+
+/**
+ * The installations, re-read from GitHub when the stored ones are a minute old.
+ *
+ * This is what makes an installation that happened outside Saale — the browser
+ * tab where the app was installed on an organization — appear on its own.
+ */
+export async function refreshGithubInstallations(
+  userId: string,
+): Promise<GithubInstallationView[]> {
+  const key = `github-install-sync:${userId}`;
+  const fresh = await getRedis()
+    .get(key)
+    .catch((err: unknown) => {
+      console.error(`Failed to read the GitHub installation sync mark of ${userId}:`, err);
+      return null;
+    });
+
+  if (fresh) return readGithubInstallations(userId);
+
+  await getRedis()
+    .set(key, "1", "EX", INSTALLATION_SYNC_TTL_SECONDS)
+    .catch((err: unknown) => {
+      console.error(`Failed to mark the GitHub installation sync of ${userId}:`, err);
+    });
+
+  return syncGithubInstallations(userId);
 }
 
 /** The installations this account may use, as the card lists them. */
