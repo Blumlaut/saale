@@ -25,6 +25,7 @@ export const ADMIN_ACTIONS = [
   "settings",
   "plugins",
   "telegram",
+  "github",
   "workspaces",
   "usage",
 ] as const;

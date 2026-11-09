@@ -117,6 +117,13 @@ export const ADMIN_SECTIONS: Readonly<Record<string, readonly AdminSection[]>> =
       description: "The bot accounts link to and chat through",
     },
     {
+      id: "github",
+      href: "/admin/settings/github",
+      label: "GitHub",
+      description: "The app private repositories go through",
+      action: "github",
+    },
+    {
       id: "search",
       href: "/admin/settings/search",
       label: "Search",
