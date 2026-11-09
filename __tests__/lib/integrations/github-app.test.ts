@@ -68,6 +68,7 @@ import {
   mintGithubInstallationToken,
   pollGithubAppLogin,
   readGithubUserAccess,
+  refreshGithubInstallations,
   saveGithubApp,
   signOutGithubApp,
   startGithubAppLogin,
@@ -565,5 +566,26 @@ describe("signOut and delete", () => {
     expect(db.githubInstallationAccess.deleteMany).toHaveBeenCalled();
     expect(db.githubInstallation.deleteMany).toHaveBeenCalled();
     expect(db.githubApp.deleteMany).toHaveBeenCalledWith({ where: { id: "global" } });
+  });
+});
+
+// ─── Refreshing what GitHub says ────────────────────────────────────────────
+
+describe("refreshGithubInstallations", () => {
+  it("asks GitHub once, then trusts the answer for a minute", async () => {
+    db.githubUserToken.findUnique.mockResolvedValue({
+      userId: USER,
+      encryptedAccessToken: "enc:ghu_access",
+      encryptedRefreshToken: "enc:ghr",
+      accessExpiresAt: new Date(Date.now() + 4 * 60 * 60_000),
+      refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+      login: "octocat",
+    });
+    client.listInstallations.mockResolvedValue([]);
+
+    await refreshGithubInstallations(USER);
+    await refreshGithubInstallations(USER);
+
+    expect(client.listInstallations).toHaveBeenCalledTimes(1);
   });
 });

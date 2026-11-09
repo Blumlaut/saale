@@ -7,6 +7,7 @@ import {
   forgetGithubAppLogin,
   pollGithubAppLogin,
   readGithubAppCredentials,
+  refreshGithubInstallations,
   readGithubAppStatus,
   signOutGithubApp,
   startGithubAppLogin,
@@ -61,6 +62,15 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
   });
 
   const status = await readGithubAppStatus(userId);
+  // An installation made in a browser tab (the app installed on an organization)
+  // is not something this account did inside Saale, so the list is re-read from
+  // GitHub rather than trusted from the last sync.
+  const installations = status.authorized
+    ? await refreshGithubInstallations(userId).catch((err: unknown) => {
+        console.error(`Failed to refresh the GitHub installations of ${userId}:`, err);
+        return status.installations;
+      })
+    : status.installations;
   const authorized = status.authorized
     ? {
         login: status.authorized.login,
@@ -72,7 +82,7 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
     return {
       configured: true,
       authorized,
-      installations: status.installations,
+      installations,
       pending: null,
     };
   }
@@ -80,7 +90,7 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
   return {
     configured: true,
     authorized,
-    installations: status.installations,
+    installations,
     pending:
       poll.state === "pending" || poll.state === "slow-down"
         ? {
