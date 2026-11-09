@@ -191,6 +191,16 @@ describe("saveGithubApp", () => {
     await expect(save()).rejects.toThrow(/app id and the private key/);
     expect(db.githubApp.upsert).not.toHaveBeenCalled();
   });
+
+  it("says the key is unreadable when the key is the problem, not GitHub", async () => {
+    client.createAppJwt.mockRejectedValue(
+      new GithubApiError("The GitHub App private key cannot be read", 0),
+    );
+
+    await expect(save()).rejects.toThrow(/private key could not be read/);
+    expect(client.readAppIdentity).not.toHaveBeenCalled();
+    expect(db.githubApp.upsert).not.toHaveBeenCalled();
+  });
 });
 
 // ─── The sign-in ────────────────────────────────────────────────────────────

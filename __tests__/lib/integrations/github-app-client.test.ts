@@ -22,7 +22,20 @@ const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
 });
 
+// GitHub's "Generate a private key" downloads PKCS#1, which is what an admin
+// pastes; the PKCS#8 pair above is the other format this has to accept.
+const pkcs1 = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs1", format: "pem" },
+});
+
 const APP = { appId: "4711", privateKey };
+
+/** A fixed clock, so the JWT claims are asserted by value. */
+function now(): Date {
+  return new Date("2026-03-01T12:00:00Z");
+}
 
 // ─── Fetch plumbing ─────────────────────────────────────────────────────────
 
@@ -93,6 +106,26 @@ describe("createAppJwt", () => {
     await expect(createAppJwt({ appId: "1", privateKey: "not a key" })).rejects.toBeInstanceOf(
       GithubApiError,
     );
+  });
+
+  it("signs with the PKCS#1 key GitHub hands out", async () => {
+    expect(pkcs1.privateKey).toContain("BEGIN RSA PRIVATE KEY");
+
+    const jwt = await createAppJwt({ appId: "4711", privateKey: pkcs1.privateKey }, now());
+    const verified = await jwtVerify(jwt, await importSPKI(pkcs1.publicKey, "RS256"), {
+      currentDate: now(),
+    });
+
+    expect(verified.payload.iss).toBe("4711");
+  });
+
+  it("accepts a key whose line breaks arrived as literal backslash-n", async () => {
+    const flattened = pkcs1.privateKey.replace(/\n/g, "\\n");
+
+    const jwt = await createAppJwt({ appId: "4711", privateKey: flattened }, now());
+    await expect(
+      jwtVerify(jwt, await importSPKI(pkcs1.publicKey, "RS256"), { currentDate: now() }),
+    ).resolves.toBeTruthy();
   });
 });
 
