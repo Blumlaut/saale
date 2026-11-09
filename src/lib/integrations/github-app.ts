@@ -34,8 +34,12 @@ import {
   GithubApiError,
   createAppJwt,
   createInstallationToken,
+  addInstallationRepository,
   listInstallationRepositories,
+  listInstallationRepositoryRefs,
   listInstallations,
+  listRepositoryChoices,
+  removeInstallationRepository,
   pollDeviceCode,
   readAppIdentity,
   readUserLogin,
@@ -139,6 +143,10 @@ export interface GithubAppStatus {
   configured: boolean;
   /** The app's slug, for the install link GitHub hosts. */
   slug: string | null;
+  /** The app's display name. */
+  name: string | null;
+  /** The permissions the app was registered with. */
+  permissions: Record<string, string> | null;
   /** The account authorized the app. */
   authorized: { login: string; expiresAt: Date | null } | null;
   installations: GithubInstallationView[];
@@ -669,6 +677,137 @@ export async function githubInstallationForOwner(
   return rows.find((row) => !row.suspended && row.accountLogin.toLowerCase() === wanted) ?? null;
 }
 
+// ─── Which repositories an installation may use ─────────────────────────────
+
+/** One installation's repository set, as the picker shows it. */
+export interface GithubRepositoryChoices {
+  /** GitHub's installation id. */
+  installationId: string;
+  accountLogin: string;
+  /** "all" or "selected". */
+  selection: string;
+  /**
+   * Whether Saale can change the set. GitHub only removes repositories from an
+   * installation that was granted "Only select repositories"; an "All
+   * repositories" installation has to be switched on GitHub first.
+   */
+  canManage: boolean;
+  /** Repositories the installation covers. */
+  installed: { id: string; name: string; fullName: string }[];
+  /** Repositories this account could add, with the installed ones marked. */
+  candidates: { id: string; fullName: string; installed: boolean }[];
+}
+
+/** The access row for one installation of one account, or a refusal. */
+async function requireInstallationAccess(userId: string, installationId: string) {
+  const row = await prisma.githubInstallationAccess.findUnique({
+    where: { userId_installationId: { userId, installationId } },
+    include: { installation: true },
+  });
+  if (!row) throw new GithubAppError("This account has no access to that GitHub installation.");
+  if (row.installation.suspendedAt)
+    throw new GithubAppError("That GitHub installation is suspended.");
+  return row.installation;
+}
+
+/**
+ * What one installation covers, and what could be added to it.
+ *
+ * Both reads use the account's own token, so GitHub answers with what *this*
+ * person may do — the picker never offers a repository the user cannot install
+ * the app on.
+ */
+export async function readGithubRepositoryChoices(
+  userId: string,
+  installationId: string,
+): Promise<GithubRepositoryChoices> {
+  const installation = await requireInstallationAccess(userId, installationId);
+  const access = await readGithubUserAccess(userId);
+  if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
+
+  const [installed, all] = await Promise.all([
+    listInstallationRepositoryRefs(access.accessToken, installation.installationId),
+    listRepositoryChoices(access.accessToken),
+  ]);
+
+  const owner = installation.accountLogin.toLowerCase();
+  const installedIds = new Set(installed.map((entry) => entry.id));
+  const candidates = all
+    .filter((entry) => entry.canAdmin && entry.owner.toLowerCase() === owner)
+    .map((entry) => ({
+      id: entry.id,
+      fullName: entry.fullName,
+      installed: installedIds.has(entry.id),
+    }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+  return {
+    installationId: installation.installationId,
+    accountLogin: installation.accountLogin,
+    selection: installation.repositorySelection,
+    canManage: installation.repositorySelection === "selected",
+    installed,
+    candidates,
+  };
+}
+
+/**
+ * Set which repositories the installation covers.
+ *
+ * Only the difference is sent, one call per repository, because GitHub's
+ * endpoint moves exactly one. The stored repository list and the sync mark are
+ * refreshed afterwards, so the card and the next mint see the new set.
+ *
+ * A token already minted for a repository that was just removed keeps working
+ * until it expires (an hour at most) — GitHub does not revoke installation
+ * tokens when an installation shrinks.
+ */
+export async function applyGithubRepositoryChoices(
+  userId: string,
+  installationId: string,
+  repositoryIds: readonly string[],
+): Promise<GithubRepositoryChoices> {
+  const installation = await requireInstallationAccess(userId, installationId);
+  if (installation.repositorySelection !== "selected") {
+    throw new GithubAppError(
+      "This installation covers all repositories. Switch it to “Only select repositories” on GitHub first, then choose here.",
+    );
+  }
+
+  const access = await readGithubUserAccess(userId);
+  if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
+
+  const installed = await listInstallationRepositoryRefs(
+    access.accessToken,
+    installation.installationId,
+  );
+  const wanted = new Set(repositoryIds);
+  const installedIds = new Set(installed.map((entry) => entry.id));
+
+  const add = [...wanted].filter((id) => !installedIds.has(id));
+  const remove = [...installedIds].filter((id) => !wanted.has(id));
+
+  for (const id of add) {
+    await addInstallationRepository(access.accessToken, installation.installationId, id);
+  }
+  for (const id of remove) {
+    await removeInstallationRepository(access.accessToken, installation.installationId, id);
+  }
+
+  // Keep the stored row honest: the card lists it without asking GitHub again.
+  const after = await listInstallationRepositoryRefs(
+    access.accessToken,
+    installation.installationId,
+  );
+  await prisma.githubInstallation.update({
+    where: { id: installation.id },
+    data: { repositories: after.map((entry) => entry.name) },
+  });
+  await forgetGithubInstallationSync(userId);
+
+  return readGithubRepositoryChoices(userId, installationId);
+}
+
 // ─── Minting ────────────────────────────────────────────────────────────────
 
 /**
@@ -752,6 +891,8 @@ export async function readGithubAppStatus(userId: string): Promise<GithubAppStat
   return {
     configured: Boolean(app?.enabled),
     slug: app?.slug ?? null,
+    name: app?.name ?? null,
+    permissions: app?.permissions ?? null,
     authorized: token ? { login: token.login, expiresAt: token.accessExpiresAt } : null,
     installations: token ? await readGithubInstallations(userId) : [],
   };
