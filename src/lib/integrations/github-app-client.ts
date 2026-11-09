@@ -23,6 +23,7 @@
  * than the interval GitHub names.
  */
 
+import { createPrivateKey } from "node:crypto";
 import { importPKCS8, SignJWT } from "jose";
 
 const API_BASE = "https://api.github.com";
@@ -143,6 +144,24 @@ export class GithubApiError extends Error {
 // ─── The app's own JWT ───────────────────────────────────────────────────────
 
 /**
+ * The app's key as PKCS#8, whatever GitHub handed out.
+ *
+ * GitHub's "Generate a private key" downloads a **PKCS#1** key
+ * (`-----BEGIN RSA PRIVATE KEY-----`), while `jose` only imports PKCS#8
+ * (`-----BEGIN PRIVATE KEY-----`). Node reads either, so the key is normalised
+ * through it rather than asking an admin to convert a file.
+ *
+ * A stray `\n` sequence — a key copied out of a JSON secret instead of the file
+ * — is turned back into a line break, because that copy is the other way this
+ * fails and it looks identical to a wrong key.
+ */
+function pkcs8Pem(pem: string): string {
+  const literal = pem.includes("\n") ? pem : pem.replace(/\\n/g, "\n");
+  const key = createPrivateKey(literal);
+  return key.export({ type: "pkcs8", format: "pem" }).toString();
+}
+
+/**
  * The JWT that authenticates this instance as the app.
  *
  * `iss` is the app id, and the token lives nine minutes because GitHub rejects
@@ -157,7 +176,7 @@ export async function createAppJwt(
 
   let key: Awaited<ReturnType<typeof importPKCS8>>;
   try {
-    key = await importPKCS8(app.privateKey, "RS256");
+    key = await importPKCS8(pkcs8Pem(app.privateKey), "RS256");
   } catch (err) {
     console.error("The saved GitHub App private key is not a usable PEM key:", err);
     throw new GithubApiError("The GitHub App private key cannot be read", 0);

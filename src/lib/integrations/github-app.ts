@@ -220,16 +220,24 @@ export async function saveGithubApp(input: GithubAppInput): Promise<GithubAppSum
     throw new GithubAppError("The private key has to be the PEM file GitHub gave you.");
   }
 
-  const jwt = await createAppJwt({ appId, privateKey });
-  const identity = await readAppIdentity(jwt).catch((err: unknown) => {
+  let identity: Awaited<ReturnType<typeof readAppIdentity>>;
+  try {
+    const jwt = await createAppJwt({ appId, privateKey });
+    identity = await readAppIdentity(jwt);
+  } catch (err) {
     console.error("GitHub did not accept the app credentials an admin saved:", err);
     if (err instanceof GithubApiError) {
+      // A key this build cannot read is the admin's file, not GitHub refusing
+      // it: say which of the two it is, so the form can be fixed on the spot.
+      const unreadable = err.status === 0 && /private key/i.test(err.message);
       throw new GithubAppError(
-        `GitHub refused these credentials: ${err.message}. Check the app id and the private key.`,
+        unreadable
+          ? "The private key could not be read. Paste the complete .pem file GitHub generated, including the BEGIN and END lines."
+          : `GitHub refused these credentials: ${err.message}. Check the app id and the private key.`,
       );
     }
     throw err;
-  });
+  }
 
   // A JSON column takes a value or a database null, never `undefined`
   // (`exactOptionalPropertyTypes`), so an absent permissions map is left out.
