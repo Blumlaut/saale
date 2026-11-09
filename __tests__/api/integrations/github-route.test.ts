@@ -42,6 +42,7 @@ const IDLE_CLI = { credential: null, pending: null, error: null };
 
 const AUTHORIZED_APP = {
   configured: true,
+  slug: "askguenther",
   authorized: { login: "octocat", expiresAt: new Date("2026-05-01T20:00:00Z") },
   installations: [
     {

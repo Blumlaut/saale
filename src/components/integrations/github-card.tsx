@@ -15,6 +15,11 @@ import {
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import { useGithub } from "@/hooks/use-github";
 
+/** Where GitHub hosts the install page for one app. */
+function installUrl(slug: string, existing: boolean): string {
+  return `https://github.com/apps/${slug}/installations/${existing ? "" : "new"}`;
+}
+
 /** GitHub is a workspace sign-in rather than a registry integration, so it carries its own metadata. */
 const GITHUB_BOX: IntegrationBoxInfo = {
   name: "GitHub",
@@ -106,6 +111,19 @@ export function GithubCard() {
                   Sign out
                 </Button>
               </div>
+
+              {app.slug && (
+                <Button variant="secondary" size="sm" className="h-7 px-2 text-xs" asChild>
+                  <a
+                    href={installUrl(app.slug, app.installations.length > 0)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {app.installations.length > 0 ? "Manage repositories" : "Install on GitHub"}
+                    <ExternalLink className="ml-1 h-3 w-3" />
+                  </a>
+                </Button>
+              )}
 
               {app.authorized && app.installations.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">

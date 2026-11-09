@@ -7,6 +7,8 @@ import type { GithubStatus } from "@/lib/integrations/github";
 /** What the card needs of one GitHub source. */
 export interface GithubAppSection {
   configured: boolean;
+  /** The app's slug, for the install link GitHub hosts. */
+  slug: string | null;
   authorized: { login: string; expiresAt: string | null } | null;
   installations: {
     installationId: string;
@@ -28,6 +30,7 @@ interface GithubConnection {
 /** Before the first read: nothing known, so nothing claimed. */
 const UNKNOWN_APP: GithubAppSection = {
   configured: false,
+  slug: null,
   authorized: null,
   installations: [],
   pending: null,

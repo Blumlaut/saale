@@ -137,6 +137,8 @@ export interface GithubInstallationView {
 export interface GithubAppStatus {
   /** An admin saved a credential set and left it switched on. */
   configured: boolean;
+  /** The app's slug, for the install link GitHub hosts. */
+  slug: string | null;
   /** The account authorized the app. */
   authorized: { login: string; expiresAt: Date | null } | null;
   installations: GithubInstallationView[];
@@ -749,9 +751,25 @@ export async function readGithubAppStatus(userId: string): Promise<GithubAppStat
 
   return {
     configured: Boolean(app?.enabled),
+    slug: app?.slug ?? null,
     authorized: token ? { login: token.login, expiresAt: token.accessExpiresAt } : null,
     installations: token ? await readGithubInstallations(userId) : [],
   };
+}
+
+/**
+ * Forget the sync mark, so the next status read asks GitHub again.
+ *
+ * GitHub's install flow returns the browser to the app's setup URL, and this is
+ * what that redirect calls: the installation just happened, so a card that
+ * waited out the minute would look broken for no reason.
+ */
+export async function forgetGithubInstallationSync(userId: string): Promise<void> {
+  await getRedis()
+    .del(`github-install-sync:${userId}`)
+    .catch((err: unknown) => {
+      console.error(`Failed to clear the GitHub installation sync mark of ${userId}:`, err);
+    });
 }
 
 // ─── Redis keys and helpers ─────────────────────────────────────────────────
