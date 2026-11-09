@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.8 - 2026-11-09
+
+- keep the models test off the fold's default (38cd7cdd)
+- delete chats in the background, greyed until gone (642403b3)
+
 ## 2026.11.7 - 2026-11-08
 
 - open the model list by default (cd218efc)
