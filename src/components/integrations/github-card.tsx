@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, Check, Copy, ExternalLink, GitBranch, Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
-import { useGithub } from "@/hooks/use-github";
+import { useGithub, type GithubRepositoryChoices } from "@/hooks/use-github";
 
 /** Where GitHub hosts the install page for one app. */
 function installUrl(slug: string, existing: boolean): string {
@@ -44,9 +45,21 @@ const MAX_NAMED_INSTALLATIONS = 3;
  * terminal or a `GH_TOKEN` kept in the sandbox variables.
  */
 export function GithubCard() {
-  const { app, cli, loading, starting, disconnecting, error, connect, cancel, disconnect } =
-    useGithub();
+  const {
+    app,
+    cli,
+    loading,
+    starting,
+    disconnecting,
+    error,
+    connect,
+    cancel,
+    disconnect,
+    loadRepositories,
+    saveRepositories,
+  } = useGithub();
   const [open, setOpen] = useState(false);
+  const [picking, setPicking] = useState<string | null>(null);
 
   const message = error ?? cli.error;
   const connected = Boolean(app.authorized) || Boolean(cli.credential);
@@ -126,16 +139,27 @@ export function GithubCard() {
               )}
 
               {app.authorized && app.installations.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="space-y-1">
                   {app.installations
                     .filter((entry) => !entry.suspended)
                     .map((entry) => (
-                      <span
+                      <div
                         key={entry.installationId}
-                        className="border-border/60 rounded-full border px-2 py-0.5 font-mono text-[11px]"
+                        className="flex items-center justify-between gap-2"
                       >
-                        {entry.accountLogin}
-                      </span>
+                        <span className="font-mono text-[11px]">{entry.accountLogin}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() => setPicking(entry.installationId)}
+                        >
+                          {entry.repositorySelection === "selected" && entry.repositories
+                            ? `${entry.repositories.length} repositories`
+                            : "All repositories"}
+                        </Button>
+                      </div>
                     ))}
                 </div>
               )}
@@ -190,6 +214,16 @@ export function GithubCard() {
         )}
       </IntegrationBox>
 
+      {picking && (
+        <RepositoryDialog
+          installationId={picking}
+          slug={app.slug}
+          onClose={() => setPicking(null)}
+          load={loadRepositories}
+          save={saveRepositories}
+        />
+      )}
+
       <Dialog open={open} onOpenChange={close}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -199,10 +233,34 @@ export function GithubCard() {
             </DialogTitle>
             <DialogDescription>
               {app.configured
-                ? "Approve the code once and this account is connected to the instance's GitHub App."
+                ? "One code to prove this GitHub account is yours, then pick the repositories on GitHub. Saale never receives access to anything you do not install it on."
                 : "Your workspace runs GitHub's own sign-in. Approve the code once and every chat, worktree and command uses it."}
             </DialogDescription>
           </DialogHeader>
+
+          {app.configured && app.permissions && (
+            <div className="border-border/60 space-y-2 rounded-2xl border px-3 py-2">
+              <p className="text-xs font-medium">
+                {app.name ?? "GitHub App"} may, on installed repositories:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(app.permissions)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([name, level]) => (
+                    <span
+                      key={name}
+                      className="border-border/60 rounded-full border px-2 py-0.5 font-mono text-[11px]"
+                    >
+                      {name}: {level}
+                    </span>
+                  ))}
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Private repositories it is not installed on stay invisible, and no other account can
+                use your installation.
+              </p>
+            </div>
+          )}
 
           <SignInBody
             connected={
@@ -345,5 +403,144 @@ function SignInBody({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Which repositories one installation covers.
+ *
+ * GitHub is the authority: the list comes from what this account may add (admin
+ * access), and the change is applied through the installation itself — so the
+ * limit holds for every token Saale mints later, not just for one command.
+ */
+function RepositoryDialog({
+  installationId,
+  slug,
+  onClose,
+  load,
+  save,
+}: {
+  installationId: string;
+  slug: string | null;
+  onClose: () => void;
+  load: (installationId: string) => Promise<GithubRepositoryChoices | null>;
+  save: (
+    installationId: string,
+    repositoryIds: readonly string[],
+  ) => Promise<GithubRepositoryChoices | null>;
+}) {
+  const [choices, setChoices] = useState<GithubRepositoryChoices | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void load(installationId).then((data) => {
+      if (cancelled || !data) return;
+      setChoices(data);
+      setSelected(new Set(data.installed.map((entry) => entry.id)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [installationId, load]);
+
+  const toggle = (id: string, on: boolean) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const apply = async () => {
+    setBusy(true);
+    setError(null);
+    const data = await save(installationId, [...selected]);
+    setBusy(false);
+    if (!data) {
+      setError("The selection could not be saved.");
+      return;
+    }
+    toast.success("Repositories updated");
+    onClose();
+  };
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GitBranch className="h-5 w-5" />
+            Repositories
+          </DialogTitle>
+          <DialogDescription>
+            {choices
+              ? `Which repositories Saale may use on ${choices.accountLogin}.`
+              : "Loading what this installation covers…"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {choices && !choices.canManage ? (
+          <div className="space-y-2 py-2">
+            <p className="text-sm">
+              This installation covers all repositories, so it cannot be narrowed here.
+            </p>
+            <p className="text-muted-foreground text-xs">
+              On GitHub, switch it to “Only select repositories”, then choose the set in Saale.
+            </p>
+            {slug && (
+              <Button variant="secondary" size="sm" asChild>
+                <a href={installUrl(slug, true)} target="_blank" rel="noopener noreferrer">
+                  Manage on GitHub
+                  <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                </a>
+              </Button>
+            )}
+          </div>
+        ) : choices ? (
+          <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
+            {choices.candidates.length === 0 && (
+              <p className="text-muted-foreground py-2 text-xs">
+                No repository of this account is one you administer, so there is nothing to add.
+              </p>
+            )}
+            {choices.candidates.map((entry) => (
+              <label
+                key={entry.id}
+                className="hover:bg-muted/60 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5"
+              >
+                <Checkbox
+                  checked={selected.has(entry.id)}
+                  onCheckedChange={(checked) => toggle(entry.id, checked === true)}
+                />
+                <span className="truncate font-mono text-xs">{entry.fullName}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 py-4">
+            <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+            <span className="text-muted-foreground text-sm">Asking GitHub…</span>
+          </div>
+        )}
+
+        {error && <p className="text-destructive text-xs">{error}</p>}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          {choices?.canManage && (
+            <Button size="sm" onClick={() => void apply()} disabled={busy}>
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
