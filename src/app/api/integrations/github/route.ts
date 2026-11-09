@@ -34,6 +34,10 @@ export interface GithubAppSection {
   configured: boolean;
   /** The app's slug, for the install link GitHub hosts. */
   slug: string | null;
+  /** The app's display name. */
+  name: string | null;
+  /** The permissions the app was registered with. */
+  permissions: Record<string, string> | null;
   /** The account authorized it. */
   authorized: { login: string; expiresAt: string | null } | null;
   /** Installations this account may use. */
@@ -53,7 +57,15 @@ export interface GithubAppSection {
 async function readAppSection(userId: string): Promise<GithubAppSection> {
   const app = await readGithubAppCredentials();
   if (!app?.enabled) {
-    return { configured: false, slug: null, authorized: null, installations: [], pending: null };
+    return {
+      configured: false,
+      slug: null,
+      name: null,
+      permissions: null,
+      authorized: null,
+      installations: [],
+      pending: null,
+    };
   }
 
   // A card that asks for the status is also what drives the sign-in: one poll per
@@ -84,6 +96,8 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
     return {
       configured: true,
       slug: status.slug,
+      name: status.name,
+      permissions: status.permissions,
       authorized,
       installations,
       pending: null,
@@ -93,6 +107,8 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
   return {
     configured: true,
     slug: status.slug,
+    name: status.name,
+    permissions: status.permissions,
     authorized,
     installations,
     pending:
@@ -139,6 +155,8 @@ export async function POST() {
         app: {
           configured: true,
           slug: app.slug,
+          name: null,
+          permissions: null,
           authorized: null,
           installations: [],
           pending: {
@@ -162,7 +180,15 @@ export async function POST() {
   }
 
   return NextResponse.json({
-    app: { configured: false, slug: null, authorized: null, installations: [], pending: null },
+    app: {
+      configured: false,
+      slug: null,
+      name: null,
+      permissions: null,
+      authorized: null,
+      installations: [],
+      pending: null,
+    },
     cli: await startGithubLogin(userId),
   });
 }
