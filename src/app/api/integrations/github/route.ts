@@ -32,6 +32,8 @@ import {
 export interface GithubAppSection {
   /** An admin saved an app and left it switched on. */
   configured: boolean;
+  /** The app's slug, for the install link GitHub hosts. */
+  slug: string | null;
   /** The account authorized it. */
   authorized: { login: string; expiresAt: string | null } | null;
   /** Installations this account may use. */
@@ -51,7 +53,7 @@ export interface GithubAppSection {
 async function readAppSection(userId: string): Promise<GithubAppSection> {
   const app = await readGithubAppCredentials();
   if (!app?.enabled) {
-    return { configured: false, authorized: null, installations: [], pending: null };
+    return { configured: false, slug: null, authorized: null, installations: [], pending: null };
   }
 
   // A card that asks for the status is also what drives the sign-in: one poll per
@@ -81,6 +83,7 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
   if (poll.state === "expired" || poll.state === "denied") {
     return {
       configured: true,
+      slug: status.slug,
       authorized,
       installations,
       pending: null,
@@ -89,6 +92,7 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
 
   return {
     configured: true,
+    slug: status.slug,
     authorized,
     installations,
     pending:
@@ -134,6 +138,7 @@ export async function POST() {
       return NextResponse.json({
         app: {
           configured: true,
+          slug: app.slug,
           authorized: null,
           installations: [],
           pending: {
@@ -157,7 +162,7 @@ export async function POST() {
   }
 
   return NextResponse.json({
-    app: { configured: false, authorized: null, installations: [], pending: null },
+    app: { configured: false, slug: null, authorized: null, installations: [], pending: null },
     cli: await startGithubLogin(userId),
   });
 }
