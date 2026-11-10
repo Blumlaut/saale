@@ -63,6 +63,18 @@ function renderHarness(onQuote: (text: string) => void) {
   return render(<Harness onQuote={onQuote} />);
 }
 
+// The chip carries the surface, the position and the fade; the button inside it
+// is the focusable target.
+function chipOf(container: HTMLElement): HTMLElement {
+  return container.querySelector<HTMLElement>('[data-slot="selection-quote-chip"]')!;
+}
+
+function buttonOf(container: HTMLElement): HTMLButtonElement {
+  return container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Quote selection into your reply"]',
+  )!;
+}
+
 describe("SelectionQuoteButton", () => {
   beforeEach(() => {
     clearSelection();
@@ -76,15 +88,17 @@ describe("SelectionQuoteButton", () => {
 
   it("appears when text inside a quoteable bubble is selected (happy path)", () => {
     const onQuote = vi.fn();
-    renderHarness(onQuote);
+    const { container } = renderHarness(onQuote);
     const message = document.getElementById("message-text")!;
 
     selectText(message, 4, 9); // "quick"
 
+    const chip = chipOf(container);
+    expect(chip).toHaveClass("opacity-100");
+    expect(chip).toHaveClass("pointer-events-auto");
+    expect(chip).not.toHaveAttribute("aria-hidden");
+
     const button = screen.getByRole("button", { name: "Quote selection into your reply" });
-    expect(button).toHaveClass("opacity-100");
-    expect(button).toHaveClass("pointer-events-auto");
-    expect(button).not.toHaveAttribute("aria-hidden");
     expect(button).toHaveAttribute("tabindex", "0");
 
     fireEvent.click(button);
@@ -99,14 +113,13 @@ describe("SelectionQuoteButton", () => {
     selectText(outside, 0, 5);
 
     // aria-hidden keeps it out of the a11y tree, so query the DOM directly.
-    const button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Quote selection into your reply"]',
-    )!;
-    expect(button).toHaveClass("opacity-0");
-    expect(button).toHaveClass("pointer-events-none");
+    const chip = chipOf(container);
+    const button = buttonOf(container);
+    expect(chip).toHaveClass("opacity-0");
+    expect(chip).toHaveClass("pointer-events-none");
     // Hidden must be invisible to a11y tree and unfocusable (opacity alone
     // would keep it in the tab order).
-    expect(button).toHaveAttribute("aria-hidden", "true");
+    expect(chip).toHaveAttribute("aria-hidden", "true");
     expect(button).toHaveAttribute("tabindex", "-1");
   });
 
@@ -125,33 +138,29 @@ describe("SelectionQuoteButton", () => {
       document.dispatchEvent(new Event("selectionchange"));
     });
 
-    const button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Quote selection into your reply"]',
-    )!;
-    expect(button).toHaveClass("opacity-0");
+    const chip = chipOf(container);
+    expect(chip).toHaveClass("opacity-0");
   });
 
   it("hides for a collapsed selection", () => {
     const { container } = renderHarness(vi.fn());
     const message = document.getElementById("message-text")!;
-    const button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="Quote selection into your reply"]',
-    )!;
+    const chip = chipOf(container);
 
     selectText(message, 4, 4); // collapsed
-    expect(button).toHaveClass("opacity-0");
+    expect(chip).toHaveClass("opacity-0");
   });
 
   it("hides for a whitespace-only selection", () => {
     const { container } = renderHarness(vi.fn());
-    const button = container.querySelector('button[aria-label="Quote selection into your reply"]')!;
+    const chip = chipOf(container);
 
     // Selecting a run of spaces inside a bubble quotes nothing.
     const whitespace = document.createElement("span");
     whitespace.textContent = "   ";
     container.querySelector("[data-quoteable]")!.appendChild(whitespace);
     selectText(whitespace, 0, 3);
-    expect(button).toHaveClass("opacity-0");
+    expect(chip).toHaveClass("opacity-0");
   });
 
   it("places the button at the selection's viewport offset, not the content offset", () => {
@@ -164,10 +173,10 @@ describe("SelectionQuoteButton", () => {
 
     selectText(message, 4, 9); // "quick"
 
-    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
+    const chip = chipOf(container);
     // Mocked range rect: top 10, bottom 22 (container bounds are 0). Below-
     // placement: 22 + GAP. A content-offset calculation would report 528 here.
-    expect(button.style.top).toBe("28px");
+    expect(chip.style.top).toBe("28px");
   });
 
   it("clamps the button inside the container's visible area", () => {
@@ -178,26 +187,26 @@ describe("SelectionQuoteButton", () => {
 
     selectText(message, 4, 9);
 
-    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
+    const chip = chipOf(container);
     // Below-placement (28px) would hang off the 30px-tall panel  clamp it in.
-    expect(button.style.top).toBe("6px");
+    expect(chip.style.top).toBe("6px");
   });
 
   it("keeps the button at the selection's spot while it fades out (no corner flash)", () => {
-    renderHarness(vi.fn());
+    const { container } = renderHarness(vi.fn());
     const message = document.getElementById("message-text")!;
 
     selectText(message, 4, 9);
-    const button = screen.getByRole("button", { name: "Quote selection into your reply" });
-    const topWhileVisible = button.style.top;
+    const chip = chipOf(container);
+    const topWhileVisible = chip.style.top;
     expect(topWhileVisible).toBe("28px");
 
     clearSelection();
 
     // Hidden, but still at the selection's spot: the opacity transition must
     // fade in place, not from the top-left corner.
-    expect(button).toHaveClass("opacity-0");
-    expect(button.style.top).toBe(topWhileVisible);
+    expect(chip).toHaveClass("opacity-0");
+    expect(chip.style.top).toBe(topWhileVisible);
   });
 
   it("quotes the selection with the keyboard shortcut (Ctrl+Shift+Q)", () => {

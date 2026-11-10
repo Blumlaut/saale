@@ -140,20 +140,13 @@ export function SelectionQuoteButton({
   }
 
   return (
-    <Button
-      type="button"
-      size="xs"
-      variant="outline"
-      aria-label="Quote selection into your reply"
+    // The chip is the overlay surface (popover fill, 1px border, elevation),
+    // so it reads against a message bubble instead of dissolving into it.
+    <div
+      data-slot="selection-quote-chip"
       aria-hidden={selection ? undefined : true}
-      tabIndex={selection ? 0 : -1}
-      title="Quote selection (⌘/Ctrl+Shift+Q)"
-      // Prevent the click from stealing focus. that would collapse the
-      // selection before onQuote could read it (kept in state, but still).
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={quote}
       className={cn(
-        "bg-popover border-border absolute z-10 -translate-x-1/2 border whitespace-nowrap transition-opacity",
+        "bg-popover border-input absolute z-10 -translate-x-1/2 rounded-[min(var(--radius-md),10px)] border shadow-2xl transition-opacity",
         selection ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
       )}
       style={
@@ -165,8 +158,22 @@ export function SelectionQuoteButton({
           : { top: 0, left: 0 }
       }
     >
-      <TextQuote className="h-3 w-3" />
-      Quote
-    </Button>
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        aria-label="Quote selection into your reply"
+        tabIndex={selection ? 0 : -1}
+        title="Quote selection (⌘/Ctrl+Shift+Q)"
+        // Prevent the click from stealing focus. that would collapse the
+        // selection before onQuote could read it (kept in state, but still).
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={quote}
+        className="whitespace-nowrap"
+      >
+        <TextQuote className="h-3 w-3" />
+        Quote
+      </Button>
+    </div>
   );
 }
