@@ -527,6 +527,13 @@ export function GithubAppPanel() {
                   </div>
                 )}
 
+                <p className="text-muted-foreground text-xs">
+                  “Where can this GitHub App be installed?” — choose{" "}
+                  <span className="text-foreground">Any account</span> when more than one account of
+                  this workspace should install the app. On “Only this account”, everybody else can
+                  authorize it but never install it, so they see no repositories.
+                </p>
+
                 <div className="border-border/60 overflow-hidden rounded-2xl border">
                   <div className="border-border/60 flex items-baseline justify-between gap-2 border-b px-3 py-2">
                     <p className="text-xs font-medium">Repository permissions</p>

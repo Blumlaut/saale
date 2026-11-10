@@ -123,3 +123,34 @@ is read on every reconcile, so changing it takes effect at the next read.
 | The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                               |
 | A push fails with `403` in a chat                | the installation does not cover that repository                        | add it in the picker, or on GitHub for an "All repositories" installation |
 | Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                                     |
+
+## Several accounts on one instance
+
+The app belongs to the instance; the connection belongs to the person.
+
+| Where                      | What                                                     |
+| -------------------------- | -------------------------------------------------------- |
+| `GithubApp`                | the credentials an admin saved, shared by every account  |
+| `GithubInstallation`       | one row per installation on GitHub, whoever installed it |
+| `GithubUserToken`          | each account's own authorization (8 h, refreshed)        |
+| `GithubInstallationAccess` | which installations one account may use                  |
+| `AppSettings.githubSource` | per account: `""`, `app` or `cli`                        |
+
+So a second account uses the same app without any admin work: it connects in
+_Settings → Integrations → GitHub_, authorizes the app with its own GitHub
+login, and sees the installations GitHub says it can reach — its own, and those
+of organizations it is a member of. An installation on somebody else's personal
+account stays invisible, because GitHub does not grant it.
+
+Two things decide what a stranger gets:
+
+- **“Any account”** at app registration. On “Only this account”, other accounts
+  can authorize the app but cannot install it, so they reach no repository.
+- **Who installs it, sets the ceiling.** The installer picks the repositories
+  (or grants all), and Saale narrows further per chat. Changing the set later
+  needs admin access on the repository, which is why a plain member sees an
+  empty picker.
+
+Signing one account out removes only its own token and access rows; the
+installation stays, because another account may still use it. Deleting the app
+in the admin panel removes everything.
