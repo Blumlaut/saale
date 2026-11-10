@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
@@ -103,6 +104,7 @@ export function GithubAppPanel() {
   const [wizard, setWizard] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
+  const [acknowledged, setAcknowledged] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -213,6 +215,23 @@ export function GithubAppPanel() {
 
   const editing = wizard || !app;
   const currentStep = STEPS.find((entry) => entry.id === step) ?? STEPS[0];
+
+  /**
+   * What still has to happen before the wizard may move on.
+   *
+   * Step 1 has nothing Saale can check — the app is created in another browser
+   * tab — so the admin confirms it there. Step 3 only exists once a credential
+   * set was saved and verified, which is what `app` records.
+   */
+  const blockedBecause =
+    step === 1 && !acknowledged
+      ? "Confirm that the app is created to continue."
+      : step === 2 && !app
+        ? "Save and verify the credentials to continue."
+        : null;
+
+  /** A step may be opened when the one before it is done. */
+  const canOpenStep = (target: 1 | 2 | 3): boolean => target < 3 || Boolean(app);
 
   return (
     <div className="space-y-4">
@@ -343,8 +362,9 @@ export function GithubAppPanel() {
                     <button
                       type="button"
                       onClick={() => setStep(entry.id)}
+                      disabled={!canOpenStep(entry.id)}
                       aria-current={active ? "step" : undefined}
-                      className="flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-1 focus-visible:outline-2"
+                      className="flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-1 focus-visible:outline-2 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span
                         className={cn(
@@ -442,6 +462,20 @@ export function GithubAppPanel() {
                     off.
                   </p>
                 </div>
+
+                <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  <Checkbox
+                    checked={acknowledged}
+                    onCheckedChange={(checked) => setAcknowledged(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    I created the app on GitHub with these URLs and permissions
+                    <span className="text-muted-foreground block text-xs">
+                      Nothing can check that from here — it happens in the other tab.
+                    </span>
+                  </span>
+                </label>
               </div>
             )}
 
@@ -545,6 +579,8 @@ export function GithubAppPanel() {
               </div>
             )}
 
+            {blockedBecause && <p className="text-muted-foreground text-xs">{blockedBecause}</p>}
+
             <div className="border-border/60 flex items-center justify-between gap-2 border-t pt-3">
               <Button
                 variant="ghost"
@@ -558,7 +594,12 @@ export function GithubAppPanel() {
 
               <div className="flex items-center gap-2">
                 {step < 3 && (
-                  <Button variant="outline" size="sm" onClick={() => setStep((step + 1) as 2 | 3)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStep((step + 1) as 2 | 3)}
+                    disabled={Boolean(blockedBecause)}
+                  >
                     Next
                     <ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Button>
