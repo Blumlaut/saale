@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.9 - 2026-11-10
+
+- bump the pi packages to 1.5.1 (5db69fa3)
+
 ## 2026.11.8 - 2026-11-09
 
 - keep the models test off the fold's default (38cd7cdd)
