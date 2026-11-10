@@ -17,12 +17,21 @@ allowBuilds:
 # The pi packages, jiti and defuddle declare only an `import` export condition,
 # which tsx's CJS loader cannot require. Each patch adds a `default` condition.
 patchedDependencies:
-  '@earendil-works/pi-agent-core@1.5.0': patches/@earendil-works__pi-agent-core@1.5.0.patch
-  '@earendil-works/pi-ai@1.5.0': patches/@earendil-works__pi-ai@1.5.0.patch
-  '@earendil-works/pi-codemode@1.5.0': patches/@earendil-works__pi-codemode@1.5.0.patch
-  '@earendil-works/pi-coding-agent@1.5.0': patches/@earendil-works__pi-coding-agent@1.5.0.patch
-  '@earendil-works/pi-mcp@1.5.0': patches/@earendil-works__pi-mcp@1.5.0.patch
-  '@earendil-works/pi-schema@1.5.0': patches/@earendil-works__pi-schema@1.5.0.patch
-  '@earendil-works/pi-telemetry@1.5.0': patches/@earendil-works__pi-telemetry@1.5.0.patch
+  '@earendil-works/pi-agent-core@1.5.1': patches/@earendil-works__pi-agent-core@1.5.1.patch
+  '@earendil-works/pi-ai@1.5.1': patches/@earendil-works__pi-ai@1.5.1.patch
+  '@earendil-works/pi-codemode@1.5.1': patches/@earendil-works__pi-codemode@1.5.1.patch
+  '@earendil-works/pi-coding-agent@1.5.1': patches/@earendil-works__pi-coding-agent@1.5.1.patch
+  '@earendil-works/pi-mcp@1.5.1': patches/@earendil-works__pi-mcp@1.5.1.patch
+  '@earendil-works/pi-schema@1.5.1': patches/@earendil-works__pi-schema@1.5.1.patch
+  '@earendil-works/pi-telemetry@1.5.1': patches/@earendil-works__pi-telemetry@1.5.1.patch
   'defuddle@0.19.6': patches/defuddle@0.19.6.patch
   jiti@2.7.0: patches/jiti@2.7.0.patch
+minimumReleaseAgeExclude:
+  - '@earendil-works/pi-agent-core@1.5.1'
+  - '@earendil-works/pi-ai@1.5.1'
+  - '@earendil-works/pi-codemode@1.5.1'
+  - '@earendil-works/pi-coding-agent@1.5.1'
+  - '@earendil-works/pi-mcp@1.5.1'
+  - '@earendil-works/pi-schema@1.5.1'
+  - '@earendil-works/pi-telemetry@1.5.1'
+  - '@earendil-works/pi-tui@1.5.1'

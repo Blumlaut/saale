@@ -219,6 +219,44 @@ describe("file operations", () => {
     );
   });
 
+  it("streams a file's bytes in chunks, under the workspace rule", async () => {
+    const content = "line\n".repeat(40_000);
+    await fs.writeFile(path.join(root, "big.log"), content);
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of operations().read.createReadStream!(path.join(root, "big.log"), {})) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(Buffer.concat(chunks).toString()).toBe(content);
+  });
+
+  it("streams nothing once the caller has aborted", async () => {
+    await fs.writeFile(path.join(root, "big.log"), "line\n".repeat(40_000));
+    const controller = new AbortController();
+    controller.abort();
+
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of operations().read.createReadStream!(path.join(root, "big.log"), {
+      signal: controller.signal,
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([]);
+  });
+
+  it("refuses to stream a path outside the workspace", async () => {
+    const stream = operations().read.createReadStream!("/etc/passwd", {});
+
+    await expect(
+      (async () => {
+        for await (const chunk of stream) void chunk;
+      })(),
+    ).rejects.toThrow(/outside the workspace/);
+  });
+
   it("sniffs an image so the model gets pixels rather than bytes", async () => {
     const ops = operations();
     const png = Buffer.from(

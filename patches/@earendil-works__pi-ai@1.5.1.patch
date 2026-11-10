@@ -2,7 +2,7 @@ diff --git a/package.json b/package.json
 index 57e8f262c954d7c9277adea1e49348e0bcb2212a..6c7261ec61536c8a7ae4c9cd5a8ddb3548531069 100644
 --- a/package.json
 +++ b/package.json
-@@ -13,39 +13,48 @@
+@@ -13,47 +13,58 @@
  	"exports": {
  		".": {
  			"types": "./dist/index.d.ts",
@@ -57,6 +57,18 @@ index 57e8f262c954d7c9277adea1e49348e0bcb2212a..6c7261ec61536c8a7ae4c9cd5a8ddb35
 -			"import": "./dist/bun-oauth.js"
 +			"import": "./dist/bun-oauth.js",
 +			"default": "./dist/bun-oauth.js"
+ 		},
+ 		"./lazy-bedrock-provider": {
+ 			"types": "./dist/lazy-bedrock-provider.d.ts",
+-			"import": "./dist/lazy-bedrock-provider.js"
++			"import": "./dist/lazy-bedrock-provider.js",
++			"default": "./dist/lazy-bedrock-provider.js"
+ 		},
+ 		"./lazy-oauth": {
+ 			"types": "./dist/lazy-oauth.d.ts",
+-			"import": "./dist/lazy-oauth.js"
++			"import": "./dist/lazy-oauth.js",
++			"default": "./dist/lazy-oauth.js"
  		}
  	},
  	"bin": {

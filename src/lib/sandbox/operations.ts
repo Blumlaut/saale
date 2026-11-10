@@ -17,7 +17,7 @@ import type {
   ReadOperations,
   WriteOperations,
 } from "@earendil-works/pi-coding-agent";
-import { detectImageMimeTypeFromBuffer } from "@/lib/image-sniff";
+import { detectImageMimeTypeFromBuffer, IMAGE_SNIFF_BYTES } from "@/lib/image-sniff";
 import { createLocalFileProvider } from "@/lib/files/local-provider";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
 import { requireWithinRoot } from "@/lib/files/paths";
@@ -78,6 +78,37 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
     if ((await files.stat(path)) === null) {
       throw new Error(`ENOENT: no such file or directory, access '${absolutePath}'`);
     }
+  }
+
+  /** The file's bytes, one chunk at a time, so a large file is never held whole. */
+  async function* readChunks(
+    absolutePath: string,
+    signal: AbortSignal | undefined,
+  ): AsyncGenerator<Uint8Array> {
+    const reader = (await files.openReadStream(inside(absolutePath))).getReader();
+    try {
+      while (!signal?.aborted) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield value;
+      }
+    } finally {
+      await reader.cancel().catch((err) => {
+        console.error(`Failed to close ${absolutePath}:`, err);
+      });
+    }
+  }
+
+  /** The first `bytes` of a file, which is enough to name an image's format. */
+  async function readHeadOp(absolutePath: string, bytes: number): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of readChunks(absolutePath, undefined)) {
+      chunks.push(Buffer.from(chunk));
+      size += chunk.length;
+      if (size >= bytes) break;
+    }
+    return Buffer.concat(chunks).subarray(0, bytes);
   }
 
   const bash: BashOperations = {
@@ -141,10 +172,10 @@ export function createSandboxOperations(options: SandboxOperationsOptions): Sand
   const read: ReadOperations = {
     readFile: readFileOp,
     access: accessOp,
+    createReadStream: (absolutePath, options) => readChunks(absolutePath, options.signal),
     detectImageMimeType: async (absolutePath) => {
       try {
-        const bytes = await files.read(inside(absolutePath));
-        return detectImageMimeTypeFromBuffer(Buffer.from(bytes.buffer)) ?? null;
+        return detectImageMimeTypeFromBuffer(await readHeadOp(absolutePath, IMAGE_SNIFF_BYTES));
       } catch (err) {
         if (err instanceof FileNotFoundError) return null;
         console.error(`Failed to sniff ${absolutePath}:`, err);

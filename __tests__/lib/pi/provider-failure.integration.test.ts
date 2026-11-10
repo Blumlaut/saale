@@ -404,26 +404,25 @@ describe("provider failures (real SDK)", () => {
 });
 
 describe("stopping during a tool call (real SDK)", () => {
-  it("ends the run immediately instead of waiting for the tool", async () => {
-    // A tool that ignores the abort signal, as every Saale tool did: Pi awaits
-    // it, so the run used to stay alive for the tool's full duration and Stop
-    // looked like it did nothing.
-    let toolFinished = false;
-    const slowTool = {
+  /** A tool that ignores the abort signal, as every Saale tool did: Pi awaits it. */
+  function slowTool(onFinish?: () => void) {
+    return {
       name: "slow_tool",
       label: "slow_tool",
       description: "Takes a while and ignores cancellation.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       execute: async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
-        toolFinished = true;
+        onFinish?.();
         return { content: [{ type: "text", text: "tool finished" }], details: {} };
       },
     } as unknown as NonNullable<
       NonNullable<Parameters<typeof createAgentSession>[0]>["customTools"]
     >[number];
+  }
 
-    // The provider asks for the tool, then keeps streaming.
+  /** The provider asks for the tool, then keeps streaming. */
+  function replyWithToolThenHang() {
     let phase = 0;
     nextReply = () => {
       phase++;
@@ -431,13 +430,18 @@ describe("stopping during a tool call (real SDK)", () => {
         ? { kind: "toolCall", name: "slow_tool" }
         : { kind: "hang", text: "still going" };
     };
+  }
+
+  it("ends the run immediately instead of waiting for the tool", async () => {
+    let toolFinished = false;
+    replyWithToolThenHang();
 
     const startedAt = performance.now();
     const { rows } = await runSession({
       maxRetries: 0,
       abortAfterMs: 400,
       userAbort: true,
-      tools: [withAbortSignal(slowTool)],
+      tools: [withAbortSignal(slowTool(() => (toolFinished = true)))],
     });
     const elapsed = performance.now() - startedAt;
 
@@ -454,37 +458,20 @@ describe("stopping during a tool call (real SDK)", () => {
     }
   });
 
-  it("reports the tool-phase cancellation as an error without a stop record", async () => {
-    const slowTool = {
-      name: "slow_tool",
-      label: "slow_tool",
-      description: "Takes a while and ignores cancellation.",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
-      execute: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        return { content: [{ type: "text", text: "tool finished" }], details: {} };
-      },
-    } as unknown as NonNullable<
-      NonNullable<Parameters<typeof createAgentSession>[0]>["customTools"]
-    >[number];
+  it("reports no error for a tool-phase abort without a stop record", async () => {
+    replyWithToolThenHang();
 
-    let phase = 0;
-    nextReply = () => {
-      phase++;
-      return phase === 1
-        ? { kind: "toolCall", name: "slow_tool" }
-        : { kind: "hang", text: "still going" };
-    };
-
-    // Aborting during a tool call (not while streaming) leaves an error-classified
-    // message, so the record is what keeps a user's Stop out of the error report.
     const { rows } = await runSession({
       maxRetries: 0,
       abortAfterMs: 400,
       userAbort: false,
-      tools: [withAbortSignal(slowTool)],
+      tools: [withAbortSignal(slowTool())],
     });
 
-    expect(rows.some((row) => row.errorMessage === "This operation was aborted")).toBe(true);
+    // Pi reports its own cancellation as an abort, so the row carries no provider error.
+    expect(rows.find((row) => row.toolCalls !== null)?.toolCalls).toContain("Operation aborted");
+    for (const row of rows) {
+      expect(row.errorMessage).toBeNull();
+    }
   });
 });
