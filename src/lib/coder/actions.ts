@@ -20,6 +20,7 @@ import { checkoutOf } from "./checkout";
 import { loadCoderSession } from "./changes";
 import { headSha, readStatus, runGit, runInWorkspace, shellQuote, type GitResult } from "./git";
 import { withLockRetry, withRepoLock } from "./lock";
+import { resolveGithubCommandEnv } from "@/lib/integrations/github-credentials";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 
 /** A remote command may legitimately take minutes, and none should be cut short. */
@@ -90,10 +91,17 @@ const GH_CREDENTIAL_HELPER =
 async function remoteAuth(
   userId: string,
 ): Promise<{ args: string[]; env: Record<string, string> }> {
-  const env: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
-    console.error(`Failed to load sandbox variables for a git command by ${userId}:`, err);
-    return {};
-  });
+  const env: Record<string, string> = {
+    ...(await resolveSandboxEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to load sandbox variables for a git command by ${userId}:`, err);
+      return {};
+    })),
+    // While the app is the source, its refreshed token is the one that counts.
+    ...(await resolveGithubCommandEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to resolve the GitHub credential for a git command by ${userId}:`, err);
+      return {};
+    })),
+  };
   const token = env.GH_TOKEN;
   if (!token) return { args: [], env: {} };
   return {

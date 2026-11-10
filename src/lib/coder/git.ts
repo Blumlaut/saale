@@ -14,6 +14,7 @@
  */
 
 import { exec as sandboxExec } from "@/lib/sandbox/client";
+import { resolveGithubCommandEnv } from "@/lib/integrations/github-credentials";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { userIdentity } from "@/lib/sandbox/identity";
 import {
@@ -172,10 +173,18 @@ export async function cloneRepo(
   userId: string,
   options: { dir: string; url: string },
 ): Promise<void> {
-  const env: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
-    console.error(`Failed to load sandbox variables for cloning ${options.url}:`, err);
-    return {};
-  });
+  const env: Record<string, string> = {
+    ...(await resolveSandboxEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to load sandbox variables for cloning ${options.url}:`, err);
+      return {};
+    })),
+    // The app's token wins while it is the source; otherwise this is empty and
+    // the user's own variable keeps working as it always did.
+    ...(await resolveGithubCommandEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to resolve the GitHub credential for cloning ${options.url}:`, err);
+      return {};
+    })),
+  };
   const authorized = Boolean(env.GH_TOKEN);
 
   // `git clone` takes `--` before the URL so a URL starting with a dash is
@@ -207,10 +216,16 @@ const PROBE_TIMEOUT_SECONDS = 10;
  * branch as the answer and the clone is where it is found out.
  */
 export async function remoteDefaultBranch(userId: string, url: string): Promise<string | null> {
-  const env: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
-    console.error(`Failed to load sandbox variables for probing ${url}:`, err);
-    return {};
-  });
+  const env: Record<string, string> = {
+    ...(await resolveSandboxEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to load sandbox variables for probing ${url}:`, err);
+      return {};
+    })),
+    ...(await resolveGithubCommandEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to resolve the GitHub credential for probing ${url}:`, err);
+      return {};
+    })),
+  };
   // `gh` is the only thing here that can reach a private repo with a token.
   const authorized = Boolean(env.GH_TOKEN);
   const args = authorized
