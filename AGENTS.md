@@ -2,6 +2,20 @@
 
 Production app, live data. Never lose it.
 
+## Live data
+
+Never write to a running instance's database for a screenshot, a demo or a UI
+check. A rendered state comes from a throwaway database, from tests, or from a
+component that takes its data as props.
+
+Never delete or update a singleton row (`id: "global"`, `id: "default"`): such a
+row is the instance's own configuration, not an artifact to clean up. When a
+script must remove something it created, narrow the filter to that artifact.
+
+Ask before any write that touches connection, credential, account or permission
+state — and re-read the row first: "it was empty a moment ago" is not evidence
+that it is empty now.
+
 ## Skills — load before the work
 
 | Area                                                    | File                                      |
