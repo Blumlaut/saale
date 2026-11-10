@@ -15,10 +15,19 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import { useGithub, type GithubAppSection, type GithubRepositoryChoices } from "@/hooks/use-github";
+import {
+  installationSettingsUrl,
+  manageInstallationsUrl,
+  type InstallationLinkSource,
+} from "@/lib/integrations/github-links";
 
 /** Where GitHub hosts the install page for one app. */
-function installUrl(slug: string, existing: boolean): string {
-  return `https://github.com/apps/${slug}/installations/${existing ? "" : "new"}`;
+/**
+ * GitHub keeps the repository choice of an installation under the account's
+ * settings; `/apps/<slug>/installations/` does not exist.
+ */
+function installationsUrl(slug: string, installations: readonly InstallationLinkSource[]): string {
+  return manageInstallationsUrl(slug, installations);
 }
 
 /** GitHub is a workspace sign-in rather than a registry integration, so it carries its own metadata. */
@@ -128,7 +137,7 @@ export function GithubCard() {
               {app.slug && (
                 <Button variant="secondary" size="sm" className="h-7 px-2 text-xs" asChild>
                   <a
-                    href={installUrl(app.slug, app.installations.length > 0)}
+                    href={installationsUrl(app.slug, app.installations)}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -217,7 +226,6 @@ export function GithubCard() {
       {picking && (
         <RepositoryDialog
           installationId={picking}
-          slug={app.slug}
           onClose={() => setPicking(null)}
           load={loadRepositories}
           save={saveRepositories}
@@ -236,7 +244,7 @@ export function GithubCard() {
         onInstall={() => {
           if (!app.slug) return;
           window.open(
-            installUrl(app.slug, app.installations.length > 0),
+            installationsUrl(app.slug, app.installations),
             "_blank",
             "noopener,noreferrer",
           );
@@ -371,13 +379,11 @@ function SignInBody({
  */
 function RepositoryDialog({
   installationId,
-  slug,
   onClose,
   load,
   save,
 }: {
   installationId: string;
-  slug: string | null;
   onClose: () => void;
   load: (installationId: string) => Promise<GithubRepositoryChoices | null>;
   save: (
@@ -447,14 +453,12 @@ function RepositoryDialog({
             <p className="text-muted-foreground text-xs">
               On GitHub, switch it to “Only select repositories”, then choose the set in Saale.
             </p>
-            {slug && (
-              <Button variant="secondary" size="sm" asChild>
-                <a href={installUrl(slug, true)} target="_blank" rel="noopener noreferrer">
-                  Manage on GitHub
-                  <ExternalLink className="ml-1 h-3.5 w-3.5" />
-                </a>
-              </Button>
-            )}
+            <Button variant="secondary" size="sm" asChild>
+              <a href={installationSettingsUrl(choices)} target="_blank" rel="noopener noreferrer">
+                Manage on GitHub
+                <ExternalLink className="ml-1 h-3.5 w-3.5" />
+              </a>
+            </Button>
           </div>
         ) : choices ? (
           <div className="max-h-80 space-y-1 overflow-y-auto pr-1">

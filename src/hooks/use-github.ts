@@ -35,6 +35,8 @@ interface GithubConnection {
 export interface GithubRepositoryChoices {
   installationId: string;
   accountLogin: string;
+  /** "User" | "Organization" — decides where GitHub's settings page lives. */
+  accountType: string;
   selection: string;
   /** False when the installation covers every repository; GitHub then refuses. */
   canManage: boolean;

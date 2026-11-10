@@ -684,6 +684,8 @@ export interface GithubRepositoryChoices {
   /** GitHub's installation id. */
   installationId: string;
   accountLogin: string;
+  /** "User" | "Organization" — decides where GitHub's settings page lives. */
+  accountType: string;
   /** "all" or "selected". */
   selection: string;
   /**
@@ -744,6 +746,7 @@ export async function readGithubRepositoryChoices(
   return {
     installationId: installation.installationId,
     accountLogin: installation.accountLogin,
+    accountType: installation.accountType,
     selection: installation.repositorySelection,
     canManage: installation.repositorySelection === "selected",
     installed,
