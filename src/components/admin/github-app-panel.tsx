@@ -273,18 +273,22 @@ export function GithubAppPanel() {
         : null;
 
   /**
-   * The first step this wizard still has to offer.
+   * Where "Back" leads from the step it is on.
    *
-   * A saved app means step 1 (register it on GitHub) is behind the user, so the
-   * wizard opens at the credentials and neither "Back" nor a click on the first
-   * bubble leads back to instructions that no longer apply. The steps reappear
-   * only after "Remove", which is the point at which a new app is registered.
+   * With a saved app, step 1 (register it on GitHub) is behind the user: going
+   * back from the credentials closes the wizard and shows the overview of the
+   * app that is connected instead. In a fresh setup it walks the steps it came
+   * through. Either way step 1 is only reachable while there is no app yet.
    */
-  const firstStep: 1 | 2 = app ? 2 : 1;
+  const goBack = () => {
+    if (step === 3) return setStep(2);
+    if (app) return setWizard(false);
+    return setStep(1);
+  };
 
   /** A step may be opened when it is still ahead of what was done. */
   const canOpenStep = (target: 1 | 2 | 3): boolean =>
-    target >= firstStep && (target < 3 || Boolean(app));
+    (target !== 1 || !app) && (target < 3 || Boolean(app));
 
   return (
     <div className="space-y-4">
@@ -673,16 +677,7 @@ export function GithubAppPanel() {
             {blockedBecause && <p className="text-muted-foreground text-xs">{blockedBecause}</p>}
 
             <div className="border-border/60 flex items-center justify-between gap-2 border-t pt-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setStep((current) =>
-                    current <= firstStep ? firstStep : ((current - 1) as 1 | 2),
-                  )
-                }
-                disabled={step === firstStep}
-              >
+              <Button variant="ghost" size="sm" onClick={goBack} disabled={step === 1}>
                 <ArrowLeft className="mr-1 h-3.5 w-3.5" />
                 Back
               </Button>
