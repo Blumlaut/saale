@@ -155,6 +155,13 @@ Signing one account out removes only its own token and access rows; the
 installation stays, because another account may still use it. Deleting the app
 in the admin panel removes everything.
 
+Once one account has authorized the app, the admin panel drops its "Setup steps"
+button: registering the app again is not what a second account needs, and the
+wizard's first step would only repeat it. The route for a further account is the
+one above — it connects in _Settings → Integrations → GitHub_ and installs the
+app itself. Removing the app brings the steps back, since that is when a new one
+has to be registered.
+
 ## Who appears on GitHub
 
 An installation token authenticates the _app_, so work it carries reads as

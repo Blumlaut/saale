@@ -415,6 +415,39 @@ describe("syncGithubInstallations", () => {
     });
   });
 
+  it("spends the repository budget on reads, not on installations walked", async () => {
+    db.githubUserToken.findUnique.mockResolvedValue({
+      userId: USER,
+      encryptedAccessToken: "enc:ghu_access",
+      encryptedRefreshToken: "enc:ghr",
+      accessExpiresAt: new Date(Date.now() + 4 * 60 * 60_000),
+      refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+      login: "octocat",
+    });
+    // An account with many "all repositories" installs would have used up a cap
+    // that counted installations, and the one that needs its list read would be
+    // skipped — which is why the counter follows the reads.
+    const grantedEverything = Array.from({ length: 50 }, (_, index) => ({
+      installationId: `${1000 + index}`,
+      accountLogin: `acct-${index}`,
+      accountType: "Organization",
+      repositorySelection: "all",
+      permissions: null,
+      suspended: false,
+    }));
+    client.listInstallations.mockResolvedValue([
+      ...grantedEverything,
+      { ...INSTALLATION, installationId: "1234" },
+    ]);
+    client.listInstallationRepositories.mockResolvedValue(["saale"]);
+    db.githubInstallation.upsert.mockResolvedValue({ id: "row-1" });
+
+    await syncGithubInstallations(USER);
+
+    expect(client.listInstallationRepositories).toHaveBeenCalledTimes(1);
+    expect(client.listInstallationRepositories).toHaveBeenCalledWith("ghu_access", "1234");
+  });
+
   it("does not list repositories of an installation granted everything", async () => {
     db.githubUserToken.findUnique.mockResolvedValue({
       userId: USER,
