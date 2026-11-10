@@ -213,6 +213,21 @@ describe("githubHelperScript", () => {
     expect(answer).toContain("password=ghs_installation_token");
   });
 
+  it("prefers a token from the environment over the file", async () => {
+    // That is the per-chat token: the environment of one command, not the
+    // workspace-wide file.
+    const script = await install("ghs_workspace");
+
+    const answer = execFileSync("sh", [script, "get"], {
+      input: "protocol=https\nhost=github.com\n\n",
+      encoding: "utf8",
+      env: { ...process.env, GH_TOKEN: "ghs_one_chat" },
+    });
+
+    expect(answer).toContain("password=ghs_one_chat");
+    expect(answer).not.toContain("ghs_workspace");
+  });
+
   it("gives the agent's own gh the app's token", async () => {
     const root = path.join(dir, userIdentity(USER));
     const shim = githubGhShimScript(USER);

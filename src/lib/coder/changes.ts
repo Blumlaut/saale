@@ -103,7 +103,16 @@ export async function loadCoderSession(userId: string, sessionId: string) {
     select: {
       id: true,
       projectId: true,
-      project: { select: { id: true, name: true, slug: true, repoPath: true, chatMode: true } },
+      project: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          repoPath: true,
+          chatMode: true,
+          originUrl: true,
+        },
+      },
       coderWorktree: {
         select: { path: true, branch: true, baseSha: true, status: true },
       },
