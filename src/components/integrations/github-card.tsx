@@ -224,69 +224,25 @@ export function GithubCard() {
         />
       )}
 
-      <Dialog open={open} onOpenChange={close}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <GitBranch className="h-5 w-5" />
-              Connect GitHub
-            </DialogTitle>
-            <DialogDescription>
-              {app.configured
-                ? "One code to prove this GitHub account is yours, then pick the repositories on GitHub. Saale never receives access to anything you do not install it on."
-                : "Your workspace runs GitHub's own sign-in. Approve the code once and every chat, worktree and command uses it."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {app.configured && app.permissions && (
-            <div className="border-border/60 space-y-2 rounded-2xl border px-3 py-2">
-              <p className="text-xs font-medium">
-                {app.name ?? "GitHub App"} may, on installed repositories:
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(app.permissions)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([name, level]) => (
-                    <span
-                      key={name}
-                      className="border-border/60 rounded-full border px-2 py-0.5 font-mono text-[11px]"
-                    >
-                      {name}: {level}
-                    </span>
-                  ))}
-              </div>
-              <p className="text-muted-foreground text-xs">
-                Private repositories it is not installed on stay invisible, and no other account can
-                use your installation.
-              </p>
-            </div>
-          )}
-
-          <SignInBody
-            connected={
-              app.authorized
-                ? `Signed in as @${app.authorized.login}`
-                : cli.credential
-                  ? `Signed in as @${cli.credential.login}`
-                  : null
-            }
-            code={code}
-            url={url}
-            starting={starting || disconnecting}
-            error={message}
-          />
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              className="h-9 text-xs font-medium"
-              onClick={() => close(false)}
-            >
-              {connected ? "Done" : "Cancel"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <GithubSetupDialog
+        open={open}
+        onClose={close}
+        app={app}
+        cli={cli}
+        code={code}
+        url={url}
+        busy={starting || disconnecting}
+        error={message}
+        onInstall={() => {
+          if (!app.slug) return;
+          window.open(
+            installUrl(app.slug, app.installations.length > 0),
+            "_blank",
+            "noopener,noreferrer",
+          );
+        }}
+        onChooseRepositories={(installationId) => setPicking(installationId)}
+      />
     </>
   );
 }
@@ -537,6 +493,230 @@ function RepositoryDialog({
             <Button size="sm" onClick={() => void apply()} disabled={busy}>
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── The guided setup ───────────────────────────────────────────────────────
+
+/** The steps an app connection goes through, in the order GitHub allows them. */
+const SETUP_STEPS = ["Sign in", "Install", "Repositories"] as const;
+
+/**
+ * Which step the account is on, read from what GitHub already knows.
+ *
+ * Derived rather than stored: the dialog advances by itself the moment the poll
+ * sees the authorization or the installation, which is what makes a sign-in that
+ * finishes in another tab feel like the wizard moved on.
+ */
+function setupStep(app: GithubAppSection): 1 | 2 | 3 {
+  if (!app.authorized) return 1;
+  return app.installations.some((entry) => !entry.suspended) ? 3 : 2;
+}
+
+/** One number in the stepper: done, current, or still to come. */
+function StepDot({ index, current }: { index: 1 | 2 | 3; current: 1 | 2 | 3 }) {
+  const done = index < current;
+  const active = index === current;
+  return (
+    <span
+      className={[
+        "flex h-5 w-5 items-center justify-center rounded-full border font-mono text-[10px]",
+        done
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : active
+            ? "border-primary text-primary"
+            : "border-border/60 text-muted-foreground",
+      ].join(" ")}
+      aria-current={active ? "step" : undefined}
+    >
+      {done ? <Check className="h-3 w-3" /> : index}
+    </span>
+  );
+}
+
+/**
+ * The setup assistant for this instance's GitHub App.
+ *
+ * Three steps, in the only order GitHub permits: prove the account (device
+ * code), install the app where it may live, then choose the repositories it may
+ * reach. The dialog follows the account rather than a "next" button — a sign-in
+ * approved in a browser tab, or an installation made on GitHub's page, moves the
+ * assistant on as soon as the status poll reports it.
+ */
+function GithubSetupDialog({
+  open,
+  onClose,
+  app,
+  cli,
+  code,
+  url,
+  busy,
+  error,
+  onInstall,
+  onChooseRepositories,
+}: {
+  open: boolean;
+  onClose: (next: boolean) => void;
+  app: GithubAppSection;
+  cli: { credential: { login: string } | null };
+  code: string | null;
+  url: string | null;
+  busy: boolean;
+  error: string | null;
+  onInstall: () => void;
+  onChooseRepositories: (installationId: string) => void;
+}) {
+  const step = setupStep(app);
+  const installations = app.installations.filter((entry) => !entry.suspended);
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GitBranch className="h-5 w-5" />
+            {app.configured ? `Set up ${app.name ?? "GitHub"}` : "Connect GitHub"}
+          </DialogTitle>
+          <DialogDescription>
+            {app.configured
+              ? "Three steps. Saale only ever reaches the repositories you install the app on."
+              : "Your workspace runs GitHub's own sign-in. Approve the code once and every chat, worktree and command uses it."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {app.configured && (
+          <div className="flex items-center gap-2" aria-label="Setup steps">
+            {SETUP_STEPS.map((label, index) => {
+              const number = (index + 1) as 1 | 2 | 3;
+              return (
+                <div key={label} className="flex min-w-0 items-center gap-1.5">
+                  <StepDot index={number} current={step} />
+                  <span
+                    className={[
+                      "truncate text-[11px]",
+                      number === step ? "text-foreground" : "text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </span>
+                  {number < SETUP_STEPS.length && <span className="text-border px-0.5">·</span>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!app.configured ? (
+          <SignInBody
+            connected={cli.credential ? `Signed in as @${cli.credential.login}` : null}
+            code={code}
+            url={url}
+            starting={busy}
+            error={error}
+          />
+        ) : step === 1 ? (
+          <div className="space-y-3">
+            <SignInBody
+              connected={
+                app.authorized
+                  ? `Signed in as @${app.authorized.login}`
+                  : cli.credential
+                    ? `Signed in as @${cli.credential.login}`
+                    : null
+              }
+              code={code}
+              url={url}
+              starting={busy}
+              error={error}
+            />
+            {app.permissions && (
+              <div className="border-border/60 space-y-2 rounded-2xl border px-3 py-2">
+                <p className="text-xs font-medium">
+                  {app.name ?? "The app"} may, on installed repositories:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(app.permissions)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([name, level]) => (
+                      <span
+                        key={name}
+                        className="border-border/60 rounded-full border px-2 py-0.5 font-mono text-[11px]"
+                      >
+                        {name}: {level}
+                      </span>
+                    ))}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Private repositories it is not installed on stay invisible, and no other account
+                  can use your installation.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : step === 2 ? (
+          <div className="space-y-3">
+            <p className="flex items-center gap-2 text-sm">
+              <Check className="h-4 w-4 text-emerald-500" />
+              Signed in as @{app.authorized?.login}
+            </p>
+            <p className="text-sm">
+              Install {app.name ?? "the app"} on the account or organization whose repositories
+              Saale may use.
+            </p>
+            <p className="text-muted-foreground text-xs">
+              GitHub asks which repositories there — pick “Only select repositories” if you want to
+              change the set here afterwards. This dialog moves on by itself when you come back.
+            </p>
+            {error && (
+              <p className="text-destructive flex items-start gap-2 text-xs break-words">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {error}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="flex items-center gap-2 text-sm">
+              <Check className="h-4 w-4 text-emerald-500" />
+              Connected as @{app.authorized?.login}
+            </p>
+            <div className="space-y-1">
+              {installations.map((entry) => (
+                <div key={entry.installationId} className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs">{entry.accountLogin}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[11px]"
+                    onClick={() => onChooseRepositories(entry.installationId)}
+                  >
+                    {entry.repositorySelection === "selected" && entry.repositories
+                      ? `${entry.repositories.length} repositories`
+                      : "All repositories"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Each chat is then confined to its own project&apos;s repository.
+            </p>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => onClose(false)}>
+            {step === 3 || (!app.configured && cli.credential) ? "Done" : "Close"}
+          </Button>
+          {app.configured && step === 2 && (
+            <Button size="sm" onClick={onInstall}>
+              Install on GitHub
+              <ExternalLink className="ml-1 h-3.5 w-3.5" />
             </Button>
           )}
         </DialogFooter>

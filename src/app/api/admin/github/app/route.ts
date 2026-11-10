@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { getPublicUrl } from "@/lib/public-url";
 import {
   GithubAppError,
   deleteGithubApp,
@@ -32,12 +34,46 @@ const SAVE_BODY = z.object({
 
 const TOGGLE_BODY = z.object({ enabled: z.boolean() });
 
+/**
+ * The URLs an admin has to paste into GitHub's form.
+ *
+ * Derived from the instance's own public URL rather than typed by hand, because
+ * a wrong Setup URL silently leaves the card on "install it" forever.
+ */
+function registrationUrls() {
+  const base = getPublicUrl();
+  return {
+    publicUrl: base,
+    callbackUrl: `${base}/api/integrations/github/callback`,
+    setupUrl: `${base}/api/integrations/github/installed`,
+  };
+}
+
+/**
+ * How far the instance is through its own setup.
+ *
+ * The admin's view: the app is saved, some accounts have authorized it, some
+ * accounts are installed. A number that stays at zero is the answer to "why does
+ * the card still say install it".
+ */
+async function setupProgress() {
+  const [accounts, installations] = await Promise.all([
+    prisma.githubUserToken.count(),
+    prisma.githubInstallation.count({ where: { suspendedAt: null } }),
+  ]);
+  return { connectedAccounts: accounts, installations };
+}
+
 /** GET /api/admin/github/app: the app, or null when none is saved. */
 export async function GET() {
   const authResult = await requirePermission("admin", "github");
   if (!authResult.ok) return authResult.response;
 
-  return NextResponse.json({ app: await readGithubAppSummary() });
+  return NextResponse.json({
+    app: await readGithubAppSummary(),
+    ...registrationUrls(),
+    ...(await setupProgress()),
+  });
 }
 
 /** PUT /api/admin/github/app: save a credential set GitHub accepts. */
