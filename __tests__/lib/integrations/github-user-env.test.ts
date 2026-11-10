@@ -13,12 +13,13 @@ import { resolveGithubUserEnv } from "@/lib/integrations/github-credentials";
 
 const mocks = vi.hoisted(() => ({
   ensureUserSettings: vi.fn(),
+  ensureAdminSettings: vi.fn(),
   readGithubUserAccess: vi.fn(),
 }));
 
 vi.mock("@/lib/settings/update", () => ({
   ensureUserSettings: mocks.ensureUserSettings,
-  ensureAdminSettings: vi.fn(async () => null),
+  ensureAdminSettings: mocks.ensureAdminSettings,
 }));
 vi.mock("@/lib/integrations/github-app", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/integrations/github-app")>()),
@@ -26,6 +27,10 @@ vi.mock("@/lib/integrations/github-app", async (importOriginal) => ({
 }));
 
 const USER = "user-1";
+
+beforeEach(() => {
+  mocks.ensureAdminSettings.mockResolvedValue({ githubTokenPrecedence: "app" });
+});
 
 /** Run the function with the stored source set the way the account left it. */
 async function withSource(source: string, run: () => Promise<unknown>) {
@@ -36,6 +41,7 @@ async function withSource(source: string, run: () => Promise<unknown>) {
 describe("resolveGithubUserEnv", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.ensureAdminSettings.mockResolvedValue({ githubTokenPrecedence: "app" });
   });
 
   it("hands out the connected account's own token", async () => {
@@ -72,5 +78,39 @@ describe("resolveGithubUserEnv", () => {
       expect.any(Error),
     );
     logged.mockRestore();
+  });
+});
+
+/**
+ * `admin.githubTokenPrecedence` decides which credential a workspace uses, and
+ * it has to hold for the call that opens a pull request too: with "variable" the
+ * account's own token is the one that wins, and this may not quietly replace it.
+ * Without one there is nothing to win with, so the app still answers.
+ */
+describe("resolveGithubUserEnv and the token precedence", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.ensureUserSettings.mockResolvedValue({ githubSource: "app" });
+    mocks.readGithubUserAccess.mockResolvedValue({ accessToken: "gho_personal", login: "Juli04" });
+  });
+
+  it("leaves the account's own variable alone when the instance prefers it", async () => {
+    mocks.ensureAdminSettings.mockResolvedValue({ githubTokenPrecedence: "variable" });
+
+    expect(await resolveGithubUserEnv(USER, { GH_TOKEN: "ghp_own" })).toEqual({});
+  });
+
+  it("still answers when the account keeps no variable of its own", async () => {
+    mocks.ensureAdminSettings.mockResolvedValue({ githubTokenPrecedence: "variable" });
+
+    expect(await resolveGithubUserEnv(USER, {})).toEqual({ GH_TOKEN: "gho_personal" });
+  });
+
+  it("replaces the variable when the instance prefers the app", async () => {
+    mocks.ensureAdminSettings.mockResolvedValue({ githubTokenPrecedence: "app" });
+
+    expect(await resolveGithubUserEnv(USER, { GH_TOKEN: "ghp_own" })).toEqual({
+      GH_TOKEN: "gho_personal",
+    });
   });
 });

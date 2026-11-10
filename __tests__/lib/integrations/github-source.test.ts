@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   decideGithubSource,
-  githubSourceLabel,
   isGithubMethod,
   isGithubSource,
   isGithubSourceValue,
@@ -55,12 +54,6 @@ describe("the github source vocabulary", () => {
     for (const method of ["choice", "app", "cli"]) expect(isGithubMethod(method)).toBe(true);
     expect(isGithubMethod("both")).toBe(false);
     expect(isGithubMethod(null)).toBe(false);
-  });
-
-  it("names a source and the empty state", () => {
-    expect(githubSourceLabel("app")).toBe("GitHub App");
-    expect(githubSourceLabel("cli")).toBe("GitHub CLI");
-    expect(githubSourceLabel("")).toBe("not connected");
   });
 });
 

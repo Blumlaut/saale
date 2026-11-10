@@ -3,18 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const coder = vi.hoisted(() => ({ loadCoderSession: vi.fn() }));
 vi.mock("@/lib/coder/changes", () => coder);
 
-const { db } = vi.hoisted(() => ({
-  db: { githubInstallationAccess: { findFirst: vi.fn() } },
-}));
-vi.mock("@/lib/db", () => ({ prisma: db }));
-
 const credentials = vi.hoisted(() => ({ readStoredGithubSource: vi.fn() }));
 vi.mock("@/lib/integrations/github-credentials", () => credentials);
 
-const app = vi.hoisted(() => {
-  class GithubAppError extends Error {}
-  return { GithubAppError, mintGithubInstallationToken: vi.fn() };
-});
+const app = vi.hoisted(() => ({
+  githubInstallationForOwner: vi.fn(),
+  mintGithubInstallationToken: vi.fn(),
+}));
 vi.mock("@/lib/integrations/github-app", () => app);
 
 import { repositoryFromRemote, resolveGithubSessionEnv } from "@/lib/integrations/github-session";
@@ -26,16 +21,14 @@ const SESSION = "session-1";
 
 function installation(overrides: Partial<Record<string, unknown>> = {}) {
   return {
-    userId: USER,
-    installationId: "row-1",
-    installation: {
-      installationId: "1234",
-      accountLogin: "Acme",
-      repositorySelection: "selected",
-      repositories: ["saale"],
-      suspendedAt: null,
-      ...overrides,
-    },
+    rowId: "row-1",
+    installationId: "1234",
+    accountLogin: "Acme",
+    accountType: "Organization",
+    repositorySelection: "selected",
+    repositories: ["saale"],
+    suspended: false,
+    ...overrides,
   };
 }
 
@@ -63,7 +56,7 @@ function coderSession(originUrl: string | null) {
 beforeEach(() => {
   for (const fn of [
     coder.loadCoderSession,
-    db.githubInstallationAccess.findFirst,
+    app.githubInstallationForOwner,
     credentials.readStoredGithubSource,
     app.mintGithubInstallationToken,
   ]) {
@@ -71,7 +64,7 @@ beforeEach(() => {
   }
   credentials.readStoredGithubSource.mockResolvedValue("app");
   coder.loadCoderSession.mockResolvedValue(coderSession("https://github.com/acme/saale.git"));
-  db.githubInstallationAccess.findFirst.mockResolvedValue(installation());
+  app.githubInstallationForOwner.mockResolvedValue(installation());
   app.mintGithubInstallationToken.mockResolvedValue({
     token: "ghs_one_repo",
     expiresAt: new Date(Date.now() + 60 * 60_000),
@@ -132,16 +125,8 @@ describe("resolveGithubSessionEnv", () => {
 
     await resolveGithubSessionEnv(USER, SESSION);
 
-    expect(db.githubInstallationAccess.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          userId: USER,
-          installation: expect.objectContaining({
-            accountLogin: { equals: "acme", mode: "insensitive" },
-          }),
-        }),
-      }),
-    );
+    // The lowercase owner reaches the lookup, which matches GitHub's casing rules.
+    expect(app.githubInstallationForOwner).toHaveBeenCalledWith(USER, "acme");
   });
 
   it("carries nothing while the CLI is the source", async () => {
@@ -168,7 +153,7 @@ describe("resolveGithubSessionEnv", () => {
 
   it("mints for any repository when the installation covers them all", async () => {
     coder.loadCoderSession.mockResolvedValue(coderSession("https://github.com/acme/other.git"));
-    db.githubInstallationAccess.findFirst.mockResolvedValue(
+    app.githubInstallationForOwner.mockResolvedValue(
       installation({ repositorySelection: "all", repositories: null }),
     );
 
@@ -180,7 +165,7 @@ describe("resolveGithubSessionEnv", () => {
   });
 
   it("carries nothing when the account has no installation for that owner", async () => {
-    db.githubInstallationAccess.findFirst.mockResolvedValue(null);
+    app.githubInstallationForOwner.mockResolvedValue(null);
 
     expect(await resolveGithubSessionEnv(USER, SESSION)).toEqual({});
     expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
@@ -188,7 +173,7 @@ describe("resolveGithubSessionEnv", () => {
 
   it("falls back quietly when the mint is refused", async () => {
     app.mintGithubInstallationToken.mockRejectedValue(
-      new app.GithubAppError("That GitHub installation is suspended."),
+      new Error("That GitHub installation is suspended."),
     );
 
     // The workspace's own credential still answers, just wider — a chat must not

@@ -957,6 +957,33 @@ async function mockCoderChat(page: Page) {
   );
 }
 
+/** A saved app, so the panel's destructive confirmation can be opened offline. */
+async function mockGithubApp(page: Page) {
+  await page.route(/\/api\/admin\/github\/app$/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        app: {
+          appId: "5674116",
+          clientId: "Iv23liJl7QK5AbPMsDQ3",
+          slug: "askguenther-test",
+          name: "AskGuenther Test",
+          ownerLogin: "Juli04",
+          permissions: { contents: "write", metadata: "read", pull_requests: "write" },
+          enabled: true,
+          updatedAt: NOW,
+        },
+        publicUrl: "https://saale.example.com",
+        callbackUrl: "https://saale.example.com/api/integrations/github/installed",
+        setupUrl: "https://saale.example.com/api/integrations/github/installed",
+        connectedAccounts: 1,
+        installations: 1,
+        tokenPrecedence: "app",
+      },
+    });
+  });
+}
+
 export const MODAL_SCENARIOS: ModalScenario[] = [
   // ── Infrastructure ────────────────────────────────────────────────────────
   {
@@ -1591,6 +1618,13 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await openRowMenu(page, "extremely long contact display name");
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
+  },
+  {
+    name: "admin · remove github app confirmation",
+    path: "/admin/settings/github",
+    sources: ["src/components/admin/github-app-panel.tsx"],
+    mock: mockGithubApp,
+    open: (page) => click(page, 'button:has-text("Remove")'),
   },
   {
     name: "admin · remove mail relay confirmation",

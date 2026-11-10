@@ -12,6 +12,7 @@ const { db } = vi.hoisted(() => ({
       upsert: vi.fn(),
       deleteMany: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
     },
     githubUserToken: { findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
@@ -434,32 +435,34 @@ describe("syncGithubInstallations", () => {
 
 describe("githubInstallationForOwner", () => {
   it("matches the account name case-insensitively and skips suspended ones", async () => {
-    db.githubInstallationAccess.findMany.mockResolvedValue([
-      {
-        installation: {
-          installationId: "1234",
-          accountLogin: "Acme",
-          accountType: "Organization",
-          repositorySelection: "selected",
-          repositories: ["saale"],
-          suspendedAt: null,
-        },
+    db.githubInstallationAccess.findFirst.mockResolvedValue({
+      installation: {
+        id: "row-1",
+        installationId: "1234",
+        accountLogin: "Acme",
+        accountType: "Organization",
+        repositorySelection: "selected",
+        repositories: ["saale"],
+        suspendedAt: null,
       },
-      {
-        installation: {
-          installationId: "5678",
-          accountLogin: "acme-labs",
-          accountType: "Organization",
-          repositorySelection: "all",
-          repositories: null,
-          suspendedAt: new Date(),
-        },
-      },
-    ]);
+    });
 
     const found = await githubInstallationForOwner(USER, "acme");
     expect(found?.installationId).toBe("1234");
+    // The internal row id travels along, so the caller mints without a second read.
+    expect(found?.rowId).toBe("row-1");
+    expect(db.githubInstallationAccess.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: USER,
+          installation: expect.objectContaining({
+            accountLogin: { equals: "acme", mode: "insensitive" },
+          }),
+        }),
+      }),
+    );
 
+    db.githubInstallationAccess.findFirst.mockResolvedValue(null);
     expect(await githubInstallationForOwner(USER, "acme-labs")).toBeNull();
     expect(await githubInstallationForOwner(USER, "  ")).toBeNull();
   });

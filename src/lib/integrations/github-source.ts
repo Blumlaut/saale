@@ -77,18 +77,6 @@ export function isGithubTokenPrecedence(value: unknown): value is GithubTokenPre
   );
 }
 
-/** A source's name, for a label or a log line. */
-export function githubSourceLabel(source: GithubSource | ""): string {
-  switch (source) {
-    case "app":
-      return "GitHub App";
-    case "cli":
-      return "GitHub CLI";
-    default:
-      return "not connected";
-  }
-}
-
 // ─── What the workspace holds ────────────────────────────────────────────────
 
 /**

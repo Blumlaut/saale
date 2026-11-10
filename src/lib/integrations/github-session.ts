@@ -23,8 +23,7 @@
 
 import { loadCoderSession } from "@/lib/coder/changes";
 import { remoteWebUrl } from "@/lib/coder/remote-url";
-import { prisma } from "@/lib/db";
-import { GithubAppError, mintGithubInstallationToken } from "./github-app";
+import { githubInstallationForOwner, mintGithubInstallationToken } from "./github-app";
 import { readStoredGithubSource } from "./github-credentials";
 
 /** What a coder chat may do with its repository. */
@@ -78,29 +77,15 @@ export async function resolveGithubSessionEnv(
   const target = repositoryFromRemote(session?.project?.originUrl ?? null);
   if (!target) return {};
 
-  const access = await prisma.githubInstallationAccess
-    .findFirst({
-      where: {
-        userId,
-        installation: {
-          accountLogin: { equals: target.owner, mode: "insensitive" },
-          suspendedAt: null,
-        },
-      },
-      include: { installation: true },
-    })
-    .catch((err: unknown) => {
-      console.error(`Failed to find the GitHub installation for ${target.owner}:`, err);
-      return null;
-    });
-  if (!access) return {};
+  const installation = await githubInstallationForOwner(userId, target.owner);
+  if (!installation) return {};
 
   // An installation granted "Only select repositories" is the ceiling: a chat
   // whose repository is not in it gets nothing, rather than a wider token.
-  const covered = access.installation.repositories;
+  const covered = installation.repositories;
   if (
-    access.installation.repositorySelection === "selected" &&
-    Array.isArray(covered) &&
+    installation.repositorySelection === "selected" &&
+    covered &&
     !covered.includes(target.repository)
   ) {
     console.warn(
@@ -112,7 +97,7 @@ export async function resolveGithubSessionEnv(
   try {
     const minted = await mintGithubInstallationToken({
       userId,
-      installationId: access.installationId,
+      installationId: installation.rowId,
       scope: { repositories: [target.repository], permissions: CHAT_PERMISSIONS },
     });
     return { GH_TOKEN: minted.token };
@@ -120,7 +105,6 @@ export async function resolveGithubSessionEnv(
     // A refused mint is worth a log line, not a broken command: the workspace's
     // own credential still answers, just wider.
     console.error(`Failed to mint a GitHub token for ${target.owner}/${target.repository}:`, err);
-    if (err instanceof GithubAppError) return {};
     return {};
   }
 }
