@@ -67,7 +67,13 @@ const TOKEN_CACHE_SKEW_MS = 60_000;
 /** A poll is not repeated more often than the interval GitHub asked for. */
 const POLL_FLOOR_MS = 1_000;
 
-/** Installations whose repository list is refreshed in one sync. */
+/**
+ * Repository lists read in one sync.
+ *
+ * One request each, so a big account is not walked end to end on a card read.
+ * A list that is not read keeps the value it had: GitHub is the authority on a
+ * mint either way, and a stale entry only makes the picker show an old set.
+ */
 const MAX_REPOSITORY_SYNCS = 50;
 
 /**
@@ -569,9 +575,10 @@ export async function syncGithubInstallations(
   if (!summaries) return [];
 
   const seen: string[] = [];
+  let repositoryReads = 0;
   for (const summary of summaries) {
     const repositories =
-      summary.repositorySelection === "selected" && seen.length < MAX_REPOSITORY_SYNCS
+      summary.repositorySelection === "selected" && repositoryReads < MAX_REPOSITORY_SYNCS
         ? await listInstallationRepositories(access.accessToken, summary.installationId).catch(
             (err: unknown) => {
               console.error(
@@ -582,6 +589,7 @@ export async function syncGithubInstallations(
             },
           )
         : null;
+    if (repositories) repositoryReads += 1;
 
     const installation = await prisma.githubInstallation.upsert({
       where: { installationId: summary.installationId },
@@ -647,8 +655,12 @@ export async function refreshGithubInstallations(
   return syncGithubInstallations(userId);
 }
 
-/** The installations this account may use, as the card lists them. */
-/** An installation row as the card lists it, and its internal id for a mint. */
+/**
+ * An installation row as it comes out of Postgres.
+ *
+ * `id` is Saale's own row id, which a mint takes instead of GitHub's guessable
+ * installation number; `installationView` deliberately does not forward it.
+ */
 type GithubInstallationRow = {
   id: string;
   installationId: string;
@@ -671,6 +683,7 @@ function installationView(row: GithubInstallationRow): GithubInstallationView {
   };
 }
 
+/** The installations this account may use, as the card lists them. */
 export async function readGithubInstallations(userId: string): Promise<GithubInstallationView[]> {
   const rows = await prisma.githubInstallationAccess
     .findMany({ where: { userId }, include: { installation: true } })
