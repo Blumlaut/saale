@@ -76,18 +76,17 @@ const STEPS = [
   { id: 3, label: "Connect", description: "Accounts sign in and install it" },
 ] as const;
 
-/** The two credentials a command can carry, and what each costs. */
+/** The two identities GitHub commands can act as. */
 const CREDENTIAL_OPTIONS = [
   {
     value: "app" as const,
     label: "This instance's GitHub App",
-    detail:
-      "Narrowed per chat to its project's repository. A GH_TOKEN in the sandbox variables is ignored.",
+    detail: "Acts as the app, narrowed per chat to that chat's repository.",
   },
   {
     value: "variable" as const,
-    label: "The account's own token",
-    detail: "Uses the GH_TOKEN that account keeps in its sandbox variables, unchanged.",
+    label: "The account's own login",
+    detail: "Acts as the account's own token. The app's token is not used.",
   },
 ];
 
@@ -350,11 +349,11 @@ export function GithubAppPanel() {
             </div>
 
             <div className="border-border/60 space-y-1.5 border-t pt-3">
-              <p className="text-sm font-medium">Two credentials, one used</p>
+              <p className="text-sm font-medium">Who acts on GitHub</p>
               <p className="text-muted-foreground text-xs">
-                When an account also keeps a <code className="font-mono">GH_TOKEN</code> in its
-                sandbox variables, only one of the two is ever used. Which one is this
-                instance&apos;s decision — nobody has to choose per account.
+                Every GitHub command in a workspace acts as exactly one identity. This decides which
+                one, for the whole instance — so an account that also keeps its own token never ends
+                up with both.
               </p>
               <RadioGroup
                 aria-label="Which GitHub credential wins"
