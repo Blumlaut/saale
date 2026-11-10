@@ -17,6 +17,7 @@ import { normalizeToolExposure } from "./tool-exposure";
 import { loadUserMcpServers } from "@/lib/mcp/servers";
 import type { ChatMode } from "@/lib/coder/checkout";
 import { promptSearchSources } from "@/lib/web/prompt";
+import { readStoredGithubSource } from "@/lib/integrations/github-credentials";
 
 /**
  * The single place a chat session's Pi agent is created.
@@ -151,9 +152,13 @@ async function buildSessionPrompt(options: {
   /** What the `SAALE_*` variables hold for this chat, for the prompt. */
   sessionEnv: Record<string, string>;
 }): Promise<string> {
-  const [sandboxEnvNames, searchSources] = await Promise.all([
+  const [sandboxEnvNames, searchSources, githubSource] = await Promise.all([
     listSandboxEnvNames(options.userId),
     promptSearchSources(options.toolConfig),
+    readStoredGithubSource(options.userId).catch((err: unknown) => {
+      console.error(`Failed to read the GitHub source of ${options.userId} for its prompt:`, err);
+      return "" as const;
+    }),
   ]);
   // MCP tools are codemode's by default, so a user with servers needs the hint
   // even when every category they enabled is declared in full.
@@ -184,6 +189,7 @@ async function buildSessionPrompt(options: {
         ...shared,
         checkout: options.checkoutMode,
         attribution: await readCommitAttributionLine(options.sessionEnv),
+        githubApp: githubSource === "app",
       })
     : buildAgentSystemPrompt(shared);
 }

@@ -71,6 +71,22 @@ End a turn by saying what you changed, what you committed and what is still unco
 const GH_TOKEN_PROMPT = `\`GH_TOKEN\` is set in your environment, so \`gh\` and \`git\` can reach private repositories without asking for credentials.`;
 
 /**
+ * What the workspace's GitHub App means for a command in this chat.
+ *
+ * The token is minted per command and narrowed to this chat's repository, which
+ * is a security property, not an inconvenience: an agent steered by a hostile
+ * issue text must not reach a second repository the account happens to have
+ * released. Said plainly, a refusal reads as the boundary it is instead of a
+ * fault to work around.
+ */
+const GITHUB_APP_PROMPT = `GitHub:
+- Saale mints a \`GH_TOKEN\` for each command you run. It belongs to this workspace's GitHub App and reaches exactly this chat's repository, so \`git\` and \`gh\` work on it without credentials.
+- \`gh\` is not signed in. Do not run \`gh auth login\`; it would put a wider credential beside this one.
+- The token covers one repository. Another repository of the same account, even one released to the app, answers "repository not found": that is the boundary, not a bug. Say so instead of retrying or looking for a way around it.
+- Never print the token or write it into a file.
+- Commits carry the connected GitHub account's own identity, and a pull request Saale opens is authored by that account. Leave \`user.name\` and \`user.email\` alone.`;
+
+/**
  * Build a coder chat's system prompt.
  *
  * Identity first, the user's own instructions next, then the git rules and the
@@ -94,6 +110,8 @@ export function buildCoderSystemPrompt(options: {
   checkout?: "worktree" | "repo" | undefined;
   /** The trailer every commit ends with, or null when the instance has none. */
   attribution?: string | null | undefined;
+  /** Whether the workspace's GitHub credential is this instance's app. */
+  githubApp?: boolean | undefined;
 }): string {
   const toolConfig = (options.toolConfig ?? {}) as Record<string, boolean | undefined>;
   const envNames = options.sandboxEnvNames ?? [];
@@ -105,7 +123,9 @@ export function buildCoderSystemPrompt(options: {
     customInstructions ? `Custom instructions:\n${customInstructions}` : null,
     gitPrompt(shared, options.attribution ?? null),
     devServerPrompt(options.previewDomain),
-    envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
+    // The app's token is Saale's, so it is described by the app block; the
+    // generic sentence is about a token the user put in their sandbox variables.
+    options.githubApp ? GITHUB_APP_PROMPT : envNames.includes("GH_TOKEN") ? GH_TOKEN_PROMPT : null,
     shared ? SHARED_CHECKOUT_REPORTING_PROMPT : REPORTING_PROMPT,
     ...capabilitySections(toolConfig, envNames, options.codemodeTools, options.searchSources),
   ];
