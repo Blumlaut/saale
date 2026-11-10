@@ -111,7 +111,7 @@ because GitHub does not revoke installation tokens when an installation shrinks.
 `admin.githubMethod` decides what the instance offers: `choice` (default, both),
 `cli` (only the CLI, the app is not offered) or `app` (only the app — a CLI login
 found in a workspace is removed rather than adopted). An instance set to `app`
-without an app saved keeps the permissive behaviour and warns; `admin.githubMode`
+without an app saved keeps the permissive behaviour and warns; `admin.githubMethod`
 is read on every reconcile, so changing it takes effect at the next read.
 
 ## When something does not work

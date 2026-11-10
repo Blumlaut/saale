@@ -54,19 +54,24 @@ export interface GithubAppSection {
   pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
 }
 
+/** The card's answer before an app is configured: nothing known, nothing claimed. */
+function noAppSection(): GithubAppSection {
+  return {
+    configured: false,
+    slug: null,
+    name: null,
+    permissions: null,
+    authorized: null,
+    installations: [],
+    pending: null,
+  };
+}
+
 /** The app's side of the card, with one poll of a sign-in in flight folded in. */
 async function readAppSection(userId: string): Promise<GithubAppSection> {
   const app = await readGithubAppCredentials();
   if (!app?.enabled) {
-    return {
-      configured: false,
-      slug: null,
-      name: null,
-      permissions: null,
-      authorized: null,
-      installations: [],
-      pending: null,
-    };
+    return noAppSection();
   }
 
   // A card that asks for the status is also what drives the sign-in: one poll per
@@ -194,15 +199,7 @@ export async function POST() {
   }
 
   return NextResponse.json({
-    app: {
-      configured: false,
-      slug: null,
-      name: null,
-      permissions: null,
-      authorized: null,
-      installations: [],
-      pending: null,
-    },
+    app: noAppSection(),
     cli: await startGithubLogin(userId),
   });
 }

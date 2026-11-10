@@ -343,7 +343,15 @@ describe("listInstallations", () => {
 
 describe("listInstallationRepositories", () => {
   it("returns the repository names of a selected installation", async () => {
-    answer = { body: { repositories: [{ name: "api" }, { name: "web" }, {}] } };
+    answer = {
+      body: {
+        repositories: [
+          { id: 1, name: "api", full_name: "acme/api" },
+          { id: 2, name: "web", full_name: "acme/web" },
+          {},
+        ],
+      },
+    };
 
     expect(await listInstallationRepositories("ghu_1", "1234")).toEqual(["api", "web"]);
     expect(calls[0]?.url).toBe(

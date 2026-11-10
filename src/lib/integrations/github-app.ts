@@ -137,6 +137,16 @@ export interface GithubInstallationView {
   suspended: boolean;
 }
 
+/**
+ * An installation plus the row id a token mint takes.
+ *
+ * The id is the internal one on purpose: GitHub's installation number is a
+ * guessable integer, and the access check is what has to gate a mint.
+ */
+export interface GithubInstallationTarget extends GithubInstallationView {
+  rowId: string;
+}
+
 /** The whole connection, as the card renders it. */
 export interface GithubAppStatus {
   /** An admin saved a credential set and left it switched on. */
@@ -638,6 +648,29 @@ export async function refreshGithubInstallations(
 }
 
 /** The installations this account may use, as the card lists them. */
+/** An installation row as the card lists it, and its internal id for a mint. */
+type GithubInstallationRow = {
+  id: string;
+  installationId: string;
+  accountLogin: string;
+  accountType: string;
+  repositorySelection: string;
+  repositories: unknown;
+  suspendedAt: Date | null;
+};
+
+/** What one stored installation says, whether the card or a mint reads it. */
+function installationView(row: GithubInstallationRow): GithubInstallationView {
+  return {
+    installationId: row.installationId,
+    accountLogin: row.accountLogin,
+    accountType: row.accountType,
+    repositorySelection: row.repositorySelection,
+    repositories: isStringArray(row.repositories) ? row.repositories : null,
+    suspended: row.suspendedAt !== null,
+  };
+}
+
 export async function readGithubInstallations(userId: string): Promise<GithubInstallationView[]> {
   const rows = await prisma.githubInstallationAccess
     .findMany({ where: { userId }, include: { installation: true } })
@@ -647,16 +680,7 @@ export async function readGithubInstallations(userId: string): Promise<GithubIns
     });
 
   return rows
-    .map((row) => ({
-      installationId: row.installation.installationId,
-      accountLogin: row.installation.accountLogin,
-      accountType: row.installation.accountType,
-      repositorySelection: row.installation.repositorySelection,
-      repositories: isStringArray(row.installation.repositories)
-        ? row.installation.repositories
-        : null,
-      suspended: row.installation.suspendedAt !== null,
-    }))
+    .map((row) => installationView(row.installation))
     .sort((a, b) => a.accountLogin.localeCompare(b.accountLogin));
 }
 
@@ -669,12 +693,28 @@ export async function readGithubInstallations(userId: string): Promise<GithubIns
 export async function githubInstallationForOwner(
   userId: string,
   owner: string,
-): Promise<GithubInstallationView | null> {
+): Promise<GithubInstallationTarget | null> {
   const wanted = owner.trim().toLowerCase();
   if (!wanted) return null;
 
-  const rows = await readGithubInstallations(userId);
-  return rows.find((row) => !row.suspended && row.accountLogin.toLowerCase() === wanted) ?? null;
+  const access = await prisma.githubInstallationAccess
+    .findFirst({
+      where: {
+        userId,
+        installation: {
+          accountLogin: { equals: wanted, mode: "insensitive" },
+          suspendedAt: null,
+        },
+      },
+      include: { installation: true },
+    })
+    .catch((err: unknown) => {
+      console.error(`Failed to find the GitHub installation for ${wanted} of ${userId}:`, err);
+      return null;
+    });
+  if (!access) return null;
+
+  return { rowId: access.installation.id, ...installationView(access.installation) };
 }
 
 // ─── Which repositories an installation may use ─────────────────────────────
@@ -899,23 +939,6 @@ export async function readGithubAppStatus(userId: string): Promise<GithubAppStat
     authorized: token ? { login: token.login, expiresAt: token.accessExpiresAt } : null,
     installations: token ? await readGithubInstallations(userId) : [],
   };
-}
-
-/**
- * The GitHub account behind this workspace's authorization.
- *
- * Attribution only: an installation token belongs to the app, so anything it
- * carries — a commit, a pull request — reads as the app's bot unless Saale names
- * the person the token was authorized by.
- */
-export async function readGithubAuthor(userId: string): Promise<{ login: string } | null> {
-  const row = await prisma.githubUserToken
-    .findUnique({ where: { userId }, select: { login: true } })
-    .catch((err: unknown) => {
-      console.error(`Failed to read the GitHub author of ${userId}:`, err);
-      return null;
-    });
-  return row?.login ? { login: row.login } : null;
 }
 
 /**

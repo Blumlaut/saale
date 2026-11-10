@@ -173,9 +173,10 @@ export async function applyGithubHelper(userId: string, source: GithubSource | "
  * token. A stale token therefore degrades to the CLI login instead of failing a
  * push outright.
  *
- * A `gh` shim in the same directory is not needed for that: `gh` reads `GH_TOKEN`
- * from the command's environment, which `runInWorkspace` sets from the same file
- * (see `github-command-env.ts`).
+ * Commands Saale starts carry `GH_TOKEN` (see `resolveGithubCommandEnv`), but a
+ * command the agent types in a terminal has only what the shell has, which is
+ * why `installGhShim` puts a `gh` in front of the real one: the shim reads the
+ * same token file when nothing narrower is set.
  */
 const HELPER_SCRIPT = `#!/bin/sh
 # Written by Saale. Answers git's credential request for github.com from the
@@ -283,15 +284,6 @@ async function removeCredential(userId: string): Promise<void> {
 }
 
 /** Whether a token file is there, without reading it into a log or a prompt. */
-export async function hasGithubCredential(userId: string): Promise<boolean> {
-  try {
-    await fs.access(credentialPath(userId));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // ─── Applying the source ────────────────────────────────────────────────────
 
 /**
@@ -359,41 +351,28 @@ async function applyGitIdentity(userId: string, author: { login: string } | null
  * the person's own authorization instead — which also carries only what that
  * person may reach. Writes that a chat runs keep the narrowed installation
  * token; this is not a replacement for it.
+ *
+ * `ownEnv` is the account's own sandbox variables, because
+ * `admin.githubTokenPrecedence = "variable"` promises that a `GH_TOKEN` kept
+ * there wins over the app. Without one there, the app is the only credential
+ * left, so this still answers and the pull request keeps its author.
  */
-export async function resolveGithubUserEnv(userId: string): Promise<Record<string, string>> {
-  const source = await readStoredGithubSource(userId);
+export async function resolveGithubUserEnv(
+  userId: string,
+  ownEnv: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const [source, policy] = await Promise.all([
+    readStoredGithubSource(userId),
+    githubCredentialPolicy(userId),
+  ]);
   if (source !== "app") return {};
+  if (!policy.injectAppToken && ownEnv.GH_TOKEN) return {};
 
   const access = await readGithubUserAccess(userId).catch((err: unknown) => {
     console.error(`Failed to read the GitHub authorization of ${userId} for a command:`, err);
     return null;
   });
   return access ? { GH_TOKEN: access.accessToken } : {};
-}
-
-/**
- * Refresh the token file before a command that talks to a remote.
- *
- * The user token lasts eight hours and is refreshed on use, so the file has to
- * be rewritten whenever it is older than the token it holds. Idempotent: a file
- * that already carries the current token is left alone.
- */
-export async function ensureGithubCredential(userId: string): Promise<void> {
-  const source = await readStoredGithubSource(userId);
-  if (source !== "app") return;
-
-  const access = await readGithubUserAccess(userId);
-  if (!access) {
-    console.error(`The GitHub app token of ${userId} is gone, so the workspace keeps its old one.`);
-    return;
-  }
-
-  const absolute = credentialPath(userId);
-  const existing = await fs.readFile(absolute, "utf8").catch(() => null);
-  const wanted = `${JSON.stringify({ token: access.accessToken })}\n`;
-  if (existing === wanted) return;
-
-  await writeCredential(userId, access.accessToken);
 }
 
 /**

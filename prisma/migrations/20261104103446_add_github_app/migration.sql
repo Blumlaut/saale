@@ -1,11 +1,11 @@
 -- AlterTable
-ALTER TABLE "AppSettings" ADD COLUMN     "githubSource" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "AppSettings" ADD COLUMN IF NOT EXISTS "githubSource" TEXT NOT NULL DEFAULT '';
 
 -- AlterTable
-ALTER TABLE "admin_settings" ADD COLUMN     "githubMethod" TEXT NOT NULL DEFAULT 'choice';
+ALTER TABLE "admin_settings" ADD COLUMN IF NOT EXISTS "githubMethod" TEXT NOT NULL DEFAULT 'choice';
 
 -- CreateTable
-CREATE TABLE "GithubApp" (
+CREATE TABLE IF NOT EXISTS "GithubApp" (
     "id" TEXT NOT NULL DEFAULT 'global',
     "appId" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE "GithubApp" (
 );
 
 -- CreateTable
-CREATE TABLE "GithubInstallation" (
+CREATE TABLE IF NOT EXISTS "GithubInstallation" (
     "id" TEXT NOT NULL,
     "installationId" TEXT NOT NULL,
     "accountLogin" TEXT NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE "GithubInstallation" (
 );
 
 -- CreateTable
-CREATE TABLE "GithubInstallationAccess" (
+CREATE TABLE IF NOT EXISTS "GithubInstallationAccess" (
     "userId" TEXT NOT NULL,
     "installationId" TEXT NOT NULL,
     "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -49,7 +49,7 @@ CREATE TABLE "GithubInstallationAccess" (
 );
 
 -- CreateTable
-CREATE TABLE "GithubUserToken" (
+CREATE TABLE IF NOT EXISTS "GithubUserToken" (
     "userId" TEXT NOT NULL,
     "encryptedAccessToken" TEXT NOT NULL,
     "encryptedRefreshToken" TEXT NOT NULL,
@@ -63,19 +63,31 @@ CREATE TABLE "GithubUserToken" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "GithubInstallation_installationId_key" ON "GithubInstallation"("installationId");
+CREATE UNIQUE INDEX IF NOT EXISTS "GithubInstallation_installationId_key" ON "GithubInstallation"("installationId");
 
 -- CreateIndex
-CREATE INDEX "GithubInstallation_accountLogin_idx" ON "GithubInstallation"("accountLogin");
+CREATE INDEX IF NOT EXISTS "GithubInstallation_accountLogin_idx" ON "GithubInstallation"("accountLogin");
 
 -- CreateIndex
-CREATE INDEX "GithubInstallationAccess_installationId_idx" ON "GithubInstallationAccess"("installationId");
+CREATE INDEX IF NOT EXISTS "GithubInstallationAccess_installationId_idx" ON "GithubInstallationAccess"("installationId");
 
 -- AddForeignKey
-ALTER TABLE "GithubInstallationAccess" ADD CONSTRAINT "GithubInstallationAccess_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GithubInstallationAccess_userId_fkey') THEN
+    ALTER TABLE "GithubInstallationAccess" ADD CONSTRAINT "GithubInstallationAccess_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "GithubInstallationAccess" ADD CONSTRAINT "GithubInstallationAccess_installationId_fkey" FOREIGN KEY ("installationId") REFERENCES "GithubInstallation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GithubInstallationAccess_installationId_fkey') THEN
+    ALTER TABLE "GithubInstallationAccess" ADD CONSTRAINT "GithubInstallationAccess_installationId_fkey" FOREIGN KEY ("installationId") REFERENCES "GithubInstallation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "GithubUserToken" ADD CONSTRAINT "GithubUserToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GithubUserToken_userId_fkey') THEN
+    ALTER TABLE "GithubUserToken" ADD CONSTRAINT "GithubUserToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "user"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

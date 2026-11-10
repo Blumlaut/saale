@@ -60,24 +60,29 @@ export interface CoderPullRequest {
 async function ghTarget(
   userId: string,
   sessionId: string,
-): Promise<{ dir: string; env: Record<string, string> } | null> {
+): Promise<{ dir: string; env: Record<string, string>; ownEnv: Record<string, string> } | null> {
   const session = await loadCoderSession(userId, sessionId);
   if (!session) return null;
   const checkout = checkoutOf(session);
   if (!checkout) return null;
 
-  const sandboxEnv: Record<string, string> = {
-    ...(await resolveSandboxEnv(userId).catch((err: unknown) => {
-      console.error(`Failed to load sandbox variables for gh in ${checkout.path}:`, err);
-      return {};
-    })),
-    ...(await resolveGithubCommandEnv(userId).catch((err: unknown) => {
+  const ownEnv: Record<string, string> = await resolveSandboxEnv(userId).catch((err: unknown) => {
+    console.error(`Failed to load sandbox variables for gh in ${checkout.path}:`, err);
+    return {};
+  });
+  const commandEnv: Record<string, string> = await resolveGithubCommandEnv(userId).catch(
+    (err: unknown) => {
       console.error(`Failed to resolve the GitHub credential for gh in ${checkout.path}:`, err);
       return {};
-    })),
+    },
+  );
+  const token = commandEnv.GH_TOKEN ?? ownEnv.GH_TOKEN;
+  return {
+    dir: checkout.path,
+    env: token ? { GH_TOKEN: token } : {},
+    // Who the account is, before Saale's own credential replaced its variable.
+    ownEnv,
   };
-  const token = sandboxEnv.GH_TOKEN;
-  return { dir: checkout.path, env: token ? { GH_TOKEN: token } : {} };
 }
 
 /** The `state` or `conclusion` of one entry in a status check rollup. */
@@ -293,7 +298,7 @@ export async function createPullRequest(
   // app's bot, so this one call uses the person's own authorization: the chat
   // pushed the branch under the narrow token, and opening the pull request is
   // the moment the work has to belong to somebody.
-  const authorEnv = await resolveGithubUserEnv(userId).catch((err: unknown) => {
+  const authorEnv = await resolveGithubUserEnv(userId, target.ownEnv).catch((err: unknown) => {
     console.error(`Failed to resolve the GitHub author for ${target.dir}:`, err);
     return {};
   });

@@ -347,17 +347,8 @@ export async function listInstallationRepositories(
   userToken: string,
   installationId: string,
 ): Promise<string[]> {
-  const answer = await apiRequest(
-    `/user/installations/${encodeURIComponent(installationId)}/repositories?per_page=100`,
-    userToken,
-  );
-  const rows = Array.isArray(answer.repositories) ? answer.repositories : [];
-  const names: string[] = [];
-  for (const row of rows) {
-    const name = text(asRecord(row)?.name);
-    if (name) names.push(name);
-  }
-  return names;
+  const repositories = await listInstallationRepositoryRefs(userToken, installationId);
+  return repositories.map((entry) => entry.name);
 }
 
 /** A repository, as the repository picker lists it. */

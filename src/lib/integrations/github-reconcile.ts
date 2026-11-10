@@ -24,7 +24,6 @@ import {
   decideGithubSource,
   isGithubMethod,
   type GithubMethod,
-  type GithubSource,
   type GithubSourceDecision,
   type GithubSourceFacts,
 } from "./github-source";
@@ -127,9 +126,4 @@ async function claimReconcile(userId: string): Promise<boolean> {
       console.error(`Failed to mark the GitHub reconcile of ${userId}:`, err);
     });
   return true;
-}
-
-/** The source this account is on, for a caller that only needs the value. */
-export async function currentGithubSource(userId: string): Promise<GithubSource | ""> {
-  return readStoredGithubSource(userId);
 }
