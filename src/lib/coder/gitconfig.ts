@@ -40,12 +40,20 @@ function clean(value: string | null | undefined): string {
  *
  * Their account name and email: a commit made on their behalf should be theirs,
  * and Saale has no second identity to offer.
+ *
+ * Once the GitHub app pushes, the commit is not theirs unless the identity says
+ * so: an installation token authenticates the app, and GitHub shows the app's
+ * bot as the author of everything it carried. The connected GitHub account and
+ * its `users.noreply.github.com` address are what GitHub links back to the
+ * person, and the ID is not needed for that address to resolve.
  */
-export function gitIdentityFor(user: {
-  name?: string | null;
-  username?: string | null;
-  email: string;
-}): GitIdentity {
+export function gitIdentityFor(
+  user: { name?: string | null; username?: string | null; email: string },
+  github?: { login: string } | null,
+): GitIdentity {
+  const login = clean(github?.login);
+  if (login) return { name: login, email: `${login}@users.noreply.github.com` };
+
   const email = clean(user.email) || "saale@localhost";
   const name = clean(user.name) || clean(user.username) || email.split("@")[0] || "saale";
   return { name, email };

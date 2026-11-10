@@ -902,6 +902,23 @@ export async function readGithubAppStatus(userId: string): Promise<GithubAppStat
 }
 
 /**
+ * The GitHub account behind this workspace's authorization.
+ *
+ * Attribution only: an installation token belongs to the app, so anything it
+ * carries — a commit, a pull request — reads as the app's bot unless Saale names
+ * the person the token was authorized by.
+ */
+export async function readGithubAuthor(userId: string): Promise<{ login: string } | null> {
+  const row = await prisma.githubUserToken
+    .findUnique({ where: { userId }, select: { login: true } })
+    .catch((err: unknown) => {
+      console.error(`Failed to read the GitHub author of ${userId}:`, err);
+      return null;
+    });
+  return row?.login ? { login: row.login } : null;
+}
+
+/**
  * Forget the sync mark, so the next status read asks GitHub again.
  *
  * GitHub's install flow returns the browser to the app's setup URL, and this is
