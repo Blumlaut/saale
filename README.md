@@ -104,13 +104,14 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## Docs
 
-| Page                                       | What is in it                                    |
-| ------------------------------------------ | ------------------------------------------------ |
-| [Install](docs/install.md)                 | Compose, ports, a domain, TLS, updates, backups  |
-| [Configuration](docs/configuration.md)     | Every environment variable that matters          |
-| [Coder previews](docs/previews.md)         | A wildcard domain for dev servers in a workspace |
-| [Firefox sidebar](docs/firefox-sidebar.md) | Using Saale as Firefox's AI chatbot provider     |
-| [Development](docs/development.md)         | A checkout, the test suite, demo data            |
+| Page                                       | What is in it                                           |
+| ------------------------------------------ | ------------------------------------------------------- |
+| [Install](docs/install.md)                 | Compose, ports, a domain, TLS, updates, backups         |
+| [Configuration](docs/configuration.md)     | Every environment variable that matters                 |
+| [Coder previews](docs/previews.md)         | A wildcard domain for dev servers in a workspace        |
+| [GitHub](docs/github.md)                   | The GitHub App: permissions, install, repository access |
+| [Firefox sidebar](docs/firefox-sidebar.md) | Using Saale as Firefox's AI chatbot provider            |
+| [Development](docs/development.md)         | A checkout, the test suite, demo data                   |
 
 ## Naming
 
