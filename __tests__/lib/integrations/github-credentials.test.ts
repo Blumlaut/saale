@@ -9,6 +9,7 @@ import {
   GITHUB_HELPER_FILE,
   GITHUB_HOST_URL,
   applyGithubHelper,
+  githubGhShimScript,
   githubHelperCommand,
   githubHelperScript,
 } from "@/lib/integrations/github-credentials";
@@ -210,6 +211,17 @@ describe("githubHelperScript", () => {
 
     expect(answer).toContain("username=x-access-token");
     expect(answer).toContain("password=ghs_installation_token");
+  });
+
+  it("gives the agent's own gh the app's token", async () => {
+    const root = path.join(dir, userIdentity(USER));
+    const shim = githubGhShimScript(USER);
+
+    // The shim is what makes `gh pr create` behave for a command the model runs
+    // itself: in app mode the CLI has been signed out of the workspace.
+    expect(shim).toContain(`"${path.join(root, GITHUB_CREDENTIAL_FILE)}"`);
+    expect(shim).toContain("export GH_TOKEN");
+    expect(shim).toContain("exec /usr/bin/gh");
   });
 
   it("hands the request to the GitHub CLI when there is no token", async () => {

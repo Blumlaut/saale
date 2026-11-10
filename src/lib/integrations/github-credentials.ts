@@ -39,6 +39,17 @@ export const GITHUB_HELPER_FILE = ".local/bin/saale-git-credential";
 export const GITHUB_CREDENTIAL_FILE = ".saale/github.json";
 
 /**
+ * A `gh` that talks as the app, earlier on the PATH than the real one.
+ *
+ * The app's token reaches Saale's own commands through the environment, but an
+ * agent that types `gh pr create` itself gets no such environment — and in app
+ * mode its gh login is gone. This shim closes that: it exports the token and
+ * hands over to the binary in `/usr/bin`, so `gh` behaves the same whether Saale
+ * called it or the model did.
+ */
+export const GITHUB_GH_SHIM_FILE = ".local/bin/gh";
+
+/**
  * The source this account stored, as the settings row says.
  *
  * Read here rather than through the settings registry so the caller cannot
@@ -128,9 +139,25 @@ esac
 exit 0
 `;
 
+const GH_SHIM_SCRIPT = `#!/bin/sh
+# Written by Saale. Runs the real gh with the app's token while the app is the
+# source, so a command typed by the agent and one run by Saale behave the same.
+token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
+if [ -n "$token" ]; then
+  GH_TOKEN="$token"
+  export GH_TOKEN
+fi
+exec /usr/bin/gh "$@"
+`;
+
 /** Where the app's token is written, absolute (the helper needs it inlined). */
 function credentialPath(userId: string): string {
   return path.join(coderWorkspaceRoot(userId), GITHUB_CREDENTIAL_FILE);
+}
+
+/** The `gh` shim, as it is written into one workspace. */
+export function githubGhShimScript(userId: string): string {
+  return GH_SHIM_SCRIPT.replace("${CREDENTIAL_FILE}", credentialPath(userId));
 }
 
 /** The helper script, as it is written into one workspace. */
@@ -148,6 +175,27 @@ async function installHelperScript(userId: string): Promise<void> {
   await fs.chmod(absolute, 0o755).catch((err: unknown) => {
     console.error(`Failed to make the GitHub credential helper executable (${absolute}):`, err);
   });
+}
+
+/** Write the shim that runs the real `gh` with the app's token. */
+async function installGhShim(userId: string): Promise<void> {
+  const absolute = await writeWorkspaceFile(
+    userId,
+    GITHUB_GH_SHIM_FILE,
+    Buffer.from(githubGhShimScript(userId), "utf8"),
+  );
+  await fs.chmod(absolute, 0o755).catch((err: unknown) => {
+    console.error(`Failed to make the gh shim executable (${absolute}):`, err);
+  });
+}
+
+/** Take the shim away, so the real gh runs as the CLI login again. */
+async function removeGhShim(userId: string): Promise<void> {
+  await fs
+    .rm(path.join(coderWorkspaceRoot(userId), GITHUB_GH_SHIM_FILE), { force: true })
+    .catch((err: unknown) => {
+      console.error(`Failed to remove the gh shim for ${userId}:`, err);
+    });
 }
 
 /** Store the token the helper reads. Nothing else is written there. */
@@ -190,6 +238,7 @@ export async function applyGithubSource(userId: string, source: GithubSource | "
   if (source !== "app") {
     await applyGithubHelper(userId, source);
     await removeCredential(userId);
+    await removeGhShim(userId);
     return;
   }
 
@@ -201,6 +250,7 @@ export async function applyGithubSource(userId: string, source: GithubSource | "
   }
 
   await installHelperScript(userId);
+  await installGhShim(userId);
   await writeCredential(userId, access.accessToken);
   await applyGithubHelper(userId, "app");
   await signOutGithubCli(userId);
