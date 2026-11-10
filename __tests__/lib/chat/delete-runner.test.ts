@@ -9,7 +9,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * leaving a chat greyed forever.
  */
 
-const chats = new Map<string, { userId: string; projectId: string | null }>();
+const chats = new Map<
+  string,
+  {
+    userId: string;
+    projectId: string | null;
+    deleteError?: string | null;
+    deleteErrorCode?: string | null;
+  }
+>();
 const marked = new Map<string, { userId: string; deletingForce: boolean }>();
 
 vi.mock("@/lib/db", () => ({
@@ -31,14 +39,21 @@ vi.mock("@/lib/db", () => ({
         data,
       }: {
         where: { id: string };
-        data: { deletingAt: Date | null; deletingForce: boolean };
+        data: {
+          deletingAt: Date | null;
+          deletingForce: boolean;
+          deleteError?: string | null;
+          deleteErrorCode?: string | null;
+        };
       }) => {
+        const chat = chats.get(where.id);
+        if (!chat) return { count: 0 };
+        if (data.deleteError !== undefined) chat.deleteError = data.deleteError;
+        if (data.deleteErrorCode !== undefined) chat.deleteErrorCode = data.deleteErrorCode;
         if (data.deletingAt === null) {
           marked.delete(where.id);
           return { count: 1 };
         }
-        const chat = chats.get(where.id);
-        if (!chat) return { count: 0 };
         marked.set(where.id, { userId: chat.userId, deletingForce: data.deletingForce });
         return { count: 1 };
       },
@@ -184,6 +199,33 @@ describe("runDeletes", () => {
     expect(marked.has("chat-1")).toBe(false);
     // The chat is still there: nothing was half-deleted behind the failure.
     expect(chats.has("chat-1")).toBe(true);
+  });
+
+  it("leaves the reason on the row, so a chat that stayed says why", async () => {
+    mockDeleteChatSession.mockRejectedValueOnce(
+      new CoderCleanupError("The checkout holds changes.", 409, WORKTREE_KEPT_CODE),
+    );
+
+    await queueChatDeletes(USER_ID, ["chat-1"]);
+    await runDeletes();
+
+    expect(chats.get("chat-1")).toMatchObject({
+      deleteError: "The checkout holds changes.",
+      deleteErrorCode: WORKTREE_KEPT_CODE,
+    });
+  });
+
+  it("answers the last attempt's error when the chat is deleted again", async () => {
+    mockDeleteChatSession.mockRejectedValueOnce(new Error("disk on fire"));
+
+    await queueChatDeletes(USER_ID, ["chat-1"]);
+    await runDeletes();
+    expect(chats.get("chat-1")?.deleteError).toBe("disk on fire");
+
+    await queueChatDeletes(USER_ID, ["chat-1"]);
+    await runDeletes();
+
+    expect(chats.has("chat-1")).toBe(false);
   });
 
   it("carries on with the rest of the queue after a failure", async () => {

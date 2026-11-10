@@ -38,6 +38,9 @@ export interface CoderProjectChat {
   isGenerating: boolean;
   /** The server is removing this chat, so the row is greyed and goes nowhere. */
   deleting: boolean;
+  /** Why the last delete of this chat stopped, which the row marks in red. */
+  deleteError: string | null;
+  deleteErrorCode: string | null;
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
   worktree: { path: string; branch: string; status: string } | null;

@@ -57,7 +57,13 @@ async function queueChatDelete(
 
   await prisma.chatSession.updateMany({
     where: { id: sessionId, userId },
-    data: { deletingAt: new Date(), deletingForce: force },
+    data: {
+      deletingAt: new Date(),
+      deletingForce: force,
+      // A new attempt answers the last one's error.
+      deleteError: null,
+      deleteErrorCode: null,
+    },
   });
 
   void runDeletes();
@@ -150,11 +156,17 @@ async function remove(next: QueuedDelete): Promise<boolean> {
     return true;
   } catch (err) {
     console.error(`Failed to delete chat session ${next.id}:`, err);
-    // The row comes back, and with it the chance to try again.
+    // The row comes back wearing the reason, so the chat that stayed is not a
+    // chat that quietly stayed.
     try {
       await prisma.chatSession.updateMany({
         where: { id: next.id },
-        data: { deletingAt: null, deletingForce: false },
+        data: {
+          deletingAt: null,
+          deletingForce: false,
+          deleteError: err instanceof Error ? err.message : String(err),
+          deleteErrorCode: err instanceof CoderCleanupError ? (err.code ?? null) : null,
+        },
       });
       return true;
     } catch (clearErr) {

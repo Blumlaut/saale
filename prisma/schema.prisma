@@ -213,6 +213,11 @@ model ChatSession {
   /// The user agreed to lose what the chat's checkout holds, so the removal
   /// must not stop to ask.
   deletingForce       Boolean         @default(false)
+  /// Why the last delete of this chat stopped. The row wears it until the next
+  /// attempt, so a removal that failed is never a chat that quietly stayed.
+  deleteError         String?         @db.Text
+  /// The reason's code, when a confirmed retry can get past it.
+  deleteErrorCode     String?         @db.VarChar(32)
 
   @@index([userId, createdAt])
   @@index([projectId, lastActivityAt])

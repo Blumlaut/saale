@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
       coderWorktree: { select: { branch: true } },
       _count: { select: { scriptWatchers: true } },
       deletingAt: true,
+      deleteError: true,
+      deleteErrorCode: true,
     },
   });
 
@@ -74,6 +76,9 @@ export async function GET(request: NextRequest) {
       isGenerating: activeSessionIds.has(s.id),
       // The chat is on its way out: the list greys the row and stops offering it.
       deleting: s.deletingAt !== null,
+      // Why the last attempt stopped, for the mark that explains it.
+      deleteError: s.deleteError,
+      deleteErrorCode: s.deleteErrorCode,
       origin: s.origin,
       worktree: s.coderWorktree ? { branch: s.coderWorktree.branch } : null,
       createdAt: s.createdAt.toISOString(),

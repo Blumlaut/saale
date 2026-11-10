@@ -66,6 +66,8 @@ interface ChatCheckout {
   checkoutExists: boolean;
   /** The branch the checkout is on now, "" when git could not be asked. */
   currentBranch: string;
+  /** Whether git could read the checkout at all. */
+  readable: boolean;
   /** Whether the checkout holds changes git would refuse to throw away. */
   dirty: boolean;
 }
@@ -107,6 +109,7 @@ async function readChatCheckout(userId: string, sessionId: string): Promise<Chat
     repoExists,
     checkoutExists,
     currentBranch: status?.branch ?? "",
+    readable: status !== null,
     dirty: (status?.files.length ?? 0) > 0,
   };
 }
@@ -139,6 +142,12 @@ async function keptWorkReason(userId: string, checkout: ChatCheckout): Promise<s
 
   if (checkout.checkoutExists && (!checkout.repoExists || checkout.repoPath === null)) {
     return `The repo for ${checkout.path} is gone, so its files may be the only copy. Delete them by hand if you are sure.`;
+  }
+
+  // A directory git does not know is a checkout whose registration went (a
+  // pruned worktree, a re-cloned repo). What is in it is all that is left.
+  if (checkout.checkoutExists && !checkout.readable) {
+    return `The checkout ${checkout.path} is not a git worktree any more, so its files may be the only copy. Delete the checkout anyway.`;
   }
 
   if (checkout.checkoutExists && checkout.dirty) {

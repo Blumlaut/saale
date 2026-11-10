@@ -27,6 +27,11 @@ import {
 import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { ChatRowMenu, WatcherChatBadge } from "@/components/chat/chat-list";
+import {
+  DeleteErrorDialog,
+  DeleteErrorMark,
+  type ChatDeleteError,
+} from "@/components/chat/delete-error-dialog";
 import { startChatSession } from "@/lib/chat-session";
 import { deleteFailure, requestChatDelete } from "@/lib/chat/delete-chat";
 import { saveChatPin } from "@/lib/chat/pin";
@@ -109,6 +114,8 @@ export function ProjectList() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<CoderProjectSummary | null>(null);
   const [deletingChat, setDeletingChat] = useState<CoderProjectChat | null>(null);
+  // The chat a red mark was clicked on, and what stopped its delete.
+  const [deleteError, setDeleteError] = useState<(ChatDeleteError & { id: string }) | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
   const folded = new Set(collapsed);
@@ -203,6 +210,19 @@ export function ProjectList() {
         {/* The new-chat column belongs to a project's own line. */}
         <span aria-hidden className="hidden md:block" />
         <span data-slot="row-actions" className={ROW_TRAILING}>
+          {chat.deleteError && !chat.deleting && (
+            <DeleteErrorMark
+              title={title}
+              onClick={() =>
+                setDeleteError({
+                  id: chat.id,
+                  title,
+                  message: chat.deleteError ?? "",
+                  code: chat.deleteErrorCode,
+                })
+              }
+            />
+          )}
           <ChatRowMenu
             title={title}
             pinned={chat.pinned}
@@ -391,6 +411,21 @@ export function ProjectList() {
             console.error(`Failed to delete coder chat ${chat.id}:`, err);
             throw err;
           }
+        }}
+      />
+
+      {/* Why a chat is still here. The retry is the same delete with the answer
+          the refusal asked for; the row says how it went. */}
+      <DeleteErrorDialog
+        error={deleteError}
+        onClose={() => setDeleteError(null)}
+        onRetry={(force) => {
+          const id = deleteError?.id;
+          setDeleteError(null);
+          if (!id) return;
+          requestChatDelete([id], force).catch((err: unknown) => {
+            console.error(`Failed to retry the delete of coder chat ${id}:`, err);
+          });
         }}
       />
 

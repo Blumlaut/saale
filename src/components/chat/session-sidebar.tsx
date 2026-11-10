@@ -19,6 +19,7 @@ import {
   CHAT_WATCHERS_EVENT,
 } from "@/lib/chat/session-events";
 import { saveChatPin } from "@/lib/chat/pin";
+import { DeleteErrorDialog, type ChatDeleteError } from "@/components/chat/delete-error-dialog";
 import { deleteFailure, requestChatDelete } from "@/lib/chat/delete-chat";
 import { ForceDeleteDialog } from "@/components/shared/force-delete-dialog";
 import { splitPinnedSessions, splitSessionsByActivity } from "@/lib/chat/session-recency";
@@ -46,6 +47,9 @@ interface ChatSession {
   isGenerating?: boolean;
   /** The server is removing this chat, so the row is greyed and goes nowhere. */
   deleting?: boolean;
+  /** Why the last delete of this chat stopped, which the row marks in red. */
+  deleteError?: string | null;
+  deleteErrorCode?: string | null;
   forkedFromSessionId?: string;
   /** "watcher" for a chat a watcher fire opened. */
   origin?: string;
@@ -114,6 +118,8 @@ export function SessionSidebar({
   // The pending delete's ids. one from the row menu, several from the
   // selection bar. so both paths run through the same confirmation.
   const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  // The chat a red mark was clicked on, and what stopped its delete.
+  const [deleteError, setDeleteError] = useState<(ChatDeleteError & { id: string }) | null>(null);
 
   const listUrl = projectId
     ? `/api/chat/sessions?projectId=${encodeURIComponent(projectId)}`
@@ -297,6 +303,24 @@ export function SessionSidebar({
       active={session.id === activeSessionId}
       pinned={session.pinned}
       deleting={session.deleting ?? false}
+      deleteError={
+        session.deleteError
+          ? {
+              title: session.title,
+              message: session.deleteError,
+              code: session.deleteErrorCode,
+            }
+          : null
+      }
+      onShowDeleteError={() =>
+        session.deleteError &&
+        setDeleteError({
+          id: session.id,
+          title: session.title,
+          message: session.deleteError,
+          code: session.deleteErrorCode,
+        })
+      }
       accessories={
         <>
           {session.isGenerating && (
@@ -511,6 +535,21 @@ export function SessionSidebar({
         onDelete={(force) =>
           pendingDelete ? deleteChats(pendingDelete, force) : Promise.resolve()
         }
+      />
+
+      {/* Why a chat is still here. The retry is the same delete with the answer
+          the refusal asked for; the row says how it went. */}
+      <DeleteErrorDialog
+        error={deleteError}
+        onClose={() => setDeleteError(null)}
+        onRetry={(force) => {
+          const id = deleteError?.id;
+          setDeleteError(null);
+          if (!id) return;
+          deleteChats([id], force).catch((err: unknown) => {
+            console.error(`Failed to retry the delete of chat ${id}:`, err);
+          });
+        }}
       />
     </GlassPanel>
   );

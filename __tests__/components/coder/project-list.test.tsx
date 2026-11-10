@@ -34,16 +34,28 @@ import { broadcastSessionsDeleting } from "@/lib/chat/session-events";
 
 const NOW = new Date().toISOString();
 
-function chat(id: string, title: string, extra: { pinned?: boolean; pullRequest?: unknown } = {}) {
+function chat(
+  id: string,
+  title: string,
+  extra: {
+    pinned?: boolean;
+    pullRequest?: unknown;
+    deleteError?: string | null;
+    deleteErrorCode?: string | null;
+  } = {},
+) {
   return {
     id,
     title,
     lastActivityAt: NOW,
-    pinned: extra.pinned ?? false,
     isGenerating: false,
     deleting: false,
     origin: "user",
     worktree: { path: `/worktrees/${id}`, branch: `wt/${id}`, status: "active" },
+    ...extra,
+    pinned: extra.pinned ?? false,
+    deleteError: extra.deleteError ?? null,
+    deleteErrorCode: extra.deleteErrorCode ?? null,
     pullRequest: extra.pullRequest ?? null,
   };
 }
@@ -182,6 +194,27 @@ describe("ProjectList", () => {
     act(() => broadcastSessionsDeleting(["s-1"]));
 
     await waitFor(() => expect(screen.queryByText("Fix the build")).not.toBeInTheDocument());
+  });
+
+  it("marks a chat whose delete stopped, and explains it on click", async () => {
+    mocks.fetchJson.mockResolvedValue({
+      projects: [
+        project("p-1", "Saale Web", [
+          chat("s-1", "Fix the build", {
+            deleteError: "The checkout is not a git worktree any more.",
+            deleteErrorCode: "worktree-kept",
+          }),
+        ]),
+      ],
+    });
+
+    render(<ProjectList />);
+    await screen.findByText("Fix the build");
+    fireEvent.click(screen.getByRole("button", { name: "Delete failed for Fix the build" }));
+
+    expect(await screen.findByText("This chat was not deleted")).toBeInTheDocument();
+    expect(screen.getByText(/not a git worktree any more/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete anyway" })).toBeInTheDocument();
   });
 
   it("starts a chat in the project from its line", async () => {

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { useLongPress } from "@/hooks/use-long-press";
+import { DeleteErrorMark, type ChatDeleteError } from "@/components/chat/delete-error-dialog";
 import { Check, CheckSquare, MoreVertical, Pin, PinOff, Trash2, Bot } from "lucide-react";
 
 /**
@@ -44,6 +45,9 @@ export interface ChatListRowProps {
    * is gone, and the row menu's icon becomes the spinner that says so.
    */
   deleting?: boolean;
+  /** Why the last delete of this chat stopped, which the row marks in red. */
+  deleteError?: ChatDeleteError | null;
+  onShowDeleteError?: () => void;
   selection?: ChatRowSelection;
   onTogglePin?: () => void;
   onDelete: () => void;
@@ -58,6 +62,8 @@ export function ChatListRow({
   active = false,
   pinned = false,
   deleting = false,
+  deleteError = null,
+  onShowDeleteError,
   selection,
   onTogglePin,
   onDelete,
@@ -147,6 +153,11 @@ export function ChatListRow({
       >
         {content}
       </Link>
+      {/* A chat whose delete stopped says so, outside the row's link so the
+          mark is its own target. */}
+      {deleteError && !deleting && (
+        <DeleteErrorMark title={title} onClick={() => onShowDeleteError?.()} />
+      )}
       {/* Delete lives behind the row menu: a permanent one-tap delete next to
           every row is too easy to hit while scrolling. */}
       {!selection?.selecting && (

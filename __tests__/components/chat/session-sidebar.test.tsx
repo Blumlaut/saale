@@ -355,6 +355,50 @@ describe("SessionSidebar older chats", () => {
     expect(screen.getByText("Fresh chat")).toBeInTheDocument();
   });
 
+  it("marks a chat whose delete stopped, and says why when it is clicked", async () => {
+    mockSessions([
+      {
+        ...session("s-failed", "Stuck chat", 0.2),
+        deleteError:
+          "The checkout is not a git worktree any more, so its files may be the only copy.",
+        deleteErrorCode: WORKTREE_KEPT_CODE,
+      },
+    ]);
+
+    await renderSidebar(undefined, "Stuck chat");
+    fireEvent.click(screen.getByRole("button", { name: "Delete failed for Stuck chat" }));
+
+    expect(await screen.findByText("This chat was not deleted")).toBeInTheDocument();
+    expect(screen.getByText(/not a git worktree any more/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete anyway" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/chat/sessions/delete",
+        expect.objectContaining({ body: JSON.stringify({ ids: ["s-failed"], force: true }) }),
+      ),
+    );
+    // The retry greys the row like any other delete.
+    await waitFor(() => expect(rowOf("Stuck chat")).toHaveAttribute("aria-busy", "true"));
+  });
+
+  it("offers no second question for a failure forcing cannot fix", async () => {
+    mockSessions([
+      {
+        ...session("s-failed", "Stuck chat", 0.2),
+        deleteError: "Could not remove the chat",
+        deleteErrorCode: null,
+      },
+    ]);
+
+    await renderSidebar(undefined, "Stuck chat");
+    fireEvent.click(screen.getByRole("button", { name: "Delete failed for Stuck chat" }));
+
+    expect(await screen.findByText("This chat was not deleted")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete anyway" })).not.toBeInTheDocument();
+  });
+
   it("offers every row's delete action without a hover state", async () => {
     // Touch devices cannot hover, so the row action must exist in the DOM for
     // every row (its CSS keeps it visible when there is no pointer).
