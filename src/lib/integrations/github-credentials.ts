@@ -124,6 +124,13 @@ const HELPER_SCRIPT = `#!/bin/sh
 case "$1" in
   get)
     body=$(cat)
+    # A token in the environment is the narrowest one there is: a chat's
+    # installation token, minted for that chat's repository.
+    if [ -n "$GH_TOKEN" ]; then
+      echo "username=x-access-token"
+      echo "password=$GH_TOKEN"
+      exit 0
+    fi
     token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
     if [ -n "$token" ]; then
       echo "username=x-access-token"
@@ -142,10 +149,12 @@ exit 0
 const GH_SHIM_SCRIPT = `#!/bin/sh
 # Written by Saale. Runs the real gh with the app's token while the app is the
 # source, so a command typed by the agent and one run by Saale behave the same.
-token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
-if [ -n "$token" ]; then
-  GH_TOKEN="$token"
-  export GH_TOKEN
+if [ -z "$GH_TOKEN" ]; then # a chat's narrowed token wins
+  token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
+  if [ -n "$token" ]; then
+    GH_TOKEN="$token"
+    export GH_TOKEN
+  fi
 fi
 exec /usr/bin/gh "$@"
 `;

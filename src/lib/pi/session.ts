@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createSandboxOperations } from "@/lib/sandbox/operations";
+import { resolveGithubSessionEnv } from "@/lib/integrations/github-session";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
@@ -54,8 +55,17 @@ export async function createSandboxScopedTools(
   const ops = createSandboxOperations({
     identity: userIdentity(userId),
     root: homeDir,
-    // A name the user set wins over Saale's.
-    env: () => ({ ...sessionEnvVars(userId, sessionId), ...userEnv }),
+    // A name the user set wins over Saale's — except `GH_TOKEN`, where the app's
+    // narrowed installation token has to win: it is what confines a chat to its
+    // own repository. Resolved per command, because the token lasts an hour.
+    env: async () => ({
+      ...sessionEnvVars(userId, sessionId),
+      ...userEnv,
+      ...(await resolveGithubSessionEnv(userId, sessionId).catch((err: unknown) => {
+        console.error(`Failed to resolve the GitHub token of session ${sessionId}:`, err);
+        return {};
+      })),
+    }),
   });
 
   return {
