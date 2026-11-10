@@ -272,8 +272,19 @@ export function GithubAppPanel() {
         ? "Save and verify the credentials to continue."
         : null;
 
-  /** A step may be opened when the one before it is done. */
-  const canOpenStep = (target: 1 | 2 | 3): boolean => target < 3 || Boolean(app);
+  /**
+   * The first step this wizard still has to offer.
+   *
+   * A saved app means step 1 (register it on GitHub) is behind the user, so the
+   * wizard opens at the credentials and neither "Back" nor a click on the first
+   * bubble leads back to instructions that no longer apply. The steps reappear
+   * only after "Remove", which is the point at which a new app is registered.
+   */
+  const firstStep: 1 | 2 = app ? 2 : 1;
+
+  /** A step may be opened when it is still ahead of what was done. */
+  const canOpenStep = (target: 1 | 2 | 3): boolean =>
+    target >= firstStep && (target < 3 || Boolean(app));
 
   return (
     <div className="space-y-4">
@@ -665,8 +676,12 @@ export function GithubAppPanel() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setStep((current) => (current === 1 ? 1 : ((current - 1) as 1 | 2)))}
-                disabled={step === 1}
+                onClick={() =>
+                  setStep((current) =>
+                    current <= firstStep ? firstStep : ((current - 1) as 1 | 2),
+                  )
+                }
+                disabled={step === firstStep}
               >
                 <ArrowLeft className="mr-1 h-3.5 w-3.5" />
                 Back
