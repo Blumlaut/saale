@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Copy,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +64,13 @@ interface CredentialForm {
 
 const EMPTY_FORM: CredentialForm = { appId: "", clientId: "", clientSecret: "", privateKey: "" };
 
+/** The wizard's three steps, in the order they have to happen. */
+const STEPS = [
+  { id: 1, label: "Register", description: "One GitHub App for this instance" },
+  { id: 2, label: "Credentials", description: "The four values GitHub gives you" },
+  { id: 3, label: "Connect", description: "Accounts sign in and install it" },
+] as const;
+
 /** Permissions the app needs, in the words GitHub's form uses. */
 const REQUIRED_PERMISSIONS: { name: string; level: string; why: string }[] = [
   { name: "Contents", level: "Read & write", why: "clone, fetch and push" },
@@ -65,11 +80,14 @@ const REQUIRED_PERMISSIONS: { name: string; level: string; why: string }[] = [
 ];
 
 /**
- * The instance's GitHub App, as an admin configures it.
+ * The instance's GitHub App, set up one step at a time.
  *
- * One row, instance-wide: its private key decides what every workspace may do on
- * GitHub. The four fields are write-only — the API never echoes the secret or the
- * key — so replacing them means saving a complete set again.
+ * A wizard rather than a page of instructions: each step is the only thing on
+ * screen, the next one appears when the step before it is done, and a saved app
+ * opens on its summary instead. The steps are the ones GitHub imposes — register
+ * the app, hand Saale its credentials, then let accounts sign in and install it —
+ * and every URL in step 1 is derived from this instance's public URL, because a
+ * mistyped Setup URL leaves the connection card waiting forever.
  */
 export function GithubAppPanel() {
   const [app, setApp] = useState<GithubAppSummary | null>(null);
@@ -79,10 +97,13 @@ export function GithubAppPanel() {
     setupUrl: string;
   } | null>(null);
   const [progress, setProgress] = useState({ connectedAccounts: 0, installations: 0 });
+
   const [loading, setLoading] = useState(true);
+  const [wizard, setWizard] = useState(false);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [replacing, setReplacing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [form, setForm] = useState<CredentialForm>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +123,11 @@ export function GithubAppPanel() {
         connectedAccounts: data.connectedAccounts ?? 0,
         installations: data.installations ?? 0,
       });
+      // Nothing saved yet: the only sensible place to be is the first step.
+      if (!data.app) {
+        setWizard(true);
+        setStep(1);
+      }
     } catch (err) {
       console.error("Failed to read the GitHub App:", err);
       setError(err instanceof Error ? err.message : "Failed to read the GitHub App");
@@ -117,6 +143,12 @@ export function GithubAppPanel() {
   const field = (key: keyof CredentialForm) => (value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
 
+  const formIsComplete =
+    form.appId.trim().length > 0 &&
+    form.clientId.trim().length > 0 &&
+    form.clientSecret.trim().length > 0 &&
+    form.privateKey.trim().length > 0;
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -124,8 +156,9 @@ export function GithubAppPanel() {
       const data = await putJson<AppResponse>("/api/admin/github/app", form);
       setApp(data.app);
       setForm(EMPTY_FORM);
-      setReplacing(false);
       toast.success("GitHub App saved");
+      // The next step is the one that was waiting for these credentials.
+      setStep(3);
     } catch (err) {
       console.error("Failed to save the GitHub App:", err);
       setError(err instanceof Error ? err.message : "Failed to save the GitHub App");
@@ -154,7 +187,8 @@ export function GithubAppPanel() {
     try {
       await deleteJson("/api/admin/github/app");
       setApp(null);
-      setReplacing(false);
+      setWizard(true);
+      setStep(1);
       toast.success("GitHub App removed");
     } catch (err) {
       console.error("Failed to remove the GitHub App:", err);
@@ -162,13 +196,7 @@ export function GithubAppPanel() {
     }
   };
 
-  const formIsComplete =
-    form.appId.trim().length > 0 &&
-    form.clientId.trim().length > 0 &&
-    form.clientSecret.trim().length > 0 &&
-    form.privateKey.trim().length > 0;
-
-  // Until the read answers, showing the empty form would look like "nothing is
+  // Until the read answers, showing the wizard would look like "nothing is
   // configured" — which is the one thing this panel must not guess at.
   if (loading) {
     return (
@@ -182,6 +210,8 @@ export function GithubAppPanel() {
     );
   }
 
+  const editing = wizard || !app;
+
   return (
     <div className="space-y-4">
       {error && (
@@ -191,9 +221,7 @@ export function GithubAppPanel() {
         </div>
       )}
 
-      <SetupProgress app={app} urls={urls} progress={progress} onSaved={Boolean(app)} />
-
-      {app && !replacing && (
+      {!editing && app ? (
         <GlassPanel>
           <GlassPanelHeader title="GitHub App">
             <div className="flex items-center gap-2">
@@ -247,9 +275,36 @@ export function GithubAppPanel() {
               </div>
             )}
 
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className="text-muted-foreground">
+                {progress.connectedAccounts} account{progress.connectedAccounts === 1 ? "" : "s"}{" "}
+                connected
+              </span>
+              <span className="text-muted-foreground">
+                {progress.installations} installation{progress.installations === 1 ? "" : "s"}
+              </span>
+            </div>
+
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setReplacing(true)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setWizard(true);
+                  setStep(2);
+                }}
+              >
                 Replace credentials
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setWizard(true);
+                  setStep(1);
+                }}
+              >
+                Setup steps
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
                 Remove
@@ -267,132 +322,237 @@ export function GithubAppPanel() {
             </div>
           </GlassPanelContent>
         </GlassPanel>
-      )}
-
-      {(!app || replacing) && (
+      ) : (
         <GlassPanel>
-          <GlassPanelHeader title={app ? "Replace the credentials" : "Add a GitHub App"}>
-            {replacing && (
-              <Button variant="ghost" size="sm" onClick={() => setReplacing(false)}>
+          <GlassPanelHeader title="Set up a GitHub App">
+            {app && (
+              <Button variant="ghost" size="sm" onClick={() => setWizard(false)}>
                 Cancel
               </Button>
             )}
           </GlassPanelHeader>
-          <GlassPanelContent className="space-y-5">
-            <section className="space-y-2">
-              <h3 className="text-sm font-medium">1. Create the app on GitHub</h3>
-              <p className="text-muted-foreground text-sm">
-                <a
-                  href="https://github.com/settings/apps/new"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline underline-offset-2"
-                >
-                  New GitHub App
-                  <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
-                </a>{" "}
-                — this instance&apos;s own app, so every account authorizes Saale and not some
-                shared app.
-              </p>
-              {urls && (
+          <GlassPanelContent className="space-y-4">
+            <ol className="flex items-center gap-2" aria-label="Setup steps">
+              {STEPS.map((entry, index) => {
+                const active = entry.id === step;
+                const done = entry.id < step || (entry.id === 2 && Boolean(app));
+                return (
+                  <li key={entry.id} className="flex min-w-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setStep(entry.id)}
+                      aria-current={active ? "step" : undefined}
+                      className="flex items-center gap-1.5 rounded-full focus-visible:outline-2"
+                    >
+                      <span
+                        className={[
+                          "flex h-5 w-5 items-center justify-center rounded-full border font-mono text-[10px]",
+                          done
+                            ? "border-primary/40 bg-primary/10 text-primary"
+                            : active
+                              ? "border-primary text-primary"
+                              : "border-border/60 text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        {done ? <Check className="h-3 w-3" /> : entry.id}
+                      </span>
+                      <span
+                        className={[
+                          "hidden truncate text-[11px] sm:inline",
+                          active ? "text-foreground" : "text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        {entry.label}
+                      </span>
+                    </button>
+                    {index < STEPS.length - 1 && <span className="text-border px-0.5">·</span>}
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium">
+                {step}. {STEPS[step - 1].label}
+              </h3>
+              <p className="text-muted-foreground text-sm">{STEPS[step - 1].description}</p>
+            </div>
+
+            {step === 1 && (
+              <div className="space-y-3">
+                <p className="text-sm">
+                  <a
+                    href="https://github.com/settings/apps/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    New GitHub App
+                    <ExternalLink className="ml-0.5 inline-block h-3 w-3" />
+                  </a>{" "}
+                  — this instance&apos;s own app, so every account authorizes Saale and not somebody
+                  else&apos;s.
+                </p>
+
+                {urls && (
+                  <div className="space-y-1.5">
+                    <UrlRow label="Homepage URL" value={urls.publicUrl} />
+                    <UrlRow label="Callback URL" value={urls.callbackUrl} />
+                    <UrlRow label="Setup URL" value={urls.setupUrl} />
+                  </div>
+                )}
+
+                <ul className="text-muted-foreground space-y-1 text-xs">
+                  <li>
+                    Turn on <span className="text-foreground">Enable Device Flow</span> and{" "}
+                    <span className="text-foreground">Redirect on update</span>; leave the webhook
+                    off.
+                  </li>
+                  {REQUIRED_PERMISSIONS.map((permission) => (
+                    <li key={permission.name}>
+                      <span className="text-foreground">{permission.name}</span> —{" "}
+                      {permission.level} ({permission.why})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground text-sm">
+                  Saving verifies the credentials against GitHub before storing them — a wrong app
+                  id or key is refused here, not in the first chat.
+                </p>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="github-app-id">App id</Label>
+                    <Input
+                      id="github-app-id"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={form.appId}
+                      onChange={(event) => field("appId")(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="github-client-id">Client id</Label>
+                    <Input
+                      id="github-client-id"
+                      autoComplete="off"
+                      value={form.clientId}
+                      onChange={(event) => field("clientId")(event.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
-                  <UrlRow label="Homepage URL" value={urls.publicUrl} />
-                  <UrlRow label="Callback URL" value={urls.callbackUrl} />
-                  <UrlRow label="Setup URL" value={urls.setupUrl} />
+                  <Label htmlFor="github-client-secret">Client secret</Label>
+                  <Input
+                    id="github-client-secret"
+                    type="password"
+                    autoComplete="off"
+                    value={form.clientSecret}
+                    onChange={(event) => field("clientSecret")(event.target.value)}
+                  />
                   <p className="text-muted-foreground text-xs">
-                    Turn on <span className="text-foreground">Enable Device Flow</span>, tick{" "}
-                    <span className="text-foreground">Redirect on update</span>, and leave the
-                    webhook off.
+                    Used to refresh a user&apos;s eight-hour token. Stored encrypted and never shown
+                    again.
                   </p>
                 </div>
-              )}
-              <ul className="text-muted-foreground space-y-1 text-xs">
-                {REQUIRED_PERMISSIONS.map((permission) => (
-                  <li key={permission.name}>
-                    <span className="text-foreground">{permission.name}</span> — {permission.level}{" "}
-                    ({permission.why})
-                  </li>
-                ))}
-              </ul>
-            </section>
 
-            <section className="space-y-3">
-              <h3 className="text-sm font-medium">2. Paste what GitHub gave you</h3>
-              <p className="text-muted-foreground text-sm">
-                Saving verifies the credentials against GitHub before storing them — a wrong app id
-                or key is refused here, not in the first chat.
-              </p>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="github-app-id">App id</Label>
-                  <Input
-                    id="github-app-id"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={form.appId}
-                    onChange={(event) => field("appId")(event.target.value)}
+                  <Label htmlFor="github-private-key">Private key</Label>
+                  <Textarea
+                    id="github-private-key"
+                    rows={6}
+                    spellCheck={false}
+                    className="font-mono text-xs"
+                    placeholder="-----BEGIN RSA PRIVATE KEY-----"
+                    value={form.privateKey}
+                    onChange={(event) => field("privateKey")(event.target.value)}
                   />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="github-client-id">Client id</Label>
-                  <Input
-                    id="github-client-id"
-                    autoComplete="off"
-                    value={form.clientId}
-                    onChange={(event) => field("clientId")(event.target.value)}
-                  />
+                  <p className="text-muted-foreground text-xs">
+                    The .pem file GitHub generated for the app. It signs the app token that mints
+                    installation tokens.
+                  </p>
                 </div>
               </div>
+            )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="github-client-secret">Client secret</Label>
-                <Input
-                  id="github-client-secret"
-                  type="password"
-                  autoComplete="off"
-                  value={form.clientSecret}
-                  onChange={(event) => field("clientSecret")(event.target.value)}
-                />
-                <p className="text-muted-foreground text-xs">
-                  Used to refresh a user&apos;s eight-hour token. Stored encrypted and never shown
-                  again.
-                </p>
-              </div>
+            {step === 3 && (
+              <div className="space-y-3">
+                {app ? (
+                  <p className="flex items-center gap-2 text-sm">
+                    <Check className="h-4 w-4 text-emerald-500" />
+                    {app.name} is configured
+                    {app.enabled ? "" : " but switched off"}.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Save the credentials in step 2 first; this step is where accounts connect.
+                  </p>
+                )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="github-private-key">Private key</Label>
-                <Textarea
-                  id="github-private-key"
-                  rows={6}
-                  spellCheck={false}
-                  className="font-mono text-xs"
-                  placeholder="-----BEGIN RSA PRIVATE KEY-----"
-                  value={form.privateKey}
-                  onChange={(event) => field("privateKey")(event.target.value)}
-                />
-                <p className="text-muted-foreground text-xs">
-                  The .pem file GitHub generated for the app. It signs the app token that mints
-                  installation tokens.
-                </p>
-              </div>
+                <div className="space-y-1 text-xs">
+                  <p className="text-muted-foreground">
+                    {progress.connectedAccounts} account
+                    {progress.connectedAccounts === 1 ? "" : "s"} authorized ·{" "}
+                    {progress.installations} installation
+                    {progress.installations === 1 ? "" : "s"}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Each account continues on{" "}
+                    <span className="text-foreground">Settings → Integrations → GitHub</span>:
+                    device code, install, then pick repositories.
+                  </p>
+                </div>
 
-              <div className="flex justify-end">
-                <Button onClick={() => void save()} disabled={saving || !formIsComplete}>
-                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save and verify
+                <Button variant="secondary" size="sm" asChild>
+                  <a href="/dashboard/settings/integrations">
+                    Open the Integrations card
+                    <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </a>
                 </Button>
               </div>
-            </section>
+            )}
 
-            <section className="space-y-1">
-              <h3 className="text-sm font-medium">3. Connect an account</h3>
-              <p className="text-muted-foreground text-sm">
-                On <span className="text-foreground">Settings → Integrations → GitHub</span> each
-                account signs in with a device code, installs the app where it may live, and picks
-                the repositories. That is where the setup continues.
-              </p>
-            </section>
+            <div className="border-border/60 flex items-center justify-between gap-2 border-t pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep((current) => (current === 1 ? 1 : ((current - 1) as 1 | 2)))}
+                disabled={step === 1}
+              >
+                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                Back
+              </Button>
+
+              <div className="flex items-center gap-2">
+                {step < 3 && (
+                  <Button variant="outline" size="sm" onClick={() => setStep((step + 1) as 2 | 3)}>
+                    Next
+                    <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {step === 2 && (
+                  <Button
+                    size="sm"
+                    onClick={() => void save()}
+                    disabled={saving || !formIsComplete}
+                  >
+                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save and verify
+                  </Button>
+                )}
+                {step === 3 && app && (
+                  <Button size="sm" onClick={() => setWizard(false)}>
+                    Done
+                  </Button>
+                )}
+              </div>
+            </div>
           </GlassPanelContent>
         </GlassPanel>
       )}
@@ -449,80 +609,6 @@ function UrlRow({ label, value }: { label: string; value: string }) {
       >
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </Button>
-    </div>
-  );
-}
-
-/**
- * Where the instance stands, in the three steps the setup has.
- *
- * This is the admin's overview rather than a form: it answers "is it done?" and
- * "why is nothing happening?" without reading three screens. Each line is a fact
- * Saale already knows — saved credentials, authorized accounts, installations —
- * not a checkbox somebody ticked.
- */
-function SetupProgress({
-  app,
-  urls,
-  progress,
-  onSaved,
-}: {
-  app: GithubAppSummary | null;
-  urls: { publicUrl: string; callbackUrl: string; setupUrl: string } | null;
-  progress: { connectedAccounts: number; installations: number };
-  onSaved: boolean;
-}) {
-  const steps = [
-    {
-      label: "App in Saale",
-      done: onSaved,
-      detail: onSaved ? (app?.name ?? "saved") : "credentials not saved yet",
-    },
-    {
-      label: "Accounts connected",
-      done: progress.connectedAccounts > 0,
-      detail:
-        progress.connectedAccounts > 0
-          ? `${progress.connectedAccounts} authorized`
-          : "nobody signed in yet",
-    },
-    {
-      label: "Installed",
-      done: progress.installations > 0,
-      detail:
-        progress.installations > 0
-          ? `${progress.installations} installation${progress.installations === 1 ? "" : "s"}`
-          : "nothing installed yet",
-    },
-  ];
-
-  return (
-    <div className="border-border/60 space-y-2 rounded-2xl border px-3 py-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        {steps.map((step, index) => (
-          <div key={step.label} className="flex items-center gap-1.5">
-            <span
-              className={[
-                "flex h-5 w-5 items-center justify-center rounded-full border font-mono text-[10px]",
-                step.done
-                  ? "border-primary/40 bg-primary/10 text-primary"
-                  : "border-border/60 text-muted-foreground",
-              ].join(" ")}
-            >
-              {step.done ? <Check className="h-3 w-3" /> : index + 1}
-            </span>
-            <div className="leading-tight">
-              <p className="text-xs">{step.label}</p>
-              <p className="text-muted-foreground text-[11px]">{step.detail}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      {urls && !onSaved && (
-        <p className="text-muted-foreground text-xs">
-          Paste these three values into the app on GitHub while you are there.
-        </p>
-      )}
     </div>
   );
 }
