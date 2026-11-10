@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createPullRequest,
   parsePullRequest,
   refreshStalePullRequests,
   syncPullRequest,
@@ -18,6 +19,10 @@ const mocks = vi.hoisted(() => ({
   updateMany: vi.fn(),
   runInWorkspace: vi.fn(),
   loadCoderSession: vi.fn(),
+  // The real module answers `{}` when nothing is configured; the mock must too,
+  // or the code under test trips over an undefined env.
+  commandEnv: vi.fn(async () => ({})),
+  userEnv: vi.fn(async () => ({})),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: { chatSession: { updateMany: mocks.updateMany } } }));
@@ -27,6 +32,10 @@ vi.mock("@/lib/coder/git", async (importOriginal) => ({
 }));
 vi.mock("@/lib/coder/changes", () => ({ loadCoderSession: mocks.loadCoderSession }));
 vi.mock("@/lib/sandbox/env", () => ({ resolveSandboxEnv: vi.fn(async () => ({})) }));
+vi.mock("@/lib/integrations/github-credentials", () => ({
+  resolveGithubCommandEnv: mocks.commandEnv,
+  resolveGithubUserEnv: mocks.userEnv,
+}));
 
 const OPEN_PR = {
   number: 42,
@@ -190,5 +199,66 @@ describe("refreshStalePullRequests", () => {
     ]);
 
     expect(mocks.runInWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Who a pull request belongs to.
+ *
+ * The chat pushes with the narrow installation token, which authenticates the
+ * app: a pull request it opens is authored by the app's bot, with the person's
+ * name only as a footnote. Opening it is a single call whose author GitHub
+ * records, so it has to carry the connected account's own token instead.
+ */
+describe("createPullRequest", () => {
+  const CREATED = "https://github.com/acme/saale/pull/42";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.loadCoderSession.mockResolvedValue({
+      id: "c1",
+      coderWorktree: {
+        path: "worktrees/one/c1",
+        branch: "wt/c1",
+        baseSha: "abc",
+        status: "active",
+      },
+      project: null,
+    });
+    mocks.commandEnv.mockResolvedValue({ GH_TOKEN: "installation-token" });
+    mocks.userEnv.mockResolvedValue({ GH_TOKEN: "personal-token" });
+  });
+
+  it("opens it with the connected account's token, not the installation's", async () => {
+    mocks.runInWorkspace
+      .mockResolvedValueOnce({ stdout: `${CREATED}\n`, stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(OPEN_PR), stderr: "", exitCode: 0 });
+
+    await createPullRequest("u1", "c1", { draft: false });
+
+    const create = mocks.runInWorkspace.mock.calls[0]?.[1] as { env: Record<string, string> };
+    expect(create.env.GH_TOKEN).toBe("personal-token");
+  });
+
+  it("keeps what the workspace granted when no authorization answers", async () => {
+    mocks.userEnv.mockResolvedValue({});
+    mocks.runInWorkspace
+      .mockResolvedValueOnce({ stdout: `${CREATED}\n`, stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(OPEN_PR), stderr: "", exitCode: 0 });
+
+    await createPullRequest("u1", "c1", { draft: false });
+
+    const create = mocks.runInWorkspace.mock.calls[0]?.[1] as { env: Record<string, string> };
+    expect(create.env.GH_TOKEN).toBe("installation-token");
+  });
+
+  it("says what gh said when the pull request could not be opened", async () => {
+    mocks.runInWorkspace.mockResolvedValueOnce({
+      stdout: "",
+      stderr: "a pull request for branch wt/c1 already exists",
+      exitCode: 1,
+    });
+
+    await expect(createPullRequest("u1", "c1", { draft: false })).rejects.toThrow("already exists");
   });
 });

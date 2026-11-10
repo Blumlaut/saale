@@ -154,3 +154,19 @@ Two things decide what a stranger gets:
 Signing one account out removes only its own token and access rows; the
 installation stays, because another account may still use it. Deleting the app
 in the admin panel removes everything.
+
+## Who appears on GitHub
+
+An installation token authenticates the _app_, so work it carries reads as
+`<slug>[bot]` — a commit with the bot as committer, a pull request with the bot
+as author and the person only as a footnote. Two things keep the person in the
+history:
+
+| Where                        | What                                                                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| the workspace's `.gitconfig` | `[user]` is the connected account and its `users.noreply.github.com` address, so GitHub links the commit to the profile |
+| `gh pr create`               | runs with the account's own token (`resolveGithubUserEnv`), so the pull request's author is the account, not the app    |
+
+Everything else in a chat keeps the narrowed installation token: pushes are
+still limited to the chat's repository. Attribution changes who is _recorded_,
+not what a command may touch.

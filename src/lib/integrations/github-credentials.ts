@@ -21,7 +21,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { GITCONFIG_FILE, coderWorkspaceRoot } from "@/lib/coder/paths";
-import { withCredentialHelper } from "@/lib/coder/gitconfig";
+import { ensureGitconfig, gitIdentityFor, withCredentialHelper } from "@/lib/coder/gitconfig";
+import { prisma } from "@/lib/db";
 import { isNotFoundError } from "@/lib/files/errors";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { signOutGithub } from "@/lib/coder/github";
@@ -306,6 +307,7 @@ export async function applyGithubSource(userId: string, source: GithubSource | "
     await applyGithubHelper(userId, source);
     await removeCredential(userId);
     await removeGhShim(userId);
+    await applyGitIdentity(userId, null);
     return;
   }
 
@@ -321,6 +323,52 @@ export async function applyGithubSource(userId: string, source: GithubSource | "
   await writeCredential(userId, access.accessToken);
   await applyGithubHelper(userId, "app");
   await signOutGithubCli(userId);
+  await applyGitIdentity(userId, { login: access.login });
+}
+
+/**
+ * Point the commit identity at whoever pushes.
+ *
+ * With the app in place the pusher is the app, so a plain commit reads as the
+ * bot's work; the connected account and its `users.noreply.github.com` address
+ * are what GitHub links back to the person. Without the app the identity is the
+ * account's own, and an installation that was removed goes back to it.
+ */
+async function applyGitIdentity(userId: string, author: { login: string } | null): Promise<void> {
+  const user = await prisma.user
+    .findUnique({
+      where: { id: userId },
+      select: { name: true, username: true, email: true },
+    })
+    .catch((err: unknown) => {
+      console.error(`Failed to read the account of ${userId} for its commit identity:`, err);
+      return null;
+    });
+  if (!user) return;
+
+  await ensureGitconfig(userId, gitIdentityFor(user, author)).catch((err: unknown) => {
+    console.error(`Failed to write the commit identity of ${userId}:`, err);
+  });
+}
+
+/**
+ * The token the connected person acts with, for the calls that are attributed.
+ *
+ * An installation token is the app, so a pull request it opens is authored by
+ * the app's bot. Opening one is a single call whose author is read, so it uses
+ * the person's own authorization instead — which also carries only what that
+ * person may reach. Writes that a chat runs keep the narrowed installation
+ * token; this is not a replacement for it.
+ */
+export async function resolveGithubUserEnv(userId: string): Promise<Record<string, string>> {
+  const source = await readStoredGithubSource(userId);
+  if (source !== "app") return {};
+
+  const access = await readGithubUserAccess(userId).catch((err: unknown) => {
+    console.error(`Failed to read the GitHub authorization of ${userId} for a command:`, err);
+    return null;
+  });
+  return access ? { GH_TOKEN: access.accessToken } : {};
 }
 
 /**

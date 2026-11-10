@@ -12,7 +12,10 @@ import { checkoutOf } from "./checkout";
 import { loadCoderSession } from "./changes";
 import { runInWorkspace, shellQuote } from "./git";
 import { prisma } from "@/lib/db";
-import { resolveGithubCommandEnv } from "@/lib/integrations/github-credentials";
+import {
+  resolveGithubCommandEnv,
+  resolveGithubUserEnv,
+} from "@/lib/integrations/github-credentials";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 
 /** A question about a branch: short, and the panel can ask again later. */
@@ -286,12 +289,21 @@ export async function createPullRequest(
   const target = await ghTarget(userId, sessionId);
   if (!target) throw new PullRequestError("This chat has no checkout to open a pull request from.");
 
+  // The author GitHub records is the token's. An installation token names the
+  // app's bot, so this one call uses the person's own authorization: the chat
+  // pushed the branch under the narrow token, and opening the pull request is
+  // the moment the work has to belong to somebody.
+  const authorEnv = await resolveGithubUserEnv(userId).catch((err: unknown) => {
+    console.error(`Failed to resolve the GitHub author for ${target.dir}:`, err);
+    return {};
+  });
+
   const args = ["pr", "create", "--fill"];
   if (options.draft) args.push("--draft");
   const result = await runInWorkspace(userId, {
     cwd: target.dir,
     command: ["gh", ...args].map(shellQuote).join(" "),
-    env: target.env,
+    env: { ...target.env, ...authorEnv },
     timeoutSeconds: CREATE_TIMEOUT_SECONDS,
   });
   if (result.exitCode !== 0) {
