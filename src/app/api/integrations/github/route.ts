@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { githubStatus, signOutGithub, startGithubLogin } from "@/lib/coder/github";
+import { reconcileGithubSource } from "@/lib/integrations/github-reconcile";
 import {
   GithubAppError,
   forgetGithubAppLogin,
@@ -75,6 +76,10 @@ async function readAppSection(userId: string): Promise<GithubAppSection> {
     return { state: "idle" } as const;
   });
 
+  // A finished sign-in is the moment the workspace has to change, not a minute
+  // later when the next throttled reconcile would get to it.
+  if (poll.state === "authorized") await reconcileGithubSource(userId, { force: true });
+
   const status = await readGithubAppStatus(userId);
   // An installation made in a browser tab (the app installed on an organization)
   // is not something this account did inside Saale, so the list is re-read from
@@ -128,9 +133,18 @@ export async function GET() {
   if (!authResult.ok) return authResult.response;
 
   const userId = authResult.user.id;
+
+  // Reading the card is also what brings the workspace in line: a CLI login made
+  // in the terminal is adopted here, and an app that stopped working is dropped.
+  const reconciled = await reconcileGithubSource(userId).catch((err: unknown) => {
+    console.error(`Failed to reconcile the GitHub source of ${userId}:`, err);
+    return null;
+  });
+
   return NextResponse.json({
     app: await readAppSection(userId),
     cli: await githubStatus(userId),
+    ...(reconciled?.error ? { warning: reconciled.error } : {}),
   });
 }
 

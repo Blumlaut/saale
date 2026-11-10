@@ -12,6 +12,7 @@ import { checkoutOf } from "./checkout";
 import { loadCoderSession } from "./changes";
 import { runInWorkspace, shellQuote } from "./git";
 import { prisma } from "@/lib/db";
+import { resolveGithubCommandEnv } from "@/lib/integrations/github-credentials";
 import { resolveSandboxEnv } from "@/lib/sandbox/env";
 
 /** A question about a branch: short, and the panel can ask again later. */
@@ -62,12 +63,16 @@ async function ghTarget(
   const checkout = checkoutOf(session);
   if (!checkout) return null;
 
-  const sandboxEnv: Record<string, string> = await resolveSandboxEnv(userId).catch(
-    (err: unknown) => {
+  const sandboxEnv: Record<string, string> = {
+    ...(await resolveSandboxEnv(userId).catch((err: unknown) => {
       console.error(`Failed to load sandbox variables for gh in ${checkout.path}:`, err);
       return {};
-    },
-  );
+    })),
+    ...(await resolveGithubCommandEnv(userId).catch((err: unknown) => {
+      console.error(`Failed to resolve the GitHub credential for gh in ${checkout.path}:`, err);
+      return {};
+    })),
+  };
   const token = sandboxEnv.GH_TOKEN;
   return { dir: checkout.path, env: token ? { GH_TOKEN: token } : {} };
 }

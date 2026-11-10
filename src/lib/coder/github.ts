@@ -84,6 +84,18 @@ export async function githubStatus(userId: string): Promise<GithubStatus> {
 }
 
 /**
+ * The login the workspace's credential belongs to, or null when it has none.
+ *
+ * Asked of `gh` rather than of a file, so a login made in the workspace terminal
+ * and a `GH_TOKEN` the user keeps in their variables are both found. This is the
+ * one fact the source decision needs from the workspace.
+ */
+export async function githubCliLogin(userId: string): Promise<string | null> {
+  const probe = await probeGithub(userId);
+  return probe.credential?.login ?? null;
+}
+
+/**
  * Start a sign-in and return the code, once gh has printed it.
  *
  * The command outlives this call: it keeps polling GitHub until the user

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import {
   GITHUB_HOST_URL,
   applyGithubHelper,
   githubHelperCommand,
+  githubHelperScript,
 } from "@/lib/integrations/github-credentials";
 import { userIdentity } from "@/lib/sandbox/identity";
 
@@ -163,5 +165,61 @@ describe("applyGithubHelper", () => {
   it("knows where the app's credential file goes", () => {
     expect(GITHUB_CREDENTIAL_FILE).toBe(".saale/github.json");
     expect(GITHUB_HELPER_FILE).toBe(".local/bin/saale-git-credential");
+  });
+});
+
+// ─── The helper script itself ───────────────────────────────────────────────
+
+describe("githubHelperScript", () => {
+  let dir: string;
+  const originalDir = process.env.SANDBOX_WORKSPACES_DIR;
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "saale-github-script-"));
+    process.env.SANDBOX_WORKSPACES_DIR = dir;
+  });
+
+  afterEach(async () => {
+    process.env.SANDBOX_WORKSPACES_DIR = originalDir;
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  /** Write the script and the token file where the workspace would carry them. */
+  async function install(token: string | null): Promise<string> {
+    const root = path.join(dir, userIdentity(USER));
+    const script = path.join(root, GITHUB_HELPER_FILE);
+    await fs.mkdir(path.dirname(script), { recursive: true });
+    await fs.mkdir(path.dirname(path.join(root, GITHUB_CREDENTIAL_FILE)), { recursive: true });
+    await fs.writeFile(script, githubHelperScript(USER));
+    if (token) {
+      await fs.writeFile(path.join(root, GITHUB_CREDENTIAL_FILE), JSON.stringify({ token }));
+    }
+    return script;
+  }
+
+  const ask = (script: string) =>
+    execFileSync("sh", [script, "get"], {
+      input: "protocol=https\nhost=github.com\n\n",
+      encoding: "utf8",
+    });
+
+  it("answers git with the token it finds", async () => {
+    const script = await install("ghs_installation_token");
+
+    const answer = ask(script);
+
+    expect(answer).toContain("username=x-access-token");
+    expect(answer).toContain("password=ghs_installation_token");
+  });
+
+  it("hands the request to the GitHub CLI when there is no token", async () => {
+    const script = await install(null);
+    const body = await fs.readFile(script, "utf8");
+
+    // Asserted structurally: whether gh answers depends on the machine the test
+    // runs on, and a build host may well be logged in. What matters is that the
+    // helper delegates instead of failing, so a stale token degrades to the CLI.
+    expect(body).toContain("exec /usr/bin/gh auth git-credential");
+    expect(body).not.toContain("exit 1");
   });
 });
