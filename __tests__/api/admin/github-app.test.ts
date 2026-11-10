@@ -7,6 +7,11 @@ vi.mock("@/lib/auth", () => ({
   requirePermission: (...args: unknown[]) => mockRequirePermission(...args),
 }));
 
+const { db } = vi.hoisted(() => ({
+  db: { githubUserToken: { count: vi.fn() }, githubInstallation: { count: vi.fn() } },
+}));
+vi.mock("@/lib/db", () => ({ prisma: db }));
+
 const app = vi.hoisted(() => {
   class GithubAppError extends Error {
     constructor(message: string) {
@@ -68,6 +73,8 @@ function allowAdmin() {
 
 beforeEach(() => {
   mockRequirePermission.mockReset();
+  db.githubUserToken.count.mockResolvedValue(0);
+  db.githubInstallation.count.mockResolvedValue(0);
   for (const fn of [
     app.readGithubAppSummary,
     app.saveGithubApp,
@@ -118,9 +125,19 @@ describe("GET", () => {
     expect(body.app.slug).toBe("saale");
   });
 
-  it("is null when nothing is saved", async () => {
+  it("is null when nothing is saved, and still says where the app belongs", async () => {
     app.readGithubAppSummary.mockResolvedValue(null);
-    expect(await (await GET()).json()).toEqual({ app: null });
+
+    const body = (await (await GET()).json()) as {
+      app: null;
+      setupUrl: string;
+      connectedAccounts: number;
+    };
+
+    expect(body.app).toBeNull();
+    // The admin has to paste these into GitHub, so the answer carries them.
+    expect(body.setupUrl).toMatch(/\/api\/integrations\/github\/installed$/);
+    expect(body.connectedAccounts).toBe(0);
   });
 });
 
