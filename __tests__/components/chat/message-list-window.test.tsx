@@ -129,6 +129,13 @@ describe("MessageList reading back", () => {
   /** A row's height, so a prepend can be measured in jsdom's layout-free world. */
   const ROW_PX = 100;
 
+  /** How far down the transcript an element sits, in the fake layout. */
+  function rowOffset(el: HTMLElement): number {
+    let top = 0;
+    for (let node: HTMLElement | null = el; node; node = node.parentElement) top += node.offsetTop;
+    return top;
+  }
+
   beforeEach(() => {
     FakeResizeObserver.instances = [];
     vi.stubGlobal("ResizeObserver", FakeResizeObserver);
@@ -140,11 +147,19 @@ describe("MessageList reading back", () => {
         return parent ? [...parent.children].indexOf(this) * ROW_PX : 0;
       },
     });
+    // The same stack as a rect, so a row's place on screen is the offsets the
+    // scroller's own scroll moves.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const scroller = this.closest<HTMLElement>("[data-transcript]");
+      const scrolled = scroller && scroller !== this ? scroller.scrollTop : 0;
+      return new DOMRect(0, rowOffset(this) - scrolled, 0, ROW_PX);
+    };
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     Reflect.deleteProperty(HTMLElement.prototype, "offsetTop");
+    Reflect.deleteProperty(HTMLElement.prototype, "getBoundingClientRect");
   });
 
   /**

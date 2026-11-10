@@ -61,8 +61,9 @@ test.afterAll(async ({ request }: { request: APIRequestContext }) => {
 async function openChat(
   browser: Browser,
   turns = TURNS,
+  viewport = { width: 1280, height: 800 },
 ): Promise<{ page: Page; close: () => Promise<void> }> {
-  const context = await sessionContext(browser, { viewport: { width: 1280, height: 800 } });
+  const context = await sessionContext(browser, { viewport });
   const page = await context.newPage();
   await page.route(/\/api\/chat\/sessions\/[^/]+\/messages$/, (route) =>
     route.fulfill({
@@ -100,6 +101,25 @@ function readerPlace(page: Page): Promise<number> {
     const last = bubbles[bubbles.length - 1]!;
     return Math.round(last.getBoundingClientRect().top - el.getBoundingClientRect().top);
   });
+}
+
+/** The message whose bubble crosses the top of the view: what is being read. */
+function readingMessage(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>("[data-transcript]");
+    if (!el) throw new Error("the transcript is not on the page");
+    const viewTop = el.getBoundingClientRect().top;
+    const bubble = [...el.querySelectorAll<HTMLElement>("[data-quoteable]")].find(
+      (candidate) => candidate.getBoundingClientRect().bottom > viewTop,
+    );
+    if (!bubble) throw new Error("no message is in view");
+    return (bubble.textContent ?? "").slice(0, 40);
+  });
+}
+
+/** Every row the transcript has mounted, revealed pages included. */
+function mountedRows(page: Page): Promise<number> {
+  return page.evaluate(() => document.querySelectorAll("[data-transcript] > div > *").length);
 }
 
 /** Hand the browser two frames: one to lay the change out, one to land on it. */
@@ -270,6 +290,40 @@ test.describe("chat auto-scroll", () => {
       await expect.poll(() => transcriptHeight(page)).toBeGreaterThan(before);
       await frameSettled(page);
       expect(await distanceFromTail(page)).toBeGreaterThan(1000);
+      await expect(jumpButton(page)).toBeVisible();
+    } finally {
+      await close();
+    }
+  });
+
+  test("keeps a reader's place when the window is maximised", async ({ browser }) => {
+    // A narrow window to start: widening a transcript reflows its text into
+    // fewer lines, which is what a window dragged to a bigger display does.
+    const { page, close } = await openChat(browser, 60, { width: 900, height: 700 });
+    try {
+      const reveal = page.getByRole("button", { name: /earlier messages?$/ });
+      await reveal.click();
+      await reveal.click();
+      await frameSettled(page);
+
+      // Reading well above the tail, in turns the render window only holds
+      // because the reader is there.
+      await page.locator("[data-transcript]").evaluate((el) => {
+        el.scrollTop = Math.round(el.scrollHeight * 0.3);
+      });
+      await frameSettled(page);
+      const reading = await readingMessage(page);
+      const rows = await mountedRows(page);
+      expect(await distanceFromTail(page)).toBeGreaterThan(2000);
+
+      await page.setViewportSize({ width: 1920, height: 1200 });
+      await frameSettled(page);
+
+      // The message they were reading is still the one at the top of the view,
+      // and the window it belongs to is still mounted around it.
+      expect(await readingMessage(page)).toBe(reading);
+      expect(await mountedRows(page)).toBe(rows);
+      expect(await distanceFromTail(page)).toBeGreaterThan(2000);
       await expect(jumpButton(page)).toBeVisible();
     } finally {
       await close();

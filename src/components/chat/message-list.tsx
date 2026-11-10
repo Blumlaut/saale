@@ -221,10 +221,10 @@ export const MessageList = memo(
     /** When the last scroll input arrived (see `INPUT_GRACE_MS`). */
     const lastInputAtRef = useRef(Number.NEGATIVE_INFINITY);
     /**
-     * The content offset of the transcript's last row, which moves only when
-     * something lands above it: the measure a prepend is caught by.
+     * The row the top of the view starts at, how far its own top sits from the
+     * box's top edge, and how tall it was. The measure a reflow is held by.
      */
-    const placeRef = useRef<{ el: Element; top: number } | null>(null);
+    const anchorRef = useRef<{ el: HTMLElement; offset: number; height: number } | null>(null);
     /** A pointer or finger is down on the transcript right now (a scrollbar
      * drag reports its movement without any further input event). */
     const pointerDownRef = useRef(false);
@@ -265,6 +265,33 @@ export const MessageList = memo(
     const tailStart = useMemo(() => windowStartFor(groupedMessages), [groupedMessages]);
     const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
 
+    /**
+     * Note the row the reader's view starts at, for the next reflow to hold.
+     *
+     * The reveal control sits above the messages, and a prepend leaves it
+     * exactly where it was, so it is no measure of where the reader is. Within
+     * a row, the bubble is: a turn's row is tall enough that the message a
+     * reader is on drifts inside it when the box widens.
+     */
+    const noteAnchor = useCallback(() => {
+      const el = containerRef.current;
+      const content = contentRef.current;
+      if (!el || !content) return;
+      const viewTop = el.getBoundingClientRect().top;
+      for (const row of content.children) {
+        if (!(row instanceof HTMLElement) || row.dataset.earlierControl !== undefined) continue;
+        if (row.getBoundingClientRect().bottom <= viewTop) continue;
+        const bubble = [...row.querySelectorAll<HTMLElement>("[data-quoteable]")].find(
+          (candidate) => candidate.getBoundingClientRect().bottom > viewTop,
+        );
+        const anchor = bubble ?? row;
+        const rect = anchor.getBoundingClientRect();
+        anchorRef.current = { el: anchor, offset: rect.top - viewTop, height: rect.height };
+        return;
+      }
+      anchorRef.current = null;
+    }, []);
+
     // Track scroll position. arm/disarm auto-scroll with the scroll position
     const handleScroll = useCallback(() => {
       const el = containerRef.current;
@@ -297,7 +324,10 @@ export const MessageList = memo(
         // the one arrival that is the browser's doing.
         armAutoScroll(true);
       }
-    }, [windowStart, armAutoScroll, isAtBottom]);
+      // Following pins the tail itself, so the row worth holding is only ever
+      // the one a reader scrolled to.
+      if (!autoScrollRef.current) noteAnchor();
+    }, [windowStart, armAutoScroll, isAtBottom, noteAnchor]);
 
     // Input drives the view, never the other way round: wheel, touch and keys
     // release auto-scroll as they happen, before the follow effect can pull the
@@ -431,25 +461,35 @@ export const MessageList = memo(
     }, [messages, followTail]);
 
     /**
-     * Hold the reader's place when history lands above them.
+     * Hold the reader's place across a reflow.
      *
-     * The browser anchors on the reveal control at the top of the transcript,
-     * which a prepend never moves, so it would leave the view where it is and
-     * drop the reader at the oldest of the new messages. The last row is what a
-     * prepend does move, so it is the measure.
+     * Two things move the view when the transcript is laid out again: history
+     * landing above the reader, and a box that grows while its content reflows
+     * narrower. Both lift the message they are reading, and a box that took more
+     * height than the reader had left above them leaves the browser nothing to
+     * do but clamp the offset to the tail, which is the chat jumping to the
+     * newest message when the window is maximised on another display.
+     *
+     * The offset is held as a share of the row's own height, so a long answer
+     * that shrinks with the reflow keeps the reader inside it.
      */
     const holdPlace = useCallback(() => {
       const el = containerRef.current;
-      const last = contentRef.current?.lastElementChild as HTMLElement | null | undefined;
-      if (!el || !last) return;
-      const top = last.offsetTop;
-      const previous = placeRef.current;
-      placeRef.current = { el: last, top };
-      // A new last row is a message appended below: nothing moved above.
-      if (autoScrollRef.current || previous?.el !== last) return;
-      const shift = top - previous.top;
-      if (shift <= 0) return;
-      el.scrollTop += shift;
+      const anchor = anchorRef.current;
+      if (!el || !anchor || autoScrollRef.current) return;
+      // The row is gone, so there is no place left to hold.
+      if (!anchor.el.isConnected) {
+        anchorRef.current = null;
+        return;
+      }
+      const viewTop = el.getBoundingClientRect().top;
+      const rect = anchor.el.getBoundingClientRect();
+      const scale = anchor.height > 0 ? rect.height / anchor.height : 1;
+      const offset = anchor.offset * scale;
+      anchorRef.current = { el: anchor.el, offset, height: rect.height };
+      const drift = rect.top - viewTop - offset;
+      if (Math.abs(drift) < 1) return;
+      el.scrollTop += drift;
       observedTopRef.current = el.scrollTop;
     }, []);
 
@@ -489,20 +529,25 @@ export const MessageList = memo(
         followTail();
       });
       observer.observe(content);
+      noteAnchor();
       return () => observer.disconnect();
-    }, [hasTranscript, followTail, holdPlace]);
+    }, [hasTranscript, followTail, holdPlace, noteAnchor]);
 
     // The box resizes on its own too: the on-screen keyboard opens or closes,
     // the composer wraps another line, the panel next door is dragged wider.
-    // The tail moves with it, so a followed view needs putting back.
+    // The tail moves with it, so a followed view needs putting back, and a
+    // reader's place moves with it just the same.
     useEffect(() => {
       if (!hasTranscript) return;
       const container = containerRef.current;
       if (!container || typeof ResizeObserver === "undefined") return;
-      const observer = new ResizeObserver(() => followTail());
+      const observer = new ResizeObserver(() => {
+        holdPlace();
+        followTail();
+      });
       observer.observe(container);
       return () => observer.disconnect();
-    }, [hasTranscript, followTail]);
+    }, [hasTranscript, followTail, holdPlace]);
 
     if (messages.length === 0) {
       // While a generation is loading, never show the "Start a conversation"
@@ -564,7 +609,7 @@ export const MessageList = memo(
             className="space-y-4 px-3 py-3 [overflow-anchor:none] md:space-y-6 md:px-6 md:py-6"
           >
             {(hiddenMessageCount > 0 || canLoadEarlier) && (
-              <div className="flex justify-center">
+              <div data-earlier-control className="flex justify-center">
                 <Button
                   variant="ghost"
                   size="sm"
