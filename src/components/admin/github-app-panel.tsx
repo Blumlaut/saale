@@ -390,16 +390,23 @@ export function GithubAppPanel() {
               >
                 Replace credentials
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setWizard(true);
-                  setStep(1);
-                }}
-              >
-                Setup steps
-              </Button>
+              {/*
+                Only while nothing is connected yet: once an account has
+                authorized the app, the setup is behind you and the wizard's
+                first step (register the app on GitHub) has nothing left to say.
+              */}
+              {progress.connectedAccounts === 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setWizard(true);
+                    setStep(1);
+                  }}
+                >
+                  Setup steps
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
                 Remove
               </Button>
