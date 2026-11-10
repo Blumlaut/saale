@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -75,6 +75,21 @@ const STEPS = [
   { id: 2, label: "Credentials", description: "The four values GitHub gives you" },
   { id: 3, label: "Connect", description: "Accounts sign in and install it" },
 ] as const;
+
+/** The two credentials a command can carry, and what each costs. */
+const CREDENTIAL_OPTIONS = [
+  {
+    value: "app" as const,
+    label: "This instance's GitHub App",
+    detail:
+      "Narrowed per chat to its project's repository. A GH_TOKEN in the sandbox variables is ignored.",
+  },
+  {
+    value: "variable" as const,
+    label: "The account's own token",
+    detail: "Uses the GH_TOKEN that account keeps in its sandbox variables, unchanged.",
+  },
+];
 
 /** Permissions the app needs, in the words GitHub's form uses. */
 const REQUIRED_PERMISSIONS: { name: string; level: string; why: string }[] = [
@@ -341,24 +356,28 @@ export function GithubAppPanel() {
                 sandbox variables, only one of the two is ever used. Which one is this
                 instance&apos;s decision — nobody has to choose per account.
               </p>
-              <SegmentedControl
-                label="Which GitHub credential wins"
+              <RadioGroup
+                aria-label="Which GitHub credential wins"
                 value={precedence}
                 disabled={savingPrecedence}
-                onChange={(value) => void choosePrecedence(value)}
-                options={[
-                  {
-                    value: "app",
-                    label: "GitHub App",
-                    title: "The app's token, narrowed per chat",
-                  },
-                  {
-                    value: "variable",
-                    label: "Account's own",
-                    title: "The account's GH_TOKEN wins",
-                  },
-                ]}
-              />
+                onValueChange={(value) => {
+                  if (value === "app" || value === "variable") void choosePrecedence(value);
+                }}
+                className="border-border/60 divide-border/60 divide-y overflow-hidden rounded-2xl border"
+              >
+                {CREDENTIAL_OPTIONS.map((option) => (
+                  <Label
+                    key={option.value}
+                    className="hover:bg-muted/60 flex cursor-pointer items-start gap-3 px-3 py-2.5 transition-colors"
+                  >
+                    <Radio value={option.value} className="mt-0.5" />
+                    <span className="min-w-0">
+                      <span className="block text-sm">{option.label}</span>
+                      <span className="text-muted-foreground block text-xs">{option.detail}</span>
+                    </span>
+                  </Label>
+                ))}
+              </RadioGroup>
             </div>
 
             <div className="flex flex-wrap gap-2">
