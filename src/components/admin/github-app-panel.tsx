@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +56,8 @@ interface AppResponse {
   connectedAccounts?: number;
   /** How many accounts it is installed on. */
   installations?: number;
+  /** Which credential wins when an account also keeps its own GH_TOKEN. */
+  tokenPrecedence?: "app" | "variable";
 }
 
 interface CredentialForm {
@@ -99,6 +102,8 @@ export function GithubAppPanel() {
     setupUrl: string;
   } | null>(null);
   const [progress, setProgress] = useState({ connectedAccounts: 0, installations: 0 });
+  const [precedence, setPrecedence] = useState<"app" | "variable">("app");
+  const [savingPrecedence, setSavingPrecedence] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [wizard, setWizard] = useState(false);
@@ -126,6 +131,7 @@ export function GithubAppPanel() {
         connectedAccounts: data.connectedAccounts ?? 0,
         installations: data.installations ?? 0,
       });
+      if (data.tokenPrecedence) setPrecedence(data.tokenPrecedence);
       // Nothing saved yet: the only sensible place to be is the first step.
       if (!data.app) {
         setWizard(true);
@@ -167,6 +173,28 @@ export function GithubAppPanel() {
       setError(err instanceof Error ? err.message : "Failed to save the GitHub App");
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * One decision for the case where an account also keeps its own `GH_TOKEN`.
+   *
+   * Only one of the two is ever used; this says which.
+   */
+  const choosePrecedence = async (value: "app" | "variable") => {
+    setSavingPrecedence(true);
+    setError(null);
+    try {
+      const data = await patchJson<AppResponse>("/api/admin/github/app", {
+        tokenPrecedence: value,
+      });
+      if (data.tokenPrecedence) setPrecedence(data.tokenPrecedence);
+      toast.success(value === "app" ? "The GitHub App wins" : "The account's own token wins");
+    } catch (err) {
+      console.error("Failed to change the GitHub token precedence:", err);
+      setError(err instanceof Error ? err.message : "Failed to change the token precedence");
+    } finally {
+      setSavingPrecedence(false);
     }
   };
 
@@ -304,6 +332,33 @@ export function GithubAppPanel() {
               <span className="text-muted-foreground">
                 {progress.installations} installation{progress.installations === 1 ? "" : "s"}
               </span>
+            </div>
+
+            <div className="border-border/60 space-y-1.5 border-t pt-3">
+              <p className="text-sm font-medium">Two credentials, one used</p>
+              <p className="text-muted-foreground text-xs">
+                When an account also keeps a <code className="font-mono">GH_TOKEN</code> in its
+                sandbox variables, only one of the two is ever used. Which one is this
+                instance&apos;s decision — nobody has to choose per account.
+              </p>
+              <SegmentedControl
+                label="Which GitHub credential wins"
+                value={precedence}
+                disabled={savingPrecedence}
+                onChange={(value) => void choosePrecedence(value)}
+                options={[
+                  {
+                    value: "app",
+                    label: "GitHub App",
+                    title: "The app's token, narrowed per chat",
+                  },
+                  {
+                    value: "variable",
+                    label: "Account's own",
+                    title: "The account's GH_TOKEN wins",
+                  },
+                ]}
+              />
             </div>
 
             <div className="flex flex-wrap gap-2">
