@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
-import { useGithub, type GithubRepositoryChoices } from "@/hooks/use-github";
+import { useGithub, type GithubAppSection, type GithubRepositoryChoices } from "@/hooks/use-github";
 
 /** Where GitHub hosts the install page for one app. */
 function installUrl(slug: string, existing: boolean): string {

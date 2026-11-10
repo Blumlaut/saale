@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -211,6 +212,7 @@ export function GithubAppPanel() {
   }
 
   const editing = wizard || !app;
+  const currentStep = STEPS.find((entry) => entry.id === step) ?? STEPS[0];
 
   return (
     <div className="space-y-4">
@@ -332,50 +334,58 @@ export function GithubAppPanel() {
             )}
           </GlassPanelHeader>
           <GlassPanelContent className="space-y-4">
-            <ol className="flex items-center gap-2" aria-label="Setup steps">
+            <ol className="flex items-center justify-center gap-2 py-1" aria-label="Setup steps">
               {STEPS.map((entry, index) => {
                 const active = entry.id === step;
                 const done = entry.id < step || (entry.id === 2 && Boolean(app));
                 return (
-                  <li key={entry.id} className="flex min-w-0 items-center gap-1.5">
+                  <li key={entry.id} className="flex items-center">
                     <button
                       type="button"
                       onClick={() => setStep(entry.id)}
                       aria-current={active ? "step" : undefined}
-                      className="flex items-center gap-1.5 rounded-full focus-visible:outline-2"
+                      className="flex flex-col items-center gap-1.5 rounded-2xl px-1.5 py-1 focus-visible:outline-2"
                     >
                       <span
-                        className={[
-                          "flex h-5 w-5 items-center justify-center rounded-full border font-mono text-[10px]",
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-full border font-mono text-xs transition-colors",
                           done
                             ? "border-primary/40 bg-primary/10 text-primary"
                             : active
-                              ? "border-primary text-primary"
-                              : "border-border/60 text-muted-foreground",
-                        ].join(" ")}
+                              ? "border-primary bg-primary/5 text-primary"
+                              : "border-border text-muted-foreground",
+                        )}
                       >
-                        {done ? <Check className="h-3 w-3" /> : entry.id}
+                        {done ? <Check className="h-4 w-4" /> : entry.id}
                       </span>
                       <span
-                        className={[
-                          "hidden truncate text-[11px] sm:inline",
+                        className={cn(
+                          "text-[11px]",
                           active ? "text-foreground" : "text-muted-foreground",
-                        ].join(" ")}
+                        )}
                       >
                         {entry.label}
                       </span>
                     </button>
-                    {index < STEPS.length - 1 && <span className="text-border px-0.5">·</span>}
+                    {index < STEPS.length - 1 && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "mx-1 mb-5 h-px w-6 sm:w-10",
+                          done ? "bg-primary/40" : "bg-border",
+                        )}
+                      />
+                    )}
                   </li>
                 );
               })}
             </ol>
 
-            <div className="space-y-1">
+            <div className="space-y-1 text-center">
               <h3 className="text-sm font-medium">
-                {step}. {STEPS[step - 1].label}
+                {step}. {currentStep.label}
               </h3>
-              <p className="text-muted-foreground text-sm">{STEPS[step - 1].description}</p>
+              <p className="text-muted-foreground text-sm">{currentStep.description}</p>
             </div>
 
             {step === 1 && (
@@ -402,19 +412,36 @@ export function GithubAppPanel() {
                   </div>
                 )}
 
-                <ul className="text-muted-foreground space-y-1 text-xs">
-                  <li>
+                <div className="border-border/60 overflow-hidden rounded-2xl border">
+                  <div className="border-border/60 flex items-baseline justify-between gap-2 border-b px-3 py-2">
+                    <p className="text-xs font-medium">Repository permissions</p>
+                    <p className="text-muted-foreground text-[11px]">everything else: no access</p>
+                  </div>
+                  <ul className="divide-border/60 divide-y">
+                    {REQUIRED_PERMISSIONS.map((permission) => (
+                      <li
+                        key={permission.name}
+                        className="flex items-center justify-between gap-3 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium">{permission.name}</p>
+                          <p className="text-muted-foreground text-[11px]">{permission.why}</p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 rounded-full font-mono text-[10px]"
+                        >
+                          {permission.level}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="border-border/60 text-muted-foreground border-t px-3 py-2 text-[11px]">
                     Turn on <span className="text-foreground">Enable Device Flow</span> and{" "}
                     <span className="text-foreground">Redirect on update</span>; leave the webhook
                     off.
-                  </li>
-                  {REQUIRED_PERMISSIONS.map((permission) => (
-                    <li key={permission.name}>
-                      <span className="text-foreground">{permission.name}</span> —{" "}
-                      {permission.level} ({permission.why})
-                    </li>
-                  ))}
-                </ul>
+                  </p>
+                </div>
               </div>
             )}
 
