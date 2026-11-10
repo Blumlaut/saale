@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { readGithubTokenPrecedence } from "@/lib/integrations/github-credentials";
+import { GITHUB_TOKEN_PRECEDENCES } from "@/lib/integrations/github-source";
+import { setSetting } from "@/lib/settings/update";
 import { getPublicUrl } from "@/lib/public-url";
 import {
   GithubAppError,
@@ -32,7 +35,14 @@ const SAVE_BODY = z.object({
   privateKey: z.string(),
 });
 
-const TOGGLE_BODY = z.object({ enabled: z.boolean() });
+const PATCH_BODY = z
+  .object({
+    enabled: z.boolean().optional(),
+    tokenPrecedence: z.enum(GITHUB_TOKEN_PRECEDENCES).optional(),
+  })
+  .refine((body) => body.enabled !== undefined || body.tokenPrecedence !== undefined, {
+    message: "Nothing to change",
+  });
 
 /**
  * The URLs an admin has to paste into GitHub's form.
@@ -73,6 +83,7 @@ export async function GET() {
     app: await readGithubAppSummary(),
     ...registrationUrls(),
     ...(await setupProgress()),
+    tokenPrecedence: await readGithubTokenPrecedence(),
   });
 }
 
@@ -126,9 +137,12 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = TOGGLE_BODY.safeParse(body);
+  const parsed = PATCH_BODY.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Missing 'enabled' field" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Send 'enabled' and/or 'tokenPrecedence'." },
+      { status: 400 },
+    );
   }
 
   const existing = await readGithubAppSummary();
@@ -136,8 +150,26 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "No GitHub App is configured" }, { status: 404 });
   }
 
-  await setGithubAppEnabled(parsed.data.enabled);
-  return NextResponse.json({ app: await readGithubAppSummary() });
+  try {
+    if (parsed.data.enabled !== undefined) await setGithubAppEnabled(parsed.data.enabled);
+    if (parsed.data.tokenPrecedence !== undefined) {
+      // The registry is the only write path for an admin setting, and it checks
+      // the admin role again on the way in.
+      await setSetting(
+        authResult.user.id,
+        "admin.githubTokenPrecedence",
+        parsed.data.tokenPrecedence,
+      );
+    }
+  } catch (err) {
+    console.error("Failed to change the GitHub App settings:", err);
+    return NextResponse.json({ error: "The setting could not be saved" }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    app: await readGithubAppSummary(),
+    tokenPrecedence: await readGithubTokenPrecedence(),
+  });
 }
 
 /**

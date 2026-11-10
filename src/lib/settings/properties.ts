@@ -82,6 +82,8 @@ import {
   GITHUB_METHODS,
   GITHUB_SOURCE_NONE,
   GITHUB_SOURCE_VALUES,
+  GITHUB_TOKEN_PRECEDENCE_DEFAULT,
+  GITHUB_TOKEN_PRECEDENCES,
 } from "@/lib/integrations/github-source";
 import { CODER_TOOL_DEFAULTS } from "@/lib/pi/coder-tools";
 import { DEFAULT_ATTRIBUTION_LINE, MAX_ATTRIBUTION_LENGTH } from "@/lib/pi/commit-attribution";
@@ -1134,6 +1136,22 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     read: (row) => row.githubMethod,
     write: (_row, value) => ({
       githubMethod: value === null ? GITHUB_METHOD_DEFAULT : String(value),
+    }),
+  },
+  {
+    key: "admin.githubTokenPrecedence",
+    group: GROUP.admin,
+    label: "GitHub: app or own token",
+    description:
+      '"app" lets this instance\'s GitHub App win when an account also keeps a `GH_TOKEN` in its sandbox variables; "variable" lets that variable win instead. Exactly one of the two is used either way, even when nobody chose.',
+    values: GITHUB_TOKEN_PRECEDENCES,
+    columns: ["githubTokenPrecedence"],
+    apply: "none",
+    scope: "admin",
+    schema: z.enum(GITHUB_TOKEN_PRECEDENCES),
+    read: (row) => row.githubTokenPrecedence,
+    write: (_row, value) => ({
+      githubTokenPrecedence: value === null ? GITHUB_TOKEN_PRECEDENCE_DEFAULT : String(value),
     }),
   },
 ];

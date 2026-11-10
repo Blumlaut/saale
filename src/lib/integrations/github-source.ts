@@ -55,6 +55,28 @@ export function isGithubMethod(value: unknown): value is GithubMethod {
   return typeof value === "string" && (GITHUB_METHODS as readonly string[]).includes(value);
 }
 
+/**
+ * Which credential wins when the app is the source *and* the account keeps a
+ * `GH_TOKEN` in its sandbox variables.
+ *
+ * One of them is always used, never both — a workspace that carries two
+ * credentials is exactly the state this module exists to avoid. `app` is the
+ * default because the app's token is the narrower one (per chat, per
+ * repository); `variable` is for an account that wants its own key to win.
+ */
+export const GITHUB_TOKEN_PRECEDENCES = ["app", "variable"] as const;
+
+export type GithubTokenPrecedence = (typeof GITHUB_TOKEN_PRECEDENCES)[number];
+
+/** What an instance uses when nobody said otherwise. */
+export const GITHUB_TOKEN_PRECEDENCE_DEFAULT: GithubTokenPrecedence = "app";
+
+export function isGithubTokenPrecedence(value: unknown): value is GithubTokenPrecedence {
+  return (
+    typeof value === "string" && (GITHUB_TOKEN_PRECEDENCES as readonly string[]).includes(value)
+  );
+}
+
 /** A source's name, for a label or a log line. */
 export function githubSourceLabel(source: GithubSource | ""): string {
   switch (source) {

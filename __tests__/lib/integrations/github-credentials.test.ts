@@ -9,6 +9,7 @@ import {
   GITHUB_HELPER_FILE,
   GITHUB_HOST_URL,
   applyGithubHelper,
+  credentialPolicyFor,
   githubGhShimScript,
   githubHelperCommand,
   githubHelperScript,
@@ -248,5 +249,47 @@ describe("githubHelperScript", () => {
     // helper delegates instead of failing, so a stale token degrades to the CLI.
     expect(body).toContain("exec /usr/bin/gh auth git-credential");
     expect(body).not.toContain("exit 1");
+  });
+});
+
+// ─── One credential per command ─────────────────────────────────────────────
+
+describe("credentialPolicyFor", () => {
+  it("delivers the app's token and drops the account's own", () => {
+    expect(credentialPolicyFor("app", "app")).toEqual({
+      injectAppToken: true,
+      stripUserToken: true,
+    });
+  });
+
+  it("leaves the account's own token alone when the instance says it wins", () => {
+    expect(credentialPolicyFor("app", "variable")).toEqual({
+      injectAppToken: false,
+      stripUserToken: false,
+    });
+  });
+
+  it("has no opinion while the CLI is the source", () => {
+    for (const precedence of ["app", "variable"] as const) {
+      expect(credentialPolicyFor("cli", precedence)).toEqual({
+        injectAppToken: false,
+        stripUserToken: false,
+      });
+      expect(credentialPolicyFor("", precedence)).toEqual({
+        injectAppToken: false,
+        stripUserToken: false,
+      });
+    }
+  });
+
+  it("never asks for both at once", () => {
+    for (const source of ["app", "cli", ""] as const) {
+      for (const precedence of ["app", "variable"] as const) {
+        const policy = credentialPolicyFor(source, precedence);
+        // The account's token is only taken away when the app's token replaces
+        // it — stripping without delivering would leave a command with none.
+        expect(policy.stripUserToken && !policy.injectAppToken).toBe(false);
+      }
+    }
   });
 });

@@ -12,6 +12,12 @@ const { db } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
+const credentials = vi.hoisted(() => ({ readGithubTokenPrecedence: vi.fn() }));
+vi.mock("@/lib/integrations/github-credentials", () => credentials);
+
+const settings = vi.hoisted(() => ({ setSetting: vi.fn() }));
+vi.mock("@/lib/settings/update", () => settings);
+
 const app = vi.hoisted(() => {
   class GithubAppError extends Error {
     constructor(message: string) {
@@ -74,6 +80,8 @@ function allowAdmin() {
 beforeEach(() => {
   mockRequirePermission.mockReset();
   db.githubUserToken.count.mockResolvedValue(0);
+  credentials.readGithubTokenPrecedence.mockResolvedValue("app");
+  settings.setSetting.mockResolvedValue(undefined);
   db.githubInstallation.count.mockResolvedValue(0);
   for (const fn of [
     app.readGithubAppSummary,
@@ -206,6 +214,30 @@ describe("PATCH", () => {
 
     expect(response.status).toBe(400);
     expect(app.setGithubAppEnabled).not.toHaveBeenCalled();
+  });
+
+  it("sets which credential wins when an account keeps its own token", async () => {
+    app.readGithubAppSummary.mockResolvedValue(SUMMARY);
+    credentials.readGithubTokenPrecedence.mockResolvedValue("variable");
+
+    const response = await PATCH(request("PATCH", { tokenPrecedence: "variable" }));
+    const body = (await response.json()) as { tokenPrecedence: string };
+
+    expect(response.status).toBe(200);
+    // The registry is the write path, so the admin role is checked again there.
+    expect(settings.setSetting).toHaveBeenCalledWith(
+      "admin-1",
+      "admin.githubTokenPrecedence",
+      "variable",
+    );
+    expect(body.tokenPrecedence).toBe("variable");
+  });
+
+  it("refuses a body that asks for nothing", async () => {
+    const response = await PATCH(request("PATCH", {}));
+
+    expect(response.status).toBe(400);
+    expect(settings.setSetting).not.toHaveBeenCalled();
   });
 
   it("switches the app and answers with the new state", async () => {

@@ -25,9 +25,16 @@ import { withCredentialHelper } from "@/lib/coder/gitconfig";
 import { isNotFoundError } from "@/lib/files/errors";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { signOutGithub } from "@/lib/coder/github";
-import { ensureUserSettings } from "@/lib/settings/update";
+import { ensureAdminSettings, ensureUserSettings } from "@/lib/settings/update";
 import { GithubAppError, readGithubUserAccess } from "./github-app";
-import { GITHUB_SOURCE_NONE, isGithubSourceValue, type GithubSource } from "./github-source";
+import {
+  GITHUB_SOURCE_NONE,
+  GITHUB_TOKEN_PRECEDENCE_DEFAULT,
+  isGithubSourceValue,
+  isGithubTokenPrecedence,
+  type GithubSource,
+  type GithubTokenPrecedence,
+} from "./github-source";
 
 /** The one host this connection is about. An enterprise instance is not it. */
 export const GITHUB_HOST_URL = "https://github.com";
@@ -63,6 +70,57 @@ export async function readStoredGithubSource(userId: string): Promise<GithubSour
   });
   const stored = settings?.githubSource ?? GITHUB_SOURCE_NONE;
   return isGithubSourceValue(stored) ? stored : GITHUB_SOURCE_NONE;
+}
+
+/**
+ * What an instance does when the app is the source *and* the account keeps its
+ * own `GH_TOKEN` in the sandbox variables.
+ *
+ * One credential is always used, never both; this is only about which.
+ */
+export async function readGithubTokenPrecedence(): Promise<GithubTokenPrecedence> {
+  const admin = await ensureAdminSettings().catch((err: unknown) => {
+    console.error("Failed to read the GitHub token precedence of this instance:", err);
+    return null;
+  });
+  const stored = admin?.githubTokenPrecedence ?? GITHUB_TOKEN_PRECEDENCE_DEFAULT;
+  return isGithubTokenPrecedence(stored) ? stored : GITHUB_TOKEN_PRECEDENCE_DEFAULT;
+}
+
+/** What a command may carry, and what has to be taken away from it. */
+export interface GithubCredentialPolicy {
+  /** Whether the app's token may be put into a command's environment. */
+  injectAppToken: boolean;
+  /** Whether a `GH_TOKEN` the account set is removed from that environment. */
+  stripUserToken: boolean;
+}
+
+/**
+ * The one credential a command carries, from the source and the instance's
+ * precedence rule.
+ *
+ * Pure, because this is the whole "never two credentials" guarantee: while the
+ * app is the source, `app` precedence delivers the app's token and drops the
+ * account's own variable, and `variable` precedence delivers nothing and leaves
+ * that variable alone. With any other source this module has no opinion.
+ */
+export function credentialPolicyFor(
+  source: GithubSource | "",
+  precedence: GithubTokenPrecedence,
+): GithubCredentialPolicy {
+  if (source !== "app") return { injectAppToken: false, stripUserToken: false };
+  return precedence === "variable"
+    ? { injectAppToken: false, stripUserToken: false }
+    : { injectAppToken: true, stripUserToken: true };
+}
+
+/** The same decision, read from the database. */
+export async function githubCredentialPolicy(userId: string): Promise<GithubCredentialPolicy> {
+  const [source, precedence] = await Promise.all([
+    readStoredGithubSource(userId),
+    readGithubTokenPrecedence(),
+  ]);
+  return credentialPolicyFor(source, precedence);
 }
 
 /** Sign the workspace's GitHub CLI out, so nothing answers beside our helper. */
@@ -299,8 +357,8 @@ export async function ensureGithubCredential(userId: string): Promise<void> {
  * workspace's own variables — the CLI source and its `GH_TOKEN` stay untouched.
  */
 export async function resolveGithubCommandEnv(userId: string): Promise<Record<string, string>> {
-  const source = await readStoredGithubSource(userId);
-  if (source !== "app") return {};
+  const policy = await githubCredentialPolicy(userId);
+  if (!policy.injectAppToken) return {};
 
   const access = await readGithubUserAccess(userId);
   if (!access) {
