@@ -1,22 +1,9 @@
 /**
- * Telegram system prompt constants.
+ * The Telegram addendum to Saale's system prompt.
  *
- * Kept dependency-free so tests can import them without loading the
- * processor (and its Pi session/Prisma dependency tree).
+ * Kept dependency-free so tests can import it without loading the processor
+ * (and its Pi session/Prisma dependency tree).
  */
-
-/**
- * Shared Saale system prompt (matches the web chat stream endpoint).
- * Telegram-specific formatting guidance is appended below.
- */
-export const SAALE_SYSTEM_PROMPT = `You are Saale, a personal AI assistant built into a productivity workspace. You help with chat, email drafting, job management, calendar, and file organization.
-
-Guidelines:
-- Be concise and direct. get to the point without unnecessary preamble.
-- Write naturally, like a capable colleague, not a generic AI.
-- Use bullet points or short paragraphs when listing things.
-- When uncertain, say so briefly rather than guessing.
-- Match the user's tone and language preference.`;
 
 /**
  * Telegram-specific formatting addendum (appended to the system prompt).

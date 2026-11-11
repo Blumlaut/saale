@@ -121,7 +121,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("exactly one note");
     expect(prompt).toContain("update the matching note by id");
     // Delete when stale.
-    expect(prompt).toContain("stale note is worse than no note");
+    expect(prompt).toContain("delete a note that nothing replaces");
   });
 
   it("skips infrastructure instruction when infra tool is disabled", () => {
@@ -184,7 +184,21 @@ describe("buildAgentSystemPrompt", () => {
   it("omits the scheduling instruction when Telegram is disabled", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: false, watchers: true } });
 
-    expect(prompt).not.toContain("automation_create");
+    expect(prompt).not.toContain('deliver: "silent"');
+  });
+
+  it("tells the model to hand long-running work to an automation", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: { watchers: true } });
+
+    // Otherwise it watches a build by spending a turn on every check.
+    expect(prompt).toContain("Long-running work");
+    expect(prompt).toContain("automation_create");
+  });
+
+  it("omits the automation instruction when automations are disabled", () => {
+    const prompt = buildAgentSystemPrompt({ toolConfig: { watchers: false } });
+
+    expect(prompt).not.toContain("Long-running work");
   });
 
   it("trims user custom instructions", () => {

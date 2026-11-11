@@ -123,7 +123,7 @@ describe("buildCoderSystemPrompt capability sections", () => {
       toolConfig: { terminal: true, watchers: true, telegram: false },
     });
     expect(quiet).not.toContain("`telegram_send`");
-    expect(quiet).not.toContain("`automation_create`");
+    expect(quiet).not.toContain('deliver: "silent"');
   });
 });
 
