@@ -40,6 +40,35 @@ export async function clearTranscript(sessionId: string): Promise<void> {
 }
 
 /**
+ * A user message carrying one file chip per name, in the order given.
+ *
+ * Non-image attachments make the order readable without a file on disk: a chip
+ * has a width whatever the attachment points at.
+ */
+export async function seedAttachmentMessage(sessionId: string, names: string[]): Promise<void> {
+  await withDb((db) =>
+    db.chatMessage.create({
+      data: {
+        sessionId,
+        role: "user",
+        content: "seeded attachments",
+        createdAt: new Date(Date.UTC(2026, 0, 2)),
+        attachments: {
+          create: names.map((fileName, index) => ({
+            storageId: `e2e-${sessionId}-${index}`,
+            fileName,
+            mimeType: "text/plain",
+            size: 1024,
+            storagePath: `files/${fileName}`,
+          })),
+        },
+      },
+      select: { id: true },
+    }),
+  );
+}
+
+/**
  * A mailbox the inbox can list without an IMAP server.
  *
  * The account is never synced, so its password is a placeholder that no code

@@ -812,7 +812,7 @@ function UserMessageItem({
         <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
           {/* Attachments (read-only during edit) */}
           {attachmentViews && attachmentViews.length > 0 && (
-            <div className="flex flex-row-reverse flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {attachmentViews.map(({ att, isImage, url }) =>
                 isImage ? (
                   url ? (
@@ -892,7 +892,7 @@ function UserMessageItem({
       <div className="max-w-full min-w-0 space-y-2 md:max-w-[85%]">
         {/* Attachments */}
         {attachmentViews && attachmentViews.length > 0 && (
-          <div className="flex flex-row-reverse flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {attachmentViews.map(({ att, isImage, url }) =>
               isImage ? (
                 url ? (

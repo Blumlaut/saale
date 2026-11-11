@@ -38,6 +38,7 @@ export interface Db {
     }) => Promise<{ count: number }>;
   };
   chatMessage: {
+    create: (args: Record<string, unknown>) => Promise<{ id: string }>;
     createMany: (args: { data: Record<string, unknown>[] }) => Promise<{ count: number }>;
     deleteMany: (args: { where: Record<string, unknown> }) => Promise<{ count: number }>;
   };
