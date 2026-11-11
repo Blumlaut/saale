@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.11.10 - 2026-11-11
+
+- Bump the dev-dependencies group across 1 directory with 7 updates (e54e4f10)
+- Bump the production-dependencies group with 11 updates (d121ae58)
+- hold a reader's place through a reflow (6910b646)
+- say why a chat was not deleted (5c4e35ec)
+- give the quote chip an overlay surface (6c3348fd)
+
 ## 2026.11.9 - 2026-11-10
 
 - bump the pi packages to 1.5.1 (5db69fa3)
