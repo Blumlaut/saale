@@ -13,7 +13,7 @@ RUN apk add --no-cache dumb-init
 FROM base AS toolchain
 # pnpm ships as a self-contained binary and its image carries the node-gyp it
 # needs. Copying that beats `npm install -g`, which leans on npm's global layout.
-COPY --from=ghcr.io/pnpm/pnpm:12.16.1-alpine /opt/pnpm /opt/pnpm
+COPY --from=ghcr.io/pnpm/pnpm:12.18.0-alpine /opt/pnpm /opt/pnpm
 RUN for bin in pnpm pn pnpx pnx; do ln -s "/opt/pnpm/$bin" "/usr/local/bin/$bin"; done
 # The store is where pnpm keeps every package it has ever unpacked; each stage
 # mounts it as a cache, so a rebuild links instead of downloading. pnpm 12 reads
