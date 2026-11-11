@@ -82,7 +82,8 @@ const GH_TOKEN_PROMPT = `\`GH_TOKEN\` is set in your environment, so \`gh\` and 
 const GITHUB_APP_PROMPT = `GitHub:
 - Saale mints a \`GH_TOKEN\` for each command you run. It belongs to this workspace's GitHub App and reaches exactly this chat's repository, so \`git\` and \`gh\` work on it without credentials.
 - \`gh\` is not signed in. Do not run \`gh auth login\`; it would put a wider credential beside this one.
-- The token covers one repository. Another repository of the same account, even one released to the app, answers "repository not found": that is the boundary, not a bug. Say so instead of retrying or looking for a way around it.
+- The token covers one repository. Another repository of the same account, even one released to the app, answers "repository not found", and where Saale knows the chat is outside the installation the command carries no credential at all: that is the boundary, not a bug. Say so instead of retrying or looking for a way around it.
+- The workspace also keeps a credential of the user's own, for terminals and for \`gh\` outside a chat. Never look for a wider credential than the one a command was given, and never work around a refusal by finding another one.
 - Never print the token or write it into a file.
 - Commits carry the connected GitHub account's own identity, and a pull request Saale opens is authored by that account. Leave \`user.name\` and \`user.email\` alone.`;
 

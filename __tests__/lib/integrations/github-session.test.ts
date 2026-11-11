@@ -143,11 +143,18 @@ describe("resolveGithubSessionEnv", () => {
     expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
   });
 
-  it("carries nothing when the installation does not cover the repository", async () => {
+  it("refuses the credential when the installation does not cover the repository", async () => {
     coder.loadCoderSession.mockResolvedValue(coderSession("https://github.com/acme/other.git"));
 
-    expect(await resolveGithubSessionEnv(USER, SESSION)).toEqual({});
-    // The installation is the ceiling: no wider token as a fallback.
+    const env = await resolveGithubSessionEnv(USER, SESSION);
+
+    // The installation is the ceiling. Falling back to the workspace credential
+    // would be *more* access, not less, so the helper is switched off instead.
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }));
+    expect(env).toEqual(
+      expect.objectContaining({ GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "" }),
+    );
     expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
   });
 
@@ -164,20 +171,26 @@ describe("resolveGithubSessionEnv", () => {
     );
   });
 
-  it("carries nothing when the account has no installation for that owner", async () => {
+  it("carries no credential when the account has no installation for that owner", async () => {
     app.githubInstallationForOwner.mockResolvedValue(null);
 
-    expect(await resolveGithubSessionEnv(USER, SESSION)).toEqual({});
+    const env = await resolveGithubSessionEnv(USER, SESSION);
+
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }));
     expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
   });
 
-  it("falls back quietly when the mint is refused", async () => {
+  it("carries no credential when the mint is refused", async () => {
     app.mintGithubInstallationToken.mockRejectedValue(
       new Error("That GitHub installation is suspended."),
     );
 
-    // The workspace's own credential still answers, just wider — a chat must not
-    // lose every command because a token could not be minted.
-    expect(await resolveGithubSessionEnv(USER, SESSION)).toEqual({});
+    // A refused mint leaves nothing narrower to use, and the workspace credential
+    // would be wider than the chat is allowed, so the command runs without one.
+    const env = await resolveGithubSessionEnv(USER, SESSION);
+
+    expect(env.GH_TOKEN).toBeUndefined();
+    expect(env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }));
   });
 });

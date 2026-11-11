@@ -33,6 +33,16 @@ const app = vi.hoisted(() => {
 });
 vi.mock("@/lib/integrations/github-app", () => app);
 
+// The GET reconciles first, and the reconcile claims its minute in Redis. CI has
+// no Redis, so a real connection would spend the test's budget on retries.
+vi.mock("@/lib/redis", () => ({
+  getRedis: () => ({
+    get: async () => null,
+    set: async () => "OK",
+    del: async () => 1,
+  }),
+}));
+
 import { DELETE, GET, POST } from "@/app/api/integrations/github/route";
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────

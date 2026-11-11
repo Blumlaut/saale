@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { githubStatus, signOutGithub, startGithubLogin } from "@/lib/coder/github";
+import type { GithubAppSection } from "@/lib/integrations/github";
 import { reconcileGithubSource } from "@/lib/integrations/github-reconcile";
 import {
   GithubAppError,
@@ -28,31 +29,6 @@ import {
  * would say "connected" while the other is what a command actually uses; the
  * switch that makes that impossible comes with the workspace side.
  */
-
-/** What the card needs of one source. */
-export interface GithubAppSection {
-  /** An admin saved an app and left it switched on. */
-  configured: boolean;
-  /** The app's slug, for the install link GitHub hosts. */
-  slug: string | null;
-  /** The app's display name. */
-  name: string | null;
-  /** The permissions the app was registered with. */
-  permissions: Record<string, string> | null;
-  /** The account authorized it. */
-  authorized: { login: string; expiresAt: string | null } | null;
-  /** Installations this account may use. */
-  installations: {
-    installationId: string;
-    accountLogin: string;
-    accountType: string;
-    repositorySelection: string;
-    repositories: string[] | null;
-    suspended: boolean;
-  }[];
-  /** A sign-in waiting for the user to type a code. */
-  pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
-}
 
 /** The card's answer before an app is configured: nothing known, nothing claimed. */
 function noAppSection(): GithubAppSection {
