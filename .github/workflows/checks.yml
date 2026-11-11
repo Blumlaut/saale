@@ -115,7 +115,7 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       # The version comes from `packageManager` in package.json.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.files.outputs.any == 'true'
 
       - name: Locate the pnpm caches
