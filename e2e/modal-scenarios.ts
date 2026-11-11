@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
+
 import { gotoAndSettle, DESKTOP_VIEWPORT } from "./utils";
 import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
@@ -383,7 +385,10 @@ async function mockTelegramLinked(page: Page) {
 async function mockGithubSignIn(page: Page) {
   // The card reads two sections: the app's, and the CLI's own login. The CLI is
   // the one waiting for a code here, which is what this scenario opens.
-  const app = {
+  //
+  // Both are typed against the route's own shapes, so a field added to the answer
+  // fails `tsc` here instead of crashing the card in this spec.
+  const app: GithubAppSection = {
     configured: false,
     slug: null,
     name: null,
@@ -392,7 +397,8 @@ async function mockGithubSignIn(page: Page) {
     installations: [],
     pending: null,
   };
-  const pending = {
+  const idle: GithubStatus = { credential: null, pending: null, error: null };
+  const pending: { app: GithubAppSection; cli: GithubStatus } = {
     app,
     cli: {
       credential: null,
@@ -404,7 +410,7 @@ async function mockGithubSignIn(page: Page) {
     if (route.request().method() === "GET" || route.request().method() === "POST") {
       return route.fulfill({ json: pending });
     }
-    return route.fulfill({ json: { app, cli: { credential: null, pending: null, error: null } } });
+    return route.fulfill({ json: { app, cli: idle } });
   });
 }
 
