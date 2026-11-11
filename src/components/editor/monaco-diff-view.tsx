@@ -5,9 +5,8 @@
  * and the commit itself). Models are transient, on a private scheme, so they
  * never collide with the editor's file models.
  *
- * Side-by-side only earns its room in a wide panel, so the render mode
- * follows the container width instead of switching on a fixed 900px cutoff
- * Monaco would apply on its own.
+ * The diff renders inline: the coder panel is one column wide, so a split
+ * view would leave each side too narrow to read.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -17,9 +16,6 @@ import { initMonaco } from "@/lib/editor/monaco";
 import type { ColorMode } from "@/lib/theme";
 
 const MONACO_FONT = "Geist Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-
-/** Below this width the two columns would each be narrower than one tab stop. */
-const SIDE_BY_SIDE_MIN_WIDTH = 560;
 
 export interface MonacoDiffViewProps {
   /** File path, used for language detection and the model ids. */
@@ -45,10 +41,6 @@ export function MonacoDiffView({
   const originalModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const modifiedModelRef = useRef<monaco.editor.ITextModel | null>(null);
   const [ready, setReady] = useState(false);
-  const [sideBySide, setSideBySide] = useState(true);
-  // The host boots async, so the width may flip before the editor exists;
-  // creation must start from the value the width logic has already picked.
-  const sideBySideRef = useRef(true);
 
   // Latest props — the mount effect closes over the first render's values, so
   // the models start from whatever the caller has by the time the host boots.
@@ -59,26 +51,6 @@ export function MonacoDiffView({
     originalRef.current = original;
     modifiedRef.current = modified;
   }, [original, modified]);
-
-  // The container may start hidden (a tab the user is about to open) or grow
-  // with the panel's drag handle, so measure instead of trusting one read.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const update = (width: number) => {
-      const next = width >= SIDE_BY_SIDE_MIN_WIDTH;
-      if (sideBySideRef.current === next) return;
-      sideBySideRef.current = next;
-      setSideBySide(next);
-    };
-    update(container.clientWidth);
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) update(entry.contentRect.width);
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -111,10 +83,7 @@ export function MonacoDiffView({
 
         diff = m.editor.createDiffEditor(containerRef.current, {
           readOnly: true,
-          renderSideBySide: sideBySideRef.current,
-          // The container width decides the mode; without this Monaco
-          // silently flips any narrow diff to inline on its own.
-          useInlineViewWhenSpaceIsLimited: false,
+          renderSideBySide: false,
           automaticLayout: true,
           fontFamily: MONACO_FONT,
           fontSize,
@@ -174,10 +143,6 @@ export function MonacoDiffView({
       editor.setScrollTop(scrollTop);
     }
   }, [original, modified]);
-
-  useEffect(() => {
-    diffRef.current?.updateOptions({ renderSideBySide: sideBySide });
-  }, [sideBySide]);
 
   useEffect(() => {
     void initMonaco().then((m) => m.editor.setTheme(mode === "dark" ? "vs-dark" : "vs"));

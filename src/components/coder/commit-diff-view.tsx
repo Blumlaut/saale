@@ -25,8 +25,7 @@ const MonacoDiffView = dynamic(
 
 /**
  * The Diff tab: one commit's file list, and the selected file's two sides in
- * a diff editor. Drilling in keeps the panel one column wide, which a
- * side-by-side diff would not be.
+ * an inline diff editor, which keeps the panel one column wide.
  *
  * `initialPath` is the file the caller already picked, so opening a file from
  * the commit list lands on its diff instead of on the list again.
