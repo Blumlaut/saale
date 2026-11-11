@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { gotoAndSettle, DESKTOP_VIEWPORT } from "./utils";
 import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
+import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { FILES_NOTES, mockFiles } from "./files-mocks";
 
 /**
@@ -152,6 +153,7 @@ const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
 const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
+const DELETE_ERROR_DIALOG = "src/components/chat/delete-error-dialog.tsx";
 const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
 const CODER_LAYOUT = "src/app/dashboard/coder/layout.tsx";
 const SETTINGS = settingsSection("profile").href;
@@ -688,6 +690,40 @@ async function mockMessageStats(page: Page): Promise<void> {
   );
 }
 
+/** The chat a stopped delete reports on, long enough to need wrapping. */
+const DELETE_ERROR_TITLE = "A chat whose checkout still held uncommitted work";
+
+/** One chat the list reports a failed delete for, so it wears the mark. */
+async function mockChatDeleteError(page: Page): Promise<void> {
+  await page.route(/\/api\/chat\/sessions$/, (route) =>
+    route.fulfill({
+      json: {
+        project: null,
+        sessions: [
+          {
+            id: "e2e-delete-failed",
+            title: DELETE_ERROR_TITLE,
+            temporary: false,
+            pinned: false,
+            messageCount: 2,
+            watcherCount: 0,
+            isGenerating: false,
+            deleting: false,
+            deleteError:
+              "The checkout at /w/3f2a91c0 had uncommitted work, so it was kept and the chat was not removed.",
+            deleteErrorCode: WORKTREE_KEPT_CODE,
+            origin: "user",
+            worktree: { branch: "wt/c-3f2a91c0-remove-the-old-token-refresh-path" },
+            createdAt: NOW,
+            updatedAt: NOW,
+            lastActivityAt: NOW,
+          },
+        ],
+      },
+    }),
+  );
+}
+
 /** A project list and one project's chats, so the coder overlays have rows. */
 async function mockCoderProjects(page: Page) {
   // The project's chat list reads the chat endpoint, filtered by project.
@@ -1040,6 +1076,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await sheet.locator('[data-slot="dropdown-menu-trigger"]').first().click();
       await click(page, '[role="menuitem"]:has-text("Select chat")');
       await click(page, 'button[aria-label="Delete 1 selected chat"]');
+    },
+  },
+  {
+    name: "chat · delete failure",
+    path: "/dashboard/chat",
+    sources: [DELETE_ERROR_DIALOG],
+    mock: mockChatDeleteError,
+    open: async (page) => {
+      // The list lives inside the sheet at phone widths, like every chat overlay.
+      await click(page, '[data-slot="sheet-trigger"]');
+      const sheet = page.locator('[data-slot="sheet-content"]:visible').last();
+      await sheet.getByRole("button", { name: `Delete failed for ${DELETE_ERROR_TITLE}` }).click();
     },
   },
   {
