@@ -99,8 +99,15 @@ token for that chat's repository alone (`contents`, `pull_requests`, `workflows`
 write, `checks` read) and puts it in the command's `GH_TOKEN`. Both the git
 helper and the shim prefer a token from the environment, so `git push` and
 `gh pr create` in that chat cannot reach another repository. Nothing is minted
-for a repository the installation does not cover — the chat then falls back to
-the workspace credential rather than to something wider.
+for a repository the installation does not cover: the command then carries **no**
+credential — the helper list is reset for it and git is told not to prompt — so
+it fails instead of quietly reaching for something wider.
+
+That boundary holds for the commands Saale starts, and it is worth saying plainly
+where it stops: the workspace keeps a token file (the account's own token) so a
+terminal and `gh` work outside a chat, and that file is readable from inside the
+workspace. An agent that goes looking for a second credential will find one. The
+per-chat token is therefore least privilege by default, not a sandbox.
 
 Tokens live one hour and are cached until a minute before they expire; a token
 already minted for a repository that was removed keeps working until then,

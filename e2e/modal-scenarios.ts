@@ -381,16 +381,30 @@ async function mockTelegramLinked(page: Page) {
  * box at a phone width and never needs a live device flow to render.
  */
 async function mockGithubSignIn(page: Page) {
+  // The card reads two sections: the app's, and the CLI's own login. The CLI is
+  // the one waiting for a code here, which is what this scenario opens.
+  const app = {
+    configured: false,
+    slug: null,
+    name: null,
+    permissions: null,
+    authorized: null,
+    installations: [],
+    pending: null,
+  };
   const pending = {
-    credential: null,
-    pending: { code: "1B47-ABE8", url: "https://github.com/login/device" },
-    error: null,
+    app,
+    cli: {
+      credential: null,
+      pending: { code: "1B47-ABE8", url: "https://github.com/login/device" },
+      error: null,
+    },
   };
   await page.route(/\/api\/integrations\/github$/, async (route) => {
     if (route.request().method() === "GET" || route.request().method() === "POST") {
       return route.fulfill({ json: pending });
     }
-    return route.fulfill({ json: { credential: null, pending: null, error: null } });
+    return route.fulfill({ json: { app, cli: { credential: null, pending: null, error: null } } });
   });
 }
 

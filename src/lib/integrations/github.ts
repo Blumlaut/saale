@@ -94,6 +94,38 @@ export function parseGithubHosts(stdout: string): GithubProbe {
   };
 }
 
+/**
+ * What the card needs of one GitHub source.
+ *
+ * Declared here because the route assembles it and the hook reads it: a field
+ * added on one side has to appear on the other, and a second copy is how the two
+ * drift apart. `src/lib/integrations/github.ts` imports nothing, so the hook can
+ * pull it into the browser bundle.
+ */
+export interface GithubAppSection {
+  /** An admin saved an app and left it switched on. */
+  configured: boolean;
+  /** The app's slug, for the install link GitHub hosts. */
+  slug: string | null;
+  /** The app's display name. */
+  name: string | null;
+  /** The permissions the app was registered with. */
+  permissions: Record<string, string> | null;
+  /** The account authorized it. */
+  authorized: { login: string; expiresAt: string | null } | null;
+  /** Installations this account may use. */
+  installations: {
+    installationId: string;
+    accountLogin: string;
+    accountType: string;
+    repositorySelection: string;
+    repositories: string[] | null;
+    suspended: boolean;
+  }[];
+  /** A sign-in waiting for the user to type a code. */
+  pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
+}
+
 /** The one-time code in gh's output, e.g. `! First copy your one-time code: 1B47-ABE8`. */
 export function findDeviceCode(output: string): string | null {
   const match = /one-time code[: ]\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i.exec(output);

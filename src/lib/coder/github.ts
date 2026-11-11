@@ -84,15 +84,23 @@ export async function githubStatus(userId: string): Promise<GithubStatus> {
 }
 
 /**
- * The login the workspace's credential belongs to, or null when it has none.
+ * The login the workspace's *own* credential belongs to, or null when it has none.
  *
  * Asked of `gh` rather than of a file, so a login made in the workspace terminal
- * and a `GH_TOKEN` the user keeps in their variables are both found. This is the
- * one fact the source decision needs from the workspace.
+ * is found without reading `hosts.yml`.
+ *
+ * A credential that only exists because `GH_TOKEN` sits in the account's sandbox
+ * variables is not that login: the probe runs `gh` with that variable in the
+ * environment, so `gh` reports it too (`source` names the variable instead of the
+ * config file). Folding the two together would let the reconcile treat a token
+ * the account merely keeps as a CLI login and, on the app path, tear the app
+ * down — which is what `admin.githubTokenPrecedence` exists to arbitrate.
  */
 export async function githubCliLogin(userId: string): Promise<string | null> {
   const probe = await probeGithub(userId);
-  return probe.credential?.login ?? null;
+  const credential = probe.credential;
+  if (!credential || credential.source !== "gh") return null;
+  return credential.login;
 }
 
 /**

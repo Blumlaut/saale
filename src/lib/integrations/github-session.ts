@@ -60,6 +60,23 @@ export function repositoryFromRemote(remoteUrl: string | null): {
 }
 
 /**
+ * What an uncovered repository means for a command: no credential at all.
+ *
+ * Setting `GH_TOKEN` is not the only way the workspace answers — the `git`
+ * credential helper and the `gh` shim read a token file that holds the account's
+ * own, wide token. Leaving `GH_TOKEN` out would therefore fall back to *more*
+ * access than the chat is allowed, so the helper list is reset for this command
+ * and git is told to not ask. A push then fails with "could not read Username"
+ * instead of quietly widening, which is the boundary the prompt promises.
+ */
+const NO_CREDENTIAL_ENV: Record<string, string> = {
+  GIT_CONFIG_COUNT: "1",
+  GIT_CONFIG_KEY_0: "credential.helper",
+  GIT_CONFIG_VALUE_0: "",
+  GIT_TERMINAL_PROMPT: "0",
+};
+
+/**
  * The environment a command in one coder chat should carry, with an installation
  * token narrowed to that chat's repository.
  */
@@ -78,10 +95,16 @@ export async function resolveGithubSessionEnv(
   if (!target) return {};
 
   const installation = await githubInstallationForOwner(userId, target.owner);
-  if (!installation) return {};
+  if (!installation) {
+    console.warn(
+      `No GitHub installation of ${userId} covers ${target.owner}, so commands carry no GitHub credential.`,
+    );
+    return { ...NO_CREDENTIAL_ENV };
+  }
 
   // An installation granted "Only select repositories" is the ceiling: a chat
-  // whose repository is not in it gets nothing, rather than a wider token.
+  // whose repository is not in it gets nothing — not the app's wider token, and
+  // not the workspace's own either.
   const covered = installation.repositories;
   if (
     installation.repositorySelection === "selected" &&
@@ -89,9 +112,9 @@ export async function resolveGithubSessionEnv(
     !covered.includes(target.repository)
   ) {
     console.warn(
-      `The GitHub installation for ${target.owner} does not cover ${target.repository}, so commands use the workspace credential.`,
+      `The GitHub installation for ${target.owner} does not cover ${target.repository}, so commands carry no GitHub credential.`,
     );
-    return {};
+    return { ...NO_CREDENTIAL_ENV };
   }
 
   try {
@@ -102,9 +125,9 @@ export async function resolveGithubSessionEnv(
     });
     return { GH_TOKEN: minted.token };
   } catch (err) {
-    // A refused mint is worth a log line, not a broken command: the workspace's
-    // own credential still answers, just wider.
+    // A refused mint is worth a log line and nothing else: the covered case has
+    // no credential to fall back to, so the command runs without one.
     console.error(`Failed to mint a GitHub token for ${target.owner}/${target.repository}:`, err);
-    return {};
+    return { ...NO_CREDENTIAL_ENV };
   }
 }

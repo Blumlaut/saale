@@ -283,7 +283,6 @@ async function removeCredential(userId: string): Promise<void> {
   });
 }
 
-/** Whether a token file is there, without reading it into a log or a prompt. */
 // ─── Applying the source ────────────────────────────────────────────────────
 
 /**
@@ -397,7 +396,14 @@ export async function resolveGithubCommandEnv(userId: string): Promise<Record<st
   // the two in step here rather than on a schedule of their own.
   const absolute = credentialPath(userId);
   const wanted = `${JSON.stringify({ token: access.accessToken })}\n`;
-  const existing = await fs.readFile(absolute, "utf8").catch(() => null);
+  const existing = await fs.readFile(absolute, "utf8").catch((err: unknown) => {
+    // A missing file is the normal case on the first command; anything else is
+    // worth a line, because the write below will then have to fix it.
+    if (!isNotFoundError(err)) {
+      console.error(`Failed to read the GitHub credential file of ${userId}:`, err);
+    }
+    return null;
+  });
   if (existing !== wanted) await writeCredential(userId, access.accessToken);
 
   return { GH_TOKEN: access.accessToken };

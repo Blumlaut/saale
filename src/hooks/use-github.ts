@@ -2,28 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchJson, postJson, putJson } from "@/lib/http";
-import type { GithubStatus } from "@/lib/integrations/github";
+import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
 
-/** What the card needs of one GitHub source. */
-export interface GithubAppSection {
-  configured: boolean;
-  /** The app's slug, for the install link GitHub hosts. */
-  slug: string | null;
-  /** The app's display name. */
-  name: string | null;
-  /** The permissions the app was registered with. */
-  permissions: Record<string, string> | null;
-  authorized: { login: string; expiresAt: string | null } | null;
-  installations: {
-    installationId: string;
-    accountLogin: string;
-    accountType: string;
-    repositorySelection: string;
-    repositories: string[] | null;
-    suspended: boolean;
-  }[];
-  pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
-}
+export type { GithubAppSection };
 
 /** Both sources as the API reports them, and the errors a call can raise. */
 interface GithubConnection {
