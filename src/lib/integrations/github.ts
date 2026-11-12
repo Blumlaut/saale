@@ -8,6 +8,9 @@
 
 export const GITHUB_DEVICE_URL = "https://github.com/login/device";
 
+/** The only host this feature speaks to. */
+const GITHUB_HOST = "github.com";
+
 /** A refusal that quotes GitHub's body is cut to the line worth reading. */
 const MAX_ERROR_LENGTH = 300;
 
@@ -155,12 +158,17 @@ export interface GithubAppSection {
 function storedCredential(entries: { host: string; entry: HostEntry }[]): GithubCredential | null {
   for (const { host, entry } of entries) {
     if (entry.state === "error") continue;
+    // gh lists every host it holds a token for, and a login against an
+    // enterprise host is not a login for github.com. Everything else in this
+    // feature is github.com-only, so this must not answer for another host.
+    const hostName = entry.host ?? host;
+    if (hostName.toLowerCase() !== GITHUB_HOST) continue;
     const login = entry.login?.trim();
     if (!login) continue;
     const source = entry.tokenSource?.trim() || "gh";
     if (isVariableTokenSource(source)) continue;
     return {
-      host: entry.host ?? host,
+      host: hostName,
       login,
       scopes: entry.scopes?.trim() || null,
       gitProtocol: entry.gitProtocol?.trim() || null,

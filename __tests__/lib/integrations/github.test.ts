@@ -91,6 +91,29 @@ describe("parseGithubHosts", () => {
     });
   });
 
+  it("ignores a login against another host", () => {
+    // This feature speaks to github.com only, so an enterprise login must not
+    // answer for it — the source decision would take it as the workspace login.
+    const probe = parseGithubHosts(
+      JSON.stringify({
+        hosts: {
+          "ghe.example.com": [
+            {
+              host: "ghe.example.com",
+              active: true,
+              state: "success",
+              login: "octocat",
+              tokenSource: "/w/.config/gh/hosts.yml",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(probe.credential?.host).toBe("ghe.example.com");
+    expect(probe.stored).toBeNull();
+  });
+
   it("keeps a stored login apart from a token it was handed", () => {
     // The shape gh really prints with GH_TOKEN set: the variable is the active
     // entry, the login it stored is a second one.
