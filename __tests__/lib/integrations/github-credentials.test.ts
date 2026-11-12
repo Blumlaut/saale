@@ -237,10 +237,16 @@ describe("githubHelperScript", () => {
     // itself: in app mode the CLI has been signed out of the workspace.
     expect(shim).toContain(`"${path.join(root, GITHUB_CREDENTIAL_FILE)}"`);
     expect(shim).toContain("export GH_TOKEN");
-    // A chat outside the installation carries this: both readers of the token
-    // file have to refuse, so the shim exits before it reads one.
+    // A chat with no GitHub credential carries this: both readers of the token
+    // file refuse on their own, not only because git's helper list is reset.
     expect(shim).toContain("SAALE_NO_GITHUB_CREDENTIAL");
     expect(shim).toContain("exit 1");
+
+    const helper = githubHelperScript(USER);
+    expect(helper).toContain("SAALE_NO_GITHUB_CREDENTIAL");
+    // The message names no cause: the variable is set for three different ones.
+    expect(shim).toContain("carries no GitHub credential");
+    expect(helper).toContain("carries no GitHub credential");
     expect(shim).toContain("exec /usr/bin/gh");
   });
 
@@ -252,7 +258,12 @@ describe("githubHelperScript", () => {
     // runs on, and a build host may well be logged in. What matters is that the
     // helper delegates instead of failing, so a stale token degrades to the CLI.
     expect(body).toContain("exec /usr/bin/gh auth git-credential");
-    expect(body).not.toContain("exit 1");
+    // The one early exit is the refusal for a chat that may not use GitHub at
+    // all; without that variable the script always ends up at the CLI.
+    expect(body.split("exit 1").length - 1).toBe(1);
+    expect(body.indexOf("SAALE_NO_GITHUB_CREDENTIAL")).toBeLessThan(
+      body.indexOf("exec /usr/bin/gh auth git-credential"),
+    );
   });
 });
 

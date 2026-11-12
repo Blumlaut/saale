@@ -181,6 +181,14 @@ export async function applyGithubHelper(userId: string, source: GithubSource | "
 const HELPER_SCRIPT = `#!/bin/sh
 # Written by Saale. Answers git's credential request for github.com from the
 # token file, and delegates to the GitHub CLI when there is no token.
+#
+# A chat that may not reach GitHub carries this variable. Git's helper list is
+# reset for such a command, but a caller that builds its own environment must not
+# land on the token file either, so the reader refuses by itself.
+if [ -n "$SAALE_NO_GITHUB_CREDENTIAL" ]; then
+  echo "saale: this chat carries no GitHub credential for its repository" >&2
+  exit 1
+fi
 case "$1" in
   get)
     body=$(cat)
@@ -214,7 +222,7 @@ const GH_SHIM_SCRIPT = `#!/bin/sh
 # both readers of the token file refuse then, git through its helper and gh here,
 # so such a command fails instead of reaching for the account's wider token.
 if [ -n "$SAALE_NO_GITHUB_CREDENTIAL" ]; then
-  echo "saale: this chat's repository is not covered by the GitHub installation" >&2
+  echo "saale: this chat carries no GitHub credential for its repository" >&2
   exit 1
 fi
 if [ -z "$GH_TOKEN" ]; then # a chat's narrowed token wins
