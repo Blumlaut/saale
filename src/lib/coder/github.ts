@@ -98,9 +98,11 @@ export async function githubStatus(userId: string): Promise<GithubStatus> {
  */
 export async function githubCliLogin(userId: string): Promise<string | null> {
   const probe = await probeGithub(userId);
-  const credential = probe.credential;
-  if (!credential || credential.source !== "gh") return null;
-  return credential.login;
+  // `stored`, not `credential`: with a GH_TOKEN in the environment gh reports
+  // that token as the active one, and only the config-file login is a login the
+  // workspace made. A source that names a variable is exactly what to skip —
+  // a `hosts.yml` login reports the file's path, not the word "gh".
+  return probe.stored?.login ?? null;
 }
 
 /**

@@ -34,7 +34,27 @@ export interface GithubStatus {
 /** What a status read found: a working credential, or why the one it found is not. */
 export interface GithubProbe {
   credential: GithubCredential | null;
+  /**
+   * The credential gh keeps in its own config, when it has one.
+   *
+   * `credential` is what a command would use, which may be a token Saale or the
+   * account handed gh through the environment. That is not a login the workspace
+   * made, and the source decision may only act on this one.
+   */
+  stored: GithubCredential | null;
   error: string | null;
+}
+
+/**
+ * Whether gh took this token from the environment rather than from its config.
+ *
+ * gh reports the variable's name for a handed-in token and the path of its
+ * `hosts.yml` for one it stored itself; a bare `"gh"` appears only when the
+ * field is missing. So a source that reads like a variable name is the one to
+ * reject — a path never does.
+ */
+export function isVariableTokenSource(source: string): boolean {
+  return /^[A-Z][A-Z0-9_]*$/.test(source);
 }
 
 /** One host's entry in the `gh auth status --json hosts` answer. */
@@ -59,28 +79,32 @@ interface HostEntry {
  */
 export function parseGithubHosts(stdout: string): GithubProbe {
   const text = stdout.trim();
-  if (!text.startsWith("{")) return { credential: null, error: null };
+  if (!text.startsWith("{")) return { credential: null, stored: null, error: null };
 
   let parsed: { hosts?: Record<string, HostEntry[]> };
   try {
     parsed = JSON.parse(text) as { hosts?: Record<string, HostEntry[]> };
   } catch (err) {
     console.error("Failed to read the GitHub CLI's auth status:", err);
-    return { credential: null, error: null };
+    return { credential: null, stored: null, error: null };
   }
 
   const entries = Object.entries(parsed.hosts ?? {}).flatMap(([host, list]) =>
     (list ?? []).map((entry) => ({ host, entry })),
   );
   const chosen = entries.find(({ entry }) => entry.active) ?? entries[0];
-  if (!chosen) return { credential: null, error: null };
+  if (!chosen) return { credential: null, stored: null, error: null };
 
   if (chosen.entry.state === "error") {
-    return { credential: null, error: firstLine(chosen.entry.error) ?? "GitHub refused the token" };
+    return {
+      credential: null,
+      stored: storedCredential(entries),
+      error: firstLine(chosen.entry.error) ?? "GitHub refused the token",
+    };
   }
 
   const login = chosen.entry.login?.trim();
-  if (!login) return { credential: null, error: null };
+  if (!login) return { credential: null, stored: storedCredential(entries), error: null };
 
   return {
     credential: {
@@ -90,6 +114,7 @@ export function parseGithubHosts(stdout: string): GithubProbe {
       gitProtocol: chosen.entry.gitProtocol?.trim() || null,
       source: chosen.entry.tokenSource?.trim() || "gh",
     },
+    stored: storedCredential(entries),
     error: null,
   };
 }
@@ -124,6 +149,25 @@ export interface GithubAppSection {
   }[];
   /** A sign-in waiting for the user to type a code. */
   pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
+}
+
+/** The entry gh keeps itself, skipping any it was handed through the environment. */
+function storedCredential(entries: { host: string; entry: HostEntry }[]): GithubCredential | null {
+  for (const { host, entry } of entries) {
+    if (entry.state === "error") continue;
+    const login = entry.login?.trim();
+    if (!login) continue;
+    const source = entry.tokenSource?.trim() || "gh";
+    if (isVariableTokenSource(source)) continue;
+    return {
+      host: entry.host ?? host,
+      login,
+      scopes: entry.scopes?.trim() || null,
+      gitProtocol: entry.gitProtocol?.trim() || null,
+      source,
+    };
+  }
+  return null;
 }
 
 /** The one-time code in gh's output, e.g. `! First copy your one-time code: 1B47-ABE8`. */

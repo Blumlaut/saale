@@ -28,6 +28,14 @@ describe("parseGithubHosts", () => {
         gitProtocol: "https",
         source: "/w/.config/gh/hosts.yml",
       },
+      // A stored login is also what the source decision may act on.
+      stored: {
+        host: "github.com",
+        login: "octocat",
+        scopes: "gist, read:org, repo, workflow",
+        gitProtocol: "https",
+        source: "/w/.config/gh/hosts.yml",
+      },
       error: null,
     });
   });
@@ -41,7 +49,11 @@ describe("parseGithubHosts", () => {
   });
 
   it("has no credential when gh holds none", () => {
-    expect(parseGithubHosts('{"hosts":{}}')).toEqual({ credential: null, error: null });
+    expect(parseGithubHosts('{"hosts":{}}')).toEqual({
+      credential: null,
+      stored: null,
+      error: null,
+    });
   });
 
   it("reports a token GitHub refused instead of a connection", () => {
@@ -71,11 +83,42 @@ describe("parseGithubHosts", () => {
   });
 
   it("has nothing to say about output that is not a status", () => {
-    expect(parseGithubHosts("")).toEqual({ credential: null, error: null });
+    expect(parseGithubHosts("")).toEqual({ credential: null, stored: null, error: null });
     expect(parseGithubHosts("You are not logged into any GitHub hosts.")).toEqual({
       credential: null,
+      stored: null,
       error: null,
     });
+  });
+
+  it("keeps a stored login apart from a token it was handed", () => {
+    // The shape gh really prints with GH_TOKEN set: the variable is the active
+    // entry, the login it stored is a second one.
+    const probe = parseGithubHosts(
+      JSON.stringify({
+        hosts: {
+          "github.com": [
+            {
+              host: "github.com",
+              active: true,
+              state: "success",
+              login: "octocat",
+              tokenSource: "GH_TOKEN",
+            },
+            {
+              host: "github.com",
+              active: false,
+              state: "success",
+              login: "octocat",
+              tokenSource: "/w/.config/gh/hosts.yml",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(probe.credential?.source).toBe("GH_TOKEN");
+    expect(probe.stored?.source).toBe("/w/.config/gh/hosts.yml");
   });
 });
 

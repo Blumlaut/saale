@@ -209,6 +209,14 @@ exit 0
 const GH_SHIM_SCRIPT = `#!/bin/sh
 # Written by Saale. Runs the real gh with the app's token while the app is the
 # source, so a command typed by the agent and one run by Saale behave the same.
+#
+# A chat whose repository the installation does not cover carries this variable:
+# both readers of the token file refuse then, git through its helper and gh here,
+# so such a command fails instead of reaching for the account's wider token.
+if [ -n "$SAALE_NO_GITHUB_CREDENTIAL" ]; then
+  echo "saale: this chat's repository is not covered by the GitHub installation" >&2
+  exit 1
+fi
 if [ -z "$GH_TOKEN" ]; then # a chat's narrowed token wins
   token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
   if [ -n "$token" ]; then
