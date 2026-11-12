@@ -89,43 +89,61 @@ className={cn(
 
 ## Row Actions
 
-Actions that belong to a row (its ⋯ menu, a delete button) stay out of the
-way on pointer devices and reveal themselves on hover — but **a touch device
-can never hover**, so a hover-only action is unreachable on a phone. Use the
-shared `ROW_ACTION` class (`@/lib/utils`):
+A row shows **one control of its own** and puts everything else in a ⋯ menu.
+Both are visible without hovering: an action that only appears on hover is an
+action nobody finds, and a row of buttons that appears under the pointer makes
+the list jump.
 
 ```tsx
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-<div className="group flex items-center gap-3 px-4 py-3">
+<div className="flex items-center gap-3 px-4 py-3">
   {/* row content */}
+
+  {/* the row's own control, e.g. a Switch or the one action it offers */}
+  <Switch checked={enabled} onCheckedChange={onToggle} aria-label={`Enable ${item.title}`} />
+
   <DropdownMenu>
     <DropdownMenuTrigger
       render={(triggerProps) => (
         <Button
           variant="ghost"
           size="icon-sm"
-          className={cn("shrink-0", ROW_ACTION)}
+          className="shrink-0"
+          aria-label={`Actions for ${item.title}`}
           {...triggerProps}
         >
           <MoreVertical />
-          <span className="sr-only">Actions for {item.title}</span>
         </Button>
       )}
     />
-    <DropdownMenuContent align="end">
+    <DropdownMenuContent align="end" className="min-w-40">
+      <DropdownMenuItem onClick={onEdit}>
+        <Pencil className="mr-2 h-4 w-4" />
+        Edit
+      </DropdownMenuItem>
       <DropdownMenuItem variant="destructive" onClick={onDelete}>
-        <Trash2 />
-        Delete
+        <Trash2 className="mr-2 h-4 w-4" />
+        Remove
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 </div>;
 ```
 
-`ROW_ACTION` = hidden, revealed on `group-hover` / `group-focus-within`, and
-**always visible when a coarse pointer exists** (`any-pointer-coarse:`).
-
+- **Never hide a row control on hover.** `McpServerRow`, `PromptRow` and
+  `FileBrowser`'s rows are the references: the menu is there before the pointer
+  arrives, and its trigger carries an `aria-label` naming the row.
+- **Several actions, one menu.** Edit and delete do not get a button each; the
+  menu holds them, destructive items at the bottom and in `destructive` red. An
+  extra icon button beside the menu is for the row's _primary_ action only
+  (project rows put "New chat" there).
 - **Destructive row actions go behind the row menu**, not on a bare always-
   visible button next to every row — a permanent one-tap delete is too easy to
   hit while scrolling.
@@ -134,12 +152,11 @@ import { cn, ROW_ACTION } from "@/lib/utils";
   the items from one component in both popups: they are Base UI's `Menu.Item`
   either way, so the button and the right click cannot drift. `FileBrowser`'s
   rows are the reference.
-- **Named groups** (`group/message`, `group/col`) keep their own hover variant
-  and add `any-pointer-coarse:opacity-*` themselves.
-- **Inline actions on a message/card** (copy, edit, open-link hints) only need
-  the pointer variant added: `group-hover/message:opacity-70 any-pointer-coarse:opacity-70`.
-- A dimmed action (`opacity-60 hover:opacity-100`) is fine as-is — it is only
-  _louder_ on hover, never hidden.
+- **Inline hints inside a message or card** are the one thing that may stay
+  quiet: a copy button or an open-link arrow on a transcript row can use
+  `ROW_ACTION` (`@/lib/utils`) with a `group` on the row, which waits for hover,
+  keyboard focus, an open menu, or a coarse pointer. Use it for affordances the
+  row works without, never for a row's actions.
 
 ## Table
 
@@ -245,12 +262,13 @@ import { Button } from "@/components/ui/button";
 
 ## Common Mistakes
 
-| Mistake                   | Fix                                                            |
-| ------------------------- | -------------------------------------------------------------- |
-| No hover state on rows    | Add `hover:bg-accent/60`                                       |
-| Hover-only row action     | Use `ROW_ACTION` (`any-pointer-coarse:`) so touch can reach it |
-| Rows < 48px tall          | Increase padding                                               |
-| No dividers between items | Add `<Separator>`                                              |
-| 5+ column tables          | Reduce columns, add detail view                                |
-| Page number pagination    | Use next/previous only                                         |
-| No empty state            | Show friendly empty state with action                          |
+| Mistake                   | Fix                                           |
+| ------------------------- | --------------------------------------------- |
+| No hover state on rows    | Add `hover:bg-accent/60`                      |
+| Hover-only row action     | Show it, and put the rest in the row's ⋯ menu |
+| Two buttons beside a row  | One primary control plus a menu               |
+| Rows < 48px tall          | Increase padding                              |
+| No dividers between items | Add `<Separator>`                             |
+| 5+ column tables          | Reduce columns, add detail view               |
+| Page number pagination    | Use next/previous only                        |
+| No empty state            | Show friendly empty state with action         |

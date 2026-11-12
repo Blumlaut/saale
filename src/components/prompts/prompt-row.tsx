@@ -24,7 +24,7 @@ export interface PromptRowData {
  */
 export function PromptRow({ prompt, actions }: { prompt: PromptRowData; actions?: ReactNode }) {
   return (
-    <div className="group hover:bg-accent/60 flex items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
+    <div className="hover:bg-accent/60 flex items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate font-mono text-sm font-medium">/{prompt.name}</span>

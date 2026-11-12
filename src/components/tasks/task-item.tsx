@@ -1,6 +1,5 @@
 "use client";
 
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Mail, MessageSquare, Trash2, Pencil } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import type { Task } from "@/types/shared";
 
 interface TaskItemProps {
@@ -119,12 +119,7 @@ export function TaskItem({
           {/* Actions menu */}
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <span
-                className={cn(
-                  ROW_ACTION,
-                  "text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded",
-                )}
-              >
+              <span className="text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded">
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </span>
             </DropdownMenuTrigger>

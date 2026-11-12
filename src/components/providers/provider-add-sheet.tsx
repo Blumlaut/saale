@@ -34,7 +34,6 @@ import type { ProviderCatalogView } from "@/lib/providers/catalog";
 import { CUSTOM_PROVIDER_ID, CUSTOM_PROVIDER_LABEL } from "@/lib/providers/config";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
 import type { ProviderAuthType } from "@/lib/providers/login";
-import { cn, ROW_ACTION } from "@/lib/utils";
 
 /**
  * Managing the providers a scope can use: connecting new ones and unlinking
@@ -378,7 +377,7 @@ function CandidateRow({
   onDisconnect,
 }: CandidateRowProps) {
   return (
-    <div className="group hover:bg-accent/60 flex items-center gap-3 px-4 py-2.5 transition-colors duration-150">
+    <div className="hover:bg-accent/60 flex items-center gap-3 px-4 py-2.5 transition-colors duration-150">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium">{entry.name}</span>
@@ -406,12 +405,7 @@ function CandidateRow({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={(triggerProps) => (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className={cn("shrink-0", ROW_ACTION)}
-                    {...triggerProps}
-                  >
+                  <Button variant="ghost" size="icon-sm" className="shrink-0" {...triggerProps}>
                     <MoreVertical className="h-3.5 w-3.5" />
                     <span className="sr-only">Actions for {entry.name}</span>
                   </Button>

@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useSandboxEnv } from "@/hooks/use-sandbox-env";
 import { SAALE_SESSION_ENV } from "@/lib/sandbox/env-vars";
-import { ROW_ACTION } from "@/lib/utils";
 
 /**
  * The environment variables handed to an agent's commands.
@@ -89,7 +88,7 @@ export function SandboxEnvCard() {
                         aria-label={`Remove ${variable}`}
                         disabled={saving}
                         onClick={() => void remove(variable)}
-                        className={`${ROW_ACTION} h-8 w-8 shrink-0`}
+                        className="h-8 w-8 shrink-0"
                       >
                         {removing === variable ? (
                           <Loader2 className="h-4 w-4 animate-spin" />

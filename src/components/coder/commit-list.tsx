@@ -18,9 +18,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { commitWebUrl, remoteHostName } from "@/lib/coder/remote-url";
 import { formatRelativeDate } from "@/lib/format";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { CommitFileList, useCommitFiles } from "./commit-files";
 import type { CoderCommit } from "./use-coder-data";
 
@@ -109,7 +109,7 @@ function CommitRow({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={`Commit ${commit.shortSha} actions`}
-                className={cn("shrink-0", ROW_ACTION)}
+                className="shrink-0"
               />
             }
           >

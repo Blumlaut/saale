@@ -35,7 +35,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import {
   Brain,
   Loader2,
@@ -304,7 +303,7 @@ export function MemoriesSection() {
                 {collections.map((col) => (
                   <div
                     key={col.name}
-                    className="group/col bg-muted relative flex flex-col items-start justify-between rounded-xl border-0 p-3"
+                    className="bg-muted relative flex flex-col items-start justify-between rounded-xl border-0 p-3"
                   >
                     <div className="flex w-full items-start justify-between">
                       <div className="flex items-center gap-1.5">
@@ -314,11 +313,7 @@ export function MemoriesSection() {
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={(triggerProps) => (
-                            <button
-                              type="button"
-                              className={cn(ROW_ACTION, "group-hover/col:opacity-100")}
-                              {...triggerProps}
-                            >
+                            <button type="button" {...triggerProps}>
                               <MoreVertical className="h-3.5 w-3.5" />
                             </button>
                           )}
@@ -463,7 +458,7 @@ export function MemoriesSection() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={cn("h-7 w-7 shrink-0", ROW_ACTION)}
+                          className="h-7 w-7 shrink-0"
                           {...triggerProps}
                         >
                           <MoreVertical className="h-4 w-4" />

@@ -6,10 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Class list for an action attached to a list row (the row's ⋯ menu, a delete
- * button). Pointer devices get a quiet row whose action appears on hover or
- * keyboard focus; touch devices can never hover, so the action stays visible
- * there. otherwise it is simply unreachable on a phone.
+ * Class list for a hint attached to a row or card: a copy button, an open-link
+ * arrow, something the row works without. It waits for hover or keyboard focus,
+ * stays put while its menu is open, and is always visible on a device that
+ * cannot hover. Row actions themselves are visible; their menu sits beside the
+ * row, not behind a hover.
  */
 export const ROW_ACTION =
   "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 any-pointer-coarse:opacity-100 data-popup-open:opacity-100";

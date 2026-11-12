@@ -526,7 +526,7 @@ export function FileBrowser({
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            className={cn("shrink-0", dense && "h-6 w-6", ROW_ACTION)}
+                            className={cn("shrink-0", dense && "h-6 w-6")}
                             aria-label={`Actions for ${entry.name}`}
                             {...triggerProps}
                           >

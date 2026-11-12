@@ -38,7 +38,7 @@ import { saveChatPin } from "@/lib/chat/pin";
 import { deleteJson } from "@/lib/http";
 import { formatRelativeDate } from "@/lib/format";
 import { arrayOf, usePersistedState } from "@/hooks/use-persisted-state";
-import { ROW_ACTION, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { DeleteCoderChatDialog } from "./delete-chat-dialog";
 import { ProjectCreateDialog } from "./project-create-dialog";
 import { ProjectSettingsSheet } from "./project-settings-sheet";
@@ -318,7 +318,7 @@ export function ProjectList() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        className={cn("shrink-0", ROW_ACTION)}
+                        className="shrink-0"
                         aria-label={`New chat in ${project.name}`}
                         onClick={() => startChat(project.id)}
                       >
@@ -333,7 +333,7 @@ export function ProjectList() {
                               type="button"
                               variant="ghost"
                               size="icon-sm"
-                              className={cn("shrink-0", ROW_ACTION)}
+                              className="shrink-0"
                               aria-label={`Actions for ${project.name}`}
                               {...triggerProps}
                             >

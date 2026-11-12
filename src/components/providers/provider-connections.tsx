@@ -38,7 +38,6 @@ import { Separator } from "@/components/ui/separator";
 import { deleteJson, patchJson, postJson } from "@/lib/http";
 import type { ProviderCatalogView } from "@/lib/providers/catalog";
 import type { ProviderAuthType } from "@/lib/providers/login";
-import { cn, ROW_ACTION } from "@/lib/utils";
 
 /**
  * Which providers this scope has linked, and how to link the rest.
@@ -483,12 +482,7 @@ function ProviderRow({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={(triggerProps) => (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn("shrink-0", ROW_ACTION)}
-                {...triggerProps}
-              >
+              <Button variant="ghost" size="icon-sm" className="shrink-0" {...triggerProps}>
                 <MoreVertical className="h-3.5 w-3.5" />
                 <span className="sr-only">Actions for {entry.name}</span>
               </Button>

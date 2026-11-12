@@ -18,9 +18,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { fetchJson } from "@/lib/http";
 import { isBinaryFile, previewKindFromPath } from "@/lib/editor/editor-utils";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { splitPath, statusStyle } from "./commit-files";
 import { DiscardChangesDialog } from "./discard-dialog";
 import { DiffImage } from "./diff-image";
@@ -178,7 +178,7 @@ function ChangeRow({
           <Counts change={change} />
         </button>
 
-        <div className={cn("flex shrink-0 items-center gap-0.5", ROW_ACTION)}>
+        <div className="flex shrink-0 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon-xs"

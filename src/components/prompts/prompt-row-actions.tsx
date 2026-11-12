@@ -8,7 +8,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, ROW_ACTION } from "@/lib/utils";
 
 /**
  * The menu beside a prompt row the viewer can change.
@@ -30,12 +29,7 @@ export function PromptRowActions({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={(triggerProps) => (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className={cn("shrink-0", ROW_ACTION)}
-            {...triggerProps}
-          >
+          <Button variant="ghost" size="icon-sm" className="shrink-0" {...triggerProps}>
             <MoreVertical />
             <span className="sr-only">Actions for /{name}</span>
           </Button>

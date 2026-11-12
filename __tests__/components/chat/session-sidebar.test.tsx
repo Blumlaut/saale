@@ -399,14 +399,13 @@ describe("SessionSidebar older chats", () => {
     expect(screen.queryByRole("button", { name: "Delete anyway" })).not.toBeInTheDocument();
   });
 
-  it("offers every row's delete action without a hover state", async () => {
-    // Touch devices cannot hover, so the row action must exist in the DOM for
-    // every row (its CSS keeps it visible when there is no pointer).
+  it("offers every row's actions without a hover", async () => {
+    // The row's menu is in sight: nothing may hide it until the pointer arrives.
     await renderSidebar();
 
     for (const title of ["Fresh chat", "Recent chat"]) {
       const trigger = screen.getByRole("button", { name: `Actions for ${title}` });
-      expect(trigger).toHaveClass("any-pointer-coarse:opacity-100");
+      expect(trigger.className).not.toMatch(/opacity-0|group-hover/);
     }
   });
 });

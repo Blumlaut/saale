@@ -32,7 +32,7 @@ import {
   Zap,
   Ban,
 } from "lucide-react";
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import { getCronLabel } from "@/lib/jobs/cron-label";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
@@ -313,12 +313,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
 
                     <DropdownMenu>
                       <DropdownMenuTrigger>
-                        <span
-                          className={cn(
-                            ROW_ACTION,
-                            "text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded",
-                          )}
-                        >
+                        <span className="text-muted-foreground hover:bg-accent/60 inline-flex h-6 w-6 items-center justify-center rounded">
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </span>
                       </DropdownMenuTrigger>

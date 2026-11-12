@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Fragment } from "react";
 import { MoreVertical, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
-import { cn, ROW_ACTION } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import type { Contact } from "@/types/shared";
 
@@ -129,7 +129,7 @@ export function ContactList({ contacts, loading, onAdd, onEdit, onDelete }: Cont
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          className={cn("shrink-0", ROW_ACTION)}
+                          className="shrink-0"
                           {...rest}
                           onClick={(e) => {
                             e.stopPropagation();

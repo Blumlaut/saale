@@ -11,9 +11,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { useLongPress } from "@/hooks/use-long-press";
 import { DeleteErrorMark, type ChatDeleteError } from "@/components/chat/delete-error-dialog";
+import { cn } from "@/lib/utils";
 import { Check, CheckSquare, MoreVertical, Pin, PinOff, Trash2, Bot } from "lucide-react";
 
 /**
@@ -202,7 +202,7 @@ export function ChatRowMenu({
           <Button
             variant="ghost"
             size="icon-sm"
-            className={cn("shrink-0", ROW_ACTION)}
+            className="shrink-0"
             aria-label={`Actions for ${title}`}
             {...triggerProps}
           >

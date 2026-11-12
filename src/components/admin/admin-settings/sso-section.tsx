@@ -26,7 +26,6 @@ import {
 import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { deleteJson, fetchJson } from "@/lib/http";
 import type { SsoProviderStatus } from "@/lib/auth/sso-config";
-import { cn, ROW_ACTION } from "@/lib/utils";
 import { SsoProviderSheet } from "./sso-provider-sheet";
 
 /** The host an admin recognises a provider by, or the whole issuer when it will not parse. */
@@ -171,7 +170,7 @@ export function SsoSection() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            className={cn("shrink-0", ROW_ACTION)}
+                            className="shrink-0"
                             {...rest}
                             onClick={(event) => {
                               event.stopPropagation();
