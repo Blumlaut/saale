@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.11.11 - 2026-11-12
+
+- keep attachments in the order they were attached (563b73db)
+- register the delete-failure dialog in the modal guardrails (1acd1eb5)
+- bump the github actions to their current majors (0c14c110)
+- bump jsdom to 31 (16d773f5)
+- bump pnpm to 12.18.0 (f52566eb)
+- bump the pi packages to 1.5.2 and their patches (fc09dd20)
+- update dependencies to latest minors and patches (04d050f5)
+- trim the prompts and route long work to automations (89de871c)
+- show coder diffs inline by default (8c9a35e3)
+
 ## 2026.11.10 - 2026-11-11
 
 - Bump the dev-dependencies group across 1 directory with 7 updates (e54e4f10)
