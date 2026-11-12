@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,12 +104,22 @@ export function McpServerSheet({
    */
   const foldedName = normalizeMcpServerName(name);
 
+  /**
+   * Counts the times the sheet has been opened, closed, or moved to another
+   * server. A sign-in or test started in an earlier one answers into a sheet the
+   * user has already left, so its result is dropped rather than written onto the
+   * server now on screen.
+   */
+  const session = useRef(0);
+  const stillCurrent = useCallback((startedAt: number) => session.current === startedAt, []);
+
   /** Clear the message under a field once the user edits it again. */
   const clearFieldError = (field: "name" | "url") => {
     setFieldError((current) => (current?.field === field ? null : current));
   };
 
   useEffect(() => {
+    session.current += 1;
     if (!open) return;
     setName(server?.name ?? "");
     setUrl(server?.url ?? "");
@@ -169,6 +179,7 @@ export function McpServerSheet({
       return;
     }
 
+    const startedAt = session.current;
     setTesting(true);
     setError(null);
     setFieldError(null);
@@ -180,20 +191,23 @@ export function McpServerSheet({
         url: url.trim(),
         ...(token.trim() ? { token: token.trim() } : {}),
       });
+      if (!stillCurrent(startedAt)) return;
       setTestResult(result);
       if (!result.success && result.error) setError(result.error);
     } finally {
       setTesting(false);
     }
-  }, [onTest, server, token, url]);
+  }, [onTest, server, token, url, stillCurrent]);
 
   const handleSignIn = useCallback(async () => {
     if (!server || !onStartOAuth) return;
+    const startedAt = session.current;
     setOauthBusy(true);
     setOauthError(null);
     setTestResult(null);
     try {
       const result = await onStartOAuth(server.id);
+      if (!stillCurrent(startedAt)) return;
       if (result.status === "succeeded") {
         setHasOAuth(true);
         setOauthPhase("succeeded");
@@ -209,28 +223,32 @@ export function McpServerSheet({
       // Best effort: a blocked popup still leaves the link below.
       window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
+      if (!stillCurrent(startedAt)) return;
       setOauthPhase("failed");
       setOauthError((err as Error).message || "Failed to start the sign-in");
     } finally {
       setOauthBusy(false);
     }
-  }, [onStartOAuth, server]);
+  }, [onStartOAuth, server, stillCurrent]);
 
   const handleSignOut = useCallback(async () => {
     if (!server || !onSignOutOAuth) return;
+    const startedAt = session.current;
     setOauthBusy(true);
     setOauthError(null);
     try {
       await onSignOutOAuth(server.id);
+      if (!stillCurrent(startedAt)) return;
       setHasOAuth(false);
       setOauthPhase("idle");
       setOauthUrl(null);
     } catch (err) {
+      if (!stillCurrent(startedAt)) return;
       setOauthError((err as Error).message || "Failed to sign out");
     } finally {
       setOauthBusy(false);
     }
-  }, [onSignOutOAuth, server]);
+  }, [onSignOutOAuth, server, stillCurrent]);
 
   const handleSave = useCallback(async () => {
     const normalizedName = normalizeMcpServerName(name);
@@ -250,6 +268,7 @@ export function McpServerSheet({
     setSaving(true);
     setError(null);
     setFieldError(null);
+    const startedAt = session.current;
     try {
       await onSave({
         name: normalizedName,
@@ -263,8 +282,11 @@ export function McpServerSheet({
         // it. Clearing is offered explicitly below.
         ...(token.trim() ? { token: token.trim() } : {}),
       });
+      // Closing here would shut the sheet of the server the user moved on to.
+      if (!stillCurrent(startedAt)) return;
       onOpenChange(false);
     } catch (err) {
+      if (!stillCurrent(startedAt)) return;
       setError((err as Error).message || "Failed to save the server");
     } finally {
       setSaving(false);
@@ -277,6 +299,7 @@ export function McpServerSheet({
     name,
     onOpenChange,
     onSave,
+    stillCurrent,
     token,
     toolPolicy,
     url,
@@ -284,17 +307,20 @@ export function McpServerSheet({
 
   const handleClearToken = useCallback(async () => {
     if (!server) return;
+    const startedAt = session.current;
     setSaving(true);
     setError(null);
     try {
       await onSave({ token: "" });
+      if (!stillCurrent(startedAt)) return;
       setToken("");
     } catch (err) {
+      if (!stillCurrent(startedAt)) return;
       setError((err as Error).message || "Failed to clear the token");
     } finally {
       setSaving(false);
     }
-  }, [onSave, server]);
+  }, [onSave, server, stillCurrent]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

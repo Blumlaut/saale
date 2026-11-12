@@ -459,7 +459,7 @@ async function mockProviderSignIn(page: Page) {
   });
 }
 
-async function mockMcpServers(page: Page) {
+export async function mockMcpServers(page: Page) {
   await page.route(/\/api\/mcp\/servers(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({

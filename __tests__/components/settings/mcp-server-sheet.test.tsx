@@ -1,44 +1,44 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
-import type { McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
+import type { McpOAuthStart, McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 
 type Props = Parameters<typeof McpServerSheet>[0];
 
-function renderSheet(overrides: Partial<Props> = {}) {
-  const onSave = vi.fn().mockResolvedValue(undefined);
-  const onTest = vi.fn().mockResolvedValue({ success: true, tools: [] });
-  const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
-  const onOAuthStatus = vi.fn().mockResolvedValue({
-    status: "pending",
-    error: null,
-    authorizationUrl: null,
-    hasOAuth: false,
-  });
-  const onSignOutOAuth = vi.fn().mockResolvedValue(undefined);
-  render(
-    <McpServerSheet
-      open
-      onOpenChange={vi.fn()}
-      server={null}
-      onSave={onSave}
-      onTest={onTest}
-      onStartOAuth={onStartOAuth}
-      onOAuthStatus={onOAuthStatus}
-      onSignOutOAuth={onSignOutOAuth}
-      {...overrides}
-    />,
-  );
+/** The sheet with stand-in callbacks; `overrides` replaces any of them. */
+function sheetProps(overrides: Partial<Props> = {}): Props {
   return {
-    onSave: (overrides.onSave ?? onSave) as unknown as ReturnType<typeof vi.fn>,
-    onTest: (overrides.onTest ?? onTest) as unknown as ReturnType<typeof vi.fn>,
-    onStartOAuth: (overrides.onStartOAuth ?? onStartOAuth) as unknown as ReturnType<typeof vi.fn>,
-    onSignOutOAuth: (overrides.onSignOutOAuth ?? onSignOutOAuth) as unknown as ReturnType<
-      typeof vi.fn
-    >,
+    open: true,
+    onOpenChange: vi.fn(),
+    server: null,
+    onSave: vi.fn().mockResolvedValue(undefined),
+    onTest: vi.fn().mockResolvedValue({ success: true, tools: [] }),
+    onStartOAuth: vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null }),
+    onOAuthStatus: vi.fn().mockResolvedValue({
+      status: "pending",
+      error: null,
+      authorizationUrl: null,
+      hasOAuth: false,
+    }),
+    onSignOutOAuth: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+function renderSheet(overrides: Partial<Props> = {}) {
+  const props = sheetProps(overrides);
+  const view = render(<McpServerSheet {...props} />);
+  return {
+    onSave: props.onSave as unknown as ReturnType<typeof vi.fn>,
+    onTest: props.onTest as unknown as ReturnType<typeof vi.fn>,
+    onStartOAuth: props.onStartOAuth as unknown as ReturnType<typeof vi.fn>,
+    onSignOutOAuth: props.onSignOutOAuth as unknown as ReturnType<typeof vi.fn>,
+    /** Re-open the same sheet for another server, as the page does. */
+    openServer: (server: McpServer | null) =>
+      view.rerender(<McpServerSheet {...props} server={server} />),
     // The sheet labels sit next to the inputs without `htmlFor`, so the fields
     // are found by their placeholder.
     name: screen.getByPlaceholderText("homeassistant") as HTMLInputElement,
@@ -154,6 +154,39 @@ describe("McpServerSheet OAuth sign-in", () => {
     fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
 
     await waitFor(() => expect(onSignOutOAuth).toHaveBeenCalledWith("srv-1"));
+  });
+
+  it("reads the next server's sign-in state instead of the last one's", async () => {
+    const { openServer } = renderSheet({ server: savedServer({ hasOAuth: true }) });
+    expect(screen.getByText(/signed in/i)).toBeInTheDocument();
+
+    openServer(savedServer({ id: "srv-2", name: "cloudflare", url: "https://cloudflare.com/mcp" }));
+
+    expect(await screen.findByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/signed in/i)).not.toBeInTheDocument();
+  });
+
+  it("drops a sign-in that answers after the sheet moved to another server", async () => {
+    let finish: (result: McpOAuthStart) => void = () => {};
+    const onStartOAuth = vi.fn(
+      () =>
+        new Promise<McpOAuthStart>((resolve) => {
+          finish = resolve;
+        }),
+    );
+
+    const { openServer } = renderSheet({ server: savedServer(), onStartOAuth });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await waitFor(() => expect(onStartOAuth).toHaveBeenCalledWith("srv-1"));
+
+    openServer(savedServer({ id: "srv-2", name: "cloudflare", url: "https://cloudflare.com/mcp" }));
+    await act(async () => {
+      finish({ status: "succeeded", authorizationUrl: null });
+    });
+
+    // The answer belongs to the server the user has left behind.
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/signed in/i)).not.toBeInTheDocument();
   });
 
   it("asks for a save before signing in to a server that is not stored yet", () => {

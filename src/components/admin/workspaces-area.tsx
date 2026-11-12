@@ -364,7 +364,7 @@ function WorkspaceRow({
   const hasContainer = row.container === "running" || row.container === "stopped";
 
   return (
-    <div className="hover:bg-accent/40 flex items-center gap-3 px-4 py-3 transition-colors duration-150">
+    <div className="group hover:bg-accent/40 flex items-center gap-3 px-4 py-3 transition-colors duration-150">
       <Avatar className="size-8" aria-hidden>
         {row.owner?.image ? <AvatarImage src={row.owner.image} alt="" /> : null}
         <AvatarFallback className={cn(orphan && "text-amber-600 dark:text-amber-400")}>
