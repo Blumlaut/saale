@@ -1,37 +1,36 @@
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 import { gotoAndSettle } from "./utils";
 import { mockMcpServers } from "./modal-scenarios";
 
 /**
- * A settings row that carries actions must show them.
+ * A row keeps its controls in sight.
  *
- * Row actions fade in on hover (`ROW_ACTION`), which only works when the row
- * renders the `group` class their `group-hover:` variants point at. Without it
- * the buttons stay at opacity 0 forever and the row looks read-only, which is
- * how the MCP servers lost their edit and remove buttons.
+ * A server row carries one control of its own — the switch that turns it on —
+ * and the rest behind its menu, which is visible without hovering. Actions that
+ * only appear on hover are the ones nobody finds: the edit and remove buttons
+ * hid behind a `group-hover` that no ancestor ever triggered.
  */
 
-function opacity(locator: Locator): Promise<string> {
+function opacity(locator: import("@playwright/test").Locator): Promise<string> {
   return locator.evaluate((element) => getComputedStyle(element).opacity);
 }
 
 test.describe("settings · integrations", () => {
-  test("an MCP server row reveals its edit and remove buttons on hover", async ({ page }) => {
+  test("an MCP server row offers edit and remove from a visible menu", async ({ page }) => {
     await mockMcpServers(page);
     await gotoAndSettle(page, "/dashboard/settings/integrations", { quietNetwork: true });
 
-    const edit = page.getByRole("button", { name: "Edit homeassistant" });
-    const remove = page.getByRole("button", { name: "Remove homeassistant" });
-    await expect(edit).toHaveCount(1);
-
-    // The pointer rests off the row, so nothing but the hover rule can show them.
+    // The pointer rests off the row, so only the row's own styling can show it.
     await page.mouse.move(0, 0);
-    expect(await opacity(edit)).toBe("0");
-    expect(await opacity(remove)).toBe("0");
+    const actions = page.getByRole("button", { name: "Actions for homeassistant" });
+    await expect(actions).toHaveCount(1);
+    expect(await opacity(page.getByRole("switch", { name: "Enable homeassistant" }))).toBe("1");
+    expect(await opacity(actions)).toBe("1");
 
-    await page.getByText("homeassistant", { exact: true }).hover();
-    await expect.poll(() => opacity(edit)).toBe("1");
-    await expect.poll(() => opacity(remove)).toBe("1");
+    await actions.click();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Remove" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("Remove homeassistant?");
   });
 });

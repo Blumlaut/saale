@@ -1398,7 +1398,8 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     mock: mockMcpServers,
     open: async (page) => {
       await openSettingsSection(page, "integrations");
-      await click(page, '[aria-label="Remove homeassistant"]');
+      await click(page, '[aria-label="Actions for homeassistant"]');
+      await clickText(page, "Remove");
     },
   },
   {

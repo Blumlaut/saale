@@ -28,7 +28,7 @@ function scopeLabel(server: McpServer): string | null {
  */
 export function McpServerRow({ server, actions }: { server: McpServer; actions?: ReactNode }) {
   return (
-    <div className="group flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
+    <div className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 md:px-6">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{server.name}</span>
