@@ -14,6 +14,7 @@
 
 import {
   GITHUB_DEVICE_URL,
+  GITHUB_HOST,
   findDeviceCode,
   parseGithubHosts,
   type GithubProbe,
@@ -40,8 +41,6 @@ const COMMAND_TIMEOUT_SECONDS = 30;
 
 /** Output kept from a sign-in, so a failure has something to quote. */
 const MAX_OUTPUT_CHARS = 4000;
-
-const GITHUB_HOST = "github.com";
 
 /** The variable that outranks a gh login, and the one Saale hands commands. */
 const TOKEN_VARIABLE = "GH_TOKEN";

@@ -8,8 +8,17 @@
 
 export const GITHUB_DEVICE_URL = "https://github.com/login/device";
 
-/** The only host this feature speaks to. */
-const GITHUB_HOST = "github.com";
+/**
+ * The only host this feature speaks to.
+ *
+ * Declared once here and imported by everything else that names it: this module
+ * is a leaf (it imports nothing), so the coder module, the session scoping and
+ * the credential writer can all read it without pulling a dependency in.
+ */
+export const GITHUB_HOST = "github.com";
+
+/** The host as a URL, for the credential helper's subsection. */
+export const GITHUB_HOST_URL = `https://${GITHUB_HOST}`;
 
 /** A refusal that quotes GitHub's body is cut to the line worth reading. */
 const MAX_ERROR_LENGTH = 300;

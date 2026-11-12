@@ -23,6 +23,7 @@ import path from "node:path";
 import { GITCONFIG_FILE, coderWorkspaceRoot } from "@/lib/coder/paths";
 import { ensureGitconfig, gitIdentityFor, withCredentialHelper } from "@/lib/coder/gitconfig";
 import { prisma } from "@/lib/db";
+import { GITHUB_HOST_URL } from "./github";
 import { isNotFoundError } from "@/lib/files/errors";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
 import { signOutGithub } from "@/lib/coder/github";
@@ -38,8 +39,6 @@ import {
 } from "./github-source";
 
 /** The one host this connection is about. An enterprise instance is not it. */
-export const GITHUB_HOST_URL = "https://github.com";
-
 /** The helper script, relative to the workspace root (`$HOME` in the container). */
 export const GITHUB_HELPER_FILE = ".local/bin/saale-git-credential";
 
