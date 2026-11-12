@@ -7,13 +7,13 @@ import { withCredentialHelper } from "@/lib/coder/gitconfig";
 import {
   GITHUB_CREDENTIAL_FILE,
   GITHUB_HELPER_FILE,
-  GITHUB_HOST_URL,
   applyGithubHelper,
   credentialPolicyFor,
   githubGhShimScript,
   githubHelperCommand,
   githubHelperScript,
 } from "@/lib/integrations/github-credentials";
+import { GITHUB_HOST_URL } from "@/lib/integrations/github";
 import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";

@@ -23,6 +23,7 @@
 
 import { loadCoderSession } from "@/lib/coder/changes";
 import { remoteWebUrl } from "@/lib/coder/remote-url";
+import { GITHUB_HOST } from "./github";
 import { githubInstallationForOwner, mintGithubInstallationToken } from "./github-app";
 import { readStoredGithubSource } from "./github-credentials";
 
@@ -52,7 +53,7 @@ export function repositoryFromRemote(remoteUrl: string | null): {
     return null;
   }
 
-  if (parsed.hostname.toLowerCase() !== "github.com") return null;
+  if (parsed.hostname.toLowerCase() !== GITHUB_HOST) return null;
 
   const [owner, repository] = parsed.pathname.split("/").filter(Boolean);
   if (!owner || !repository) return null;
