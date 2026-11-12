@@ -223,7 +223,10 @@ describe("toMcpServerConfig", () => {
   it("omits the description when the server has none", () => {
     const config = toMcpServerConfig({
       name: "ha",
+      transport: "http",
       url: "https://ha/api/mcp",
+      command: null,
+      cwd: null,
       description: "",
       encryptedToken: null,
     });
@@ -233,10 +236,38 @@ describe("toMcpServerConfig", () => {
 
   it("takes the exposure it is given", () => {
     const config = toMcpServerConfig(
-      { name: "ha", url: "https://ha/api/mcp", description: "", encryptedToken: null },
+      {
+        name: "ha",
+        transport: "http",
+        url: "https://ha/api/mcp",
+        command: null,
+        cwd: null,
+        description: "",
+        encryptedToken: null,
+      },
       "direct",
     );
     expect(config.exposure).toBe("direct");
+  });
+
+  it("builds a stdio entry from the command, not from a URL", () => {
+    const config = toMcpServerConfig({
+      name: "files",
+      transport: "stdio",
+      url: null,
+      command: "npx -y @modelcontextprotocol/server-filesystem .",
+      cwd: "docs",
+      description: "Read the docs folder",
+      encryptedToken: null,
+    });
+
+    expect(config).toEqual({
+      type: "stdio",
+      command: "npx -y @modelcontextprotocol/server-filesystem .",
+      cwd: "docs",
+      exposure: "codemode",
+      description: "Read the docs folder",
+    });
   });
 });
 

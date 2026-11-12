@@ -61,7 +61,12 @@ export function McpServerRow({ server, actions }: { server: McpServer; actions?:
             </Badge>
           )}
         </div>
-        <p className="text-muted-foreground mt-1 text-xs break-all">{server.url}</p>
+        <p className="text-muted-foreground mt-1 font-mono text-xs break-all">
+          {server.transport === "stdio" ? server.command : server.url}
+        </p>
+        {server.transport === "stdio" && server.cwd && (
+          <p className="text-muted-foreground mt-0.5 text-xs">Runs in {server.cwd}</p>
+        )}
         {server.description && (
           <p className="text-muted-foreground mt-0.5 text-xs">{server.description}</p>
         )}

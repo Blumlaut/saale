@@ -468,7 +468,10 @@ export async function mockMcpServers(page: Page) {
           {
             id: "e2e-mcp",
             name: "homeassistant",
+            transport: "http",
             url: "https://homeassistant.local:8123/api/mcp",
+            command: null,
+            cwd: null,
             description: "Control the smart home",
             toolPolicy: "ask",
             enabled: true,
@@ -476,6 +479,29 @@ export async function mockMcpServers(page: Page) {
             chatEnabled: true,
             coderEnabled: false,
             hasToken: true,
+            hasOAuth: false,
+            shared: false,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+          {
+            // A command in the workspace: the row shows the command line, and
+            // the sheet opens with the command fields instead of a URL.
+            id: "e2e-mcp-files",
+            envNames: ["GITHUB_PERSONAL_ACCESS_TOKEN", "REGION"],
+            name: "workspace_files",
+            transport: "stdio",
+            url: null,
+            command: "npx -y @modelcontextprotocol/server-filesystem .",
+            cwd: "docs",
+            description: "Read and write files in the workspace",
+            toolPolicy: "allow",
+            enabled: true,
+            chatEnabled: true,
+            coderEnabled: true,
+            hasToken: false,
+            hasOAuth: false,
+            shared: false,
             createdAt: NOW,
             updatedAt: NOW,
           },
@@ -1389,6 +1415,39 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsSection(page, "integrations");
       await click(page, '[aria-label="Add server"]');
+    },
+  },
+  {
+    name: "settings · add mcp command server",
+    path: SETTINGS,
+    sources: [MCP_SHEET],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Add server"]');
+      await click(page, '[aria-label="Connection"]');
+      await clickText(page, "Command in workspace");
+    },
+  },
+  {
+    name: "settings · mcp command server with variables",
+    path: SETTINGS,
+    sources: [MCP_SHEET],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Actions for workspace_files"]');
+      await clickText(page, "Edit");
+    },
+  },
+  {
+    name: "settings · import mcp config",
+    path: SETTINGS,
+    sources: ["src/components/mcp/mcp-import-dialog.tsx"],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Import config"]');
     },
   },
   {

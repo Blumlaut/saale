@@ -40,11 +40,16 @@ function renderSheet(overrides: Partial<Props> = {}) {
     openServer: (server: McpServer | null) =>
       view.rerender(<McpServerSheet {...props} server={server} />),
     // The sheet labels sit next to the inputs without `htmlFor`, so the fields
-    // are found by their placeholder.
-    name: screen.getByPlaceholderText("homeassistant") as HTMLInputElement,
-    url: screen.getByPlaceholderText(
-      "https://homeassistant.local:8123/api/mcp",
-    ) as HTMLInputElement,
+    // are found by their placeholder. Read lazily: a command server has no URL
+    // field to find.
+    get name() {
+      return screen.getByPlaceholderText("homeassistant") as HTMLInputElement;
+    },
+    get url() {
+      return screen.getByPlaceholderText(
+        "https://homeassistant.local:8123/api/mcp",
+      ) as HTMLInputElement;
+    },
   };
 }
 
@@ -114,7 +119,11 @@ function savedServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
     id: "srv-1",
     name: "linear",
+    transport: "http",
     url: "https://mcp.linear.app/mcp",
+    command: null,
+    cwd: null,
+    envNames: [],
     description: "",
     toolPolicy: "ask",
     enabled: true,
@@ -225,5 +234,208 @@ describe("McpServerSheet scopes", () => {
     renderSheet({ server: savedServer({ chatEnabled: false, coderEnabled: false }) });
 
     expect(screen.getByText(/connects nowhere/i)).toBeInTheDocument();
+  });
+});
+
+/** A base-ui select commits on the pointer sequence, not a bare click. */
+function chooseOption(select: HTMLElement, name: string) {
+  fireEvent.click(select);
+  const option = screen.getByRole("option", { name });
+  fireEvent.pointerDown(option);
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+}
+
+/**
+ * A server is reachable over HTTP or by a command that runs in the user's
+ * workspace. The command fields replace the endpoint, the token and the
+ * sign-in, since a program authenticates with the account's own variables.
+ */
+describe("McpServerSheet command servers", () => {
+  const command = "npx -y @modelcontextprotocol/server-filesystem .";
+
+  it("offers a command only where the caller allows one", () => {
+    renderSheet();
+    expect(screen.queryByText("Connection")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/homeassistant\.local/)).toBeInTheDocument();
+  });
+
+  it("switches from an endpoint to a command and saves it", async () => {
+    const { name, onSave } = renderSheet({ allowStdio: true });
+
+    fireEvent.change(name, { target: { value: "files" } });
+    chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
+
+    const commandInput = screen.getByPlaceholderText(/server-filesystem/) as HTMLInputElement;
+    expect(screen.queryByPlaceholderText(/homeassistant\.local/)).not.toBeInTheDocument();
+
+    fireEvent.change(commandInput, { target: { value: command } });
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({
+      name: "files",
+      transport: "stdio",
+      command,
+      cwd: "",
+    });
+    expect(onSave.mock.calls[0]![0]).not.toHaveProperty("url");
+  });
+
+  it("reads a stored command back without asking for an endpoint", () => {
+    renderSheet({
+      server: savedServer({
+        transport: "stdio",
+        url: null,
+        command,
+        cwd: "docs",
+        description: "Read the docs",
+      }),
+    });
+
+    expect((screen.getByPlaceholderText(/server-filesystem/) as HTMLInputElement).value).toBe(
+      command,
+    );
+    expect((screen.getByPlaceholderText(/Optional, e\.g\. docs/) as HTMLInputElement).value).toBe(
+      "docs",
+    );
+    expect(screen.queryByPlaceholderText(/homeassistant\.local/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Access token/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/OAuth sign-in/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the working directory inside the workspace", async () => {
+    const { name, onSave } = renderSheet({ allowStdio: true });
+
+    fireEvent.change(name, { target: { value: "files" } });
+    chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
+    fireEvent.change(screen.getByPlaceholderText(/server-filesystem/), {
+      target: { value: command },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Optional, e\.g\. docs/), {
+      target: { value: "../another-account" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    expect(await screen.findByText(/cannot lead outside your workspace/i)).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("saves the variables a command was given, and never reads one back", async () => {
+    const { name, onSave } = renderSheet({ allowStdio: true });
+
+    fireEvent.change(name, { target: { value: "github" } });
+    chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
+    fireEvent.change(screen.getByPlaceholderText(/server-filesystem/), {
+      target: { value: "npx -y @modelcontextprotocol/server-github" },
+    });
+    fireEvent.change(screen.getByLabelText("Variable name"), {
+      target: { value: "GITHUB_PERSONAL_ACCESS_TOKEN" },
+    });
+    fireEvent.change(screen.getByLabelText("Variable value"), {
+      target: { value: "ghp_secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add variable/i }));
+
+    // The list shows the name; the value it holds is not rendered.
+    expect(screen.getByText("GITHUB_PERSONAL_ACCESS_TOKEN")).toBeInTheDocument();
+    expect(screen.queryByText("ghp_secret")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_secret" },
+    });
+  });
+
+  it("lists a stored variable by name and forgets it when it is removed", async () => {
+    const { onSave } = renderSheet({
+      allowStdio: true,
+      server: savedServer({
+        transport: "stdio",
+        url: null,
+        command: "npx -y @modelcontextprotocol/server-github",
+        envNames: ["GITHUB_PERSONAL_ACCESS_TOKEN", "REGION"],
+      }),
+    });
+
+    expect(screen.getByText("GITHUB_PERSONAL_ACCESS_TOKEN")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove GITHUB_PERSONAL_ACCESS_TOKEN" }));
+    expect(screen.queryByText("GITHUB_PERSONAL_ACCESS_TOKEN")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({
+      envRemove: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+    });
+    expect(onSave.mock.calls[0]![0]).not.toHaveProperty("env");
+  });
+
+  it("refuses a variable name a shell could not read", () => {
+    renderSheet({ allowStdio: true });
+
+    chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
+    fireEvent.change(screen.getByLabelText("Variable name"), { target: { value: "not-a-name" } });
+    fireEvent.change(screen.getByLabelText("Variable value"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: /add variable/i }));
+
+    expect(screen.getByText(/Variable names start with a letter/i)).toBeInTheDocument();
+  });
+
+  it("fills the sheet from a preset and waits for the key it needs", async () => {
+    const { onSave } = renderSheet({ allowStdio: true });
+
+    chooseOption(screen.getByRole("combobox", { name: /start from a preset/i }), "GitHub");
+
+    expect((screen.getByPlaceholderText(/server-filesystem/) as HTMLInputElement).value).toBe(
+      "npx -y @modelcontextprotocol/server-github",
+    );
+    expect((screen.getByPlaceholderText("homeassistant") as HTMLInputElement).value).toBe("github");
+    // The key it needs is named, and the field says what belongs in it.
+    expect(screen.getByText("GITHUB_PERSONAL_ACCESS_TOKEN")).toBeInTheDocument();
+    const value = screen.getByLabelText("Value of GITHUB_PERSONAL_ACCESS_TOKEN");
+
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    expect(await screen.findByText(/give GITHUB_PERSONAL_ACCESS_TOKEN a value/i)).toBeVisible();
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.change(value, { target: { value: "ghp_secret" } });
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({
+      name: "github",
+      transport: "stdio",
+      command: "npx -y @modelcontextprotocol/server-github",
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_secret" },
+    });
+  });
+
+  it("fills an endpoint preset without a command", () => {
+    renderSheet({ allowStdio: true });
+
+    chooseOption(screen.getByRole("combobox", { name: /start from a preset/i }), "Linear");
+
+    expect(
+      (screen.getByPlaceholderText("https://homeassistant.local:8123/api/mcp") as HTMLInputElement)
+        .value,
+    ).toBe("https://mcp.linear.app/mcp");
+    expect(screen.queryByPlaceholderText(/server-filesystem/)).not.toBeInTheDocument();
+  });
+
+  it("tests the command rather than an endpoint", async () => {
+    const { onTest } = renderSheet({ allowStdio: true });
+    const test = onTest as unknown as ReturnType<typeof vi.fn>;
+
+    chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
+    fireEvent.change(screen.getByPlaceholderText(/server-filesystem/), {
+      target: { value: command },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^test$/i }));
+
+    await waitFor(() => expect(test).toHaveBeenCalledTimes(1));
+    expect(test.mock.calls[0]![1]).toMatchObject({ transport: "stdio", command });
   });
 });

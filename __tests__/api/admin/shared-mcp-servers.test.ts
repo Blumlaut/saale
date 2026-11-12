@@ -140,6 +140,30 @@ describe("shared MCP servers are the instance's rows", () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
+  it("refuses a server that runs a command, since it would need one account's workspace", async () => {
+    const response = await POST(
+      request("POST", { name: "files", transport: "stdio", command: "node mcp.mjs" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: expect.stringContaining("HTTP endpoint"),
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to turn a shared server into a command", async () => {
+    mocks.findFirst.mockResolvedValue(row());
+
+    const response = await PATCH(
+      request("PATCH", { transport: "stdio", command: "node mcp.mjs" }),
+      params("shared-1"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("404s on a server the instance does not have", async () => {
     mocks.deleteMany.mockResolvedValue({ count: 0 });
 

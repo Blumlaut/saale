@@ -71,6 +71,10 @@ ENV PATH="/w/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:
 ENV NPM_CONFIG_PREFIX=/w/.local
 ENV LANG=C.UTF-8
 
+# Playwright drives the chromium this image already carries, instead of
+# downloading its own bundle per workspace.
+ENV PLAYWRIGHT_MCP_EXECUTABLE_PATH=/usr/bin/chromium
+
 WORKDIR /w
 
 # The container idles; `docker exec` carries the commands. `sleep` is PID 1

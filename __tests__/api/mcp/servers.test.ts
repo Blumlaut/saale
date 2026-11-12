@@ -58,9 +58,20 @@ vi.mock("@/lib/mcp/probe", () => ({
   isMcpOAuthRequired: () => false,
 }));
 
+const mockProbeCommand = vi.fn();
+vi.mock("@/lib/mcp/stdio", () => ({
+  probeStdioMcpServer: (...args: unknown[]) => mockProbeCommand(...args),
+}));
+
+const mockCanExec = vi.fn();
+vi.mock("@/lib/sandbox/client", () => ({
+  canExec: () => mockCanExec(),
+}));
+
 import { GET, POST } from "@/app/api/mcp/servers/route";
 import { DELETE, PATCH } from "@/app/api/mcp/servers/[serverId]/route";
 import { POST as testServer } from "@/app/api/mcp/servers/[serverId]/test/route";
+import { POST as POST_IMPORT } from "@/app/api/mcp/servers/import/route";
 
 const USER_ID = "user-1";
 
@@ -89,7 +100,10 @@ function serverRow(overrides: Record<string, unknown> = {}) {
     id: "srv-1",
     userId: USER_ID,
     name: "homeassistant",
+    transport: "http",
     url: "https://homeassistant.local:8123/api/mcp",
+    command: null,
+    cwd: null,
     description: "Control the smart home",
     encryptedToken: null,
     toolPolicy: "ask",
@@ -211,6 +225,111 @@ describe("/api/mcp/servers", () => {
     expect(response.status).toBe(409);
     expect(mockCreate).not.toHaveBeenCalled();
   });
+
+  it("creates a command server with no endpoint and no token", async () => {
+    mockCreate.mockResolvedValue(
+      serverRow({
+        transport: "stdio",
+        url: null,
+        command: "npx -y @modelcontextprotocol/server-filesystem .",
+      }),
+    );
+
+    const response = await POST(
+      request("POST", {
+        name: "files",
+        transport: "stdio",
+        command: "npx -y @modelcontextprotocol/server-filesystem .",
+        cwd: "docs",
+        token: "ignored",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mockCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: USER_ID,
+        name: "files",
+        transport: "stdio",
+        url: null,
+        command: "npx -y @modelcontextprotocol/server-filesystem .",
+        cwd: "docs",
+      }),
+    });
+    const body = await response.json();
+    expect(body.server).toMatchObject({ transport: "stdio", command: expect.any(String) });
+    expect(body.server).not.toHaveProperty("encryptedToken");
+  });
+
+  it("seals a command server's variables and answers with their names", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      serverRow({ ...data }),
+    );
+
+    const response = await POST(
+      request("POST", {
+        name: "github",
+        transport: "stdio",
+        command: "npx -y @modelcontextprotocol/server-github",
+        env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_secret" },
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const { data } = mockCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    const sealed = JSON.parse(data.env as string) as Record<string, string>;
+    expect(Object.keys(sealed)).toEqual(["GITHUB_PERSONAL_ACCESS_TOKEN"]);
+    // The stored value is ciphertext, never the token itself.
+    expect(sealed.GITHUB_PERSONAL_ACCESS_TOKEN).not.toBe("ghp_secret");
+    expect(decrypt(sealed.GITHUB_PERSONAL_ACCESS_TOKEN!)).toBe("ghp_secret");
+
+    const body = await response.json();
+    expect(body.server.envNames).toEqual(["GITHUB_PERSONAL_ACCESS_TOKEN"]);
+    expect(JSON.stringify(body)).not.toContain("ghp_secret");
+  });
+
+  it("ignores variables on an endpoint server", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      serverRow({ ...data }),
+    );
+
+    await POST(
+      request("POST", {
+        name: "homeassistant",
+        url: "https://homeassistant.local:8123/api/mcp",
+        env: { TOKEN: "x" },
+      }),
+    );
+
+    const { data } = mockCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    expect(data.env).toBeUndefined();
+  });
+
+  it("rejects a command server without a command", async () => {
+    const response = await POST(request("POST", { name: "files", transport: "stdio" }));
+    expect(response.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a working directory above the workspace", async () => {
+    const response = await POST(
+      request("POST", {
+        name: "files",
+        transport: "stdio",
+        command: "node server.mjs",
+        cwd: "../someone-else",
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown connection type", async () => {
+    const response = await POST(
+      request("POST", { name: "files", transport: "carrier-pigeon", url: "https://x/mcp" }),
+    );
+    expect(response.status).toBe(400);
+  });
 });
 
 describe("/api/mcp/servers/:serverId", () => {
@@ -316,6 +435,59 @@ describe("/api/mcp/servers/:serverId", () => {
     expect((await DELETE(request("DELETE"), params("srv-x"))).status).toBe(404);
     // Nothing was removed, so pooled sessions keep working.
     expect(mockEvictUserSessions).not.toHaveBeenCalled();
+  });
+
+  it("switches a server to a command and drops what the endpoint needed", async () => {
+    mockFindFirst.mockResolvedValue(serverRow({ encryptedToken: encrypt("ha-token") }));
+    mockUpdate.mockResolvedValue(
+      serverRow({ transport: "stdio", url: null, encryptedToken: null, command: "node mcp.mjs" }),
+    );
+
+    const response = await PATCH(
+      request("PATCH", { transport: "stdio", command: "node mcp.mjs", cwd: "" }),
+      params("srv-1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "srv-1", userId: USER_ID },
+      data: {
+        transport: "stdio",
+        command: "node mcp.mjs",
+        cwd: null,
+        url: null,
+        encryptedToken: null,
+      },
+    });
+  });
+
+  it("refuses to switch a server to a command without one", async () => {
+    const response = await PATCH(request("PATCH", { transport: "stdio" }), params("srv-1"));
+    expect(response.status).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("switches a command server back to an endpoint", async () => {
+    mockFindFirst.mockResolvedValue(
+      serverRow({ transport: "stdio", url: null, command: "node mcp.mjs", cwd: "docs" }),
+    );
+    mockUpdate.mockResolvedValue(serverRow());
+
+    const response = await PATCH(
+      request("PATCH", { transport: "http", url: "https://ha.local/mcp" }),
+      params("srv-1"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "srv-1", userId: USER_ID },
+      data: {
+        transport: "http",
+        url: "https://ha.local/mcp",
+        command: null,
+        cwd: null,
+      },
+    });
   });
 });
 
@@ -426,5 +598,223 @@ describe("/api/mcp/servers/:serverId/test", () => {
     const response = await testServer(request("POST", { url: "not a url" }), params("new"));
     expect(response.status).toBe(400);
     expect(mockProbeMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("runs a command server's command in the account's workspace", async () => {
+    mockCanExec.mockReturnValue(true);
+    mockProbeCommand.mockResolvedValue({
+      serverName: "filesystem",
+      serverVersion: "1.0.0",
+      instructions: null,
+      tools: [{ name: "read_file", description: "Read a file" }],
+    });
+
+    const response = await testServer(
+      request("POST", {
+        transport: "stdio",
+        name: "files",
+        command: "npx -y @modelcontextprotocol/server-filesystem .",
+        cwd: "docs",
+        env: {},
+      }),
+      params("new"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      serverName: "filesystem",
+      tools: [{ name: "read_file" }],
+    });
+    expect(mockProbeCommand).toHaveBeenCalledWith(
+      {
+        userId: USER_ID,
+        name: "files",
+        command: "npx -y @modelcontextprotocol/server-filesystem .",
+        cwd: "docs",
+        env: {},
+      },
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
+    expect(mockProbeMcpServer).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed command with the reason it gave", async () => {
+    mockCanExec.mockReturnValue(true);
+    mockProbeCommand.mockRejectedValue(new Error('The command for "files" exited\nboom'));
+
+    const response = await testServer(
+      request("POST", { transport: "stdio", command: "node missing.mjs" }),
+      params("new"),
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      error: expect.stringContaining("boom"),
+    });
+  });
+
+  it("rejects an empty command without running anything", async () => {
+    const response = await testServer(
+      request("POST", { transport: "stdio", command: "  " }),
+      params("new"),
+    );
+    expect(response.status).toBe(400);
+    expect(mockProbeCommand).not.toHaveBeenCalled();
+  });
+
+  it("says so when the deployment has no workspace to run a command in", async () => {
+    mockCanExec.mockReturnValue(false);
+
+    const response = await testServer(
+      request("POST", { transport: "stdio", command: "node mcp.mjs" }),
+      params("new"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      error: expect.stringContaining("no workspace service"),
+    });
+    expect(mockProbeCommand).not.toHaveBeenCalled();
+  });
+
+  it("tests the stored command of a saved command server", async () => {
+    mockCanExec.mockReturnValue(true);
+    mockFindFirst.mockResolvedValue(
+      serverRow({ transport: "stdio", url: null, command: "node saved.mjs", cwd: "docs" }),
+    );
+    mockProbeCommand.mockResolvedValue({
+      serverName: "saved",
+      serverVersion: "1",
+      instructions: null,
+      tools: [],
+    });
+
+    await testServer(request("POST", {}), params("srv-1"));
+
+    expect(mockProbeCommand).toHaveBeenCalledWith(
+      {
+        userId: USER_ID,
+        name: "homeassistant",
+        command: "node saved.mjs",
+        cwd: "docs",
+        env: {},
+      },
+      expect.anything(),
+    );
+  });
+});
+
+describe("/api/mcp/servers/import", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetKey();
+    auth();
+    mockEvictUserSessions.mockResolvedValue(0);
+    mockFindMany.mockResolvedValue([]);
+  });
+
+  it("adds every server of a pasted config", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      serverRow({ ...data }),
+    );
+
+    const response = await POST_IMPORT(
+      request("POST", {
+        config: JSON.stringify({
+          mcpServers: {
+            memory: { command: "npx", args: ["-y", "@modelcontextprotocol/server-memory"] },
+            docs: { url: "https://docs.example/mcp" },
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.created.map((server: { name: string }) => server.name)).toEqual(["memory", "docs"]);
+    expect(body.skipped).toEqual([]);
+
+    const first = mockCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    expect(first.data.transport).toBe("stdio");
+    expect(first.data.command).toBe("npx -y @modelcontextprotocol/server-memory");
+  });
+
+  it("seals the variables a pasted config carries", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      serverRow({ ...data }),
+    );
+
+    await POST_IMPORT(
+      request("POST", {
+        config: JSON.stringify({
+          mcpServers: {
+            github: {
+              command: "npx",
+              args: ["-y", "@modelcontextprotocol/server-github"],
+              env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_secret" },
+            },
+          },
+        }),
+      }),
+    );
+
+    const { data } = mockCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    const sealed = JSON.parse(data.env as string) as Record<string, string>;
+    expect(decrypt(sealed.GITHUB_PERSONAL_ACCESS_TOKEN!)).toBe("ghp_secret");
+  });
+
+  it("reports an entry it could not use and adds the rest", async () => {
+    mockCreate.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      serverRow({ ...data }),
+    );
+
+    const response = await POST_IMPORT(
+      request("POST", {
+        config: JSON.stringify({
+          mcpServers: {
+            broken: { type: "stdio" },
+            memory: { command: "npx -y @modelcontextprotocol/server-memory" },
+          },
+        }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(body.created.map((server: { name: string }) => server.name)).toEqual(["memory"]);
+    expect(body.skipped).toEqual([
+      { name: "broken", error: "This entry has neither a command nor a URL." },
+    ]);
+  });
+
+  it("reports a name that is already configured", async () => {
+    mockFindMany.mockResolvedValue([serverRow({ name: "memory" })]);
+
+    const response = await POST_IMPORT(
+      request("POST", {
+        config: JSON.stringify({ mcpServers: { memory: { command: "npx -y other" } } }),
+      }),
+    );
+
+    const body = await response.json();
+    expect(body.created).toEqual([]);
+    expect(body.skipped[0].error).toContain("already configured");
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses text that is not a config", async () => {
+    const response = await POST_IMPORT(request("POST", { config: "hello" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("JSON") });
+  });
+
+  it("requires a session", async () => {
+    mockRequireSession.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    });
+    expect((await POST_IMPORT(request("POST", { config: "{}" }))).status).toBe(401);
   });
 });

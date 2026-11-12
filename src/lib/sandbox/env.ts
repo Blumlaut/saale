@@ -13,9 +13,7 @@
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
-
-/** `GH_TOKEN`, `NPM_CONFIG_TOKEN`: a shell-safe name, never a path or a command. */
-const NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/;
+import { envNameError, envValueError, isValidEnvName } from "./env-rules";
 
 /** Variables one identity may carry. */
 export const MAX_ENV_VARS = 32;
@@ -31,28 +29,20 @@ export class SandboxEnvError extends Error {
   }
 }
 
-export function isValidEnvName(name: string): boolean {
-  return NAME_PATTERN.test(name);
-}
+export { isValidEnvName };
 
 /** The name, or a throw. */
 export function requireEnvName(name: unknown): string {
-  if (typeof name !== "string" || !isValidEnvName(name)) {
-    throw new SandboxEnvError(
-      "Variable names start with a letter or underscore and hold A-Z, 0-9 or _ (max 64 characters).",
-    );
-  }
-  return name;
+  const error = envNameError(name);
+  if (error) throw new SandboxEnvError(error);
+  return name as string;
 }
 
 /** Refuse a value that would not survive a single environment entry. */
 export function requireEnvValue(value: unknown): string {
-  if (typeof value !== "string") throw new SandboxEnvError("A variable value must be text");
-  if (value.includes("\0")) throw new SandboxEnvError("A variable value cannot contain a NUL byte");
-  if (Buffer.byteLength(value, "utf8") > MAX_ENV_TOTAL_BYTES) {
-    throw new SandboxEnvError(`A variable value cannot exceed ${MAX_ENV_TOTAL_BYTES} bytes`);
-  }
-  return value;
+  const error = envValueError(value, MAX_ENV_TOTAL_BYTES);
+  if (error) throw new SandboxEnvError(error);
+  return value as string;
 }
 
 /** Names only. what the API returns and the prompt lists. */

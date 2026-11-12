@@ -1223,14 +1223,23 @@ model InfraMachine {
 // ─── MCP Servers ───────────────────────────────────────────────
 
 /// Model Context Protocol servers the agent connects to for this user.
-/// Only streamable HTTP endpoints are stored — see src/lib/mcp/servers.ts.
+/// A server is a streamable HTTP endpoint or a command that runs in the owner's
+/// workspace container — see src/lib/mcp/servers.ts.
 model McpServer {
   id              String              @id @default(cuid())
   userId          String
   /// Server name; names the tools it contributes (`mcp__<name>__<tool>`).
   name            String              @db.VarChar(64)
+  /// How Saale reaches the server: "http" (a URL) or "stdio" (a command).
+  transport       String              @default("http")
   /// Streamable HTTP endpoint, e.g. https://homeassistant.local:8123/api/mcp
-  url             String              @db.Text
+  url             String?             @db.Text
+  /// Command line a stdio server runs in the owner's workspace container.
+  command         String?             @db.Text
+  /// Working directory for `command`, relative to the workspace root.
+  cwd             String?
+  /// Variables for `command`, as JSON: name to AES-256-GCM ciphertext (lib/crypto).
+  env             String?             @db.Text
   /// One-line summary of what the server offers, shown to the model.
   description     String              @default("")
   /// Bearer token sent as the Authorization header (AES-256-GCM via lib/crypto).

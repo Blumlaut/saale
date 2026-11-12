@@ -4,7 +4,7 @@ import { useState } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Plug, Plus } from "lucide-react";
+import { FileJson, Loader2, Plug, Plus } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,7 @@ import { isCategoryEnabled } from "@/lib/pi/tool-categories";
 import { McpServerRow } from "@/components/mcp/mcp-server-row";
 import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
 import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
+import { McpImportDialog } from "@/components/mcp/mcp-import-dialog";
 import { useUserSettings } from "./user-settings-provider";
 
 /**
@@ -37,6 +38,7 @@ export function McpPanel() {
     updateServer,
     deleteServer,
     createServer,
+    importServers,
     testServer,
     startOAuth,
     readOAuthStatus,
@@ -45,6 +47,7 @@ export function McpPanel() {
   } = useMcpServers();
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<McpServer | null>(null);
   const [pendingDelete, setPendingDelete] = useState<McpServer | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -117,10 +120,21 @@ export function McpPanel() {
                 </p>
               )}
             </div>
-            <Button size="sm" className="shrink-0" aria-label="Add server" onClick={openAdd}>
-              <Plus className="h-4 w-4 md:mr-2" />
-              <span className="hidden md:inline">Add server</span>
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-label="Import config"
+                onClick={() => setImportOpen(true)}
+              >
+                <FileJson className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Import</span>
+              </Button>
+              <Button size="sm" aria-label="Add server" onClick={openAdd}>
+                <Plus className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">Add server</span>
+              </Button>
+            </div>
           </div>
 
           <Separator />
@@ -170,11 +184,14 @@ export function McpPanel() {
         }}
         server={editing}
         onSave={handleSave}
+        allowStdio
         onTest={testServer}
         onStartOAuth={startOAuth}
         onOAuthStatus={readOAuthStatus}
         onSignOutOAuth={signOutOAuth}
       />
+
+      <McpImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={importServers} />
 
       <AlertDialog
         open={pendingDelete !== null}

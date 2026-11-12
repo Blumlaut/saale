@@ -2,12 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
-import type { McpToolPolicy } from "@/lib/mcp/shared";
+import type { McpToolPolicy, McpTransport } from "@/lib/mcp/shared";
 
 export interface McpServer {
   id: string;
   name: string;
-  url: string;
+  /** `http` for a URL, `stdio` for a command in the workspace. */
+  transport: McpTransport;
+  /** The endpoint of an http server; null for a command server. */
+  url: string | null;
+  /** The command line of a command server; null for an http server. */
+  command: string | null;
+  /** Workspace-relative working directory of the command, or null for the root. */
+  cwd: string | null;
+  /** Names of the variables the command starts with. Values are never sent to the client. */
+  envNames: string[];
   description: string;
   toolPolicy: McpToolPolicy;
   enabled: boolean;
@@ -28,7 +37,14 @@ export interface McpServer {
 /** Input for adding or updating a server. `token: ""` clears a stored token. */
 export interface McpServerInput {
   name?: string;
+  transport?: McpTransport;
   url?: string;
+  command?: string;
+  cwd?: string;
+  /** Variables to set or replace, by name. */
+  env?: Record<string, string>;
+  /** Variables to forget, by name. */
+  envRemove?: string[];
   description?: string;
   token?: string;
   toolPolicy?: McpToolPolicy;
@@ -46,6 +62,12 @@ export interface McpTestResult {
   error?: string;
   /** The server asked for an OAuth sign-in rather than accepting the request. */
   needsAuth?: boolean;
+}
+
+/** What an import added, and what it could not. */
+export interface ImportedMcpServerList {
+  created: McpServer[];
+  skipped: { name: string; error: string }[];
 }
 
 /** The state of a server's OAuth sign-in, as the settings sheet polls it. */
@@ -126,7 +148,16 @@ export function useMcpServers() {
    * omitted for an existing server that should use its stored token.
    */
   const testServer = useCallback(
-    async (id: string, input: { url: string; token?: string }): Promise<McpTestResult> => {
+    async (
+      id: string,
+      input: {
+        transport: McpTransport;
+        url?: string;
+        token?: string;
+        command?: string;
+        cwd?: string;
+      },
+    ): Promise<McpTestResult> => {
       try {
         return await postJson<McpTestResult>(`/api/mcp/servers/${id}/test`, input);
       } catch (err) {
@@ -155,6 +186,16 @@ export function useMcpServers() {
     [],
   );
 
+  /** Add the servers of a config pasted from another client. */
+  const importServers = useCallback(
+    async (config: string): Promise<ImportedMcpServerList> => {
+      const data = await postJson<ImportedMcpServerList>("/api/mcp/servers/import", { config });
+      await loadServers();
+      return data;
+    },
+    [loadServers],
+  );
+
   /** Forget a server's OAuth sign-in. */
   const signOutOAuth = useCallback(
     async (id: string): Promise<void> => {
@@ -174,6 +215,7 @@ export function useMcpServers() {
     createServer,
     updateServer,
     deleteServer,
+    importServers,
     testServer,
     startOAuth,
     readOAuthStatus,

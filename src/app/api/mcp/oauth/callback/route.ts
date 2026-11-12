@@ -53,6 +53,12 @@ export async function GET(request: NextRequest) {
     if (!server) {
       return html(oauthErrorHtml("The MCP server this sign-in belongs to no longer exists."), 400);
     }
+    if (!server.url) {
+      return html(
+        oauthErrorHtml("This server runs a command, so it has no endpoint to sign in to."),
+        400,
+      );
+    }
 
     const providerError = query.get("error");
     if (providerError) {

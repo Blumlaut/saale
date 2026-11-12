@@ -33,4 +33,48 @@ test.describe("settings · integrations", () => {
     await page.getByRole("menuitem", { name: "Remove" }).click();
     await expect(page.getByRole("alertdialog")).toContainText("Remove homeassistant?");
   });
+
+  test("a pasted config is imported and the list shows what landed", async ({ page }) => {
+    await mockMcpServers(page);
+    await page.route(/\/api\/mcp\/servers\/import$/, (route) =>
+      route.fulfill({
+        status: 201,
+        json: {
+          created: [
+            {
+              id: "e2e-imported",
+              name: "github",
+              transport: "stdio",
+              url: null,
+              command: "npx -y @modelcontextprotocol/server-github",
+              cwd: null,
+              envNames: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+              description: "",
+              toolPolicy: "ask",
+              enabled: true,
+              chatEnabled: true,
+              coderEnabled: true,
+              hasToken: false,
+              hasOAuth: false,
+              shared: false,
+              createdAt: "2026-01-01T09:00:00Z",
+              updatedAt: "2026-01-01T09:00:00Z",
+            },
+          ],
+          skipped: [{ name: "broken", error: "This entry has neither a command nor a URL." }],
+        },
+      }),
+    );
+    await gotoAndSettle(page, "/dashboard/settings/integrations", { quietNetwork: true });
+
+    await page.getByRole("button", { name: "Import config" }).click();
+    await page
+      .locator('textarea[aria-label="MCP config"]')
+      .fill('{"mcpServers":{"github":{"command":"npx","args":["-y","srv"]}}}');
+    await page.getByRole("button", { name: "Import servers" }).click();
+
+    // What landed is named, and what could not be read still says why.
+    await expect(page.getByText("Added github.")).toBeVisible();
+    await expect(page.getByText(/broken: This entry has neither/)).toBeVisible();
+  });
 });

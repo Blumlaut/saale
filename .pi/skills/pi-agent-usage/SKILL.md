@@ -331,9 +331,13 @@ their own**, and one click that stands in for all of them.
   loads the user's enabled servers and passes them to `createMcpExtension({
 loadConfig })`. Never let the MCP extension read the host's Pi directory: it
   belongs to whoever installed Pi on the machine.
-- **HTTP only.** A stdio server is a command Pi spawns in the Saale process, so
-  user-configured commands would run with the app host's environment and
-  privileges. Users configure a URL plus an optional bearer token.
+- **Nothing runs on the app host.** An HTTP server gets a URL and an optional
+  bearer token (or an OAuth sign-in). A stdio server gets a command line, and
+  `createUserMcpTransport` runs it through `sandbox-exec` in the owner's
+  workspace container (`src/lib/mcp/stdio.ts`), never with `spawn`: a command Pi
+  started itself would carry the app's environment and privileges. A shared
+  (instance-owned) server is always HTTP, because a command would have to run in
+  one account's workspace.
 - **Exposure is always `codemode`.** MCP tools stay out of the model's tool
   declarations and are reached from codemode scripts, which Saale enables
   anyway — a server with hundreds of tools does not bloat every prompt.

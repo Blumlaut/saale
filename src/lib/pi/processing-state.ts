@@ -315,6 +315,7 @@ export async function createAgentResourceLoader(
     const mcp = (await hasFeature(interactive.userId, "mcp"))
       ? await createUserMcpExtension(interactive.userId, {
           scope: interactive.mcpScope,
+          sessionId: interactive.sessionId,
           toolConfig: options.toolConfig,
           exposure: options.toolExposure,
         })

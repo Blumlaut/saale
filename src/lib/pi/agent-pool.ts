@@ -1,5 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import path from "path";
+import { stopWorkspaceCommands } from "@/lib/mcp/stdio";
 import { unwireSessionPersistence } from "@/lib/pi/session-persistence";
 import { getUploadsDir } from "@/lib/uploads";
 
@@ -70,6 +71,9 @@ export async function clearDispatcher(sessionId: string): Promise<void> {
 /** Clear both dispatcher and persistence for a session. */
 async function clearSessionResources(sessionId: string): Promise<void> {
   unwireSessionPersistence(sessionId);
+  // An evicted session's MCP servers ran as child processes; disposing the
+  // session does not tell them, since that happens on `session_shutdown`.
+  stopWorkspaceCommands(sessionId);
   await clearDispatcher(sessionId);
 }
 const MAX_IDLE_MS = 30 * 60 * 1000; // 30 minutes

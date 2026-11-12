@@ -23,6 +23,15 @@ export async function POST(
   const server = await prisma.mcpServer.findFirst({ where: { id: serverId, userId } });
   if (!server) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+  // A command authenticates with the account's own variables; there is no
+  // endpoint a browser sign-in could issue a token for.
+  if (!server.url) {
+    return NextResponse.json(
+      { error: "This server runs a command, so it has no sign-in to start." },
+      { status: 400 },
+    );
+  }
+
   try {
     const result = await startMcpOAuthSignIn({
       id: server.id,
