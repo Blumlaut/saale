@@ -237,6 +237,10 @@ describe("githubHelperScript", () => {
     // itself: in app mode the CLI has been signed out of the workspace.
     expect(shim).toContain(`"${path.join(root, GITHUB_CREDENTIAL_FILE)}"`);
     expect(shim).toContain("export GH_TOKEN");
+    // A chat outside the installation carries this: both readers of the token
+    // file have to refuse, so the shim exits before it reads one.
+    expect(shim).toContain("SAALE_NO_GITHUB_CREDENTIAL");
+    expect(shim).toContain("exit 1");
     expect(shim).toContain("exec /usr/bin/gh");
   });
 

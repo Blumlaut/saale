@@ -152,6 +152,8 @@ describe("resolveGithubSessionEnv", () => {
     // would be *more* access, not less, so the helper is switched off instead.
     expect(env.GH_TOKEN).toBeUndefined();
     expect(env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }));
+    // The shim reads the same token file, so it is switched off with the helper.
+    expect(env).toEqual(expect.objectContaining({ SAALE_NO_GITHUB_CREDENTIAL: "1" }));
     expect(env).toEqual(
       expect.objectContaining({ GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "" }),
     );

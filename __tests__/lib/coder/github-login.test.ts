@@ -42,8 +42,13 @@ describe("githubCliLogin", () => {
   });
 
   it("finds the login gh stored itself", async () => {
+    // gh reports the path of the file it stored, not the word "gh".
     mocks.runInWorkspace.mockResolvedValue({
-      stdout: ghAnswer({ login: "Juli04", state: "success" }),
+      stdout: ghAnswer({
+        login: "Juli04",
+        state: "success",
+        tokenSource: "/w/.config/gh/hosts.yml",
+      }),
       stderr: "",
       exitCode: 0,
     });
@@ -51,10 +56,52 @@ describe("githubCliLogin", () => {
     expect(await githubCliLogin(USER)).toBe("Juli04");
   });
 
-  it("ignores a credential that only exists because of a GH_TOKEN variable", async () => {
-    // gh reports the variable it was handed, with the variable as its source.
+  it("prefers the stored login when a variable sits beside it", async () => {
+    // With GH_TOKEN set, gh lists that token as the active entry and the stored
+    // login as an inactive one; only the second is a login of the workspace.
     mocks.runInWorkspace.mockResolvedValue({
-      stdout: ghAnswer({ login: "Juli04", state: "success", tokenSource: "GH_TOKEN" }),
+      stdout: JSON.stringify({
+        hosts: {
+          "github.com": [
+            {
+              host: "github.com",
+              active: true,
+              state: "success",
+              login: "Juli04",
+              tokenSource: "GH_TOKEN",
+            },
+            {
+              host: "github.com",
+              active: false,
+              state: "success",
+              login: "Juli04",
+              tokenSource: "/w/.config/gh/hosts.yml",
+            },
+          ],
+        },
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    expect(await githubCliLogin(USER)).toBe("Juli04");
+  });
+
+  it("raises nothing on a credential gh was handed through a variable", async () => {
+    mocks.runInWorkspace.mockResolvedValue({
+      stdout: JSON.stringify({
+        hosts: {
+          "github.com": [
+            {
+              host: "github.com",
+              active: true,
+              state: "success",
+              login: "Juli04",
+              tokenSource: "GH_TOKEN",
+            },
+          ],
+        },
+      }),
       stderr: "",
       exitCode: 0,
     });

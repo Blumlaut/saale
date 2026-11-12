@@ -65,15 +65,18 @@ export function repositoryFromRemote(remoteUrl: string | null): {
  * Setting `GH_TOKEN` is not the only way the workspace answers — the `git`
  * credential helper and the `gh` shim read a token file that holds the account's
  * own, wide token. Leaving `GH_TOKEN` out would therefore fall back to *more*
- * access than the chat is allowed, so the helper list is reset for this command
- * and git is told to not ask. A push then fails with "could not read Username"
- * instead of quietly widening, which is the boundary the prompt promises.
+ * access than the chat is allowed, so both readers are switched off for this
+ * command: the helper list is reset and git is told not to ask, and the shim
+ * exits on `SAALE_NO_GITHUB_CREDENTIAL`. A push then fails with "could not read
+ * Username" and `gh` says why, instead of quietly widening.
  */
 const NO_CREDENTIAL_ENV: Record<string, string> = {
   GIT_CONFIG_COUNT: "1",
   GIT_CONFIG_KEY_0: "credential.helper",
   GIT_CONFIG_VALUE_0: "",
   GIT_TERMINAL_PROMPT: "0",
+  // The other reader of the same token file: the `gh` shim on the sandbox PATH.
+  SAALE_NO_GITHUB_CREDENTIAL: "1",
 };
 
 /**

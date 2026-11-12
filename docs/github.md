@@ -100,8 +100,9 @@ write, `checks` read) and puts it in the command's `GH_TOKEN`. Both the git
 helper and the shim prefer a token from the environment, so `git push` and
 `gh pr create` in that chat cannot reach another repository. Nothing is minted
 for a repository the installation does not cover: the command then carries **no**
-credential — the helper list is reset for it and git is told not to prompt — so
-it fails instead of quietly reaching for something wider.
+credential — the helper list is reset, git is told not to prompt, and the `gh`
+shim exits — so both `git` and `gh` fail instead of quietly reaching for
+something wider.
 
 That boundary holds for the commands Saale starts, and it is worth saying plainly
 where it stops: the workspace keeps a token file (the account's own token) so a
