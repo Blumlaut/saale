@@ -38,7 +38,6 @@ import {
   type GithubTokenPrecedence,
 } from "./github-source";
 
-/** The one host this connection is about. An enterprise instance is not it. */
 /** The helper script, relative to the workspace root (`$HOME` in the container). */
 export const GITHUB_HELPER_FILE = ".local/bin/saale-git-credential";
 

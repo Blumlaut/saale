@@ -9,11 +9,8 @@
 export const GITHUB_DEVICE_URL = "https://github.com/login/device";
 
 /**
- * The only host this feature speaks to.
- *
- * Declared once here and imported by everything else that names it: this module
- * is a leaf (it imports nothing), so the coder module, the session scoping and
- * the credential writer can all read it without pulling a dependency in.
+ * The only host this feature speaks to. Everything that names it imports it
+ * from here, and this module imports nothing of its own.
  */
 export const GITHUB_HOST = "github.com";
 
