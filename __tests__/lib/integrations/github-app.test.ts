@@ -60,9 +60,6 @@ const client = vi.hoisted(() => ({
   listInstallations: vi.fn(),
   listInstallationRepositories: vi.fn(),
   listInstallationRepositoryRefs: vi.fn(),
-  listRepositoryChoices: vi.fn(),
-  addInstallationRepository: vi.fn(),
-  removeInstallationRepository: vi.fn(),
   createInstallationToken: vi.fn(),
 }));
 
@@ -74,14 +71,13 @@ vi.mock("@/lib/integrations/github-app-client", async (importOriginal) => {
 import { GithubApiError } from "@/lib/integrations/github-app-client";
 import {
   GithubAppError,
-  applyGithubRepositoryChoices,
   deleteGithubApp,
   readGithubAppSummary,
   readGithubAppSummaryFresh,
+  readGithubInstallationRepositories,
   githubInstallationForOwner,
   mintGithubInstallationToken,
   pollGithubAppLogin,
-  readGithubRepositoryChoices,
   readGithubUserAccess,
   refreshGithubInstallations,
   saveGithubApp,
@@ -208,7 +204,6 @@ describe("saveGithubApp", () => {
       "workflows",
       "checks",
       "metadata",
-      "installation_repositories",
     ]);
     // Nothing secret comes back out.
     expect(JSON.stringify(summary)).not.toContain("secret");
@@ -496,7 +491,7 @@ describe("syncGithubInstallations", () => {
   });
 });
 
-describe("readGithubRepositoryChoices", () => {
+describe("readGithubInstallationRepositories", () => {
   const accessRow = (suspended = false) => ({
     userId: USER,
     installationId: "row-1",
@@ -520,159 +515,55 @@ describe("readGithubRepositoryChoices", () => {
     login: "octocat",
   });
 
-  it("finds the installation by GitHub's id, which is what the card sends", async () => {
+  it("answers with the set the installation covers, and nothing else", async () => {
     db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
     db.githubUserToken.findUnique.mockResolvedValue(freshToken());
     client.listInstallationRepositoryRefs.mockResolvedValue([
       { id: "10", name: "saale", fullName: "acme/saale" },
-    ]);
-    client.listRepositoryChoices.mockResolvedValue([
-      { id: "10", name: "saale", fullName: "acme/saale", owner: "acme", canAdmin: true },
-      { id: "11", name: "site", fullName: "acme/site", owner: "acme", canAdmin: true },
-      // Read-only, and another account's: neither can be added here.
-      { id: "12", name: "docs", fullName: "acme/docs", owner: "acme", canAdmin: false },
-      { id: "13", name: "other", fullName: "elsewhere/other", owner: "elsewhere", canAdmin: true },
+      { id: "11", name: "site", fullName: "acme/site" },
     ]);
 
-    const choices = await readGithubRepositoryChoices(USER, "1234");
+    const repositories = await readGithubInstallationRepositories(USER, "1234");
+
+    expect(repositories).toEqual({
+      installationId: "1234",
+      accountLogin: "Acme",
+      accountType: "Organization",
+      selection: "selected",
+      installed: [
+        { id: "10", name: "saale", fullName: "acme/saale" },
+        { id: "11", name: "site", fullName: "acme/site" },
+      ],
+    });
+    // It reads with the account's own token, so GitHub answers for this person.
+    expect(client.listInstallationRepositoryRefs).toHaveBeenCalledWith("ghu_access", "1234");
+  });
+
+  it("finds the installation by GitHub's id, which is what the card sends", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
+    db.githubUserToken.findUnique.mockResolvedValue(freshToken());
+    client.listInstallationRepositoryRefs.mockResolvedValue([]);
+
+    await readGithubInstallationRepositories(USER, "1234");
 
     expect(db.githubInstallationAccess.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: USER, installation: { installationId: "1234" } },
       }),
     );
-    expect(choices).toMatchObject({
-      installationId: "1234",
-      accountLogin: "Acme",
-      selection: "selected",
-      canManage: true,
-    });
-    expect(choices.candidates.map((entry) => entry.id)).toEqual(["10", "11"]);
   });
 
   it("refuses an installation another account holds", async () => {
     db.githubInstallationAccess.findFirst.mockResolvedValue(null);
 
-    await expect(readGithubRepositoryChoices(USER, "1234")).rejects.toThrow(/no access/);
-    expect(client.listRepositoryChoices).not.toHaveBeenCalled();
+    await expect(readGithubInstallationRepositories(USER, "1234")).rejects.toThrow(/no access/);
+    expect(client.listInstallationRepositoryRefs).not.toHaveBeenCalled();
   });
 
   it("refuses a suspended installation", async () => {
     db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow(true));
 
-    await expect(readGithubRepositoryChoices(USER, "1234")).rejects.toThrow(/suspended/);
-  });
-});
-
-describe("applyGithubRepositoryChoices", () => {
-  const accessRow = (selection = "selected") => ({
-    userId: USER,
-    installationId: "row-1",
-    installation: {
-      id: "row-1",
-      installationId: "1234",
-      accountLogin: "Acme",
-      accountType: "Organization",
-      repositorySelection: selection,
-      repositories: ["saale"],
-      suspendedAt: null,
-    },
-  });
-
-  const freshToken = () => ({
-    userId: USER,
-    encryptedAccessToken: "enc:ghu_access",
-    encryptedRefreshToken: "enc:ghr",
-    accessExpiresAt: new Date(Date.now() + 4 * 60 * 60_000),
-    refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
-    login: "octocat",
-  });
-
-  const ready = (permissions: Record<string, string> | null, selection = "selected") => {
-    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow(selection));
-    db.githubUserToken.findUnique.mockResolvedValue(freshToken());
-    client.readAppIdentity.mockResolvedValue({
-      slug: "saale",
-      name: "Saale",
-      ownerLogin: "askguenther",
-      permissions,
-    });
-    client.listInstallationRepositoryRefs.mockResolvedValue([
-      { id: "10", name: "saale", fullName: "acme/saale" },
-    ]);
-  };
-
-  it("names the missing permission instead of calling GitHub", async () => {
-    ready({ contents: "write", pull_requests: "write" });
-
-    const error = await applyGithubRepositoryChoices(USER, "1234", ["10", "11"]).catch(
-      (err: unknown) => err,
-    );
-
-    expect(error).toBeInstanceOf(GithubAppError);
-    expect((error as Error).message).toMatch(/installation repository access/);
-    expect(client.addInstallationRepository).not.toHaveBeenCalled();
-    expect(client.removeInstallationRepository).not.toHaveBeenCalled();
-  });
-
-  it("turns GitHub's 403 on those two calls into that same sentence", async () => {
-    // The permission is there, so the early check passes and GitHub is the one
-    // that refuses: an installation the app may read but not change.
-    ready({ contents: "write", installation_repositories: "write" });
-    client.addInstallationRepository.mockRejectedValue(
-      new GithubApiError("Resource not accessible by integration", 403),
-    );
-
-    const error = await applyGithubRepositoryChoices(USER, "1234", ["10", "11"]).catch(
-      (err: unknown) => err,
-    );
-
-    expect(error).toBeInstanceOf(GithubAppError);
-    expect((error as Error).message).toMatch(/installation repository access/);
-    expect((error as Error).message).not.toMatch(/Resource not accessible/);
-  });
-
-  it("passes another refusal through as it is", async () => {
-    ready({ contents: "write", installation_repositories: "write" });
-    client.addInstallationRepository.mockRejectedValue(new GithubApiError("Not Found", 404));
-
-    const error = await applyGithubRepositoryChoices(USER, "1234", ["10", "11"]).catch(
-      (err: unknown) => err,
-    );
-
-    expect(error).toBeInstanceOf(GithubApiError);
-    expect((error as Error).message).toBe("Not Found");
-  });
-
-  it("still refuses an installation that covers everything before any of that", async () => {
-    ready({ contents: "write", installation_repositories: "write" }, "all");
-
-    await expect(applyGithubRepositoryChoices(USER, "1234", ["10"])).rejects.toThrow(
-      /covers all repositories/,
-    );
-    expect(client.addInstallationRepository).not.toHaveBeenCalled();
-  });
-
-  it("sends only the difference, and stores what GitHub reports afterwards", async () => {
-    ready({ contents: "write", installation_repositories: "write" });
-    // Before, between, and after the two calls: GitHub reports the new set.
-    client.listInstallationRepositoryRefs
-      .mockResolvedValueOnce([{ id: "10", name: "saale", fullName: "acme/saale" }])
-      .mockResolvedValue([
-        { id: "10", name: "saale", fullName: "acme/saale" },
-        { id: "11", name: "web", fullName: "acme/web" },
-      ]);
-    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
-    client.listRepositoryChoices.mockResolvedValue([]);
-
-    await applyGithubRepositoryChoices(USER, "1234", ["10", "11"]);
-
-    expect(client.addInstallationRepository).toHaveBeenCalledWith("ghu_access", "1234", "11");
-    expect(client.removeInstallationRepository).not.toHaveBeenCalled();
-    expect(db.githubInstallation.update).toHaveBeenCalledWith({
-      where: { id: "row-1" },
-      data: { repositories: ["saale", "web"] },
-    });
+    await expect(readGithubInstallationRepositories(USER, "1234")).rejects.toThrow(/suspended/);
   });
 });
 
@@ -689,7 +580,6 @@ describe("the app's permissions against Saale's needs", () => {
       "workflows",
       "checks",
       "metadata",
-      "installation_repositories",
     ]);
   });
 
@@ -726,9 +616,7 @@ describe("the app's permissions against Saale's needs", () => {
     const summary = await readGithubAppSummaryFresh();
 
     expect(summary?.permissions).toEqual({ contents: "write" });
-    expect(summary?.missingPermissions.map((entry) => entry.name)).toContain(
-      "installation_repositories",
-    );
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toContain("metadata");
   });
 });
 

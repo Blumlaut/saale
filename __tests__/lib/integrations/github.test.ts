@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   GITHUB_APP_PERMISSIONS,
-  appCanManageInstallations,
   findDeviceCode,
   missingGithubAppPermissions,
   parseGithubHosts,
@@ -181,11 +180,10 @@ describe("missingGithubAppPermissions", () => {
       workflows: "write",
       // Asked for as read, granted as write: nothing is missing here.
       checks: "write",
-      metadata: "read",
     });
 
-    expect(missing.map((entry) => entry.name)).toEqual(["installation_repositories"]);
-    expect(missing[0]?.why).toMatch(/picker/);
+    expect(missing.map((entry) => entry.name)).toEqual(["metadata"]);
+    expect(missing[0]?.why).toMatch(/has to ask for it/);
 
     expect(
       missingGithubAppPermissions({
@@ -194,7 +192,6 @@ describe("missingGithubAppPermissions", () => {
         workflows: "write",
         checks: "read",
         metadata: "read",
-        installation_repositories: "write",
       }),
     ).toEqual([]);
   });
@@ -203,17 +200,5 @@ describe("missingGithubAppPermissions", () => {
     expect(missingGithubAppPermissions(null).map((entry) => entry.name)).toEqual(
       GITHUB_APP_PERMISSIONS.map((entry) => entry.name),
     );
-  });
-});
-
-describe("appCanManageInstallations", () => {
-  it("needs write on the permission those two installation calls take", () => {
-    expect(appCanManageInstallations({ installation_repositories: "write" })).toBe(true);
-    expect(appCanManageInstallations({ installation_repositories: "read" })).toBe(false);
-    // An app with every other permission and not this one still cannot save.
-    expect(
-      appCanManageInstallations({ contents: "write", pull_requests: "write", metadata: "read" }),
-    ).toBe(false);
-    expect(appCanManageInstallations(null)).toBe(false);
   });
 });

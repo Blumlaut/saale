@@ -30,21 +30,14 @@ import type { Prisma } from "@prisma/client";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
-import {
-  appCanManageInstallations,
-  missingGithubAppPermissions,
-  type GithubAppPermission,
-} from "./github";
+import { missingGithubAppPermissions, type GithubAppPermission } from "./github";
 import {
   GithubApiError,
   createAppJwt,
   createInstallationToken,
-  addInstallationRepository,
   listInstallationRepositories,
   listInstallationRepositoryRefs,
   listInstallations,
-  listRepositoryChoices,
-  removeInstallationRepository,
   pollDeviceCode,
   readAppIdentity,
   readUserLogin,
@@ -767,8 +760,8 @@ export async function githubInstallationForOwner(
 
 // ─── Which repositories an installation may use ─────────────────────────────
 
-/** One installation's repository set, as the picker shows it. */
-export interface GithubRepositoryChoices {
+/** One installation's repository set, as the card shows it. */
+export interface GithubInstallationRepositories {
   /** GitHub's installation id. */
   installationId: string;
   accountLogin: string;
@@ -776,25 +769,8 @@ export interface GithubRepositoryChoices {
   accountType: string;
   /** "all" or "selected". */
   selection: string;
-  /**
-   * Whether Saale can change the set. GitHub only removes repositories from an
-   * installation that was granted "Only select repositories"; an "All
-   * repositories" installation has to be switched on GitHub first.
-   */
-  canManage: boolean;
-  /**
-   * Whether the app itself may change the set.
-   *
-   * The picker's two calls take `installation_repositories: write`, so an app
-   * registered without that permission can show what an installation covers and
-   * nothing more. The card offers the save only when both this and `canManage`
-   * hold, and `applyGithubRepositoryChoices` says which one is missing.
-   */
-  appCanManage: boolean;
-  /** Repositories the installation covers. */
+  /** Repositories the installation covers, which is the whole answer. */
   installed: { id: string; name: string; fullName: string }[];
-  /** Repositories this account could add, with the installed ones marked. */
-  candidates: { id: string; fullName: string; installed: boolean }[];
 }
 
 /**
@@ -850,96 +826,21 @@ async function refreshGithubAppPermissions(): Promise<Record<string, string> | n
   }
 }
 
-/** What to tell an admin whose app may not change its own installations. */
-const APP_CANNOT_MANAGE_INSTALLATIONS =
-  "The app may not change its own installations: it was registered without the “GitHub App installation repository access” permission (installation_repositories: write). Add the permission to the app on GitHub — every installation then approves it once — or change the repositories on GitHub's page.";
-
 /**
- * GitHub answers those two calls with a 403 when the app lacks the permission,
- * and its body ("Resource not accessible by integration") names nothing an
- * admin could act on. Any other refusal is passed on as it is.
- */
-function installationRepositoryRefusal(err: unknown): unknown {
-  if (err instanceof GithubApiError && err.status === 403) {
-    return new GithubAppError(APP_CANNOT_MANAGE_INSTALLATIONS);
-  }
-  return err;
-}
-
-/**
- * What one installation covers, and what could be added to it.
+ * What one installation covers.
  *
- * Both reads use the account's own token, so GitHub answers with what *this*
- * person may do — the picker never offers a repository the user cannot install
- * the app on.
+ * Read with the account's own token, so GitHub answers with what *this* person
+ * may see. Saale shows the set and nothing else: changing it is GitHub's own
+ * page, because GitHub only lets an app narrow or extend an installation from
+ * there (the API's two installation calls refuse a repository the installation
+ * does not already cover, and a personal installation cannot be extended over
+ * the API at all).
  */
-export async function readGithubRepositoryChoices(
+export async function readGithubInstallationRepositories(
   userId: string,
   installationId: string,
-): Promise<GithubRepositoryChoices> {
-  const [installation, appPermissions] = await Promise.all([
-    requireInstallationAccess(userId, installationId),
-    refreshGithubAppPermissions(),
-  ]);
-  const access = await readGithubUserAccess(userId);
-  if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
-
-  const [installed, all] = await Promise.all([
-    listInstallationRepositoryRefs(access.accessToken, installation.installationId),
-    listRepositoryChoices(access.accessToken),
-  ]);
-
-  const owner = installation.accountLogin.toLowerCase();
-  const installedIds = new Set(installed.map((entry) => entry.id));
-  const candidates = all
-    .filter((entry) => entry.canAdmin && entry.owner.toLowerCase() === owner)
-    .map((entry) => ({
-      id: entry.id,
-      fullName: entry.fullName,
-      installed: installedIds.has(entry.id),
-    }))
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
-
-  return {
-    installationId: installation.installationId,
-    accountLogin: installation.accountLogin,
-    accountType: installation.accountType,
-    selection: installation.repositorySelection,
-    canManage: installation.repositorySelection === "selected",
-    appCanManage: appCanManageInstallations(appPermissions),
-    installed,
-    candidates,
-  };
-}
-
-/**
- * Set which repositories the installation covers.
- *
- * Only the difference is sent, one call per repository, because GitHub's
- * endpoint moves exactly one. The stored repository list and the sync mark are
- * refreshed afterwards, so the card and the next mint see the new set.
- *
- * A token already minted for a repository that was just removed keeps working
- * until it expires (an hour at most) — GitHub does not revoke installation
- * tokens when an installation shrinks.
- */
-export async function applyGithubRepositoryChoices(
-  userId: string,
-  installationId: string,
-  repositoryIds: readonly string[],
-): Promise<GithubRepositoryChoices> {
+): Promise<GithubInstallationRepositories> {
   const installation = await requireInstallationAccess(userId, installationId);
-  if (installation.repositorySelection !== "selected") {
-    throw new GithubAppError(
-      "This installation covers all repositories. Switch it to “Only select repositories” on GitHub first, then choose here.",
-    );
-  }
-  // The permission is checked here as well as in the card: a request that skips
-  // the card gets the sentence that names the fix, not GitHub's 403 body.
-  if (!appCanManageInstallations((await refreshGithubAppPermissions()) ?? null)) {
-    throw new GithubAppError(APP_CANNOT_MANAGE_INSTALLATIONS);
-  }
-
   const access = await readGithubUserAccess(userId);
   if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
 
@@ -947,35 +848,14 @@ export async function applyGithubRepositoryChoices(
     access.accessToken,
     installation.installationId,
   );
-  const wanted = new Set(repositoryIds);
-  const installedIds = new Set(installed.map((entry) => entry.id));
 
-  const add = [...wanted].filter((id) => !installedIds.has(id));
-  const remove = [...installedIds].filter((id) => !wanted.has(id));
-
-  try {
-    for (const id of add) {
-      await addInstallationRepository(access.accessToken, installation.installationId, id);
-    }
-    for (const id of remove) {
-      await removeInstallationRepository(access.accessToken, installation.installationId, id);
-    }
-  } catch (err) {
-    throw installationRepositoryRefusal(err);
-  }
-
-  // Keep the stored row honest: the card lists it without asking GitHub again.
-  const after = await listInstallationRepositoryRefs(
-    access.accessToken,
-    installation.installationId,
-  );
-  await prisma.githubInstallation.update({
-    where: { id: installation.id },
-    data: { repositories: after.map((entry) => entry.name) },
-  });
-  await forgetGithubInstallationSync(userId);
-
-  return readGithubRepositoryChoices(userId, installationId);
+  return {
+    installationId: installation.installationId,
+    accountLogin: installation.accountLogin,
+    accountType: installation.accountType,
+    selection: installation.repositorySelection,
+    installed,
+  };
 }
 
 // ─── Minting ────────────────────────────────────────────────────────────────
