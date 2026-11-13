@@ -211,6 +211,7 @@ export function GithubCard() {
         url={url}
         busy={starting || disconnecting}
         error={message}
+        onStartSignIn={startSignIn}
         onInstall={() => {
           if (!app.slug) return;
           window.open(
@@ -329,12 +330,15 @@ function SignInBody({
   url,
   starting,
   error,
+  onRetry,
 }: {
   connected: string | null;
   code: string | null;
   url: string | null;
   starting: boolean;
   error: string | null;
+  /** Start a new sign-in when nothing is in flight. */
+  onRetry: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -365,12 +369,31 @@ function SignInBody({
   };
 
   if (!code) {
+    // No code and no approval means nothing is in flight: the code expired, or
+    // the request never came back. A spinner here would claim to be waiting for
+    // GitHub while nobody is, and leave closing the only way out.
+    if (!starting) {
+      return (
+        <div className="space-y-2 py-2">
+          <p className="text-muted-foreground text-sm">No sign-in is in flight.</p>
+          <Button size="sm" onClick={onRetry}>
+            <GitBranch className="mr-2 h-4 w-4" />
+            Start the sign-in
+          </Button>
+          {error && (
+            <p className="text-destructive flex items-start gap-2 text-xs break-words">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {error}
+            </p>
+          )}
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-2 py-4">
         <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-        <span className="text-muted-foreground text-sm">
-          {starting ? "Starting the sign-in…" : "Waiting for GitHub…"}
-        </span>
+        <span className="text-muted-foreground text-sm">Starting the sign-in…</span>
       </div>
     );
   }
@@ -614,6 +637,7 @@ function GithubSetupDialog({
   url,
   busy,
   error,
+  onStartSignIn,
   onInstall,
   onChooseRepositories,
 }: {
@@ -625,6 +649,7 @@ function GithubSetupDialog({
   url: string | null;
   busy: boolean;
   error: string | null;
+  onStartSignIn: () => void;
   onInstall: () => void;
   onChooseRepositories: (installationId: string) => void;
 }) {
@@ -675,21 +700,21 @@ function GithubSetupDialog({
             url={url}
             starting={busy}
             error={error}
+            onRetry={onStartSignIn}
           />
         ) : step === 1 ? (
           <div className="space-y-3">
             <SignInBody
-              connected={
-                app.authorized
-                  ? `Signed in as @${app.authorized.login}`
-                  : cli.credential
-                    ? `Signed in as @${cli.credential.login}`
-                    : null
-              }
+              // Only the app's own authorization ends this step. A login in the
+              // workspace's gh is a different credential, and counting it here
+              // hid the device code: the dialog said "signed in" while step 1
+              // could never finish, and step 2's install button never appeared.
+              connected={app.authorized ? `Signed in as @${app.authorized.login}` : null}
               code={code}
               url={url}
               starting={busy}
               error={error}
+              onRetry={onStartSignIn}
             />
             {app.permissions && (
               <div className="border-border/60 space-y-2 rounded-2xl border px-3 py-2">
