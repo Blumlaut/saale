@@ -51,6 +51,11 @@ schedules.
 Monaco (VS Code's editor) is built in for edits. Connect GitHub under Settings →
 Integrations for private repositories, pushes and pull requests.
 
+## Model Context Protocol
+
+Saale supports MCP in full, with remote servers over Streamable HTTP and local ones over
+stdio. Add one in Settings, paste a config from another client, or start from a preset.
+
 ## Multi-User?
 
 Yes, with permission groups. Providers come in two kinds: global ones an admin configures,
