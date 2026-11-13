@@ -196,12 +196,6 @@ export const GITHUB_APP_PERMISSIONS: readonly GithubAppPermission[] = [
   },
   { name: "checks", label: "Checks", level: "read", why: "the check badge on a branch" },
   { name: "metadata", label: "Metadata", level: "read", why: "every app has to ask for it" },
-  {
-    name: "installation_repositories",
-    label: "GitHub App installation repository access",
-    level: "write",
-    why: "the repository picker adds and removes repositories",
-  },
 ];
 
 /** How GitHub's form words a level, for a list that is read next to it. */
@@ -219,20 +213,6 @@ export function missingGithubAppPermissions(
   held: Record<string, string> | null | undefined,
 ): GithubAppPermission[] {
   return GITHUB_APP_PERMISSIONS.filter((entry) => !coversLevel(held?.[entry.name], entry.level));
-}
-
-/**
- * Whether the app may change its own installations, which the picker needs.
- *
- * The two installation calls take `installation_repositories: write`, a
- * permission GitHub has accepted only since October 2026. An app registered
- * before that can read an installation's repositories and nothing more, so the
- * card has to know the difference rather than offer a save GitHub refuses.
- */
-export function appCanManageInstallations(
-  held: Record<string, string> | null | undefined,
-): boolean {
-  return coversLevel(held?.installation_repositories, "write");
 }
 
 /** The entry gh keeps itself, skipping any it was handed through the environment. */

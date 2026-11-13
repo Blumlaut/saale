@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchJson, postJson, putJson } from "@/lib/http";
+import { fetchJson, postJson } from "@/lib/http";
 import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
 
 export type { GithubAppSection };
@@ -12,24 +12,19 @@ interface GithubConnection {
   cli: GithubStatus;
 }
 
-/** One installation's repository set, as the picker shows it. */
-export interface GithubRepositoryChoices {
+/** One installation's repository set, which the card shows as it is. */
+export interface GithubInstallationRepositories {
   installationId: string;
   accountLogin: string;
   /** "User" | "Organization" — decides where GitHub's settings page lives. */
   accountType: string;
   selection: string;
-  /** False when the installation covers every repository; GitHub then refuses. */
-  canManage: boolean;
-  /** False when the app was registered without the permission those two calls take. */
-  appCanManage: boolean;
   installed: { id: string; name: string; fullName: string }[];
-  candidates: { id: string; fullName: string; installed: boolean }[];
 }
 
-/** A picker read or save: the set, or the sentence that says why there is none. */
-export interface GithubRepositoryAnswer {
-  choices: GithubRepositoryChoices | null;
+/** A read either way: the set, or the sentence that says why there is none. */
+export interface GithubRepositoriesAnswer {
+  repositories: GithubInstallationRepositories | null;
   error: string | null;
 }
 
@@ -158,12 +153,12 @@ export function useGithub() {
     }
   }, [apply]);
 
-  /** The repository set of one installation, for the picker. */
+  /** The repository set of one installation, for the card's list. */
   const loadRepositories = useCallback(
-    async (installationId: string): Promise<GithubRepositoryAnswer> => {
+    async (installationId: string): Promise<GithubRepositoriesAnswer> => {
       try {
         return {
-          choices: await fetchJson<GithubRepositoryChoices>(
+          repositories: await fetchJson<GithubInstallationRepositories>(
             `/api/integrations/github/repositories?installation=${encodeURIComponent(installationId)}`,
           ),
           error: null,
@@ -171,39 +166,8 @@ export function useGithub() {
       } catch (err) {
         console.error("Failed to read the installation's repositories:", err);
         return {
-          choices: null,
+          repositories: null,
           error: err instanceof Error ? err.message : "Failed to read the repositories",
-        };
-      }
-    },
-    [],
-  );
-
-  /**
-   * Apply a selection; the installation is what changes, not only a token.
-   *
-   * The refusal comes back rather than landing in the card's own message: it is
-   * the dialog's to show, and Saale's sentences there are the long ones (which
-   * permission is missing, what to change on GitHub).
-   */
-  const saveRepositories = useCallback(
-    async (
-      installationId: string,
-      repositoryIds: readonly string[],
-    ): Promise<GithubRepositoryAnswer> => {
-      try {
-        return {
-          choices: await putJson<GithubRepositoryChoices>("/api/integrations/github/repositories", {
-            installationId,
-            repositoryIds: [...repositoryIds],
-          }),
-          error: null,
-        };
-      } catch (err) {
-        console.error("Failed to change the installation's repositories:", err);
-        return {
-          choices: null,
-          error: err instanceof Error ? err.message : "Failed to change the repositories",
         };
       }
     },
@@ -222,6 +186,5 @@ export function useGithub() {
     cancel,
     disconnect,
     loadRepositories,
-    saveRepositories,
   };
 }

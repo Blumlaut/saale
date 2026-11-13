@@ -1,32 +1,20 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { GithubApiError } from "@/lib/integrations/github-app-client";
-import {
-  GithubAppError,
-  applyGithubRepositoryChoices,
-  readGithubRepositoryChoices,
-} from "@/lib/integrations/github-app";
+import { GithubAppError, readGithubInstallationRepositories } from "@/lib/integrations/github-app";
 
 /**
  * Which repositories one installation covers.
  *
- * This is the fine-graining the GitHub App exists for: the installation is the
- * ceiling GitHub enforces, and the account picks inside it here rather than on
- * GitHub's install page. Both calls run with the account's own token, so GitHub
- * checks that this person may actually change the installation — Saale decides
- * nothing on its own.
+ * Read-only on purpose. GitHub's two installation calls (add/remove a
+ * repository) refuse a repository the installation does not already cover, and
+ * a personal installation cannot be extended over the API at all, so the card
+ * shows the set and points at GitHub's page for changing it.
  *
- * An installation granted "All repositories" cannot be narrowed through the API
- * (GitHub only removes from a "selected" one); the answer says so and the card
- * explains what to switch on GitHub.
+ * An installation granted "All repositories" answers with everything the app may
+ * reach; the card says which kind it is next to the count.
  */
-
-const SAVE_BODY = z.object({
-  installationId: z.string().min(1),
-  repositoryIds: z.array(z.string().min(1)).max(100),
-});
 
 /** A GithubAppError is the user's input, a GithubApiError is GitHub's refusal. */
 function failure(err: unknown, what: string): NextResponse {
@@ -53,42 +41,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await readGithubRepositoryChoices(authResult.user.id, installationId));
+    return NextResponse.json(
+      await readGithubInstallationRepositories(authResult.user.id, installationId),
+    );
   } catch (err) {
     return failure(err, "read the installation's repositories");
-  }
-}
-
-/** PUT /api/integrations/github/repositories: set the set, by id. */
-export async function PUT(request: NextRequest) {
-  const authResult = await requireSession();
-  if (!authResult.ok) return authResult.response;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch (err) {
-    console.error("Failed to parse the GitHub repository selection body:", err);
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const parsed = SAVE_BODY.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Send an installation id and a list of repository ids." },
-      { status: 400 },
-    );
-  }
-
-  try {
-    return NextResponse.json(
-      await applyGithubRepositoryChoices(
-        authResult.user.id,
-        parsed.data.installationId,
-        parsed.data.repositoryIds,
-      ),
-    );
-  } catch (err) {
-    return failure(err, "change the installation's repositories");
   }
 }

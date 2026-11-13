@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   isVariableTokenSource,
   missingGithubAppPermissions,
@@ -31,8 +30,8 @@ import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import {
   useGithub,
   type GithubAppSection,
-  type GithubRepositoryAnswer,
-  type GithubRepositoryChoices,
+  type GithubInstallationRepositories,
+  type GithubRepositoriesAnswer,
 } from "@/hooks/use-github";
 import {
   installationSettingsUrl,
@@ -84,7 +83,6 @@ export function GithubCard() {
     cancel,
     disconnect,
     loadRepositories,
-    saveRepositories,
   } = useGithub();
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
@@ -212,11 +210,10 @@ export function GithubCard() {
       </IntegrationBox>
 
       {picking && (
-        <RepositoryDialog
+        <RepositoriesDialog
           installationId={picking}
           onClose={() => setPicking(null)}
           load={loadRepositories}
-          save={saveRepositories}
         />
       )}
 
@@ -505,65 +502,35 @@ function SignInBody({
 /**
  * Which repositories one installation covers.
  *
- * GitHub is the authority: the list comes from what this account may add (admin
- * access), and the change is applied through the installation itself — so the
- * limit holds for every token Saale mints later, not just for one command.
+ * Read-only, and deliberately so: GitHub's two installation calls refuse a
+ * repository the installation does not already cover, and a personal
+ * installation cannot be extended over the API at all. So the card shows the set
+ * — the same ceiling GitHub enforces for every token Saale mints — and points at
+ * the page where it is changed.
  */
-function RepositoryDialog({
+function RepositoriesDialog({
   installationId,
   onClose,
   load,
-  save,
 }: {
   installationId: string;
   onClose: () => void;
-  load: (installationId: string) => Promise<GithubRepositoryAnswer>;
-  save: (
-    installationId: string,
-    repositoryIds: readonly string[],
-  ) => Promise<GithubRepositoryAnswer>;
+  load: (installationId: string) => Promise<GithubRepositoriesAnswer>;
 }) {
-  const [choices, setChoices] = useState<GithubRepositoryChoices | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
+  const [repositories, setRepositories] = useState<GithubInstallationRepositories | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void load(installationId).then((answer) => {
       if (cancelled) return;
-      setChoices(answer.choices);
+      setRepositories(answer.repositories);
       setError(answer.error);
-      if (answer.choices) {
-        setSelected(new Set(answer.choices.installed.map((entry) => entry.id)));
-      }
     });
     return () => {
       cancelled = true;
     };
   }, [installationId, load]);
-
-  const toggle = (id: string, on: boolean) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  };
-
-  const apply = async () => {
-    setBusy(true);
-    setError(null);
-    const answer = await save(installationId, [...selected]);
-    setBusy(false);
-    if (!answer.choices) {
-      setError(answer.error ?? "The selection could not be saved.");
-      return;
-    }
-    toast.success("Repositories updated");
-    onClose();
-  };
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
@@ -574,35 +541,33 @@ function RepositoryDialog({
             Repositories
           </DialogTitle>
           <DialogDescription>
-            {choices
-              ? `Which repositories Saale may use on ${choices.accountLogin}. This sets the installation itself — the same set as “Only select repositories” on GitHub.`
+            {repositories
+              ? `The repositories Saale may use on ${repositories.accountLogin}.`
               : "Loading what this installation covers…"}
           </DialogDescription>
         </DialogHeader>
 
-        {choices && !choices.canManage ? (
-          <BlockedRepositoryPicker reason="all-repositories" installation={choices} />
-        ) : choices && !choices.appCanManage ? (
-          <BlockedRepositoryPicker reason="app-permission" installation={choices} />
-        ) : choices ? (
-          <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
-            {choices.candidates.length === 0 && (
-              <p className="text-muted-foreground py-2 text-xs">
-                No repository of this account is one you administer, so there is nothing to add.
+        {repositories ? (
+          <div className="space-y-2">
+            {repositories.selection !== "selected" && (
+              <p className="text-muted-foreground text-xs">
+                This installation covers every repository of the account, so the list is what the
+                app may reach today.
               </p>
             )}
-            {choices.candidates.map((entry) => (
-              <label
-                key={entry.id}
-                className="hover:bg-muted/60 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5"
-              >
-                <Checkbox
-                  checked={selected.has(entry.id)}
-                  onCheckedChange={(checked) => toggle(entry.id, checked === true)}
-                />
-                <span className="truncate font-mono text-xs">{entry.fullName}</span>
-              </label>
-            ))}
+            {repositories.installed.length === 0 ? (
+              <p className="text-muted-foreground text-xs">
+                No repository is installed yet, so the app can reach nothing.
+              </p>
+            ) : (
+              <ul className="max-h-80 divide-y overflow-y-auto rounded-2xl border">
+                {repositories.installed.map((entry) => (
+                  <li key={entry.id} className="truncate px-3 py-1.5 font-mono text-xs">
+                    {entry.fullName}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2 py-4">
@@ -613,57 +578,25 @@ function RepositoryDialog({
 
         {error && <p className="text-destructive text-xs">{error}</p>}
 
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
-          {choices?.canManage && choices.appCanManage && (
-            <Button size="sm" onClick={() => void apply()} disabled={busy}>
-              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
+          {repositories && (
+            <Button variant="secondary" size="sm" asChild>
+              <a
+                href={installationSettingsUrl(repositories)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Choose repositories on GitHub
+                <ExternalLink className="ml-1 h-3.5 w-3.5" />
+              </a>
             </Button>
           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * Why the picker cannot change anything here, and what to do instead.
- *
- * Two independent facts stop it, and they need different sentences: an
- * installation granted "All repositories" has to be switched on GitHub first,
- * while an app registered without `installation_repositories: write` cannot make
- * those calls at all — GitHub refuses them with a 403 whatever the account may
- * do. Both keep GitHub's page one click away, because that page works.
- */
-function BlockedRepositoryPicker({
-  reason,
-  installation,
-}: {
-  reason: "all-repositories" | "app-permission";
-  installation: GithubRepositoryChoices;
-}) {
-  return (
-    <div className="space-y-2 py-2">
-      <p className="text-sm">
-        {reason === "all-repositories"
-          ? "This installation covers all repositories, so it cannot be narrowed here."
-          : "The app may not change its own installations."}
-      </p>
-      <p className="text-muted-foreground text-xs">
-        {reason === "all-repositories"
-          ? "On GitHub, switch it to “Only select repositories”, then choose the set in Saale."
-          : "It was registered without the “GitHub App installation repository access” permission, so Saale can only read this set. Add it to the app on GitHub — every installation then approves it once — or pick the repositories on GitHub's page."}
-      </p>
-      <Button variant="secondary" size="sm" asChild>
-        <a href={installationSettingsUrl(installation)} target="_blank" rel="noopener noreferrer">
-          Manage on GitHub
-          <ExternalLink className="ml-1 h-3.5 w-3.5" />
-        </a>
-      </Button>
-    </div>
   );
 }
 

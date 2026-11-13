@@ -361,13 +361,6 @@ export interface GithubRepositoryRef {
 }
 
 /** A repository the account could hand to an installation, and may it. */
-export interface GithubRepositoryChoice extends GithubRepositoryRef {
-  /** The account owns it and the user is an admin: only those can be added. */
-  canAdmin: boolean;
-  /** Which account it belongs to, for grouping a picker by owner. */
-  owner: string;
-}
-
 /**
  * The repositories one installation covers, with the ids needed to change them.
  *
@@ -384,78 +377,6 @@ export async function listInstallationRepositoryRefs(
     userToken,
   );
   return repositoryRefs(Array.isArray(answer.repositories) ? answer.repositories : []);
-}
-
-/**
- * The repositories the account can add to an installation.
- *
- * Adding one takes admin access to it, so the list asks GitHub for the user's
- * own and their organizations' repositories and marks which of them qualify.
- * That is the picker's source: a repository the user is merely a member of is
- * not something they can install the app on.
- */
-export async function listRepositoryChoices(userToken: string): Promise<GithubRepositoryChoice[]> {
-  // `GET /user/repos` answers with an array, which `apiRequest` does not model.
-  const raw = await apiRequestList(
-    "/user/repos?affiliation=owner,organization_member&per_page=100",
-    userToken,
-  );
-
-  const choices: GithubRepositoryChoice[] = [];
-  for (const row of raw) {
-    const entry = asRecord(row);
-    const id = text(entry.id) ?? number(entry.id)?.toString();
-    const name = text(entry.name);
-    const fullName = text(entry.full_name);
-    const owner = text(asRecord(entry.owner)?.login);
-    if (!id || !name || !fullName || !owner) continue;
-
-    choices.push({
-      id,
-      name,
-      fullName,
-      owner,
-      canAdmin: Boolean(asRecord(entry.permissions)?.admin),
-    });
-  }
-  return choices;
-}
-
-/**
- * Add one repository to an installation.
- *
- * The user's token is what GitHub checks here: the caller must be an admin of
- * that repository. Nothing is trusted from the request beyond the id.
- */
-export async function addInstallationRepository(
-  userToken: string,
-  installationId: string,
-  repositoryId: string,
-): Promise<void> {
-  await apiRequestNoContent(
-    `/user/installations/${encodeURIComponent(installationId)}/repositories/${encodeURIComponent(repositoryId)}`,
-    userToken,
-    "PUT",
-  );
-}
-
-/**
- * Remove one repository from an installation.
- *
- * GitHub refuses this on an installation that was granted every repository: it
- * has to be switched to "Only select repositories" first, which only the user
- * can do on GitHub's own page.
- */
-export async function removeInstallationRepository(
-  userToken: string,
-  installationId: string,
-  repositoryId: string,
-): Promise<void> {
-  await apiRequestNoContent(
-    `/user/installations/${encodeURIComponent(installationId)}/repositories/${encodeURIComponent(repositoryId)}`,
-    userToken,
-    "DELETE",
-  );
 }
 
 // ─── Minting ────────────────────────────────────────────────────────────────
@@ -517,57 +438,6 @@ async function apiRequest(
   });
 
   return readAnswer(response, `${init.method ?? "GET"} ${API_BASE}${path}`);
-}
-
-/** A GET whose answer is a JSON array, which `apiRequest` does not model. */
-async function apiRequestList(path: string, token: string): Promise<unknown[]> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "User-Agent": USER_AGENT,
-      "X-GitHub-Api-Version": API_VERSION,
-    },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new GithubApiError(
-      refusalMessage(parseJson(raw), raw) ?? `GitHub refused GET ${path} (${response.status})`,
-      response.status,
-      raw.slice(0, MAX_ERROR_BODY),
-    );
-  }
-
-  const parsed: unknown = raw.trim() ? JSON.parse(raw) : [];
-  return Array.isArray(parsed) ? parsed : [];
-}
-
-/** A call that answers 204 with no body. */
-async function apiRequestNoContent(
-  path: string,
-  token: string,
-  method: "PUT" | "DELETE",
-): Promise<void> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "User-Agent": USER_AGENT,
-      "X-GitHub-Api-Version": API_VERSION,
-    },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (response.ok) return;
-
-  const raw = await response.text();
-  throw new GithubApiError(
-    refusalMessage(parseJson(raw), raw) ?? `GitHub refused ${method} ${path} (${response.status})`,
-    response.status,
-    raw.slice(0, MAX_ERROR_BODY),
-  );
 }
 
 /** The repositories in a `GET .../repositories` answer. */
