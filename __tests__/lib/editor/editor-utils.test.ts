@@ -26,6 +26,7 @@ describe("previewKindFromPath", () => {
     expect(previewKindFromPath("public/page.html")).toBe("html");
     expect(previewKindFromPath("assets/logo.png")).toBe("image");
     expect(previewKindFromPath("media/demo.mp4")).toBe("video");
+    expect(previewKindFromPath("out/report.pdf")).toBe("pdf");
   });
 
   it("returns nothing for text and binary files alike", () => {

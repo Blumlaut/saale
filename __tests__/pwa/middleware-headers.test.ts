@@ -56,6 +56,12 @@ describe("PWA response headers", () => {
     expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(headers.get("X-Frame-Options")).toBe("DENY");
   });
+
+  it("frames its own pages and the object URL a PDF preview makes", async () => {
+    const csp = (await headersFor("/dashboard/files")).get("Content-Security-Policy");
+
+    expect(csp).toContain("frame-src 'self' blob:");
+  });
 });
 
 describe("scripts", () => {

@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * Rendered previews for files the editor cannot show as text (images and
- * video) and for the rendered form of markdown and HTML. Media streams from
- * the raw endpoint; markdown and HTML use the text the viewer already
- * fetched. The raw endpoint serves executable types as plain text and marks
- * the response no-cache, so both stay inert and fresh.
+ * Rendered previews for files the editor cannot show as text (images, video,
+ * PDF) and for the rendered form of markdown and HTML. Media streams from the
+ * raw endpoint; markdown and HTML use the text the viewer already fetched; a
+ * PDF is read into an object URL so the browser's viewer can show it. The raw
+ * endpoint serves executable types as plain text and marks the response
+ * no-cache, so all of them stay inert and fresh.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -19,8 +21,8 @@ import type { FileEntry } from "@/lib/files/types";
 export interface FilePreviewProps {
   target: string;
   entry: FileEntry;
-  /** What the preview renders; media and markdown | html alike. */
-  kind: "image" | "video" | "markdown" | "html";
+  /** What the preview renders; media, pdf and markdown | html alike. */
+  kind: "image" | "video" | "markdown" | "html" | "pdf";
   /** markdown | html — the text the viewer already fetched. */
   content?: string | undefined;
 }
@@ -46,6 +48,7 @@ export function FilePreview({ target, entry, kind, content }: FilePreviewProps) 
   }
   if (kind === "markdown")
     return <MarkdownPreview target={target} entry={entry} content={content} />;
+  if (kind === "pdf") return <PdfPreview target={target} entry={entry} />;
   // html — sandboxed without scripts, so a page can only show itself
   return (
     <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
@@ -55,6 +58,70 @@ export function FilePreview({ target, entry, kind, content }: FilePreviewProps) 
         srcDoc={content ?? ""}
         className="h-full w-full border-0 bg-white"
       />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PDF                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A PDF, handed to the viewer the browser already ships.
+ *
+ * It arrives as an object URL rather than the raw endpoint's own URL: the
+ * response carries `X-Frame-Options: DENY` and `frame-ancestors 'none'`, which
+ * every page here needs and which would stop the frame from loading. A blob of
+ * the same bytes has no headers to answer to, and the browser decides from its
+ * own type how to render it.
+ */
+function PdfPreview({ target, entry }: { target: string; entry: FileEntry }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    setUrl(null);
+    setError("");
+
+    void (async () => {
+      try {
+        // `no-store`, like the editor's read: a revalidated response is a 304
+        // with no bytes on it.
+        const response = await fetch(rawFileUrl(target, entry.path), {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `Could not open this file (${response.status}).`);
+        }
+        objectUrl = URL.createObjectURL(await response.blob());
+        setUrl(objectUrl);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error("[file-preview] failed to read pdf:", err);
+        setError(err instanceof Error ? err.message : "Could not open this file.");
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [target, entry.path]);
+
+  if (error) return <p className="text-destructive text-sm break-words">{error}</p>;
+  return (
+    <div className="min-h-0 flex-1 overflow-hidden rounded-md border">
+      {url ? (
+        <iframe title={entry.name} src={url} className="h-full w-full border-0 bg-white" />
+      ) : (
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+        </div>
+      )}
     </div>
   );
 }

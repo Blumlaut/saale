@@ -110,6 +110,8 @@ export async function middleware(request: NextRequest) {
       // The offline service worker and the web app manifest are same-origin.
       "worker-src 'self'",
       "manifest-src 'self'",
+      // A PDF preview frames an object URL of the file's own bytes.
+      "frame-src 'self' blob:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

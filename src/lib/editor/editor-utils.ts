@@ -82,7 +82,7 @@ export function languageFromPath(path: string): string {
 }
 
 /** What a rendered preview can show for a file (null = nothing). */
-export type PreviewKind = "image" | "video" | "markdown" | "html";
+export type PreviewKind = "image" | "video" | "markdown" | "html" | "pdf";
 
 /** Text files with a useful rendered form. SVG stays source-only on purpose. */
 const PREVIEW_EXT: Record<string, PreviewKind> = {
@@ -91,6 +91,8 @@ const PREVIEW_EXT: Record<string, PreviewKind> = {
   markdown: "markdown",
   html: "html",
   htm: "html",
+  // Not text, and not drawn by us: the browser's own PDF viewer shows it.
+  pdf: "pdf",
 };
 
 /** Preview kind for a path. Media counts: it has no code view at all. */

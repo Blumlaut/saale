@@ -29,9 +29,10 @@ type LoadedFile = { text: string; modified: number };
  * One file's bytes, rendered.
  *
  * Text files open in Monaco, markdown and HTML gain a rendered preview, images
- * and video play inline, and anything else says it cannot be shown. The bytes
- * arrive through the raw endpoint, which serves executable types as plain text,
- * so an agent-written HTML file is safe to show here.
+ * and video play inline, a PDF opens in the browser's own viewer, and anything
+ * else says it cannot be shown. The bytes arrive through the raw endpoint, which
+ * serves executable types as plain text, so an agent-written HTML file is safe to
+ * show here.
  *
  * A writable text file is editable: Monaco holds the buffer and Save puts it
  * back, with the mtime it was read at so a file an agent rewrote underneath is a
