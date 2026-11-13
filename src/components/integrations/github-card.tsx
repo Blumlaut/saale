@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { GithubCredential } from "@/lib/integrations/github";
+import { isVariableTokenSource, type GithubCredential } from "@/lib/integrations/github";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import { useGithub, type GithubAppSection, type GithubRepositoryChoices } from "@/hooks/use-github";
 import {
@@ -73,6 +73,13 @@ export function GithubCard() {
 
   const message = error ?? cli.error;
   const connected = Boolean(app.authorized) || Boolean(cli.credential);
+  // `cli.credential` is what a command would use, which is not the same as a
+  // login the workspace made: while the app is the source Saale's own `gh` shim
+  // hands it our token, and an account's `GH_TOKEN` variable wins too. gh
+  // reports both as a token from the environment, and only its own config is a
+  // login worth naming beside the app's.
+  const storedCliLogin =
+    cli.credential && !isVariableTokenSource(cli.credential.source) ? cli.credential : null;
 
   // Both flows report the same two facts under different names.
   const code = app.pending?.userCode ?? cli.pending?.code ?? null;
@@ -173,9 +180,9 @@ export function GithubCard() {
               </div>
             )}
 
-            {cli.credential && (
+            {storedCliLogin && (
               <p className="text-muted-foreground text-xs">
-                The GitHub CLI is also signed in as @{cli.credential.login}.
+                The GitHub CLI is also signed in as @{storedCliLogin.login}.
               </p>
             )}
           </div>
