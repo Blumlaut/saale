@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { GithubCard } from "@/components/integrations/github-card";
 import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
 
@@ -33,6 +33,9 @@ const appAuthorized: GithubAppSection = {
   ],
 };
 
+/** Authorized, but installed nowhere: step 2 of the setup assistant. */
+const appAuthorizedNoInstall: GithubAppSection = { ...appAuthorized, installations: [] };
+
 /** A login gh keeps in its own config, which is what a command would use. */
 const cliLogin: GithubStatus = {
   credential: {
@@ -50,11 +53,24 @@ const noCredential: GithubStatus = { credential: null, pending: null, error: nul
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** The card reads one endpoint; every other call is a bug in the test. */
-function mockStatus(app: GithubAppSection, cli: GithubStatus) {
+/**
+ * The card reads one endpoint; every other call is a bug in the test.
+ *
+ * `onConnect` is what a POST answers, so a test can follow a sign-in from the
+ * card into the setup dialog.
+ */
+function mockStatus(
+  app: GithubAppSection,
+  cli: GithubStatus,
+  onConnect?: { app: GithubAppSection; cli: GithubStatus },
+) {
   const fetchMock = vi.fn(
-    async () =>
-      ({ ok: true, status: 200, json: async () => ({ app, cli }) }) as unknown as Response,
+    async (_url: string, init?: RequestInit) =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => (init?.method === "POST" && onConnect ? onConnect : { app, cli }),
+      }) as unknown as Response,
   );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -105,5 +121,44 @@ describe("GithubCard", () => {
     expect(await screen.findByText("Signed in as @octocat")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Authorize the app/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
+  });
+
+  it("shows the device code in the setup dialog while a CLI login exists", async () => {
+    // The dead end this guards: step 1 called a CLI login "signed in", hid the
+    // code, and never advanced, so the dialog offered nothing but Close.
+    mockStatus(appConfigured, cliLogin, {
+      app: {
+        ...appConfigured,
+        pending: {
+          userCode: "1B47-ABE8",
+          verificationUri: "https://github.com/login/device",
+          expiresAt: "2030-01-01T00:15:00.000Z",
+        },
+      },
+      cli: cliLogin,
+    });
+    render(<GithubCard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Authorize the app/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("1B47-ABE8")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Signed in as @octocat/)).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: /Install on GitHub/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("moves on to the install step once the app is authorized", async () => {
+    mockStatus(appConfigured, noCredential, { app: appAuthorizedNoInstall, cli: noCredential });
+    render(<GithubCard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Connect GitHub/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByRole("button", { name: /Install on GitHub/ }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/Install Saale on the account/)).toBeInTheDocument();
   });
 });
