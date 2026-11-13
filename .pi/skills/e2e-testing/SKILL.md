@@ -15,9 +15,9 @@ auth and cookies, real HTTP.
 Most requests are "does this panel look right?". Do not build a spec for it.
 
 ```bash
-npm run shot -- /dashboard/infra --click "Add Machine"
-npm run shot -- /dashboard/settings/models --viewport 375,320,1280
-npm run shot -- /dashboard/chat --click "New Chat" --full-page
+pnpm run shot -- /dashboard/infra --click "Add Machine"
+pnpm run shot -- /dashboard/settings/models --viewport 375,320,1280
+pnpm run shot -- /dashboard/chat --click "New Chat" --full-page
 ```
 
 `scripts/shot.ts` signs in as the dev account (`dev@saale.local`), opens each
@@ -38,11 +38,11 @@ seeds). Set `SHOT_EMAIL` / `SHOT_PASSWORD` to look as someone else.
 ## Running the suite
 
 ```bash
-npm run test:e2e                        # full run, production build (default)
-npm run test:e2e:dev                    # full run against the dev server
-npx playwright test e2e/modal-overflow.spec.ts -g "infra · add machine"
-npx playwright test e2e/mobile-overflow.spec.ts --headed
-npx playwright test --last-failed
+pnpm run test:e2e                        # full run, production build (default)
+pnpm run test:e2e:dev                    # full run against the dev server
+pnpm exec playwright test e2e/modal-overflow.spec.ts -g "infra · add machine"
+pnpm exec playwright test e2e/mobile-overflow.spec.ts --headed
+pnpm exec playwright test --last-failed
 ```
 
 A full run is ~3 minutes. What makes it fast:
@@ -159,9 +159,9 @@ a `DialogContent`/`SheetContent` that has no entry.
 ## Debugging
 
 ```bash
-npx playwright test <file> --headed            # watch it
-npx playwright test <file> --grep "<title>" -x # stop at the first failure
-npx playwright show-trace test-results/**/trace.zip
+pnpm exec playwright test <file> --headed            # watch it
+pnpm exec playwright test <file> --grep "<title>" -x # stop at the first failure
+pnpm exec playwright show-trace test-results/**/trace.zip
 ```
 
 `trace: "on-first-retry"` and `screenshot: "only-on-failure"` are on: a failed

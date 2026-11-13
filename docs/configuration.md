@@ -107,7 +107,7 @@ logs first.
 
 | Variable                              | What it does                                                                                          |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `VAPID_PUBLIC_KEY`                    | Web Push key pair, from `npx web-push generate-vapid-keys`.                                           |
+| `VAPID_PUBLIC_KEY`                    | Web Push key pair, from `pnpm dlx web-push generate-vapid-keys`.                                           |
 | `VAPID_PRIVATE_KEY`                   | The other half. Rotating it drops every subscription.                                                 |
 | `VAPID_SUBJECT`                       | Contact URI for the push service. Defaults to a `mailto:` on the app's host.                          |
 | `PUSH_MOBILE_DELAY_MINUTES`           | Minutes a phone's copy of a notification waits, so a page you have open can call it off. Default `3`. |

@@ -85,7 +85,7 @@ When the user asks for a UI element or page:
 - Checkboxes → `<Checkbox>` (not `<input type="checkbox">`)
 - etc.
 
-If a shadcn component doesn't exist for your need, check the registry first (`npx shadcn@latest add <component>`). Only write custom components when no shadcn equivalent exists.
+If a shadcn component doesn't exist for your need, check the registry first (`pnpm exec shadcn@latest add <component>`). Only write custom components when no shadcn equivalent exists.
 
 See `references/shadcn-components.md` for the full mapping.
 

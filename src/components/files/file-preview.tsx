@@ -9,12 +9,9 @@
  * no-cache, so all of them stay inert and fresh.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
+import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { rawFileUrl } from "@/lib/files/urls";
 import type { FileEntry } from "@/lib/files/types";
 
@@ -139,21 +136,18 @@ function MarkdownPreview({
   entry: FileEntry;
   content?: string | undefined;
 }) {
-  // Stable across renders: a new component type would remount every image
-  // and restart its fetch.
-  const LocalImage = useMemo(() => localPreviewImage(target, entry.path), [target, entry.path]);
+  // Stable across renders: a new resolver would rebuild every image.
+  const resolveImageSrc = useCallback(
+    (src: string | Blob | undefined) => resolveLocalPreviewImage(src, target, entry.path),
+    [target, entry.path],
+  );
   return (
-    <div className="markdown-body min-h-0 flex-1 overflow-y-auto rounded-md border p-4 text-sm leading-relaxed">
-      <ReactMarkdown
-        remarkPlugins={[remarkBreaks, remarkGfm]}
-        rehypePlugins={[
-          [rehypeHighlight, { detect: true, ignoreMissing: true, placeholderLanguage: "text" }],
-        ]}
-        components={{ img: LocalImage }}
-      >
-        {content ?? ""}
-      </ReactMarkdown>
-    </div>
+    <MarkdownRenderer
+      content={content ?? ""}
+      hardBreaks
+      resolveImageSrc={resolveImageSrc}
+      className="min-h-0 flex-1 overflow-y-auto rounded-md border p-4"
+    />
   );
 }
 
@@ -162,17 +156,10 @@ function MarkdownPreview({
 /* ------------------------------------------------------------------ */
 
 /**
- * A react-markdown img component that resolves relative image references to
- * the raw endpoint, so a page's `![diagram](./diagrams/x.png)` renders in the
- * preview. Absolute, remote, data: and unresolvable paths pass through.
+ * Where a preview's image `src` points: a relative reference resolves against
+ * the raw endpoint, so a page's `![diagram](./diagrams/x.png)` renders.
+ * Absolute, remote, data: and unresolvable paths pass through.
  */
-function localPreviewImage(target: string, filePath: string) {
-  return function LocalImage({ src, alt, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
-    // eslint-disable-next-line @next/next/no-img-element -- resolved to the raw endpoint
-    return <img src={resolveLocalPreviewImage(src, target, filePath)} alt={alt ?? ""} {...rest} />;
-  };
-}
-
 function resolveLocalPreviewImage(
   src: string | Blob | undefined,
   target: string,

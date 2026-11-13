@@ -15,7 +15,9 @@ export function useElementWidth(): [(node: HTMLElement | null) => void, number |
   const measure = useCallback((node: HTMLElement | null) => setElement(node), []);
 
   useEffect(() => {
-    if (!element) return;
+    // An environment without the observer keeps the unmeasured width, which
+    // leaves the column at its fixed ceiling.
+    if (!element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       const next = entries[0]?.contentRect.width;
       if (next !== undefined) setWidth(next);

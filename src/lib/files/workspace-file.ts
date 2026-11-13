@@ -56,6 +56,8 @@ export interface ResolvedWorkspaceFile {
   size: number;
   /** Epoch milliseconds. */
   modified: number;
+  /** Whether the workspace would accept a write here. */
+  writable: boolean;
 }
 
 /**
@@ -84,6 +86,7 @@ export async function resolveWorkspaceFile(
     mimeType: resolveMimeType(fileName),
     size: stat.size,
     modified: stat.modified,
+    writable: stat.writable,
   };
 }
 

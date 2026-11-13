@@ -85,7 +85,7 @@ Long text must never break layout:
 Mono marks text a machine produced or will consume: a snippet, a command, a path, a log line. An ID, a timestamp, a version or a count is a word like any other and stays Inter.
 
 ```tsx
-<code className="font-mono text-xs">npm run check</code>
+<code className="font-mono text-xs">pnpm run check</code>
 <span className="font-mono text-xs text-muted-foreground">.pi/skills/saale-design</span>
 ```
 

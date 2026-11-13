@@ -2,23 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Radar, X, ArrowUpRight } from "lucide-react";
-import {
-  GlassPanel,
-  GlassPanelContent,
-  GlassPanelFooter,
-  GlassPanelHeader,
-} from "@/components/ui/glass-panel";
-import { Badge } from "@/components/ui/badge";
+import { ArrowUpRight, Radar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import { fetchJson } from "@/lib/http";
@@ -59,47 +45,66 @@ export function useSessionLinks(sessionId: string) {
   return { links, reload };
 }
 
+/**
+ * Whether a row's automation is running: a filled dot, or a ring for one that
+ * is paused. The shape carries the state as well as the colour, so a reader
+ * who cannot tell them apart still can.
+ */
+function StateDot({ enabled }: { enabled: boolean }) {
+  return (
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          enabled ? "bg-primary" : "border-muted-foreground/50 border",
+        )}
+      />
+      <span className="sr-only">{enabled ? "Enabled" : "Paused"}</span>
+    </>
+  );
+}
+
+/** One automation, dense: what it is, how often it runs, and what it last said. */
 function LinkRow({ link }: { link: SessionLink }) {
   return (
-    <div className="px-4 py-2">
-      <div className="flex items-center gap-2">
-        <Radar className={cn("h-4 w-4 shrink-0", link.enabled ? "" : "text-muted-foreground")} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{link.name}</span>
-        <Badge variant={link.enabled ? "secondary" : "outline"}>
-          {link.enabled ? "on" : "off"}
-        </Badge>
-      </div>
-      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-6 text-[11px]">
-        <span className="whitespace-nowrap">{link.cronExpression ?? "manual"}</span>
-        <span className="whitespace-nowrap">
-          · {link.lastTickAt ? formatRelativeDate(link.lastTickAt) : "never"}
+    <div className="px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <StateDot enabled={link.enabled} />
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-xs font-medium",
+            !link.enabled && "text-muted-foreground",
+          )}
+        >
+          {link.name}
         </span>
-        <span className="whitespace-nowrap">· {link.fireCount}x</span>
+        {/* Which kind of thing this is; the dot beside the name carries the state. */}
+        <Radar className="text-muted-foreground/40 h-3.5 w-3.5 shrink-0" />
+      </div>
+      <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 pl-3 text-[11px]">
+        <span className="font-mono">{link.cronExpression ?? "manual"}</span>
+        <span>· {link.lastTickAt ? formatRelativeDate(link.lastTickAt) : "never"}</span>
+        <span>· {link.fireCount} fires</span>
       </div>
       {link.lastError && (
-        <div className="mt-1.5 flex items-start gap-1.5 pl-6">
-          <Badge variant="destructive" className="mt-px shrink-0">
-            error
-          </Badge>
-          <span className="text-destructive/80 min-w-0 text-xs break-words">{link.lastError}</span>
-        </div>
+        <p className="text-destructive mt-1 pl-3 text-[11px] break-words">{link.lastError}</p>
       )}
     </div>
   );
 }
 
-function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
+/** The automations bound to the conversation, as the session panel lists them. */
+export function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
   if (links === null) {
-    return <p className="text-muted-foreground px-4 py-6 text-sm">Loading…</p>;
+    return <p className="text-muted-foreground px-2 py-3 text-xs">Loading…</p>;
   }
   if (links.length === 0) {
     return (
-      <div className="px-4 py-6">
-        <p className="text-sm">No automations are linked to this conversation.</p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          Create one in Jobs to have its results posted here.
-        </p>
-      </div>
+      <p className="text-muted-foreground px-2 py-3 text-xs">
+        Nothing is linked to this conversation. An automation created in Jobs posts its results
+        here.
+      </p>
     );
   }
   return (
@@ -107,93 +112,26 @@ function SessionLinksContent({ links }: { links: SessionLink[] | null }) {
       {links.map((link, i) => (
         <div key={link.id}>
           <LinkRow link={link} />
-          {i < links.length - 1 && <Separator className="px-4" />}
+          {i < links.length - 1 && <Separator />}
         </div>
       ))}
     </div>
   );
 }
 
-function LinksFooter() {
+/** The way out to where a binding is written, for the section's own header. */
+export function AutomationsJobsLink() {
   const router = useRouter();
   return (
-    <GlassPanelFooter className="justify-end px-4 py-2">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1.5 px-2 text-xs"
-        onClick={() => router.push("/dashboard/jobs")}
-      >
-        Manage in Jobs
-        <ArrowUpRight className="h-3 w-3" />
-      </Button>
-    </GlassPanelFooter>
-  );
-}
-
-/** Desktop: inline panel sitting right of the conversation. */
-export function SessionLinksPanel({
-  links,
-  onClose,
-}: {
-  links: SessionLink[] | null;
-  onClose: () => void;
-}) {
-  return (
-    <GlassPanel className="flex h-full w-full flex-col overflow-hidden rounded-none md:rounded-2xl">
-      <GlassPanelHeader
-        title="Linked"
-        className="px-4 py-2"
-        action={
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary">{links?.length ?? 0}</Badge>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={onClose}
-              aria-label="Close linked panel"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        }
-      />
-      <GlassPanelContent className="min-h-0 flex-1 overflow-y-auto p-0">
-        <SessionLinksContent links={links} />
-      </GlassPanelContent>
-      <LinksFooter />
-    </GlassPanel>
-  );
-}
-
-/** Mobile: the same content as a bottom sheet. */
-export function SessionLinksSheet({
-  links,
-  open,
-  onOpenChange,
-}: {
-  links: SessionLink[] | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[70vh] gap-0 p-0">
-        <SheetHeader className="flex-row items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <SheetTitle>Linked</SheetTitle>
-            <Badge variant="secondary">{links?.length ?? 0}</Badge>
-          </div>
-          <SheetDescription className="sr-only">
-            Automations linked to this conversation
-          </SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <SessionLinksContent links={links} />
-        </div>
-        <LinksFooter />
-      </SheetContent>
-    </Sheet>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="text-muted-foreground hover:text-foreground -mr-1 h-5 w-5"
+      aria-label="Automations in Jobs"
+      title="Automations in Jobs"
+      onClick={() => router.push("/dashboard/jobs/automations")}
+    >
+      <ArrowUpRight className="h-3.5 w-3.5" />
+    </Button>
   );
 }

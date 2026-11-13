@@ -283,3 +283,46 @@ describe("workspace file serving for a coder chat", () => {
     expect((await sessionRequest("leak.txt", "chat-1")).status).toBe(404);
   });
 });
+
+describe("workspace file as a browser row", () => {
+  function statRequest(file: string, sessionId?: string) {
+    const params = new URLSearchParams({ stat: "1", file });
+    if (sessionId) params.set("session", sessionId);
+    return GET(new NextRequest(`http://localhost/api/chat/workspace-files?${params}`));
+  }
+
+  it("answers with the entry and the root its path belongs to", async () => {
+    await fs.mkdir(path.join(userRoot, "reports"), { recursive: true });
+    await fs.writeFile(path.join(userRoot, "reports", "q3.pdf"), "%PDF-1.4");
+
+    const res = await statRequest("reports/q3.pdf");
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { entry: Record<string, unknown>; root: string };
+    expect(body.entry).toMatchObject({
+      name: "q3.pdf",
+      path: path.join(userRoot, "reports", "q3.pdf"),
+      kind: "file",
+      size: 8,
+      writable: true,
+    });
+    expect(body.root).toBe(userRoot);
+  });
+
+  it("resolves a coder chat's path in its worktree, as show_file does", async () => {
+    const worktreePath = path.join(userRoot, "worktrees", "proj", "chat-1");
+    await fs.mkdir(worktreePath, { recursive: true });
+    await fs.writeFile(path.join(worktreePath, "notes.md"), "worktree notes");
+    mockLoadChatCheckout.mockResolvedValue(chatCheckout("worktrees/proj/chat-1"));
+
+    const res = await statRequest("notes.md", "chat-1");
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { entry: { path: string } };
+    expect(body.entry.path).toBe(path.join(worktreePath, "notes.md"));
+  });
+
+  it("404s a file that is no longer in the workspace", async () => {
+    expect((await statRequest("gone.md")).status).toBe(404);
+  });
+});

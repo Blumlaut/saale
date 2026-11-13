@@ -591,6 +591,31 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("puts the worktree panel away from the header and keeps it away", async ({ browser }) => {
+    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    const handle = () =>
+      page.locator('[role="separator"][aria-label="Resize the worktree panel"]:visible');
+    await expect(handle()).toBeVisible();
+
+    await page.getByRole("button", { name: "Hide the worktree panel" }).click();
+    await expect(handle()).toBeHidden();
+    // The chat takes the room back.
+    const wide = await shown(page, '[data-slot="chat-drop-zone"]').boundingBox();
+    await page.getByRole("button", { name: "Show the worktree panel" }).click();
+    await expect(handle()).toBeVisible();
+    const narrow = await shown(page, '[data-slot="chat-drop-zone"]').boundingBox();
+    expect(wide!.width).toBeGreaterThan(narrow!.width + 100);
+
+    // What the user chose survives a reload.
+    await page.getByRole("button", { name: "Hide the worktree panel" }).click();
+    await expect(handle()).toBeHidden();
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("button", { name: "Show the worktree panel" })).toBeVisible();
+    await expect(handle()).toBeHidden();
+
+    await context.close();
+  });
+
   test("widens the worktree panel past its usual ceiling on an ultrawide", async ({ browser }) => {
     const { context, page } = await openCoder(
       browser,

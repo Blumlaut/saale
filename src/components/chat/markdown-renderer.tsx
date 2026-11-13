@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -23,6 +23,11 @@ interface MarkdownRendererProps {
    * line structure and stays on the default.
    */
   hardBreaks?: boolean;
+  /**
+   * Where an image `src` points. A file preview resolves a relative reference
+   * against the file it sits in; a chat has no file to be relative to.
+   */
+  resolveImageSrc?: (src: string | Blob | undefined) => string | undefined;
 }
 
 /**
@@ -39,10 +44,15 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className,
   hardBreaks = false,
+  resolveImageSrc,
 }: MarkdownRendererProps) {
+  const components = useMemo(
+    () => (resolveImageSrc ? { ...COMPONENTS, img: imageComponent(resolveImageSrc) } : COMPONENTS),
+    [resolveImageSrc],
+  );
   return (
     <div className={cn("markdown-body text-sm leading-relaxed", className)}>
-      <MarkdownDocument content={content} hardBreaks={hardBreaks} />
+      <MarkdownDocument content={content} hardBreaks={hardBreaks} components={components} />
     </div>
   );
 });
@@ -51,12 +61,13 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 const MarkdownDocument = memo(function MarkdownDocument({
   content,
   hardBreaks = false,
-}: MarkdownRendererProps) {
+  components,
+}: MarkdownRendererProps & { components: typeof COMPONENTS }) {
   return (
     <ReactMarkdown
       remarkPlugins={hardBreaks ? REMARK_PLUGINS_HARD_BREAKS : REMARK_PLUGINS}
       rehypePlugins={REHYPE_PLUGINS}
-      components={COMPONENTS}
+      components={components}
     >
       {content}
     </ReactMarkdown>
@@ -65,7 +76,7 @@ const MarkdownDocument = memo(function MarkdownDocument({
 
 /** A block that has stopped changing, so it parses once and stays put. */
 const StreamBlock = memo(function StreamBlock({ content }: { content: string }) {
-  return <MarkdownDocument content={content} />;
+  return <MarkdownDocument content={content} components={COMPONENTS} />;
 });
 
 /**
@@ -146,6 +157,27 @@ function CodeBlock({ children, className, ...rest }: React.ComponentProps<"pre">
 /* ------------------------------------------------------------------ */
 /*  Component overrides                                               */
 /* ------------------------------------------------------------------ */
+
+/** The `img` override, with the caller deciding where `src` points. */
+function imageComponent(resolve: (src: string | Blob | undefined) => string | undefined) {
+  function ResolvedImage({
+    className,
+    alt,
+    src,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement>) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- markdown content, not static assets
+      <img
+        className={cn("mx-auto my-3 max-w-full rounded-xl", className)}
+        alt={alt || ""}
+        src={resolve(src)}
+        {...props}
+      />
+    );
+  }
+  return ResolvedImage;
+}
 
 const COMPONENTS = {
   /* ---- Headings ---- */

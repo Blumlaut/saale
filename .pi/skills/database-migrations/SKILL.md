@@ -11,7 +11,7 @@ Saale uses Prisma's native incremental migration system. This is the official, w
 
 1. **`prisma/schema.prisma`** — the single source of truth for the database schema.
 2. **`prisma/migrations/`** — incremental migration files, each representing one schema change. Applied in order, tracked in `_prisma_migrations` table.
-3. **`npm run db:migrate`** — creates a new migration from schema changes and applies it locally.
+3. **`pnpm run db:migrate`** — creates a new migration from schema changes and applies it locally.
 4. **`prisma migrate deploy`** — runs as the one-shot `migrate` service on deploy, applying any pending migrations to the remote DB before `web` and `worker` start.
 
 ## Workflow
@@ -23,17 +23,17 @@ Saale uses Prisma's native incremental migration system. This is the official, w
 #    prisma/schema.prisma — add the field to the model
 
 # 2. Create and apply the migration
-npm run db:migrate
+pnpm run db:migrate
 # This creates prisma/migrations/<timestamp>_add_<field>/migration.sql
 
 # 3. Review the generated SQL
 cat prisma/migrations/*/migration.sql  # check the last one
 
 # 4. Regenerate the Prisma client
-npx prisma generate
+pnpm exec prisma generate
 
 # 5. Verify
-npx prisma migrate status  # should show "up to date"
+pnpm exec prisma migrate status  # should show "up to date"
 
 # 6. Commit together
 git add prisma/schema.prisma prisma/migrations/
@@ -45,8 +45,8 @@ git commit -m "add <field> to <model>"
 After changing the schema:
 
 ```bash
-npm run db:migrate    # creates + applies migration
-npx prisma generate   # regenerates client types
+pnpm run db:migrate         # creates + applies migration
+pnpm exec prisma generate   # regenerates client types
 ```
 
 The `migrate` service picks up new migrations on every deploy — it runs `prisma migrate deploy` and gates `web` and `worker`, so a failing migration stops the deploy instead of crash-looping the app.
@@ -61,7 +61,7 @@ sudo -u postgres dropdb saale
 sudo -u postgres createdb -O saale saale
 
 # Re-apply all migrations
-npx prisma migrate deploy
+pnpm exec prisma migrate deploy
 ```
 
 Or via Docker (when containers are running):
@@ -78,10 +78,10 @@ sudo docker compose run --rm migrate  # runs migrate deploy once
 2. **Never edit an applied migration file.** This changes its hash and causes "migration out of sync" errors. If a migration is wrong, revert the schema change and create a new one.
 3. **Never delete migration files.** They represent the authoritative history.
 4. **Always commit migration files immediately.** A migration that exists locally but not in git will cause the remote deploy to have no migrations to apply.
-5. **Always regenerate the Prisma client** (`npx prisma generate`) after schema changes.
-6. **Test before committing.** Verify `npx prisma migrate status` shows no pending migrations.
+5. **Always regenerate the Prisma client** (`pnpm exec prisma generate`) after schema changes.
+6. **Test before committing.** Verify `pnpm exec prisma migrate status` shows no pending migrations.
 7. **Review generated SQL.** Especially for destructive changes (DROP COLUMN, DROP TABLE).
-8. **Every migration MUST be automatically runnable on deploy.** `prisma migrate deploy` is the only mechanism that applies migrations on the remote server. Never execute migration SQL manually (e.g. `psql -f`, `docker exec psql -c`) — the remote has no way to replay it. If a migration was manually executed, register it with `npx prisma migrate resolve --applied <name>` so Prisma tracks it correctly.
+8. **Every migration MUST be automatically runnable on deploy.** `prisma migrate deploy` is the only mechanism that applies migrations on the remote server. Never execute migration SQL manually (e.g. `psql -f`, `docker exec psql -c`) — the remote has no way to replay it. If a migration was manually executed, register it with `pnpm exec prisma migrate resolve --applied <name>` so Prisma tracks it correctly.
 
 ## Failure-Safe Migrations
 
@@ -194,7 +194,7 @@ docker exec postgres psql -c "ALTER TABLE ..."
 psql -f migration.sql
 
 # ❌ BAD — prisma db push (bypasses migrations, can drop data)
-npx prisma db push --accept-data-loss
+pnpm exec prisma db push --accept-data-loss
 
 # ❌ BAD — editing a migration after it was applied
 nano prisma/migrations/20240101_something/migration.sql
@@ -222,7 +222,7 @@ Some database changes can't be expressed in Prisma's schema DSL — extensions (
    ```
 3. **Register it as applied** (since Prisma can't auto-apply non-schema migrations):
    ```bash
-   npx prisma migrate resolve --applied enable_pg_trgm
+   pnpm exec prisma migrate resolve --applied enable_pg_trgm
    ```
    This records the migration in `_prisma_migrations` without re-running the SQL.
 4. **On remote deploy**, `prisma migrate deploy` sees the migration file is not in the remote `_prisma_migrations` and applies it automatically.
@@ -233,19 +233,19 @@ Some database changes can't be expressed in Prisma's schema DSL — extensions (
 
 The migration file was edited after being applied, changing its hash. Fix:
 1. Check out the original migration from git: `git checkout -- prisma/migrations/<name>/migration.sql`
-2. If the original is lost, reset the DB and re-apply: `npx prisma migrate reset`
+2. If the original is lost, reset the DB and re-apply: `pnpm exec prisma migrate reset`
 
 ### "Migrations from the database are not found locally"
 
 The DB has migrations that don't exist in the local `prisma/migrations/` folder. This happens when migration files weren't committed. Fix:
 1. Pull the latest migrations from git: `git pull`
-2. If they were never committed, the migration history is corrupted. Reset: `npx prisma migrate reset`
+2. If they were never committed, the migration history is corrupted. Reset: `pnpm exec prisma migrate reset`
 
 ### "Database schema is up to date" but fields are missing
 
 The migration was applied but the Prisma client types are stale. Fix:
 ```bash
-npx prisma generate
+pnpm exec prisma generate
 ```
 
 ### Remote deploy says "no migrations to apply"

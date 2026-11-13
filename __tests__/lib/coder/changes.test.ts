@@ -278,6 +278,53 @@ describe("loadSessionState", () => {
     mocks.findSession.mockResolvedValue(null);
     expect(await loadSessionState(USER, SESSION)).toBeNull();
   });
+
+  it("runs a script with the package manager the project declares", async () => {
+    const packageJson = JSON.stringify({
+      packageManager: "pnpm@12.18.0",
+      scripts: { dev: "next dev", "dev:web": "vite", lint: "eslint ." },
+    });
+    mocks.readWorktreeFile.mockImplementation((_user: string, _dir: string, path: string) =>
+      Promise.resolve(path === "package.json" ? packageJson : null),
+    );
+
+    const state = await loadSessionState(USER, SESSION);
+
+    // Only the scripts that start something, and each under the project's runner.
+    expect(state?.scripts).toEqual([
+      { name: "dev", command: "next dev", runCommand: "pnpm run dev" },
+      { name: "dev:web", command: "vite", runCommand: "pnpm run dev:web" },
+    ]);
+  });
+
+  it("falls back to npm for a project that names no package manager", async () => {
+    const packageJson = JSON.stringify({ scripts: { dev: "next dev" } });
+    mocks.readWorktreeFile.mockImplementation((_user: string, _dir: string, path: string) =>
+      Promise.resolve(path === "package.json" ? packageJson : null),
+    );
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(state?.scripts).toEqual([
+      { name: "dev", command: "next dev", runCommand: "npm run dev" },
+    ]);
+  });
+
+  it("refuses a package manager name it does not know", async () => {
+    const packageJson = JSON.stringify({
+      packageManager: "volt@1.0.0",
+      scripts: { dev: "next dev" },
+    });
+    mocks.readWorktreeFile.mockImplementation((_user: string, _dir: string, path: string) =>
+      Promise.resolve(path === "package.json" ? packageJson : null),
+    );
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(state?.scripts).toEqual([
+      { name: "dev", command: "next dev", runCommand: "npm run dev" },
+    ]);
+  });
 });
 
 describe("loadSessionDiff", () => {

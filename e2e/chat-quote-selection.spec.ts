@@ -19,7 +19,8 @@ import { createChatSession, discardChatSessions, sessionContext } from "./utils"
 
 const WORD = "electroencephalography";
 const MESSAGE_COUNT = 16;
-const BTN_LABEL = "Quote selection into your reply";
+/** The chip that carries the button: it owns the position and the fade. */
+const CHIP_SELECTOR = '[data-slot="selection-quote-chip"]';
 
 let sessionId = "";
 
@@ -57,7 +58,7 @@ async function seedTranscript(): Promise<void> {
  */
 async function geometry(page: Page) {
   return page.evaluate(
-    ({ btnLabel, word }) => {
+    ({ chipSelector, word }) => {
       const rect = (el: Element) => {
         const r = el.getBoundingClientRect();
         return { top: r.top, left: r.left, right: r.right, bottom: r.bottom };
@@ -65,9 +66,7 @@ async function geometry(page: Page) {
       const laidOut = <T extends Element>(els: T[]) =>
         els.find((el) => el.getBoundingClientRect().width > 0) ?? null;
 
-      const btnEl = laidOut([
-        ...document.querySelectorAll<HTMLElement>(`button[aria-label="${btnLabel}"]`),
-      ]);
+      const chipEl = laidOut([...document.querySelectorAll<HTMLElement>(chipSelector)]);
       let scroller: HTMLElement | null = null;
       for (const el of document.querySelectorAll<HTMLElement>("[data-quoteable]")) {
         if (el.getBoundingClientRect().width === 0) continue;
@@ -97,9 +96,9 @@ async function geometry(page: Page) {
       const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
 
       return {
-        pill: btnEl ? rect(btnEl) : null,
-        pillStyleTop: btnEl ? btnEl.style.top : null,
-        pillOpacity: btnEl ? getComputedStyle(btnEl).opacity : null,
+        pill: chipEl ? rect(chipEl) : null,
+        pillStyleTop: chipEl ? chipEl.style.top : null,
+        pillOpacity: chipEl ? getComputedStyle(chipEl).opacity : null,
         window: scroller ? rect(scroller) : null,
         scrollTop: scroller?.scrollTop ?? null,
         scrollable: scroller ? scroller.scrollHeight > scroller.clientHeight + 40 : false,
@@ -110,7 +109,7 @@ async function geometry(page: Page) {
         selectedText: sel ? sel.toString().trim() : "",
       };
     },
-    { btnLabel: BTN_LABEL, word: WORD },
+    { chipSelector: CHIP_SELECTOR, word: WORD },
   );
 }
 

@@ -266,13 +266,14 @@ export async function loadSessionDiff(
 /** Extract the scripts worth offering from a package.json's contents. */
 function parsePackageScripts(raw: string | null): CoderScript[] {
   if (!raw) return [];
-  let parsed: { scripts?: Record<string, unknown> } | null = null;
+  let parsed: { scripts?: Record<string, unknown>; packageManager?: unknown } | null = null;
   try {
-    parsed = JSON.parse(raw) as { scripts?: Record<string, unknown> };
+    parsed = JSON.parse(raw) as { scripts?: Record<string, unknown>; packageManager?: unknown };
   } catch {
     return [];
   }
   const scripts = parsed?.scripts ?? {};
+  const runner = packageRunner(parsed?.packageManager);
   // Only scripts that start or run a dev environment: the rest (lint, typecheck,
   // format) are not things a button in this panel should launch.
   const relevant = /^(dev|start|preview|serve|watch)(:|$)/i;
@@ -281,8 +282,24 @@ function parsePackageScripts(raw: string | null): CoderScript[] {
     .map(([name, command]) => ({
       name,
       command: String(command ?? ""),
-      runCommand: `npm run ${name}`,
+      runCommand: `${runner} run ${name}`,
     }));
+}
+
+/** The package managers a `packageManager` field may name. */
+const PACKAGE_RUNNERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+
+/**
+ * The command a script runs under: the project's own package manager, as its
+ * `packageManager` field names it (`pnpm@12.18.0` → `pnpm`).
+ *
+ * A project that names none gets npm, which every checkout with a package.json
+ * can run, rather than a guess from a lockfile.
+ */
+function packageRunner(declared: unknown): string {
+  if (typeof declared !== "string") return "npm";
+  const name = (declared.split("@")[0] ?? "").trim().toLowerCase();
+  return PACKAGE_RUNNERS.has(name) ? name : "npm";
 }
 
 /** Makefile targets that look like dev servers. */

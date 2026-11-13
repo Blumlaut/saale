@@ -3,8 +3,6 @@
 import { useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  Download,
-  FileText,
   FolderTree,
   GitBranch,
   Globe,
@@ -12,19 +10,12 @@ import {
   Loader2,
   SquareTerminal,
   Trash2,
-  X,
 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileBrowser } from "@/components/files/file-browser";
-import { FileView } from "@/components/files/file-view";
-import { PageTabStrip } from "@/components/layout/page";
-import { downloadFile } from "@/lib/download";
+import { CloseTab, useFileTab } from "@/components/session/file-tab";
+import { SessionPanel, type SessionPanelTab } from "@/components/session/session-panel";
 import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
-import { relativeToRoot } from "@/lib/files/paths";
-import { rawFileUrl } from "@/lib/files/urls";
-import type { FileEntry } from "@/lib/files/types";
 import { ChangesView } from "./changes-view";
 import { CommitDiffView } from "./commit-diff-view";
 import { PortsView } from "./ports-view";
@@ -91,49 +82,20 @@ function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }
 }
 
 /**
- * The close control inside a tab. A span, because the trigger is the button and
- * a button in a button is invalid HTML.
- */
-function CloseTab({ label, onClose }: { label: string; onClose: () => void }) {
-  return (
-    <span
-      role="button"
-      aria-label={label}
-      tabIndex={0}
-      onClick={(event) => {
-        event.stopPropagation();
-        onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.stopPropagation();
-          onClose();
-        }
-      }}
-      className="hover:bg-accent focus-visible:outline-ring -mr-1 rounded p-0.5 focus-visible:outline-1"
-    >
-      <X className="h-3 w-3" />
-    </span>
-  );
-}
-
-/**
- * The right-hand panel: what changed, what is in the worktree, and where the
+ * The coder chat's panel: what changed, what is in the worktree, and where the
  * branch stands.
  *
- * A chat that has not sent its first message has no worktree yet, so the panel
- * says that instead of rendering a browser over the wrong directory.
+ * The panel itself is `SessionPanel`, the same one a plain chat shows; this
+ * fills it with the worktree's tabs. A chat that has not sent its first message
+ * has no worktree yet, so the tabs say that instead of rendering a browser over
+ * the wrong directory.
  *
  * Above the tabs, because a failed setup script is about the checkout itself and
  * not about one view of it: an install that broke matters as much in Files as in
  * Terminal, and a warning that only lives in one tab is a warning nobody reads.
  *
- * The terminal keeps running while another tab is open, so it is mounted
- * alongside the tab contents instead of inside one. The ports list pauses its
- * polling with the tab and picks up again when it comes back.
- *
- * A file opens as a tab here: the panel is the only surface the user can widen,
- * and an editor needs the room.
+ * The terminal keeps running while another tab is open, which is what
+ * `SessionPanel` promises every tab.
  */
 export function WorktreePanel({
   sessionId,
@@ -163,47 +125,37 @@ export function WorktreePanel({
   const [tab, setTab] = usePersistedState<string>("coder:panelTab", "changes", {
     validate: oneOf("changes", "files", "terminal", "ports"),
   });
-  // A tab that has been opened keeps its state: leaving the terminal alone
-  // must not fold every commit the user just unfolded.
-  const [openedTabs, setOpenedTabs] = useState<string[]>(["changes"]);
-  // The commit and file the Diff tab shows, or null for no tab at all.
+  // The commit the Diff tab shows, or null for no tab at all.
   const [diffTarget, setDiffTarget] = useState<{ commit: CoderCommit; path: string } | null>(null);
-  // The file the File tab shows. One at a time: the panel is a side column, and
-  // a strip of open files would eat the width the editor needs.
-  const [fileTarget, setFileTarget] = useState<FileEntry | null>(null);
-  // Whether the open file holds text that is not on disk; its tab says so.
-  const [fileDirty, setFileDirty] = useState(false);
+  const files = useFileTab({
+    target: "user",
+    rootPath: state?.worktree?.path ?? "",
+    onClose: () => {
+      if (tab === "file") setTab("files");
+    },
+  });
 
-  const openTab = (next: string) => {
-    setTab(next);
-    setOpenedTabs((current) => (current.includes(next) ? current : [...current, next]));
-  };
-
-  // Closing the tab from inside it would strand the panel on a value that
-  // has no content, so the previous tab comes back first.
+  // Closing the tab from inside it would strand the panel on a value that has
+  // no content, so the previous tab comes back first.
   const closeDiffTab = () => {
-    if (tab === "diff") openTab("changes");
+    if (tab === "diff") setTab("changes");
     setDiffTarget(null);
   };
-  const closeFileTab = () => {
-    if (tab === "file") openTab("files");
-    setFileTarget(null);
-    setFileDirty(false);
-  };
+
   const terminalRunRef = useRef<(command: string) => void>(() => {});
   // A command asked for before the terminal has been opened waits for it.
   const pendingTerminalRun = useRef<string | null>(null);
-  // The terminal stays mounted once opened, so its shell survives a tab switch.
-  const terminalOpened = tab === "terminal" || openedTabs.includes("terminal");
   // Lifted out of the tab, because the badge has to light while another tab is
   // open. The poll slows down when Ports is not the visible one.
   const closing = gone || state?.deleting === true;
   const ports = usePorts(closing ? null : sessionId, tab === "ports");
 
+  // The panel keeps the terminal mounted once visited, so its shell survives a
+  // tab switch; the first command waits for the mount.
   const launchInTerminal = (command: string) => {
-    if (terminalOpened) terminalRunRef.current(command);
+    if (terminalRunRef.current) terminalRunRef.current(command);
     else pendingTerminalRun.current = command;
-    openTab("terminal");
+    setTab("terminal");
   };
 
   // The chat is on its way out: its checkout is already gone, so the panel says
@@ -216,208 +168,131 @@ export function WorktreePanel({
     );
   }
 
+  const tabs: SessionPanelTab[] = [
+    {
+      id: "changes",
+      label: "Project",
+      icon: <GitBranch className="h-3.5 w-3.5" />,
+      ...(state?.changes.length
+        ? {
+            badge: (
+              <span className="text-muted-foreground text-[10px] tabular-nums">
+                {state.changes.length}
+              </span>
+            ),
+          }
+        : {}),
+      content:
+        loading && !state ? (
+          <div className="flex items-center gap-2 px-3 py-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="text-muted-foreground text-xs">Reading the worktree…</span>
+          </div>
+        ) : error ? (
+          <p className="text-destructive px-3 py-3 text-xs break-words">{error}</p>
+        ) : !state?.worktree ? (
+          <NoWorktree provisioning={state?.provisioning ?? null} />
+        ) : (
+          <ChangesView
+            sessionId={sessionId}
+            state={state}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
+            onRunScript={(command) => {
+              launchInTerminal(command);
+            }}
+            activeCommitSha={diffTarget?.commit.sha ?? null}
+            onOpenCommitFile={(commit, path) => {
+              setDiffTarget({ commit, path });
+              setTab("diff");
+            }}
+            pullRequest={pullRequest}
+            onLoadMoreCommits={onLoadMoreCommits}
+            loadingMoreCommits={loadingMoreCommits}
+          />
+        ),
+    },
+    {
+      id: "files",
+      label: "Files",
+      icon: <FolderTree className="h-3.5 w-3.5" />,
+      content: state?.worktree ? (
+        <FileBrowser
+          target="user"
+          rootPath={state.worktree.path}
+          dense
+          onOpenFile={(entry) => {
+            files.open(entry);
+            setTab("file");
+          }}
+        />
+      ) : (
+        <NoWorktree provisioning={state?.provisioning ?? null} />
+      ),
+    },
+    ...(diffTarget
+      ? [
+          {
+            id: "diff",
+            label: "Diff",
+            icon: <GitCommitHorizontal className="h-3.5 w-3.5" />,
+            trailing: <CloseTab label="Close the diff tab" onClose={closeDiffTab} />,
+            content: (
+              <CommitDiffView
+                sessionId={sessionId}
+                commit={diffTarget.commit}
+                initialPath={diffTarget.path}
+                onClose={closeDiffTab}
+              />
+            ),
+          },
+        ]
+      : []),
+    ...(files.tab ? [files.tab] : []),
+    {
+      id: "terminal",
+      label: "Terminal",
+      icon: <SquareTerminal className="h-3.5 w-3.5" />,
+      content: (
+        <TerminalView
+          sessionId={sessionId}
+          worktree={
+            state?.worktree ? { path: state.worktree.path, branch: state.worktree.branch } : null
+          }
+          registerRun={(run) => {
+            terminalRunRef.current = run;
+            if (pendingTerminalRun.current !== null) {
+              run(pendingTerminalRun.current);
+              pendingTerminalRun.current = null;
+            }
+          }}
+        />
+      ),
+    },
+    {
+      id: "ports",
+      label: "Ports",
+      icon: <Globe className="h-3.5 w-3.5" />,
+      ...(ports.data?.ports.length
+        ? {
+            badge: (
+              <span
+                aria-label={`${ports.data.ports.length} listening`}
+                className="bg-primary inline-block size-1.5 rounded-full"
+              />
+            ),
+          }
+        : {}),
+      content: <PortsView view={ports} />,
+    },
+  ];
+
   return (
-    <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
-      <SetupFailureNotice failure={state?.setupFailure ?? null} />
-
-      <Tabs value={tab} onValueChange={openTab} className="flex min-h-0 flex-1 flex-col gap-0">
-        {/* A container query, because the panel is 280px on a phone sheet and
-            720px when dragged wide; the icons and the open file's name only earn
-            their room when it is. */}
-        <PageTabStrip className="@container border-b px-2 py-1.5">
-          <TabsList>
-            <TabsTrigger value="changes" className="gap-1.5 text-xs">
-              <GitBranch className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-              Project
-              {state?.changes.length ? (
-                <span className="text-muted-foreground text-[10px] tabular-nums">
-                  {state.changes.length}
-                </span>
-              ) : null}
-            </TabsTrigger>
-            <TabsTrigger value="files" className="gap-1.5 text-xs">
-              <FolderTree className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-              Files
-            </TabsTrigger>
-            {diffTarget && (
-              <TabsTrigger value="diff" className="gap-1.5 text-xs">
-                <GitCommitHorizontal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-                Diff
-                <CloseTab label="Close the diff tab" onClose={closeDiffTab} />
-              </TabsTrigger>
-            )}
-            {fileTarget && (
-              <TabsTrigger value="file" aria-label={fileTarget.name} className="gap-1.5 text-xs">
-                <FileText className="h-3.5 w-3.5" />
-                <span className="hidden max-w-24 truncate @min-[520px]:inline">
-                  {fileTarget.name}
-                </span>
-                {fileDirty ? (
-                  <span
-                    title="Unsaved changes"
-                    className="bg-primary inline-block size-1.5 shrink-0 rounded-full"
-                  />
-                ) : null}
-                <CloseTab label="Close the file tab" onClose={closeFileTab} />
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="terminal" className="gap-1.5 text-xs">
-              <SquareTerminal className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-              Terminal
-            </TabsTrigger>
-            <TabsTrigger value="ports" className="gap-1.5 text-xs">
-              <Globe className="hidden h-3.5 w-3.5 @min-[390px]:block" />
-              Ports
-              {ports.data?.ports.length ? (
-                <span
-                  aria-label={`${ports.data.ports.length} listening`}
-                  className="bg-primary inline-block size-1.5 rounded-full"
-                />
-              ) : null}
-            </TabsTrigger>
-          </TabsList>
-        </PageTabStrip>
-
-        <TabsContent
-          value="changes"
-          keepMounted={openedTabs.includes("changes")}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
-        >
-          {loading && !state ? (
-            <div className="flex items-center gap-2 px-3 py-3">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span className="text-muted-foreground text-xs">Reading the worktree…</span>
-            </div>
-          ) : error ? (
-            <p className="text-destructive px-3 py-3 text-xs break-words">{error}</p>
-          ) : !state?.worktree ? (
-            <NoWorktree provisioning={state?.provisioning ?? null} />
-          ) : (
-            <ChangesView
-              sessionId={sessionId}
-              state={state}
-              onRefresh={onRefresh}
-              refreshing={refreshing}
-              onRunScript={(command) => {
-                launchInTerminal(command);
-              }}
-              activeCommitSha={diffTarget?.commit.sha ?? null}
-              onOpenCommitFile={(commit, path) => {
-                setDiffTarget({ commit, path });
-                openTab("diff");
-              }}
-              pullRequest={pullRequest}
-              onLoadMoreCommits={onLoadMoreCommits}
-              loadingMoreCommits={loadingMoreCommits}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent
-          value="files"
-          keepMounted={openedTabs.includes("files")}
-          className="min-h-0 flex-1 overflow-hidden"
-        >
-          {state?.worktree ? (
-            <FileBrowser
-              target="user"
-              rootPath={state.worktree.path}
-              dense
-              onOpenFile={(entry) => {
-                setFileTarget(entry);
-                openTab("file");
-              }}
-            />
-          ) : (
-            <NoWorktree provisioning={state?.provisioning ?? null} />
-          )}
-        </TabsContent>
-
-        {fileTarget && (
-          <TabsContent
-            value="file"
-            keepMounted={openedTabs.includes("file")}
-            className="min-h-0 flex-1 overflow-hidden"
-          >
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
-                <p
-                  className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]"
-                  title={fileTarget.path}
-                >
-                  {relativeToRoot(state?.worktree?.path ?? "", fileTarget.path) ?? fileTarget.path}
-                </p>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Download ${fileTarget.name}`}
-                  className="h-6 w-6 shrink-0"
-                  onClick={() => void downloadFile(rawFileUrl("user", fileTarget.path, true))}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col p-2">
-                <FileView target="user" entry={fileTarget} onDirtyChange={setFileDirty} />
-              </div>
-            </div>
-          </TabsContent>
-        )}
-
-        {diffTarget && (
-          <TabsContent
-            value="diff"
-            keepMounted={openedTabs.includes("diff")}
-            className="min-h-0 flex-1 overflow-hidden"
-          >
-            <CommitDiffView
-              sessionId={sessionId}
-              commit={diffTarget.commit}
-              initialPath={diffTarget.path}
-              onClose={closeDiffTab}
-            />
-          </TabsContent>
-        )}
-
-        <div
-          className={
-            tab === "ports"
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-              : "hidden min-h-0 flex-1 flex-col overflow-hidden"
-          }
-        >
-          <PortsView view={ports} />
-        </div>
-
-        {/* Outside the tab content: a tab switch must not stop a dev server.
-            Mounted on the first visit to the tab, so the coder pages that never
-            open a terminal do not load xterm. */}
-        <div
-          className={
-            tab === "terminal"
-              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
-              : "hidden min-h-0 flex-1 flex-col overflow-hidden"
-          }
-        >
-          {terminalOpened && (
-            <TerminalView
-              sessionId={sessionId}
-              worktree={
-                state?.worktree
-                  ? { path: state.worktree.path, branch: state.worktree.branch }
-                  : null
-              }
-              registerRun={(run) => {
-                terminalRunRef.current = run;
-                if (pendingTerminalRun.current !== null) {
-                  run(pendingTerminalRun.current);
-                  pendingTerminalRun.current = null;
-                }
-              }}
-            />
-          )}
-        </div>
-      </Tabs>
-    </GlassPanel>
+    <SessionPanel
+      value={tab}
+      onValueChange={setTab}
+      tabs={tabs}
+      notice={<SetupFailureNotice failure={state?.setupFailure ?? null} />}
+    />
   );
 }

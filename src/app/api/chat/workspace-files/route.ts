@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { contentEtag, matchesEtag, streamedFileResponse } from "@/lib/files/http";
 import { readWorkspaceFile, resolveWorkspaceFile } from "@/lib/files/workspace-file";
 import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
+import type { FileEntry } from "@/lib/files/types";
 
 /**
  * GET /api/chat/workspace-files?file=relative/path[&session=chatId][&download=1]
@@ -15,6 +16,9 @@ import { FileNotFoundError, FilePathEscapeError } from "@/lib/files/errors";
  * response as an attachment so the browser's own download machinery saves it.
  * The bytes come from the user's workspace directory, the same file the agent's
  * tools read, so a path an agent printed here resolves to what it printed.
+ *
+ * `stat=1` answers with the row a file browser renders instead of the bytes, so
+ * a panel can open a path the agent named without listing its folder first.
  *
  * A download is streamed rather than read: the shared-file ceiling in
  * `readWorkspaceFile` is what a chat channel can deliver, and it has no business
@@ -38,6 +42,21 @@ export async function GET(request: NextRequest) {
     // agent's relative paths point.
     const session = searchParams.get("session");
     const options = session ? { session } : {};
+
+    if (searchParams.get("stat") === "1") {
+      const file = await resolveWorkspaceFile(userId, fileParam, options);
+      const entry: FileEntry = {
+        name: file.fileName,
+        path: file.path,
+        kind: "file",
+        size: file.size,
+        modified: file.modified,
+        writable: file.writable,
+      };
+      // The root as well, so the client can show the path as the agent's tools
+      // see it rather than the absolute one the provider holds.
+      return NextResponse.json({ entry, root: file.provider.root });
+    }
 
     if (searchParams.get("download") === "1") {
       const file = await resolveWorkspaceFile(userId, fileParam, options);

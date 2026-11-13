@@ -150,4 +150,4 @@ Prefer Tailwind's built-in animation utilities over custom CSS:
 - `duration-150` / `duration-200` — Timing
 - `ease-out` / `ease-in` / `ease` — Easing
 
-Install via: `npx shadcn@latest add animation` (if not already available via `tw-animate-css`)
+Install via: `pnpm dlx shadcn@latest add animation` (if not already available via `tw-animate-css`)

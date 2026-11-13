@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { useWindowWidth } from "@/hooks/use-element-width";
+import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -78,10 +79,7 @@ export function SidebarFrame({ children }: { children: React.ReactNode }) {
       style={{ width: width.width }}
     >
       <GlassPanel className="shadow-md">
-        <div
-          {...width.handleProps}
-          className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
-        />
+        <PanelResizeHandle handle={width.handleProps} placement="edge" />
         <GlassPanelContent className="p-3">{children}</GlassPanelContent>
       </GlassPanel>
     </nav>

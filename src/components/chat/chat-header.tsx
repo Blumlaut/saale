@@ -6,7 +6,7 @@ import { ChatSettingsSheet, type ChatSettings } from "./chat-settings-sheet";
 import { Button } from "@/components/ui/button";
 import { MobileSessionSheet } from "./mobile-session-sheet";
 import { TemporaryToggle } from "./temporary-toggle";
-import { Loader2, Ghost, Pencil, MessageSquarePlus, Radar } from "lucide-react";
+import { Loader2, Ghost, Pencil, MessageSquarePlus, Radar, FolderTree } from "lucide-react";
 import { ShareButton } from "./share-button";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +37,9 @@ interface ChatHeaderProps {
   mobileListTrigger?: React.ReactNode;
   /** Extra header controls, rendered last (the coder chat's worktree panel). */
   extraActions?: React.ReactNode;
+  /** Opens and closes the chat's session panel; omit a view that has none. */
+  onToggleSessionPanel?: () => void;
+  sessionPanelOpen?: boolean;
   /** Hide the temporary-mode toggle. a coder chat is bound to its worktree. */
   hideTemporaryToggle?: boolean;
 }
@@ -68,6 +71,8 @@ export function ChatHeader({
   onToggleLinks,
   mobileListTrigger,
   extraActions,
+  onToggleSessionPanel,
+  sessionPanelOpen = false,
   hideTemporaryToggle,
 }: ChatHeaderProps) {
   return (
@@ -100,14 +105,16 @@ export function ChatHeader({
           onClick={onStartEditing}
           className="group/title hover:bg-accent/60 -ml-1 flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-sm font-semibold transition-colors"
         >
-          <span className="max-w-[140px] truncate md:max-w-[300px]">{sessionTitle || "Chat"}</span>
+          <span className="max-w-[140px] truncate @[36rem]:max-w-[300px]">
+            {sessionTitle || "Chat"}
+          </span>
           <Pencil className="text-muted-foreground h-3 w-3 opacity-0 transition-opacity group-hover/title:opacity-70 any-pointer-coarse:opacity-70" />
         </button>
       )}
       {temporaryMode && (
         // Redundant on mobile. the toggle icon already shows the state, and
         // the label overflows narrow rows.
-        <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
+        <span className="text-muted-foreground hidden items-center gap-1 text-xs @[30rem]:flex">
           <Ghost className="h-3 w-3" />
           temporary
         </span>
@@ -149,6 +156,22 @@ export function ChatHeader({
           triggerClassName="@[30rem]:max-w-[200px]"
         />
         {settings && <ChatSettingsSheet settings={settings} />}
+        {onToggleSessionPanel && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-8 w-8 shrink-0 md:h-9",
+              sessionPanelOpen && "bg-accent/70 text-foreground",
+            )}
+            aria-label="Session panel"
+            aria-pressed={sessionPanelOpen}
+            title="Workspace, files and automations"
+            onClick={onToggleSessionPanel}
+          >
+            <FolderTree className="h-4 w-4" />
+          </Button>
+        )}
         {extraActions}
         <Button
           className="flex h-8 w-8 shrink-0 items-center gap-1.5 md:h-9 md:w-auto md:px-3"
@@ -156,7 +179,7 @@ export function ChatHeader({
           onClick={onNewChat}
         >
           <MessageSquarePlus className="h-4 w-4" />
-          <span className="hidden md:inline">New Chat</span>
+          <span className="hidden @[36rem]:inline">New Chat</span>
         </Button>
       </div>
     </div>

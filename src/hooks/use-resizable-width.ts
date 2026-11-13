@@ -44,6 +44,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** The room a chat keeps beside the columns that surround it. */
+export const CHAT_MIN_WIDTH = 440;
+
 /**
  * The widest a panel may get in its row: what is left of the row once the
  * columns beside it have theirs, and never less than its own fixed ceiling.

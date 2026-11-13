@@ -9,6 +9,7 @@ import { FileBrowser } from "@/components/files/file-browser";
 import { FileView } from "@/components/files/file-view";
 import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
 import { downloadFile } from "@/lib/download";
 import { rawFileUrl } from "@/lib/files/urls";
 import { cn } from "@/lib/utils";
@@ -66,12 +67,10 @@ export default function FilesPage() {
         </div>
 
         {/* Drag to widen the browser; arrow keys do the same from the keyboard. */}
-        <div
-          {...panel.handleProps}
-          className={cn(
-            "group hover:bg-border focus-visible:ring-ring mx-1 hidden w-1.5 shrink-0 cursor-col-resize touch-none items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none md:flex",
-            panel.dragging && "bg-border",
-          )}
+        <PanelResizeHandle
+          handle={panel.handleProps}
+          dragging={panel.dragging}
+          className="hidden md:flex"
         />
 
         <div className={cn("min-h-0 min-w-0 flex-1", !entry && "hidden md:flex")}>

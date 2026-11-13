@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FolderGit2, PanelRight } from "lucide-react";
+import { FolderGit2, PanelRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { ProjectList } from "@/components/coder/project-list";
@@ -17,9 +16,13 @@ import {
   useSessionState,
   useCoderChatStarter,
 } from "@/components/coder/use-coder-data";
-import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
+import { CHAT_MIN_WIDTH, useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { DELETING_POLL_MS } from "@/hooks/use-deleting-poll";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
+import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
+import { SessionPanelSheet } from "@/components/session/session-panel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 /** How often an open coder chat re-reads its worktree while visible. */
 const WORKTREE_POLL_MS = 20_000;
@@ -42,9 +45,6 @@ const WORKTREE_PANEL = {
   maxWidth: 720,
   handle: "left",
 } as const;
-
-/** The room the chat keeps beside a worktree panel dragged wide. */
-const CHAT_MIN_WIDTH = 440;
 
 /** The chat list's width, remembered per browser. */
 const CHAT_SIDEBAR = {
@@ -121,6 +121,14 @@ export default function CoderLayout() {
 
   const [measureRow, rowWidth] = useElementWidth();
 
+  // The panel is a column the user can put away; it stays mounted while hidden
+  // so a shell opened in Terminal is still running when it comes back.
+  const [panelOpen, setPanelOpen] = usePersistedState("coder:panelOpen", true, {
+    validate: isBoolean,
+  });
+  // The phone's copy of the panel, which is a sheet rather than a column.
+  const [panelSheetOpen, setPanelSheetOpen] = useState(false);
+
   const coderChatSidebar = useResizableWidth({
     ...CHAT_SIDEBAR,
     // The worktree panel keeps its opening width beside the list.
@@ -180,10 +188,7 @@ export default function CoderLayout() {
           className="relative hidden shrink-0 md:block"
           style={{ width: coderChatSidebar.width }}
         >
-          <div
-            {...coderChatSidebar.handleProps}
-            className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
-          />
+          <PanelResizeHandle handle={coderChatSidebar.handleProps} placement="edge" />
           <SessionSidebar projectId={projectId} activeSessionId={sessionId} onNewChat={newChat} />
         </div>
 
@@ -219,60 +224,78 @@ export default function CoderLayout() {
               </Sheet>
             }
             headerActions={
-              <div className="lg:hidden">
-                <Sheet>
-                  <SheetTrigger
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden h-8 w-8 shrink-0 md:h-9 lg:inline-flex"
+                  aria-pressed={panelOpen}
+                  aria-label={panelOpen ? "Hide the worktree panel" : "Show the worktree panel"}
+                  onClick={() => setPanelOpen((open) => !open)}
+                >
+                  {panelOpen ? (
+                    <PanelRightClose className="h-4 w-4" />
+                  ) : (
+                    <PanelRightOpen className="h-4 w-4" />
+                  )}
+                </Button>
+                <div className="lg:hidden">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-8 w-8 md:h-9 md:w-9"
                     aria-label={
                       setupFailure
                         ? "Open worktree panel, the setup script failed"
                         : "Open worktree panel"
                     }
+                    onClick={() => setPanelSheetOpen(true)}
                   >
-                    <span className="hover:bg-accent/60 relative inline-flex h-8 w-8 items-center justify-center rounded transition-colors md:h-9 md:w-9">
-                      <PanelRight className="h-4 w-4" />
-                      {/* The panel is behind this button on a phone, so the
-                          warning it holds has to show from here. */}
-                      {setupFailure && (
-                        <span className="bg-destructive absolute top-1 right-1 size-1.5 rounded-full" />
-                      )}
-                    </span>
-                  </SheetTrigger>
-                  <SheetContent side="right" className="w-4/5 max-w-[380px] p-0">
-                    <SheetHeader className="sr-only">
-                      <SheetTitle>Worktree</SheetTitle>
-                    </SheetHeader>
-                    <div className="h-full">
-                      <WorktreePanel
-                        key={sessionId}
-                        sessionId={sessionId}
-                        state={state}
-                        loading={loading}
-                        error={error}
-                        gone={gone}
-                        onRefresh={reload}
-                        refreshing={loading}
-                        pullRequest={pullRequest}
-                        onLoadMoreCommits={loadMoreCommits}
-                        loadingMoreCommits={loadingMoreCommits}
-                      />
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              </div>
+                    <PanelRight className="h-4 w-4" />
+                    {/* The panel is behind this button on a phone, so the
+                      warning it holds has to show from here. */}
+                    {setupFailure && (
+                      <span className="bg-destructive absolute top-1 right-1 size-1.5 rounded-full" />
+                    )}
+                  </Button>
+                </div>
+                <SessionPanelSheet
+                  open={panelSheetOpen}
+                  onOpenChange={setPanelSheetOpen}
+                  title="Worktree"
+                >
+                  <WorktreePanel
+                    key={sessionId}
+                    sessionId={sessionId}
+                    state={state}
+                    loading={loading}
+                    error={error}
+                    gone={gone}
+                    onRefresh={reload}
+                    refreshing={loading}
+                    pullRequest={pullRequest}
+                    onLoadMoreCommits={loadMoreCommits}
+                    loadingMoreCommits={loadingMoreCommits}
+                  />
+                </SessionPanelSheet>
+              </>
             }
           />
         </div>
 
         {/* Drag to widen the worktree panel; arrow keys do the same from the
             keyboard and the width survives a reload. */}
+        {panelOpen && (
+          <PanelResizeHandle
+            handle={panel.handleProps}
+            dragging={panel.dragging}
+            className="hidden lg:flex"
+          />
+        )}
         <div
-          {...panel.handleProps}
-          className={cn(
-            "group hover:bg-border focus-visible:ring-ring mx-1 hidden w-1.5 shrink-0 cursor-col-resize touch-none items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none lg:flex",
-            panel.dragging && "bg-border",
-          )}
-        />
-        <div className="hidden shrink-0 lg:block" style={{ width: panel.width }}>
+          className={cn("shrink-0", panelOpen ? "hidden lg:block" : "hidden")}
+          style={{ width: panel.width }}
+        >
           <WorktreePanel
             key={sessionId}
             sessionId={sessionId}

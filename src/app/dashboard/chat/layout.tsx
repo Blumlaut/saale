@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
-import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
+import { CHAT_MIN_WIDTH, useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { TemporaryToggle } from "@/components/chat/temporary-toggle";
@@ -23,9 +24,6 @@ const CHAT_SIDEBAR = {
   maxWidth: 400,
   handle: "right",
 } as const;
-
-/** The room the chat keeps beside its list. */
-const CHAT_MIN_WIDTH = 440;
 
 export default function ChatLayout({ children: _children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -124,9 +122,10 @@ export default function ChatLayout({ children: _children }: { children: React.Re
           )}
           style={{ width: chatSidebar.width }}
         >
-          <div
-            {...chatSidebar.handleProps}
-            className="hover:bg-border absolute top-0 right-0 z-10 hidden h-full w-1.5 cursor-col-resize md:block"
+          <PanelResizeHandle
+            handle={chatSidebar.handleProps}
+            placement="edge"
+            className="hidden md:block"
           />
           <SessionSidebar
             {...(sessionId ? { activeSessionId: sessionId } : {})}
@@ -148,6 +147,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
               temporaryMode={temporaryMode}
               onTemporaryChange={handleToggleTemporary}
               onNewChat={handleNewChat}
+              sessionPanel
             />
           ) : (
             <ChatEmptyState temporaryMode={temporaryMode} starting={startingFromPrompt} />

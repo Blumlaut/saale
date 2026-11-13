@@ -246,15 +246,19 @@ async function mockConfigurableModels(page: Page) {
 /**
  * Open the row action menu of a list card scoped by its text (the lists render
  * dropdown triggers per row, and the first one on the page belongs to another panel).
+ *
+ * A row that labels its actions is found by that label; not every row is a
+ * hover card, so the wrapper class is the other way in.
  */
 async function openRowMenu(page: Page, rowText: string) {
-  const row = page
+  const labelled = page.getByRole("button", { name: `Actions for ${rowText}` });
+  const hoverRow = page
     .locator("div.group")
     .filter({ has: page.locator('[data-slot="dropdown-menu-trigger"]') })
     .filter({ hasText: rowText })
-    .filter({ visible: true })
-    .last();
-  await row.locator('[data-slot="dropdown-menu-trigger"]').click();
+    .last()
+    .locator('[data-slot="dropdown-menu-trigger"]');
+  await labelled.or(hoverRow).filter({ visible: true }).first().click();
 }
 
 /**
@@ -1266,9 +1270,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "chat · session panel",
+    path: "/dashboard/chat",
+    sources: ["src/components/session/session-panel.tsx"],
+    open: async (page) => {
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, 'button[aria-label="Session panel"]');
+      await page.locator('[data-slot="sheet-content"]:visible').waitFor();
+    },
+  },
+  {
     name: "chat · linked watchers",
     path: "/dashboard/chat",
-    sources: ["src/components/chat/session-links-panel.tsx"],
+    sources: ["src/components/session/session-panel.tsx"],
     mock: async (page) => {
       // The header button only appears when the session has linked watchers,
       // so the listing is stubbed  the guardrail is the panel's layout, not
@@ -1895,7 +1909,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     sources: ["src/components/shared/confirm-dialog.tsx"],
     mock: mockSharedPrompts,
     open: async (page) => {
-      await click(page, 'button[aria-label="Actions for /review"]');
+      await click(page, 'button:has-text("Actions for /review")');
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
   },
