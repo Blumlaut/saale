@@ -32,13 +32,27 @@ instance is meant to reach its repositories):
 
 Repository permissions — the rest stays "No access":
 
-| Permission    | Level          | Why                                            |
-| ------------- | -------------- | ---------------------------------------------- |
-| Contents      | Read and write | clone, fetch, push                             |
-| Pull requests | Read and write | open and read pull requests                    |
-| Workflows     | Read and write | push a branch that touches `.github/workflows` |
-| Checks        | Read           | the check badge on a branch                    |
-| Metadata      | Read           | mandatory                                      |
+| Permission                | Level          | Why                                                      |
+| ------------------------- | -------------- | -------------------------------------------------------- |
+| Contents                  | Read and write | clone, fetch, push                                       |
+| Pull requests             | Read and write | open and read pull requests                              |
+| Workflows                 | Read and write | push a branch that touches `.github/workflows`           |
+| Checks                    | Read           | the check badge on a branch                              |
+| Metadata                  | Read           | mandatory                                                |
+| Installation repositories | Read and write | the card adds and removes an installation's repositories |
+
+The last one is GitHub's `installation_repositories` permission (its docs title it
+"GitHub App installation repository access"). It is what
+`PUT`/`DELETE /user/installations/{id}/repositories/{repo_id}` accept, and since
+October 2026 the only thing that does — a classic token's `repo` scope aside.
+Without it Saale can read which repositories an installation covers and cannot
+change them; the picker says so and points at GitHub's page instead of offering
+a save GitHub would refuse.
+
+Adding a permission to an app that already exists is **Update permissions** on
+the app's settings, and then every installation has to approve the new set once.
+Saale re-reads the app's permissions whenever the picker opens, so the card
+catches up on its own — the credentials do not have to be saved again.
 
 Then generate a **private key** (a `.pem`, downloadable once) and a **client
 secret**. The app id and the client id are on the same page.
@@ -76,10 +90,12 @@ Saale: it is GitHub's security boundary, and the app cannot install itself.
 Once installed, **the repository set can be changed in Saale**: the button on an
 installation opens a picker of the repositories that account administers, and
 saving adds or removes them through
-`PUT`/`DELETE /user/installations/{id}/repositories/{repo_id}`. An installation
+`PUT`/`DELETE /user/installations/{id}/repositories/{repo_id}`. Those two calls
+need the `installation_repositories` permission from step 1; an app registered
+without it can only read the set, and the picker says so. An installation
 granted "All repositories" cannot be narrowed this way — GitHub only removes from
 an installation that was switched to "Only select repositories", and the picker
-says so.
+says so too.
 
 ## What happens in a workspace
 
@@ -129,6 +145,7 @@ is read on every reconcile, so changing it takes effect at the next read.
 | `GitHub refused these credentials` when saving   | app id and key do not belong together, or the key was truncated        | paste the whole `.pem`, including the BEGIN/END lines                     |
 | `The private key could not be read`              | the pasted key is not a PEM file (both PKCS#1 and PKCS#8 are accepted) | download it again from the app's settings                                 |
 | The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                               |
+| `The app may not change its own installations`   | the app was registered without `installation_repositories: write`      | add the permission on GitHub, then approve it once for the installation   |
 | A push fails with `403` in a chat                | the installation does not cover that repository                        | add it in the picker, or on GitHub for an "All repositories" installation |
 | Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                                     |
 
