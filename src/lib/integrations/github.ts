@@ -172,6 +172,8 @@ export interface GithubAppSection {
 export interface GithubAppPermission {
   /** The key in `GET /app`'s permissions map. */
   name: string;
+  /** The row's name in GitHub's app form, and in the admin panel's list. */
+  label: string;
   /** "read" or "write". */
   level: string;
   /** What a workspace loses without it. */
@@ -179,17 +181,33 @@ export interface GithubAppPermission {
 }
 
 export const GITHUB_APP_PERMISSIONS: readonly GithubAppPermission[] = [
-  { name: "contents", level: "write", why: "clone, fetch and push" },
-  { name: "pull_requests", level: "write", why: "open and read pull requests" },
-  { name: "workflows", level: "write", why: "push a branch that touches .github/workflows" },
-  { name: "checks", level: "read", why: "the check badge on a branch" },
-  { name: "metadata", level: "read", why: "every app has to ask for it" },
+  { name: "contents", label: "Contents", level: "write", why: "clone, fetch and push" },
+  {
+    name: "pull_requests",
+    label: "Pull requests",
+    level: "write",
+    why: "open and read pull requests",
+  },
+  {
+    name: "workflows",
+    label: "Workflows",
+    level: "write",
+    why: "push a branch that touches .github/workflows",
+  },
+  { name: "checks", label: "Checks", level: "read", why: "the check badge on a branch" },
+  { name: "metadata", label: "Metadata", level: "read", why: "every app has to ask for it" },
   {
     name: "installation_repositories",
+    label: "GitHub App installation repository access",
     level: "write",
     why: "the repository picker adds and removes repositories",
   },
 ];
+
+/** How GitHub's form words a level, for a list that is read next to it. */
+export function permissionLevelLabel(level: string): string {
+  return level === "write" ? "Read & write" : "Read";
+}
 
 /** Whether a held level reaches what is asked for: write covers read, never the other way. */
 function coversLevel(held: string | undefined, needed: string): boolean {
