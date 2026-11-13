@@ -4,9 +4,7 @@ import { type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
-import { MobileSessionSheet } from "./mobile-session-sheet";
 import { MessageSkeleton } from "./message-skeleton";
-import { TemporaryToggle } from "./temporary-toggle";
 import { createChatSession } from "@/lib/chat-session";
 import { MessageSquarePlus, Ghost } from "lucide-react";
 
@@ -36,16 +34,12 @@ export function ChatWelcome({
 
 interface ChatEmptyStateProps {
   temporaryMode: boolean;
-  onTemporaryChange: (checked: boolean) => void;
   /** A chat is being opened from a prompt the URL carried. */
   starting?: boolean;
 }
 
-export function ChatEmptyState({
-  temporaryMode,
-  onTemporaryChange,
-  starting = false,
-}: ChatEmptyStateProps) {
+/** The welcome beside the chat list. Phones land on the list itself. */
+export function ChatEmptyState({ temporaryMode, starting = false }: ChatEmptyStateProps) {
   const router = useRouter();
 
   const handleNewChat = () => {
@@ -58,15 +52,6 @@ export function ChatEmptyState({
 
   return (
     <GlassPanel className="flex flex-1 flex-col overflow-hidden rounded-none border-0 md:rounded-2xl">
-      {/* Compact control row. session list (mobile) + temporary mode */}
-      <div className="border-border/30 flex items-center gap-1.5 border-b px-3 py-1.5 md:px-4">
-        <div className="shrink-0 md:hidden">
-          <MobileSessionSheet onNewChat={handleNewChat} />
-        </div>
-        <div className="ml-auto">
-          <TemporaryToggle checked={temporaryMode} onChange={onTemporaryChange} />
-        </div>
-      </div>
       {starting ? (
         <GlassPanelContent className="flex-1 overflow-y-auto">
           <MessageSkeleton />

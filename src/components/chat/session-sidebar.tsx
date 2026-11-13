@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -103,11 +103,14 @@ export function SessionSidebar({
   activeSessionId,
   onNewChat,
   projectId,
+  headerAction,
 }: {
   activeSessionId?: string;
   onNewChat?: () => void;
   /** Set for a coder project's chats. */
   projectId?: string;
+  /** A control beside the list's name. the chat view puts the temporary toggle there. */
+  headerAction?: ReactNode;
 }) {
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -403,6 +406,7 @@ export function SessionSidebar({
               {header ? `${header.slug} · ${header.defaultBranch}` : ""}
             </p>
           </div>
+          {headerAction}
           {/* The title bar's own action. Phones get the full-width button below. */}
           {onNewChat && (
             <Button
@@ -417,8 +421,9 @@ export function SessionSidebar({
           )}
         </div>
       ) : (
-        <div className="border-border/30 flex h-11 shrink-0 items-center border-b px-4">
-          <h2 className="text-sm font-semibold">Conversations</h2>
+        <div className="border-border/30 flex h-11 shrink-0 items-center gap-2 border-b px-4">
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Conversations</h2>
+          {headerAction}
         </div>
       )}
 

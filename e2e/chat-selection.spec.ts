@@ -12,8 +12,8 @@ import { createChatSession, discardChatSessions, sessionContext } from "./utils"
  * rather than assumed, and the gestures are driven with real touch events.
  *
  * Driven at 768px: the narrowest console layout, where the row is at its
- * tightest. Phones draw the same rows inside the session sheet, whose layout is
- * covered by the modal guardrails.
+ * tightest. Phones draw the same rows on the chat landing page and inside the
+ * session sheet, whose layout the modal guardrails cover.
  */
 
 const ALPHA = "selection alpha";

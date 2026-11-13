@@ -1134,7 +1134,11 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     name: "chat · session list sheet",
     path: "/dashboard/chat",
     sources: ["src/components/chat/mobile-session-sheet.tsx"],
-    open: (page) => click(page, '[data-slot="sheet-trigger"]'),
+    open: async (page) => {
+      // The sheet is the in-chat list; the landing page shows the list itself.
+      await gotoChatSession(page, await ensureChatSession(page));
+      await click(page, '[data-slot="sheet-trigger"]');
+    },
   },
   {
     name: "chat · delete selected chats",
@@ -1156,12 +1160,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     path: "/dashboard/chat",
     sources: [DELETE_ERROR_DIALOG],
     mock: mockChatDeleteError,
-    open: async (page) => {
-      // The list lives inside the sheet at phone widths, like every chat overlay.
-      await click(page, '[data-slot="sheet-trigger"]');
-      const sheet = page.locator('[data-slot="sheet-content"]:visible').last();
-      await sheet.getByRole("button", { name: `Delete failed for ${DELETE_ERROR_TITLE}` }).click();
-    },
+    open: (page) => click(page, `button[aria-label="Delete failed for ${DELETE_ERROR_TITLE}"]`),
   },
   {
     name: "chat · share dialog",

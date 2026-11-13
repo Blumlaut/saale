@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { createChatSession, gotoAndSettle, sessionContext, settle } from "./utils";
+import {
+  createChatSession,
+  discardChatSessions,
+  gotoAndSettle,
+  sessionContext,
+  settle,
+} from "./utils";
 
 /**
  * Mobile content-fit guardrails.
@@ -141,6 +147,31 @@ test.describe("mobile content fit", () => {
     await expect(sheet).toBeHidden();
 
     await ctx.close();
+  });
+
+  test("a phone lands on the chat list and a row opens its chat", async ({ browser }) => {
+    const ctx = await sessionContext(browser, { viewport: MOBILE });
+    const page = await ctx.newPage();
+
+    const chatId = await createChatSession(page.request, "E2E landing chat");
+    try {
+      await gotoAndSettle(page, "/dashboard/chat", { quietNetwork: true });
+
+      // The list is the landing view on a phone; the welcome is the desktop's.
+      const row = page
+        .locator('[data-slot="session-row"]:visible')
+        .filter({ hasText: "E2E landing chat" })
+        .first();
+      await expect(row).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Start a conversation" })).toBeHidden();
+
+      await row.click();
+      await expect(page).toHaveURL(new RegExp(`/dashboard/chat/${chatId}$`));
+      await expect(page.locator('button[aria-label="Send message"]')).toBeVisible();
+    } finally {
+      await discardChatSessions(page.request, [chatId]);
+      await ctx.close();
+    }
   });
 
   test("the icon bar keeps every item inside its cell on a 320px phone", async ({ browser }) => {

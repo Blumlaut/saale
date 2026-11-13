@@ -8,6 +8,8 @@ import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatInterface } from "@/components/chat/chat-interface";
+import { TemporaryToggle } from "@/components/chat/temporary-toggle";
+import { cn } from "@/lib/utils";
 import { patchJson } from "@/lib/http";
 import { createChatSession, startChatSession } from "@/lib/chat-session";
 import { PROMPT_PARAM, readPromptParam } from "@/lib/chat/prompt-param";
@@ -110,17 +112,35 @@ export default function ChatLayout({ children: _children }: { children: React.Re
       {/* Content: sidebar + main. edge to edge on phones, console gutter on
           desktop (see `.full-bleed` in globals.css) */}
       <div ref={measureRow} className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        {/* Sidebar. desktop only */}
-        <div className="relative hidden shrink-0 md:block" style={{ width: chatSidebar.width }}>
+        {/* The chat list is the phone's landing view, so an existing chat is one
+            tap away; opening one hands the screen to it. Desktop keeps the list
+            as a column beside the conversation. */}
+        <div
+          className={cn(
+            "relative min-h-0 min-w-0",
+            sessionId
+              ? "hidden md:block md:shrink-0"
+              : "flex flex-1 flex-col md:block md:flex-none",
+          )}
+          style={{ width: chatSidebar.width }}
+        >
           <div
             {...chatSidebar.handleProps}
-            className="hover:bg-border absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize"
+            className="hover:bg-border absolute top-0 right-0 z-10 hidden h-full w-1.5 cursor-col-resize md:block"
           />
-          <SessionSidebar {...(sessionId ? { activeSessionId: sessionId } : {})} />
+          <SessionSidebar
+            {...(sessionId ? { activeSessionId: sessionId } : {})}
+            onNewChat={handleNewChat}
+            headerAction={
+              sessionId ? undefined : (
+                <TemporaryToggle checked={temporaryMode} onChange={handleToggleTemporary} />
+              )
+            }
+          />
         </div>
 
         {/* Main area. flex column so ChatInterface can flex-1 to fill height */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className={cn("flex min-w-0 flex-1 flex-col", !sessionId && "hidden md:flex")}>
           {sessionId ? (
             <ChatInterface
               key={sessionId}
@@ -130,11 +150,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
               onNewChat={handleNewChat}
             />
           ) : (
-            <ChatEmptyState
-              temporaryMode={temporaryMode}
-              onTemporaryChange={handleToggleTemporary}
-              starting={startingFromPrompt}
-            />
+            <ChatEmptyState temporaryMode={temporaryMode} starting={startingFromPrompt} />
           )}
         </div>
       </div>
