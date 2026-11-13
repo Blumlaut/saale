@@ -10,7 +10,7 @@ import { PluginDialog } from "./plugin-dialog";
 import { PluginInteractionBar, PluginStatusStrip, PluginWidgetPanel } from "./plugin-interactions";
 import { FileDropOverlay } from "./file-drop-overlay";
 import { QueuedMessages } from "./queued-messages";
-import { fetchJson, patchJson, deleteJson, postJson } from "@/lib/http";
+import { fetchJson, patchJson, deleteJson, isNotFound, postJson } from "@/lib/http";
 import { useChatDraft } from "@/hooks/use-chat-draft";
 import { useChatSeen } from "@/hooks/use-chat-seen";
 import { SUSPENSION_MIN_HIDDEN_MS, useOnResume } from "@/hooks/use-on-resume";
@@ -249,7 +249,7 @@ export function ChatInterface({
       if (data.session?.isGenerating || data.session?.isBuilding) setIsLoading(true);
       applySession(data.session);
     } catch (err) {
-      if (err instanceof Error && "status" in err && (err as { status?: number }).status === 404) {
+      if (isNotFound(err)) {
         router.push(goneHref);
         return;
       }

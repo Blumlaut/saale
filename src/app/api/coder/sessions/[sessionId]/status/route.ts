@@ -16,6 +16,9 @@ import { getSetupFailure } from "@/lib/coder/setup-failure";
  * happening right now, so the panel shows the work instead of an empty box, and
  * `setupFailure` says a build finished with its install broken.
  *
+ * A chat a delete is removing answers `deleting: true` with nothing else in it:
+ * its checkout is on its way out, so git has nothing to say about it.
+ *
  * `?commits=` is how far back the history goes, so the panel can ask for more
  * without a second endpoint.
  */

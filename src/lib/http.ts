@@ -9,6 +9,11 @@ export interface FetchError extends Error {
   code?: string;
 }
 
+/** Whether a failed request was the server saying it does not have the thing. */
+export function isNotFound(err: unknown): boolean {
+  return err instanceof Error && (err as FetchError).status === 404;
+}
+
 /**
  * Fetch JSON from an API endpoint.
  * Throws on non-2xx responses with the API error message.

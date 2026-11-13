@@ -73,6 +73,7 @@ const STATE: CoderSessionState = {
   scripts: [],
   provisioning: null,
   setupFailure: null,
+  deleting: false,
 };
 
 const PANEL_PROPS = {
@@ -81,13 +82,14 @@ const PANEL_PROPS = {
   loadingMoreCommits: false,
 };
 
-function renderPanel(state: CoderSessionState | null) {
+function renderPanel(state: CoderSessionState | null, gone = false) {
   return render(
     <WorktreePanel
       sessionId="s-1"
       state={state}
       loading={false}
       error={null}
+      gone={gone}
       onRefresh={() => {}}
       refreshing={false}
       {...PANEL_PROPS}
@@ -234,5 +236,20 @@ describe("WorktreePanel: a failed setup script", () => {
 
     expect(await screen.findByText("Exit 127")).toBeTruthy();
     expect(screen.getByText(/npm: not found/)).toBeTruthy();
+  });
+});
+
+describe("WorktreePanel: a chat on its way out", () => {
+  it("says the chat is being deleted instead of showing the checkout", () => {
+    renderPanel({ ...STATE, worktree: null, deleting: true });
+
+    expect(screen.getByText("Deleting this chat")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: /Project/ })).toBeNull();
+  });
+
+  it("says the chat was deleted once the server no longer has it", () => {
+    renderPanel(null, true);
+
+    expect(screen.getByText("This chat was deleted")).toBeTruthy();
   });
 });

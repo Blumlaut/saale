@@ -35,6 +35,7 @@ const STATE: CoderSessionState = {
   scripts: [],
   provisioning: null,
   setupFailure: null,
+  deleting: false,
 };
 
 function change(path: string, overrides: Partial<CoderChange> = {}): CoderChange {

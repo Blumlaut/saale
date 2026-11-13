@@ -18,6 +18,7 @@ import {
   useCoderChatStarter,
 } from "@/components/coder/use-coder-data";
 import { useResizableWidth, panelCeiling } from "@/hooks/use-resizable-width";
+import { DELETING_POLL_MS } from "@/hooks/use-deleting-poll";
 import { useElementWidth } from "@/hooks/use-element-width";
 
 /** How often an open coder chat re-reads its worktree while visible. */
@@ -70,7 +71,7 @@ export default function CoderLayout() {
   // How far back the history goes, and whether the last raise is still loading.
   const [commitLimit, setCommitLimit] = useState(COMMITS_PAGE);
   const [loadingMoreCommits, setLoadingMoreCommits] = useState(false);
-  const { state, loading, error } = useSessionState(sessionId, refreshKey, commitLimit);
+  const { state, loading, error, gone } = useSessionState(sessionId, refreshKey, commitLimit);
   const { pullRequest } = usePullRequest(sessionId, refreshKey);
 
   // Another chat has its own history, so the next one opens at the top again.
@@ -100,20 +101,23 @@ export default function CoderLayout() {
   useEffect(() => {
     if (!sessionId) return;
     // Building a workspace is a minute-long event, not a background change: the
-    // panel's empty state has to stop claiming there is nothing there.
-    const interval = setInterval(
-      () => {
-        if (document.visibilityState === "visible") reload();
-      },
-      provisioningStep ? PROVISIONING_POLL_MS : WORKTREE_POLL_MS,
-    );
+    // panel's empty state has to stop claiming there is nothing there. A chat
+    // being deleted has to stop showing its worktree the same way.
+    const every = state?.deleting
+      ? DELETING_POLL_MS
+      : provisioningStep
+        ? PROVISIONING_POLL_MS
+        : WORKTREE_POLL_MS;
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") reload();
+    }, every);
     const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [sessionId, reload, provisioningStep]);
+  }, [sessionId, reload, provisioningStep, state?.deleting]);
 
   const [measureRow, rowWidth] = useElementWidth();
 
@@ -244,6 +248,7 @@ export default function CoderLayout() {
                         state={state}
                         loading={loading}
                         error={error}
+                        gone={gone}
                         onRefresh={reload}
                         refreshing={loading}
                         pullRequest={pullRequest}
@@ -274,6 +279,7 @@ export default function CoderLayout() {
             state={state}
             loading={loading}
             error={error}
+            gone={gone}
             onRefresh={reload}
             refreshing={loading}
             pullRequest={pullRequest}

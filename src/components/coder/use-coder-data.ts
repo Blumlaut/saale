@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchJson } from "@/lib/http";
+import { fetchJson, isNotFound } from "@/lib/http";
 import { createChatSession } from "@/lib/chat-session";
 import {
   CHAT_PINNED_EVENT,
@@ -137,6 +137,8 @@ export interface CoderSessionState {
   provisioning: CoderProvisioning | null;
   /** Set when a build ran the setup script and it failed. */
   setupFailure: CoderSetupFailure | null;
+  /** The chat is being removed, so there is no checkout to read. */
+  deleting: boolean;
 }
 
 /** A setup script that failed while the chat's worktree was being built. */
@@ -293,9 +295,16 @@ export function useSessionState(sessionId: string | null, refreshKey: number, co
   const [state, setState] = useState<CoderSessionState | null>(null);
   const [loading, setLoading] = useState(sessionId !== null);
   const [error, setError] = useState<string | null>(null);
+  // The chat is gone from the server, which is a delete that finished.
+  const [gone, setGone] = useState(false);
   const latest = useRef(0);
+  const askedFor = useRef<string | null>(null);
 
   useEffect(() => {
+    if (askedFor.current !== sessionId) {
+      askedFor.current = sessionId;
+      setGone(false);
+    }
     if (!sessionId) {
       setState(null);
       setLoading(false);
@@ -314,6 +323,14 @@ export function useSessionState(sessionId: string | null, refreshKey: number, co
       })
       .catch((err: unknown) => {
         if (ticket !== latest.current) return;
+        // A chat the server no longer has is not a read that failed: the delete
+        // went through, so the panel says that rather than an error.
+        if (isNotFound(err)) {
+          setState(null);
+          setError(null);
+          setGone(true);
+          return;
+        }
         console.error(`Failed to load worktree state for ${sessionId}:`, err);
         setError(err instanceof Error ? err.message : "Could not read the worktree");
       })
@@ -322,7 +339,7 @@ export function useSessionState(sessionId: string | null, refreshKey: number, co
       });
   }, [sessionId, refreshKey, commitLimit]);
 
-  return { state, loading, error };
+  return { state, loading, error, gone };
 }
 
 /** How often a waiting chat asks whether its workspace is still being built. */

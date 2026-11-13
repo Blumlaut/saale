@@ -11,6 +11,7 @@ import {
   GitCommitHorizontal,
   Loader2,
   SquareTerminal,
+  Trash2,
   X,
 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/glass-panel";
@@ -41,6 +42,28 @@ import { usePorts } from "./use-ports";
 const TerminalView = dynamic(() => import("./terminal-view").then((m) => m.TerminalView), {
   ssr: false,
 });
+
+/** The panel while the chat is on its way out: there is no checkout to read. */
+function ClosingChat({ gone }: { gone: boolean }) {
+  return (
+    <div
+      role="status"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1.5 px-4 py-10 text-center"
+    >
+      {gone ? (
+        <Trash2 className="text-muted-foreground/50 h-5 w-5" />
+      ) : (
+        <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+      )}
+      <p className="text-xs font-medium">{gone ? "This chat was deleted" : "Deleting this chat"}</p>
+      <p className="text-muted-foreground text-xs">
+        {gone
+          ? "Its worktree and branch are gone with it."
+          : "Its worktree and branch are being removed."}
+      </p>
+    </div>
+  );
+}
 
 function NoWorktree({ provisioning }: { provisioning: CoderProvisioning | null }) {
   // Building the workspace is what makes the worktree, so the panel names the
@@ -117,6 +140,7 @@ export function WorktreePanel({
   state,
   loading,
   error,
+  gone,
   onRefresh,
   refreshing,
   pullRequest,
@@ -127,6 +151,8 @@ export function WorktreePanel({
   state: CoderSessionState | null;
   loading: boolean;
   error: string | null;
+  /** The server no longer has this chat: it was deleted. */
+  gone: boolean;
   onRefresh: () => void;
   refreshing: boolean;
   pullRequest: CoderPullRequest | null;
@@ -171,13 +197,24 @@ export function WorktreePanel({
   const terminalOpened = tab === "terminal" || openedTabs.includes("terminal");
   // Lifted out of the tab, because the badge has to light while another tab is
   // open. The poll slows down when Ports is not the visible one.
-  const ports = usePorts(sessionId, tab === "ports");
+  const closing = gone || state?.deleting === true;
+  const ports = usePorts(closing ? null : sessionId, tab === "ports");
 
   const launchInTerminal = (command: string) => {
     if (terminalOpened) terminalRunRef.current(command);
     else pendingTerminalRun.current = command;
     openTab("terminal");
   };
+
+  // The chat is on its way out: its checkout is already gone, so the panel says
+  // what is happening instead of asking git about it.
+  if (closing) {
+    return (
+      <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">
+        <ClosingChat gone={gone} />
+      </GlassPanel>
+    );
+  }
 
   return (
     <GlassPanel className="flex h-full min-w-0 flex-col overflow-hidden">

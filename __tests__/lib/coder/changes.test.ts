@@ -18,10 +18,15 @@ const mocks = vi.hoisted(() => ({
   readRemotes: vi.fn(),
   readStashCount: vi.fn(),
   readUnpushedShas: vi.fn(),
+  directoryExists: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: { findFirst: mocks.findSession } },
+}));
+
+vi.mock("@/lib/coder/paths", () => ({
+  workspaceDirectoryExists: mocks.directoryExists,
 }));
 
 vi.mock("@/lib/coder/git", () => ({
@@ -40,10 +45,15 @@ import { assertRepoRelativePath, loadSessionDiff, loadSessionState } from "@/lib
 const USER = "user-1";
 const SESSION = "chat-1";
 
-function session(worktree: { status: string } | null, chatMode = "worktree") {
+function session(
+  worktree: { status: string } | null,
+  chatMode = "worktree",
+  deletingAt: Date | null = null,
+) {
   return {
     id: SESSION,
     projectId: "project-1",
+    deletingAt,
     project: {
       id: "project-1",
       name: "saale",
@@ -92,6 +102,7 @@ beforeEach(() => {
   mocks.readRemotes.mockResolvedValue([{ name: "origin", url: "git@github.com:acme/saale.git" }]);
   mocks.readStashCount.mockResolvedValue(0);
   mocks.readUnpushedShas.mockResolvedValue(new Set<string>());
+  mocks.directoryExists.mockResolvedValue(true);
 });
 
 describe("loadSessionState", () => {
@@ -220,6 +231,26 @@ describe("loadSessionState", () => {
     expect(state?.worktree).toBeNull();
     expect(state?.changes).toEqual([]);
     expect(state?.project?.slug).toBe("saale");
+    expect(mocks.readStatus).not.toHaveBeenCalled();
+  });
+
+  it("is an empty panel for a chat a delete is removing right now", async () => {
+    mocks.findSession.mockResolvedValue(session({ status: "active" }, "worktree", new Date()));
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(state?.deleting).toBe(true);
+    expect(state?.worktree).toBeNull();
+    expect(mocks.readStatus).not.toHaveBeenCalled();
+  });
+
+  it("is an empty panel for a checkout whose directory went away", async () => {
+    mocks.directoryExists.mockResolvedValue(false);
+
+    const state = await loadSessionState(USER, SESSION);
+
+    expect(state?.deleting).toBe(false);
+    expect(state?.worktree).toBeNull();
     expect(mocks.readStatus).not.toHaveBeenCalled();
   });
 

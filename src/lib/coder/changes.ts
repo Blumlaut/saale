@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/db";
 import { checkoutOf, type ChatMode } from "./checkout";
+import { workspaceDirectoryExists } from "./paths";
 import {
   readFileDiff,
   readLog,
@@ -72,10 +73,13 @@ export interface CoderSessionState {
   /** How many stashes the repo holds. */
   stashes: number;
   scripts: CoderScript[];
+  /** The chat is being removed, so there is no checkout to read. */
+  deleting: boolean;
 }
 
 /** A chat whose worktree has not been built yet, or is gone. */
 const NOT_READY: CoderSessionState = {
+  deleting: false,
   worktree: null,
   project: null,
   branch: "",
@@ -103,6 +107,7 @@ export async function loadCoderSession(userId: string, sessionId: string) {
     select: {
       id: true,
       projectId: true,
+      deletingAt: true,
       project: {
         select: {
           id: true,
@@ -148,8 +153,19 @@ export async function loadSessionState(
 ): Promise<CoderSessionState | null> {
   const session = await loadCoderSession(userId, sessionId);
   if (!session) return null;
+
+  // A delete takes the checkout away while the row is still here to be read, so
+  // git has nothing to answer for a chat that is on its way out.
+  if (session.deletingAt) return { ...NOT_READY, project: session.project, deleting: true };
+
   const checkout = checkoutOf(session);
   if (!checkout) return { ...NOT_READY, project: session.project };
+
+  // A checkout removed by hand or by a sweep this panel has not seen yet is an
+  // empty panel: the next message builds the worktree again.
+  if (!(await workspaceDirectoryExists(userId, checkout.path))) {
+    return { ...NOT_READY, project: session.project };
+  }
 
   const dir = checkout.path;
   const limit = Math.min(
@@ -180,6 +196,7 @@ export async function loadSessionState(
     : null;
 
   return {
+    deleting: false,
     // The branch git reports is the live one: a shared checkout can have been
     // switched by hand since the chat opened.
     worktree: { ...checkout, branch: status.branch || checkout.branch },
