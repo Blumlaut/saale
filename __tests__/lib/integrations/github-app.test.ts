@@ -76,6 +76,8 @@ import {
   GithubAppError,
   applyGithubRepositoryChoices,
   deleteGithubApp,
+  readGithubAppSummary,
+  readGithubAppSummaryFresh,
   githubInstallationForOwner,
   mintGithubInstallationToken,
   pollGithubAppLogin,
@@ -200,6 +202,14 @@ describe("saveGithubApp", () => {
       }),
     );
     expect(summary).toMatchObject({ slug: "saale", ownerLogin: "askguenther", enabled: true });
+    // Verifying is also where the form learns what the app was registered without.
+    expect(summary.missingPermissions.map((entry) => entry.name)).toEqual([
+      "pull_requests",
+      "workflows",
+      "checks",
+      "metadata",
+      "installation_repositories",
+    ]);
     // Nothing secret comes back out.
     expect(JSON.stringify(summary)).not.toContain("secret");
   });
@@ -663,6 +673,62 @@ describe("applyGithubRepositoryChoices", () => {
       where: { id: "row-1" },
       data: { repositories: ["saale", "web"] },
     });
+  });
+});
+
+describe("the app's permissions against Saale's needs", () => {
+  it("reports what the saved app was registered without", async () => {
+    db.githubApp.findUnique.mockResolvedValue({
+      ...APP_ROW,
+      permissions: { contents: "write", pull_requests: "write" },
+    });
+
+    const summary = await readGithubAppSummary();
+
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toEqual([
+      "workflows",
+      "checks",
+      "metadata",
+      "installation_repositories",
+    ]);
+  });
+
+  it("re-reads GitHub rather than repeating what was saved months ago", async () => {
+    // An admin who just granted the missing permission should see that the panel
+    // agrees, not the verdict of the last save.
+    db.githubApp.findUnique.mockResolvedValue({ ...APP_ROW, permissions: { contents: "write" } });
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+      permissions: {
+        contents: "write",
+        pull_requests: "write",
+        workflows: "write",
+        checks: "read",
+        metadata: "read",
+        installation_repositories: "write",
+      },
+    });
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.missingPermissions).toEqual([]);
+    expect(db.githubApp.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "global" } }),
+    );
+  });
+
+  it("keeps the stored set when GitHub cannot be asked", async () => {
+    db.githubApp.findUnique.mockResolvedValue({ ...APP_ROW, permissions: { contents: "write" } });
+    client.readAppIdentity.mockRejectedValue(new GithubApiError("Bad credentials", 401));
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.permissions).toEqual({ contents: "write" });
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toContain(
+      "installation_repositories",
+    );
   });
 });
 

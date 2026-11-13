@@ -61,8 +61,12 @@ secret**. The app id and the client id are on the same page.
 
 **Admin → Settings → GitHub**: app id, client id, client secret, private key →
 **Save and verify**. Saale signs a JWT with the key and reads `GET /app`, so a
-wrong id or key is refused at the form instead of failing in the first chat. The
-secret and the key are stored encrypted and never shown again.
+wrong id or key is refused at the form instead of failing in the first chat. That
+answer also carries the app's permissions, and the form says which of the ones
+above it was registered without — the picker's permission included, with what it
+costs. The panel keeps checking: it re-reads `GET /app` whenever it opens, warns
+about anything missing, and says so plainly when nothing is. The secret and the
+key are stored encrypted and never shown again.
 
 The app can be switched off there without deleting it. Removing it deletes the
 installations and every token an account authorized with it; the authorization

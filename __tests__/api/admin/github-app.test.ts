@@ -28,6 +28,7 @@ const app = vi.hoisted(() => {
   return {
     GithubAppError,
     readGithubAppSummary: vi.fn(),
+    readGithubAppSummaryFresh: vi.fn(),
     saveGithubApp: vi.fn(),
     setGithubAppEnabled: vi.fn(),
     deleteGithubApp: vi.fn(),
@@ -37,6 +38,7 @@ const app = vi.hoisted(() => {
 vi.mock("@/lib/integrations/github-app", () => ({
   GithubAppError: app.GithubAppError,
   readGithubAppSummary: app.readGithubAppSummary,
+  readGithubAppSummaryFresh: app.readGithubAppSummaryFresh,
   saveGithubApp: app.saveGithubApp,
   setGithubAppEnabled: app.setGithubAppEnabled,
   deleteGithubApp: app.deleteGithubApp,
@@ -53,6 +55,7 @@ const SUMMARY = {
   name: "Saale",
   ownerLogin: "askguenther",
   permissions: { contents: "write" },
+  missingPermissions: [],
   enabled: true,
   updatedAt: new Date("2026-05-01T12:00:00Z"),
 };
@@ -85,6 +88,7 @@ beforeEach(() => {
   db.githubInstallation.count.mockResolvedValue(0);
   for (const fn of [
     app.readGithubAppSummary,
+    app.readGithubAppSummaryFresh,
     app.saveGithubApp,
     app.setGithubAppEnabled,
     app.deleteGithubApp,
@@ -125,16 +129,18 @@ describe("admin guard", () => {
 // ─── Reading ────────────────────────────────────────────────────────────────
 
 describe("GET", () => {
-  it("reports the saved app", async () => {
-    app.readGithubAppSummary.mockResolvedValue(SUMMARY);
+  it("reports the saved app, with the permissions GitHub has now", async () => {
+    app.readGithubAppSummaryFresh.mockResolvedValue(SUMMARY);
 
     const body = (await (await GET()).json()) as { app: typeof SUMMARY };
 
     expect(body.app.slug).toBe("saale");
+    // The panel's warning has to be GitHub's current verdict, not the saved one.
+    expect(app.readGithubAppSummaryFresh).toHaveBeenCalled();
   });
 
   it("is null when nothing is saved, and still says where the app belongs", async () => {
-    app.readGithubAppSummary.mockResolvedValue(null);
+    app.readGithubAppSummaryFresh.mockResolvedValue(null);
 
     const body = (await (await GET()).json()) as {
       app: null;

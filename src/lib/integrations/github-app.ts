@@ -30,7 +30,11 @@ import type { Prisma } from "@prisma/client";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
-import { appCanManageInstallations } from "./github";
+import {
+  appCanManageInstallations,
+  missingGithubAppPermissions,
+  type GithubAppPermission,
+} from "./github";
 import {
   GithubApiError,
   createAppJwt,
@@ -105,6 +109,11 @@ export interface GithubAppSummary {
   name: string;
   ownerLogin: string;
   permissions: Record<string, string> | null;
+  /**
+   * What the app was registered without, out of the permissions Saale works
+   * with. Computed from `permissions`, so it is as fresh as the set next to it.
+   */
+  missingPermissions: GithubAppPermission[];
   enabled: boolean;
   updatedAt: Date;
 }
@@ -225,15 +234,37 @@ export async function readGithubAppSummary(): Promise<GithubAppSummary | null> {
     });
   if (!row) return null;
 
+  const permissions = isStringRecord(row.permissions) ? row.permissions : null;
+
   return {
     appId: row.appId,
     clientId: row.clientId,
     slug: row.slug,
     name: row.name,
     ownerLogin: row.ownerLogin,
-    permissions: isStringRecord(row.permissions) ? row.permissions : null,
+    permissions,
+    missingPermissions: missingGithubAppPermissions(permissions),
     enabled: row.enabled,
     updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * The app as the admin panel should show it, with the permissions GitHub has now.
+ *
+ * The stored set is only as fresh as the last save, and a permission is added on
+ * GitHub's side rather than in Saale: without this read the panel would keep
+ * reporting what the app was registered with, and an admin who just granted the
+ * missing one would see the old verdict. One `GET /app` when the panel opens.
+ */
+export async function readGithubAppSummaryFresh(): Promise<GithubAppSummary | null> {
+  const summary = await readGithubAppSummary();
+  if (!summary) return null;
+  const permissions = await refreshGithubAppPermissions();
+  return {
+    ...summary,
+    permissions,
+    missingPermissions: missingGithubAppPermissions(permissions),
   };
 }
 
@@ -317,7 +348,10 @@ export async function saveGithubApp(input: GithubAppInput): Promise<GithubAppSum
     slug: row.slug,
     name: row.name,
     ownerLogin: row.ownerLogin,
-    permissions: isStringRecord(row.permissions) ? row.permissions : null,
+    // The verification two steps up is the only fresh answer about the app, so
+    // the form says what it is missing while the admin is still on it.
+    permissions: identity.permissions ?? null,
+    missingPermissions: missingGithubAppPermissions(identity.permissions),
     enabled: row.enabled,
     updatedAt: row.updatedAt,
   };
