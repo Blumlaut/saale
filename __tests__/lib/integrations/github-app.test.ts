@@ -53,6 +53,8 @@ const client = vi.hoisted(() => ({
   readUserLogin: vi.fn(),
   listInstallations: vi.fn(),
   listInstallationRepositories: vi.fn(),
+  listInstallationRepositoryRefs: vi.fn(),
+  listRepositoryChoices: vi.fn(),
   createInstallationToken: vi.fn(),
 }));
 
@@ -68,6 +70,7 @@ import {
   githubInstallationForOwner,
   mintGithubInstallationToken,
   pollGithubAppLogin,
+  readGithubRepositoryChoices,
   readGithubUserAccess,
   refreshGithubInstallations,
   saveGithubApp,
@@ -463,6 +466,74 @@ describe("syncGithubInstallations", () => {
     await syncGithubInstallations(USER);
 
     expect(client.listInstallationRepositories).not.toHaveBeenCalled();
+  });
+});
+
+describe("readGithubRepositoryChoices", () => {
+  const accessRow = (suspended = false) => ({
+    userId: USER,
+    installationId: "row-1",
+    installation: {
+      id: "row-1",
+      installationId: "1234",
+      accountLogin: "Acme",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: ["saale"],
+      suspendedAt: suspended ? new Date() : null,
+    },
+  });
+
+  const freshToken = () => ({
+    userId: USER,
+    encryptedAccessToken: "enc:ghu_access",
+    encryptedRefreshToken: "enc:ghr",
+    accessExpiresAt: new Date(Date.now() + 4 * 60 * 60_000),
+    refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+    login: "octocat",
+  });
+
+  it("finds the installation by GitHub's id, which is what the card sends", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
+    db.githubUserToken.findUnique.mockResolvedValue(freshToken());
+    client.listInstallationRepositoryRefs.mockResolvedValue([
+      { id: "10", name: "saale", fullName: "acme/saale" },
+    ]);
+    client.listRepositoryChoices.mockResolvedValue([
+      { id: "10", name: "saale", fullName: "acme/saale", owner: "acme", canAdmin: true },
+      { id: "11", name: "site", fullName: "acme/site", owner: "acme", canAdmin: true },
+      // Read-only, and another account's: neither can be added here.
+      { id: "12", name: "docs", fullName: "acme/docs", owner: "acme", canAdmin: false },
+      { id: "13", name: "other", fullName: "elsewhere/other", owner: "elsewhere", canAdmin: true },
+    ]);
+
+    const choices = await readGithubRepositoryChoices(USER, "1234");
+
+    expect(db.githubInstallationAccess.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: USER, installation: { installationId: "1234" } },
+      }),
+    );
+    expect(choices).toMatchObject({
+      installationId: "1234",
+      accountLogin: "Acme",
+      selection: "selected",
+      canManage: true,
+    });
+    expect(choices.candidates.map((entry) => entry.id)).toEqual(["10", "11"]);
+  });
+
+  it("refuses an installation another account holds", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(null);
+
+    await expect(readGithubRepositoryChoices(USER, "1234")).rejects.toThrow(/no access/);
+    expect(client.listRepositoryChoices).not.toHaveBeenCalled();
+  });
+
+  it("refuses a suspended installation", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow(true));
+
+    await expect(readGithubRepositoryChoices(USER, "1234")).rejects.toThrow(/suspended/);
   });
 });
 

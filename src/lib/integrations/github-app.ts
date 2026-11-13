@@ -753,10 +753,16 @@ export interface GithubRepositoryChoices {
   candidates: { id: string; fullName: string; installed: boolean }[];
 }
 
-/** The access row for one installation of one account, or a refusal. */
+/**
+ * The access row for one installation of one account, or a refusal.
+ *
+ * The id is GitHub's — the number the card shows, the API paths take and the
+ * picker sends back — not Saale's own row id. The access row is what says
+ * whether this account may act on that installation at all.
+ */
 async function requireInstallationAccess(userId: string, installationId: string) {
-  const row = await prisma.githubInstallationAccess.findUnique({
-    where: { userId_installationId: { userId, installationId } },
+  const row = await prisma.githubInstallationAccess.findFirst({
+    where: { userId, installation: { installationId } },
     include: { installation: true },
   });
   if (!row) throw new GithubAppError("This account has no access to that GitHub installation.");
