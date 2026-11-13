@@ -46,6 +46,7 @@ const CHOICES = {
   accountLogin: "acme",
   selection: "selected",
   canManage: true,
+  appCanManage: true,
   installed: [{ id: "10", name: "saale", fullName: "acme/saale" }],
   candidates: [
     { id: "10", fullName: "acme/saale", installed: true },

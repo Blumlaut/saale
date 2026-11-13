@@ -236,6 +236,81 @@ describe("GithubCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("says the app may not change its installations rather than offering a save", async () => {
+    // An app registered before `installation_repositories` existed: the set can
+    // be read and not written, so a Save button here would only produce a 403.
+    const choices = {
+      installationId: "42",
+      accountLogin: "octocat",
+      accountType: "User",
+      selection: "selected",
+      canManage: true,
+      appCanManage: false,
+      installed: [{ id: "10", name: "saale", fullName: "octocat/saale" }],
+      candidates: [{ id: "10", fullName: "octocat/saale", installed: true }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          ({
+            ok: true,
+            status: 200,
+            json: async () =>
+              url.includes("/github/repositories")
+                ? choices
+                : { app: appNarrowed, cli: noCredential },
+          }) as unknown as Response,
+      ),
+    );
+    render(<GithubCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Repositories for octocat: 2 repositories" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText("The app may not change its own installations."),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/registered without the “GitHub App installation/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /Manage on GitHub/ })).toHaveAttribute(
+      "href",
+      "https://github.com/settings/installations/42",
+    );
+    expect(within(dialog).queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("names the permissions an app was registered without", async () => {
+    // Everything Saale works with except the one the picker's calls take.
+    mockStatus(
+      {
+        ...appConfigured,
+        permissions: {
+          contents: "write",
+          pull_requests: "write",
+          workflows: "write",
+          checks: "read",
+          metadata: "read",
+        },
+      },
+      noCredential,
+    );
+    render(<GithubCard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Connect GitHub/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText("One permission Saale works with is missing."),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/the repository picker adds and removes repositories/),
+    ).toBeInTheDocument();
+  });
+
   it("opens Saale's picker from the row and says it is the installation's own set", async () => {
     const choices = {
       installationId: "42",
@@ -243,6 +318,7 @@ describe("GithubCard", () => {
       accountType: "User",
       selection: "selected",
       canManage: true,
+      appCanManage: true,
       installed: [
         { id: "10", name: "saale", fullName: "octocat/saale" },
         { id: "11", name: "site", fullName: "octocat/site" },

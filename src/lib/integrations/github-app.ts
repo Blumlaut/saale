@@ -30,6 +30,7 @@ import type { Prisma } from "@prisma/client";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { appCanManageInstallations } from "./github";
 import {
   GithubApiError,
   createAppJwt,
@@ -747,6 +748,15 @@ export interface GithubRepositoryChoices {
    * repositories" installation has to be switched on GitHub first.
    */
   canManage: boolean;
+  /**
+   * Whether the app itself may change the set.
+   *
+   * The picker's two calls take `installation_repositories: write`, so an app
+   * registered without that permission can show what an installation covers and
+   * nothing more. The card offers the save only when both this and `canManage`
+   * hold, and `applyGithubRepositoryChoices` says which one is missing.
+   */
+  appCanManage: boolean;
   /** Repositories the installation covers. */
   installed: { id: string; name: string; fullName: string }[];
   /** Repositories this account could add, with the installed ones marked. */
@@ -772,6 +782,57 @@ async function requireInstallationAccess(userId: string, installationId: string)
 }
 
 /**
+ * The app's permissions as GitHub has them now, written back when they moved.
+ *
+ * The stored copy is only as fresh as the last save in the admin panel, and a
+ * permission added on GitHub is exactly the change that happens without Saale
+ * knowing: the card would keep saying the picker cannot work, or offer a save
+ * GitHub refuses. One `GET /app` beside a picker read is cheaper than being
+ * wrong, and a read GitHub refuses leaves the stored set alone.
+ */
+async function refreshGithubAppPermissions(): Promise<Record<string, string> | null> {
+  const stored = await readGithubAppSummary();
+  if (!stored) return null;
+  const credentials = await readGithubAppCredentials();
+  if (!credentials) return stored.permissions;
+
+  try {
+    const jwt = await createAppJwt({
+      appId: credentials.appId,
+      privateKey: credentials.privateKey,
+    });
+    const identity = await readAppIdentity(jwt);
+    const fresh = identity.permissions ?? null;
+    if (JSON.stringify(fresh) !== JSON.stringify(stored.permissions)) {
+      await prisma.githubApp.update({
+        where: { id: GITHUB_APP_ID },
+        data: fresh ? { permissions: fresh as Prisma.InputJsonValue } : {},
+      });
+    }
+    return fresh;
+  } catch (err) {
+    console.error("Failed to re-read the GitHub App's permissions:", err);
+    return stored.permissions;
+  }
+}
+
+/** What to tell an admin whose app may not change its own installations. */
+const APP_CANNOT_MANAGE_INSTALLATIONS =
+  "The app may not change its own installations: it was registered without the “GitHub App installation repository access” permission (installation_repositories: write). Add the permission to the app on GitHub — every installation then approves it once — or change the repositories on GitHub's page.";
+
+/**
+ * GitHub answers those two calls with a 403 when the app lacks the permission,
+ * and its body ("Resource not accessible by integration") names nothing an
+ * admin could act on. Any other refusal is passed on as it is.
+ */
+function installationRepositoryRefusal(err: unknown): unknown {
+  if (err instanceof GithubApiError && err.status === 403) {
+    return new GithubAppError(APP_CANNOT_MANAGE_INSTALLATIONS);
+  }
+  return err;
+}
+
+/**
  * What one installation covers, and what could be added to it.
  *
  * Both reads use the account's own token, so GitHub answers with what *this*
@@ -782,7 +843,10 @@ export async function readGithubRepositoryChoices(
   userId: string,
   installationId: string,
 ): Promise<GithubRepositoryChoices> {
-  const installation = await requireInstallationAccess(userId, installationId);
+  const [installation, appPermissions] = await Promise.all([
+    requireInstallationAccess(userId, installationId),
+    refreshGithubAppPermissions(),
+  ]);
   const access = await readGithubUserAccess(userId);
   if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
 
@@ -808,6 +872,7 @@ export async function readGithubRepositoryChoices(
     accountType: installation.accountType,
     selection: installation.repositorySelection,
     canManage: installation.repositorySelection === "selected",
+    appCanManage: appCanManageInstallations(appPermissions),
     installed,
     candidates,
   };
@@ -835,6 +900,11 @@ export async function applyGithubRepositoryChoices(
       "This installation covers all repositories. Switch it to “Only select repositories” on GitHub first, then choose here.",
     );
   }
+  // The permission is checked here as well as in the card: a request that skips
+  // the card gets the sentence that names the fix, not GitHub's 403 body.
+  if (!appCanManageInstallations((await refreshGithubAppPermissions()) ?? null)) {
+    throw new GithubAppError(APP_CANNOT_MANAGE_INSTALLATIONS);
+  }
 
   const access = await readGithubUserAccess(userId);
   if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
@@ -849,11 +919,15 @@ export async function applyGithubRepositoryChoices(
   const add = [...wanted].filter((id) => !installedIds.has(id));
   const remove = [...installedIds].filter((id) => !wanted.has(id));
 
-  for (const id of add) {
-    await addInstallationRepository(access.accessToken, installation.installationId, id);
-  }
-  for (const id of remove) {
-    await removeInstallationRepository(access.accessToken, installation.installationId, id);
+  try {
+    for (const id of add) {
+      await addInstallationRepository(access.accessToken, installation.installationId, id);
+    }
+    for (const id of remove) {
+      await removeInstallationRepository(access.accessToken, installation.installationId, id);
+    }
+  } catch (err) {
+    throw installationRepositoryRefusal(err);
   }
 
   // Keep the stored row honest: the card lists it without asking GitHub again.
