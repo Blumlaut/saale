@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { GithubCredential } from "@/lib/integrations/github";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
 import { useGithub, type GithubAppSection, type GithubRepositoryChoices } from "@/hooks/use-github";
 import {
@@ -105,121 +106,90 @@ export function GithubCard() {
   return (
     <>
       <IntegrationBox manifest={GITHUB_BOX} connected={connected}>
-        {app.configured ? (
-          app.authorized ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs break-all">Signed in as @{app.authorized.login}</p>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    {app.installations.length === 0
-                      ? "Not installed on any account yet"
-                      : `Installed on ${installationSummary(app.installations.map((entry) => entry.accountLogin))}`}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 shrink-0 px-2 text-xs"
-                  disabled={disconnecting}
-                  onClick={() => void disconnect("app")}
-                >
-                  {disconnecting ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <LogOut className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  Sign out
-                </Button>
-              </div>
-
-              {app.slug && (
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-xs" asChild>
-                  <a
-                    href={installationsUrl(app.slug, app.installations)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {app.installations.length > 0 ? "Manage repositories" : "Install on GitHub"}
-                    <ExternalLink className="ml-1 h-3 w-3" />
-                  </a>
-                </Button>
-              )}
-
-              {app.authorized && app.installations.length > 0 && (
-                <div className="space-y-1">
-                  {app.installations
-                    .filter((entry) => !entry.suspended)
-                    .map((entry) => (
-                      <div
-                        key={entry.installationId}
-                        className="flex items-center justify-between gap-2"
-                      >
-                        <span className="font-mono text-[11px]">{entry.accountLogin}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-[11px]"
-                          onClick={() => setPicking(entry.installationId)}
-                        >
-                          {entry.repositorySelection === "selected" && entry.repositories
-                            ? `${entry.repositories.length} repositories`
-                            : "All repositories"}
-                        </Button>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              {cli.credential && (
-                <p className="text-muted-foreground text-xs">
-                  The GitHub CLI is also signed in as @{cli.credential.login}.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Button size="sm" onClick={startSignIn}>
-                <GitBranch className="mr-2 h-4 w-4" />
-                Connect GitHub
-              </Button>
-              {message && <p className="text-destructive text-xs break-words">{message}</p>}
-            </div>
-          )
-        ) : cli.credential ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs break-all">Signed in as @{cli.credential.login}</p>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                {sourceLine(cli.credential.source)}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 px-2 text-xs"
-              disabled={disconnecting}
-              onClick={() => void disconnect("cli")}
-            >
-              {disconnecting ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <LogOut className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Sign out
-            </Button>
-          </div>
-        ) : (
+        {app.authorized ? (
           <div className="space-y-2">
-            <Button size="sm" onClick={startSignIn}>
-              <GitBranch className="mr-2 h-4 w-4" />
-              Connect GitHub
-            </Button>
-            {message && <p className="text-destructive text-xs break-words">{message}</p>}
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs break-all">Signed in as @{app.authorized.login}</p>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {app.installations.length === 0
+                    ? "Not installed on any account yet"
+                    : `Installed on ${installationSummary(app.installations.map((entry) => entry.accountLogin))}`}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-xs"
+                disabled={disconnecting}
+                onClick={() => void disconnect("app")}
+              >
+                {disconnecting ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LogOut className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Sign out
+              </Button>
+            </div>
+
+            {app.slug && (
+              <Button variant="secondary" size="sm" className="h-7 px-2 text-xs" asChild>
+                <a
+                  href={installationsUrl(app.slug, app.installations)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {app.installations.length > 0 ? "Manage repositories" : "Install on GitHub"}
+                  <ExternalLink className="ml-1 h-3 w-3" />
+                </a>
+              </Button>
+            )}
+
+            {app.authorized && app.installations.length > 0 && (
+              <div className="space-y-1">
+                {app.installations
+                  .filter((entry) => !entry.suspended)
+                  .map((entry) => (
+                    <div
+                      key={entry.installationId}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="font-mono text-[11px]">{entry.accountLogin}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => setPicking(entry.installationId)}
+                      >
+                        {entry.repositorySelection === "selected" && entry.repositories
+                          ? `${entry.repositories.length} repositories`
+                          : "All repositories"}
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {cli.credential && (
+              <p className="text-muted-foreground text-xs">
+                The GitHub CLI is also signed in as @{cli.credential.login}.
+              </p>
+            )}
           </div>
+        ) : cli.credential ? (
+          <CliLogin
+            credential={cli.credential}
+            appConfigured={app.configured}
+            disconnecting={disconnecting}
+            message={message}
+            onDisconnect={() => void disconnect("cli")}
+            onAuthorizeApp={startSignIn}
+          />
+        ) : (
+          <ConnectGithub message={message} onClick={startSignIn} />
         )}
       </IntegrationBox>
 
@@ -261,6 +231,89 @@ function installationSummary(accounts: readonly string[]): string {
   const rest = accounts.length - named.length;
   if (rest <= 0) return named.join(", ");
   return `${named.join(", ")} and ${rest} more`;
+}
+
+/** The card's one action when nothing is connected, and whatever went wrong. */
+function ConnectGithub({ message, onClick }: { message: string | null; onClick: () => void }) {
+  return (
+    <div className="space-y-2">
+      <Button size="sm" onClick={onClick}>
+        <GitBranch className="mr-2 h-4 w-4" />
+        Connect GitHub
+      </Button>
+      {message && <p className="text-destructive text-xs break-words">{message}</p>}
+    </div>
+  );
+}
+
+/**
+ * A login the workspace made itself, in the GitHub CLI's own config.
+ *
+ * An instance with an app still lands here whenever the account has not
+ * authorized it — the login is what a command uses, so the box says who is
+ * signed in instead of offering a connect button over a working credential.
+ * Authorizing the app stays one click away, because the app is the source Saale
+ * can refresh and narrow.
+ */
+function CliLogin({
+  credential,
+  appConfigured,
+  disconnecting,
+  message,
+  onDisconnect,
+  onAuthorizeApp,
+}: {
+  credential: GithubCredential;
+  appConfigured: boolean;
+  disconnecting: boolean;
+  message: string | null;
+  onDisconnect: () => void;
+  onAuthorizeApp: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs break-all">Signed in as @{credential.login}</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">{sourceLine(credential.source)}</p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs"
+          disabled={disconnecting}
+          onClick={onDisconnect}
+        >
+          {disconnecting ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <LogOut className="mr-1.5 h-3.5 w-3.5" />
+          )}
+          Sign out
+        </Button>
+      </div>
+
+      {appConfigured && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-muted-foreground text-xs">
+            The GitHub App is not authorized for your account yet.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-xs"
+            onClick={onAuthorizeApp}
+          >
+            Authorize the app
+          </Button>
+        </div>
+      )}
+
+      {message && <p className="text-destructive text-xs break-words">{message}</p>}
+    </div>
+  );
 }
 
 /** Where gh took the token from, in words: its own login, or a variable the user set. */
