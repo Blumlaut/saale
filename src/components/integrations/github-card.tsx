@@ -22,9 +22,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { isVariableTokenSource, type GithubCredential } from "@/lib/integrations/github";
+import {
+  isVariableTokenSource,
+  missingGithubAppPermissions,
+  type GithubCredential,
+} from "@/lib/integrations/github";
 import { IntegrationBox, type IntegrationBoxInfo } from "./integration-box";
-import { useGithub, type GithubAppSection, type GithubRepositoryChoices } from "@/hooks/use-github";
+import {
+  useGithub,
+  type GithubAppSection,
+  type GithubRepositoryAnswer,
+  type GithubRepositoryChoices,
+} from "@/hooks/use-github";
 import {
   installationSettingsUrl,
   manageInstallationsUrl,
@@ -508,11 +517,11 @@ function RepositoryDialog({
 }: {
   installationId: string;
   onClose: () => void;
-  load: (installationId: string) => Promise<GithubRepositoryChoices | null>;
+  load: (installationId: string) => Promise<GithubRepositoryAnswer>;
   save: (
     installationId: string,
     repositoryIds: readonly string[],
-  ) => Promise<GithubRepositoryChoices | null>;
+  ) => Promise<GithubRepositoryAnswer>;
 }) {
   const [choices, setChoices] = useState<GithubRepositoryChoices | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -521,10 +530,13 @@ function RepositoryDialog({
 
   useEffect(() => {
     let cancelled = false;
-    void load(installationId).then((data) => {
-      if (cancelled || !data) return;
-      setChoices(data);
-      setSelected(new Set(data.installed.map((entry) => entry.id)));
+    void load(installationId).then((answer) => {
+      if (cancelled) return;
+      setChoices(answer.choices);
+      setError(answer.error);
+      if (answer.choices) {
+        setSelected(new Set(answer.choices.installed.map((entry) => entry.id)));
+      }
     });
     return () => {
       cancelled = true;
@@ -543,10 +555,10 @@ function RepositoryDialog({
   const apply = async () => {
     setBusy(true);
     setError(null);
-    const data = await save(installationId, [...selected]);
+    const answer = await save(installationId, [...selected]);
     setBusy(false);
-    if (!data) {
-      setError("The selection could not be saved.");
+    if (!answer.choices) {
+      setError(answer.error ?? "The selection could not be saved.");
       return;
     }
     toast.success("Repositories updated");
@@ -569,20 +581,9 @@ function RepositoryDialog({
         </DialogHeader>
 
         {choices && !choices.canManage ? (
-          <div className="space-y-2 py-2">
-            <p className="text-sm">
-              This installation covers all repositories, so it cannot be narrowed here.
-            </p>
-            <p className="text-muted-foreground text-xs">
-              On GitHub, switch it to “Only select repositories”, then choose the set in Saale.
-            </p>
-            <Button variant="secondary" size="sm" asChild>
-              <a href={installationSettingsUrl(choices)} target="_blank" rel="noopener noreferrer">
-                Manage on GitHub
-                <ExternalLink className="ml-1 h-3.5 w-3.5" />
-              </a>
-            </Button>
-          </div>
+          <BlockedRepositoryPicker reason="all-repositories" installation={choices} />
+        ) : choices && !choices.appCanManage ? (
+          <BlockedRepositoryPicker reason="app-permission" installation={choices} />
         ) : choices ? (
           <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
             {choices.candidates.length === 0 && (
@@ -616,7 +617,7 @@ function RepositoryDialog({
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
-          {choices?.canManage && (
+          {choices?.canManage && choices.appCanManage && (
             <Button size="sm" onClick={() => void apply()} disabled={busy}>
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save
@@ -625,6 +626,44 @@ function RepositoryDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Why the picker cannot change anything here, and what to do instead.
+ *
+ * Two independent facts stop it, and they need different sentences: an
+ * installation granted "All repositories" has to be switched on GitHub first,
+ * while an app registered without `installation_repositories: write` cannot make
+ * those calls at all — GitHub refuses them with a 403 whatever the account may
+ * do. Both keep GitHub's page one click away, because that page works.
+ */
+function BlockedRepositoryPicker({
+  reason,
+  installation,
+}: {
+  reason: "all-repositories" | "app-permission";
+  installation: GithubRepositoryChoices;
+}) {
+  return (
+    <div className="space-y-2 py-2">
+      <p className="text-sm">
+        {reason === "all-repositories"
+          ? "This installation covers all repositories, so it cannot be narrowed here."
+          : "The app may not change its own installations."}
+      </p>
+      <p className="text-muted-foreground text-xs">
+        {reason === "all-repositories"
+          ? "On GitHub, switch it to “Only select repositories”, then choose the set in Saale."
+          : "It was registered without the “GitHub App installation repository access” permission, so Saale can only read this set. Add it to the app on GitHub — every installation then approves it once — or pick the repositories on GitHub's page."}
+      </p>
+      <Button variant="secondary" size="sm" asChild>
+        <a href={installationSettingsUrl(installation)} target="_blank" rel="noopener noreferrer">
+          Manage on GitHub
+          <ExternalLink className="ml-1 h-3.5 w-3.5" />
+        </a>
+      </Button>
+    </div>
   );
 }
 
@@ -702,6 +741,9 @@ function GithubSetupDialog({
 }) {
   const step = setupStep(app);
   const installations = app.installations.filter((entry) => !entry.suspended);
+  // What the app holds is GitHub's answer, not Saale's wish: the step says what
+  // is missing rather than assuming the admin ticked every box.
+  const missingPermissions = missingGithubAppPermissions(app.permissions);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -784,6 +826,30 @@ function GithubSetupDialog({
                   Private repositories it is not installed on stay invisible, and no other account
                   can use your installation.
                 </p>
+                {missingPermissions.length > 0 && (
+                  <div className="space-y-1 border-t border-dashed pt-2">
+                    <p className="text-destructive flex items-start gap-1.5 text-xs">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {missingPermissions.length === 1
+                        ? "One permission Saale works with is missing."
+                        : `${missingPermissions.length} permissions Saale works with are missing.`}
+                    </p>
+                    <ul className="text-muted-foreground space-y-0.5 text-xs">
+                      {missingPermissions.map((entry) => (
+                        <li key={entry.name}>
+                          <span className="font-mono text-[11px]">
+                            {entry.name}: {entry.level}
+                          </span>{" "}
+                          — {entry.why}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-muted-foreground text-xs">
+                      Add it under the app&apos;s permissions on GitHub; every installation then
+                      approves it once.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

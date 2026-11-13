@@ -21,8 +21,16 @@ export interface GithubRepositoryChoices {
   selection: string;
   /** False when the installation covers every repository; GitHub then refuses. */
   canManage: boolean;
+  /** False when the app was registered without the permission those two calls take. */
+  appCanManage: boolean;
   installed: { id: string; name: string; fullName: string }[];
   candidates: { id: string; fullName: string; installed: boolean }[];
+}
+
+/** A picker read or save: the set, or the sentence that says why there is none. */
+export interface GithubRepositoryAnswer {
+  choices: GithubRepositoryChoices | null;
+  error: string | null;
 }
 
 /** Before the first read: nothing known, so nothing claimed. */
@@ -152,35 +160,51 @@ export function useGithub() {
 
   /** The repository set of one installation, for the picker. */
   const loadRepositories = useCallback(
-    async (installationId: string): Promise<GithubRepositoryChoices | null> => {
+    async (installationId: string): Promise<GithubRepositoryAnswer> => {
       try {
-        return await fetchJson<GithubRepositoryChoices>(
-          `/api/integrations/github/repositories?installation=${encodeURIComponent(installationId)}`,
-        );
+        return {
+          choices: await fetchJson<GithubRepositoryChoices>(
+            `/api/integrations/github/repositories?installation=${encodeURIComponent(installationId)}`,
+          ),
+          error: null,
+        };
       } catch (err) {
         console.error("Failed to read the installation's repositories:", err);
-        setError(err instanceof Error ? err.message : "Failed to read the repositories");
-        return null;
+        return {
+          choices: null,
+          error: err instanceof Error ? err.message : "Failed to read the repositories",
+        };
       }
     },
     [],
   );
 
-  /** Apply a selection; the installation is what changes, not only a token. */
+  /**
+   * Apply a selection; the installation is what changes, not only a token.
+   *
+   * The refusal comes back rather than landing in the card's own message: it is
+   * the dialog's to show, and Saale's sentences there are the long ones (which
+   * permission is missing, what to change on GitHub).
+   */
   const saveRepositories = useCallback(
     async (
       installationId: string,
       repositoryIds: readonly string[],
-    ): Promise<GithubRepositoryChoices | null> => {
+    ): Promise<GithubRepositoryAnswer> => {
       try {
-        return await putJson<GithubRepositoryChoices>("/api/integrations/github/repositories", {
-          installationId,
-          repositoryIds: [...repositoryIds],
-        });
+        return {
+          choices: await putJson<GithubRepositoryChoices>("/api/integrations/github/repositories", {
+            installationId,
+            repositoryIds: [...repositoryIds],
+          }),
+          error: null,
+        };
       } catch (err) {
         console.error("Failed to change the installation's repositories:", err);
-        setError(err instanceof Error ? err.message : "Failed to change the repositories");
-        return null;
+        return {
+          choices: null,
+          error: err instanceof Error ? err.message : "Failed to change the repositories",
+        };
       }
     },
     [],

@@ -160,6 +160,63 @@ export interface GithubAppSection {
   pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
 }
 
+/**
+ * The repository permissions Saale works with.
+ *
+ * `GET /app` answers with whatever an app actually holds, so this list is what
+ * the setup steps measure that answer against: an admin who registered the app
+ * by hand reads here what is missing and what it costs. The last entry is the
+ * one the repository picker needs — GitHub accepts those two calls only from an
+ * app that holds it.
+ */
+export interface GithubAppPermission {
+  /** The key in `GET /app`'s permissions map. */
+  name: string;
+  /** "read" or "write". */
+  level: string;
+  /** What a workspace loses without it. */
+  why: string;
+}
+
+export const GITHUB_APP_PERMISSIONS: readonly GithubAppPermission[] = [
+  { name: "contents", level: "write", why: "clone, fetch and push" },
+  { name: "pull_requests", level: "write", why: "open and read pull requests" },
+  { name: "workflows", level: "write", why: "push a branch that touches .github/workflows" },
+  { name: "checks", level: "read", why: "the check badge on a branch" },
+  { name: "metadata", level: "read", why: "every app has to ask for it" },
+  {
+    name: "installation_repositories",
+    level: "write",
+    why: "the repository picker adds and removes repositories",
+  },
+];
+
+/** Whether a held level reaches what is asked for: write covers read, never the other way. */
+function coversLevel(held: string | undefined, needed: string): boolean {
+  return held === "write" || held === needed;
+}
+
+/** What an app's permission set is missing, in the order above. */
+export function missingGithubAppPermissions(
+  held: Record<string, string> | null | undefined,
+): GithubAppPermission[] {
+  return GITHUB_APP_PERMISSIONS.filter((entry) => !coversLevel(held?.[entry.name], entry.level));
+}
+
+/**
+ * Whether the app may change its own installations, which the picker needs.
+ *
+ * The two installation calls take `installation_repositories: write`, a
+ * permission GitHub has accepted only since October 2026. An app registered
+ * before that can read an installation's repositories and nothing more, so the
+ * card has to know the difference rather than offer a save GitHub refuses.
+ */
+export function appCanManageInstallations(
+  held: Record<string, string> | null | undefined,
+): boolean {
+  return coversLevel(held?.installation_repositories, "write");
+}
+
 /** The entry gh keeps itself, skipping any it was handed through the environment. */
 function storedCredential(entries: { host: string; entry: HostEntry }[]): GithubCredential | null {
   for (const { host, entry } of entries) {

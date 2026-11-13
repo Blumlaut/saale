@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { findDeviceCode, parseGithubHosts } from "@/lib/integrations/github";
+import {
+  GITHUB_APP_PERMISSIONS,
+  appCanManageInstallations,
+  findDeviceCode,
+  missingGithubAppPermissions,
+  parseGithubHosts,
+} from "@/lib/integrations/github";
 
 /** A `gh auth status --json hosts` answer, as gh 2.103 prints it. */
 function hostsJson(entry: Record<string, unknown>, host = "github.com"): string {
@@ -164,5 +170,50 @@ describe("findDeviceCode", () => {
 
   it("ignores a code typed into something else", () => {
     expect(findDeviceCode("First copy your one-time code: 12AB")).toBeNull();
+  });
+});
+
+describe("missingGithubAppPermissions", () => {
+  it("names only what the app does not hold, and counts write as covering read", () => {
+    const missing = missingGithubAppPermissions({
+      contents: "write",
+      pull_requests: "write",
+      workflows: "write",
+      // Asked for as read, granted as write: nothing is missing here.
+      checks: "write",
+      metadata: "read",
+    });
+
+    expect(missing.map((entry) => entry.name)).toEqual(["installation_repositories"]);
+    expect(missing[0]?.why).toMatch(/picker/);
+
+    expect(
+      missingGithubAppPermissions({
+        contents: "write",
+        pull_requests: "write",
+        workflows: "write",
+        checks: "read",
+        metadata: "read",
+        installation_repositories: "write",
+      }),
+    ).toEqual([]);
+  });
+
+  it("treats an unknown set as missing everything, rather than as complete", () => {
+    expect(missingGithubAppPermissions(null).map((entry) => entry.name)).toEqual(
+      GITHUB_APP_PERMISSIONS.map((entry) => entry.name),
+    );
+  });
+});
+
+describe("appCanManageInstallations", () => {
+  it("needs write on the permission those two installation calls take", () => {
+    expect(appCanManageInstallations({ installation_repositories: "write" })).toBe(true);
+    expect(appCanManageInstallations({ installation_repositories: "read" })).toBe(false);
+    // An app with every other permission and not this one still cannot save.
+    expect(
+      appCanManageInstallations({ contents: "write", pull_requests: "write", metadata: "read" }),
+    ).toBe(false);
+    expect(appCanManageInstallations(null)).toBe(false);
   });
 });
