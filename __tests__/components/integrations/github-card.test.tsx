@@ -51,6 +51,19 @@ const cliLogin: GithubStatus = {
 
 const noCredential: GithubStatus = { credential: null, pending: null, error: null };
 
+/** The same account, but gh took the token from `GH_TOKEN` rather than its config. */
+const cliVariableToken: GithubStatus = {
+  credential: {
+    host: "github.com",
+    login: "octocat",
+    scopes: null,
+    gitProtocol: null,
+    source: "GH_TOKEN",
+  },
+  pending: null,
+  error: null,
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -112,6 +125,36 @@ describe("GithubCard", () => {
     expect(screen.getByText("gh and git use this login")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Connect GitHub/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Authorize the app/ })).toBeInTheDocument();
+  });
+
+  it("names a gh login beside the app's own", async () => {
+    mockStatus(appAuthorized, cliLogin);
+    render(<GithubCard />);
+
+    expect(
+      await screen.findByText("The GitHub CLI is also signed in as @octocat."),
+    ).toBeInTheDocument();
+  });
+
+  it("does not call a token from the environment a CLI login", async () => {
+    // What the workspace reports is what a command *would use*: while the app is
+    // the source Saale's gh shim hands it our token, and a GH_TOKEN variable wins
+    // too. Both read as a token from the environment, and neither is a login.
+    mockStatus(appAuthorized, cliVariableToken);
+    render(<GithubCard />);
+
+    expect(await screen.findByText("Signed in as @octocat")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.queryByText(/The GitHub CLI is also signed in/)).not.toBeInTheDocument();
+  });
+
+  it("words an environment token as a variable when it is the only credential", async () => {
+    mockStatus(appConfigured, cliVariableToken);
+    render(<GithubCard />);
+
+    expect(
+      await screen.findByText("gh and git use GH_TOKEN from your environment variables"),
+    ).toBeInTheDocument();
   });
 
   it("shows a CLI login without the app hint when the instance has no app", async () => {
