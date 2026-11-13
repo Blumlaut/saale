@@ -108,6 +108,9 @@ export function WorktreePanel({
   pullRequest,
   onLoadMoreCommits,
   loadingMoreCommits,
+  collapsed = false,
+  onExpand,
+  onCollapse,
 }: {
   sessionId: string;
   state: CoderSessionState | null;
@@ -120,6 +123,10 @@ export function WorktreePanel({
   pullRequest: CoderPullRequest | null;
   onLoadMoreCommits: () => void;
   loadingMoreCommits: boolean;
+  /** The panel is put away: only its rail of tabs shows. */
+  collapsed?: boolean;
+  onExpand?: () => void;
+  onCollapse?: () => void;
 }) {
   // Diff and File hold a target, so only a plain tab is remembered here.
   const [tab, setTab] = usePersistedState<string>("coder:panelTab", "changes", {
@@ -293,6 +300,10 @@ export function WorktreePanel({
       onValueChange={setTab}
       tabs={tabs}
       notice={<SetupFailureNotice failure={state?.setupFailure ?? null} />}
+      label="worktree panel"
+      collapsed={collapsed}
+      {...(onExpand ? { onExpand } : {})}
+      {...(onCollapse ? { onCollapse } : {})}
     />
   );
 }

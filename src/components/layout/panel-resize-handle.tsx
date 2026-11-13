@@ -11,6 +11,11 @@ import type { ResizableWidth } from "@/hooks/use-resizable-width";
  * of the page needs. Both carry the separator role the hook exposes, so the
  * keyboard reaches the same resize.
  */
+/** The gutter's room while the column beside it is away: same seam, no grip. */
+export function PanelResizeSpacer() {
+  return <div aria-hidden className="mx-1 w-1.5 shrink-0" />;
+}
+
 export function PanelResizeHandle({
   handle,
   dragging = false,

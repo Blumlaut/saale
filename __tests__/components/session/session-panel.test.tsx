@@ -63,3 +63,99 @@ describe("SessionPanel", () => {
     expect(screen.getByRole("button", { name: "first content", hidden: true })).not.toBeVisible();
   });
 });
+
+/**
+ * The panel with its rail: `collapsed` is a prop the caller owns, so the
+ * harness keeps it next to the tab, the way both chats do.
+ */
+function RailHarness({
+  onExpand = vi.fn(),
+  onCollapse = vi.fn(),
+}: {
+  onExpand?: () => void;
+  onCollapse?: () => void;
+}) {
+  const [tab, setTab] = useState("first");
+  const [collapsed, setCollapsed] = useState(true);
+  return (
+    <SessionPanel
+      value={tab}
+      onValueChange={setTab}
+      collapsed={collapsed}
+      label="thing panel"
+      onExpand={() => {
+        onExpand();
+        setCollapsed(false);
+      }}
+      onCollapse={() => {
+        onCollapse();
+        setCollapsed(true);
+      }}
+      tabs={[
+        {
+          id: "first",
+          label: "First",
+          icon: <span data-testid="first-icon" />,
+          content: <p>first content</p>,
+        },
+        {
+          id: "second",
+          label: "Second",
+          icon: <span data-testid="second-icon" />,
+          content: <p>second content</p>,
+        },
+      ]}
+    />
+  );
+}
+
+describe("SessionPanel: put away", () => {
+  it("shows a rail of its tabs, which the strip does not", () => {
+    render(<RailHarness />);
+
+    expect(screen.getByRole("button", { name: "Show the thing panel" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "First" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Second" })).toBeVisible();
+    // The strip's own control is gone with it.
+    expect(screen.queryByRole("button", { name: "Hide the thing panel" })).toBeNull();
+  });
+
+  it("keeps the tabs mounted, so a shell in one of them keeps running", () => {
+    render(<RailHarness />);
+
+    expect(screen.getByText("first content", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("second content", { exact: true })).toBeNull();
+  });
+
+  it("opens the panel on the rail icon it was given", () => {
+    const onExpand = vi.fn();
+    render(<RailHarness onExpand={onExpand} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Second" }));
+
+    expect(onExpand).toHaveBeenCalled();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: /Second/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("brings the panel back on the tab it was left on", () => {
+    const onExpand = vi.fn();
+    render(<RailHarness onExpand={onExpand} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the thing panel" }));
+
+    expect(onExpand).toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: /First/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("puts the panel away again from the strip's own control", () => {
+    const onCollapse = vi.fn();
+    render(<RailHarness onCollapse={onCollapse} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show the thing panel" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide the thing panel" }));
+
+    expect(onCollapse).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Show the thing panel" })).toBeVisible();
+  });
+});

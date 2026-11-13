@@ -591,7 +591,7 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
-  test("puts the worktree panel away from the header and keeps it away", async ({ browser }) => {
+  test("puts the worktree panel away to its rail and keeps it away", async ({ browser }) => {
     const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     const handle = () =>
       page.locator('[role="separator"][aria-label="Resize the worktree panel"]:visible');
@@ -599,6 +599,10 @@ test.describe("coder panel", () => {
 
     await page.getByRole("button", { name: "Hide the worktree panel" }).click();
     await expect(handle()).toBeHidden();
+    // The rail stays, so the panel keeps an edge on screen with its tabs in it.
+    const rail = page.locator('[data-slot="session-panel-rail"]:visible');
+    await expect(rail.getByRole("button", { name: "Project" })).toBeVisible();
+    expect((await rail.boundingBox())!.width).toBeLessThan(60);
     // The chat takes the room back.
     const wide = await shown(page, '[data-slot="chat-drop-zone"]').boundingBox();
     await page.getByRole("button", { name: "Show the worktree panel" }).click();

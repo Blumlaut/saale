@@ -37,7 +37,10 @@ interface ChatHeaderProps {
   mobileListTrigger?: React.ReactNode;
   /** Extra header controls, rendered last (the coder chat's worktree panel). */
   extraActions?: React.ReactNode;
-  /** Opens and closes the chat's session panel; omit a view that has none. */
+  /**
+   * Opens the panel as a sheet: on a view too narrow for the column, where the
+   * panel has no rail of its own to come back from.
+   */
   onToggleSessionPanel?: () => void;
   sessionPanelOpen?: boolean;
   /** Hide the temporary-mode toggle. a coder chat is bound to its worktree. */
@@ -173,13 +176,14 @@ export function ChatHeader({
           </Button>
         )}
         {extraActions}
+        {/* The chat list carries this on a desktop's own column. */}
         <Button
-          className="flex h-8 w-8 shrink-0 items-center gap-1.5 md:h-9 md:w-auto md:px-3"
+          className="flex h-8 w-8 shrink-0 items-center gap-1.5 md:hidden"
           size="icon"
           onClick={onNewChat}
         >
           <MessageSquarePlus className="h-4 w-4" />
-          <span className="hidden @[36rem]:inline">New Chat</span>
+          <span className="sr-only">New Chat</span>
         </Button>
       </div>
     </div>

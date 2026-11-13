@@ -39,9 +39,12 @@ export function ChatPanel({
   links,
   sharedFile,
   messages,
+  collapsed = false,
+  onExpand,
+  onCollapse,
 }: {
   sessionId: string;
-  /** The open tab's id; "status" when the panel has just been opened. */
+  /** The tab shown, and the one the rail puts back. */
   tab: string;
   onTabChange: (id: string) => void;
   links: SessionLink[] | null;
@@ -49,6 +52,10 @@ export function ChatPanel({
   sharedFile: ShownFile | null;
   /** The transcript as the chat has it, for what its turns cost. */
   messages: readonly Message[];
+  /** The panel is put away: only its rail of tabs shows. */
+  collapsed?: boolean;
+  onExpand?: () => void;
+  onCollapse?: () => void;
 }) {
   const files = useFileTab({
     target: "user",
@@ -143,7 +150,16 @@ export function ChatPanel({
     ...(files.tab ? [files.tab] : []),
   ];
 
-  return <SessionPanel value={tab} onValueChange={onTabChange} tabs={tabs} />;
+  return (
+    <SessionPanel
+      value={tab}
+      onValueChange={onTabChange}
+      tabs={tabs}
+      collapsed={collapsed}
+      {...(onExpand ? { onExpand } : {})}
+      {...(onCollapse ? { onCollapse } : {})}
+    />
+  );
 }
 
 /** The panel as a phone sees it: a sheet over the conversation. */

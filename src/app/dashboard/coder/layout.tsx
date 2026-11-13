@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { FolderGit2, PanelRight, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { FolderGit2, PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { ChatInterface } from "@/components/chat/chat-interface";
@@ -20,8 +19,8 @@ import { CHAT_MIN_WIDTH, useResizableWidth, panelCeiling } from "@/hooks/use-res
 import { DELETING_POLL_MS } from "@/hooks/use-deleting-poll";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { isBoolean, usePersistedState } from "@/hooks/use-persisted-state";
-import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
-import { SessionPanelSheet } from "@/components/session/session-panel";
+import { PanelResizeHandle, PanelResizeSpacer } from "@/components/layout/panel-resize-handle";
+import { SESSION_RAIL_WIDTH, SessionPanelSheet } from "@/components/session/session-panel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 /** How often an open coder chat re-reads its worktree while visible. */
@@ -181,6 +180,10 @@ export default function CoderLayout() {
     );
   }
 
+  // A chat on its way out has no tabs to offer, so the panel says what is
+  // happening instead of folding down to its rail.
+  const panelUp = panelOpen || gone || state?.deleting === true;
+
   return (
     <div className="full-bleed flex min-h-0 flex-1 flex-col">
       <div ref={measureRow} className="flex min-h-0 flex-1 overflow-hidden">
@@ -225,20 +228,6 @@ export default function CoderLayout() {
             }
             headerActions={
               <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hidden h-8 w-8 shrink-0 md:h-9 lg:inline-flex"
-                  aria-pressed={panelOpen}
-                  aria-label={panelOpen ? "Hide the worktree panel" : "Show the worktree panel"}
-                  onClick={() => setPanelOpen((open) => !open)}
-                >
-                  {panelOpen ? (
-                    <PanelRightClose className="h-4 w-4" />
-                  ) : (
-                    <PanelRightOpen className="h-4 w-4" />
-                  )}
-                </Button>
                 <div className="lg:hidden">
                   <Button
                     variant="ghost"
@@ -285,16 +274,20 @@ export default function CoderLayout() {
 
         {/* Drag to widen the worktree panel; arrow keys do the same from the
             keyboard and the width survives a reload. */}
-        {panelOpen && (
+        {panelUp ? (
           <PanelResizeHandle
             handle={panel.handleProps}
             dragging={panel.dragging}
             className="hidden lg:flex"
           />
+        ) : (
+          <div className="hidden lg:block">
+            <PanelResizeSpacer />
+          </div>
         )}
         <div
-          className={cn("shrink-0", panelOpen ? "hidden lg:block" : "hidden")}
-          style={{ width: panel.width }}
+          className="hidden shrink-0 lg:block"
+          style={{ width: panelUp ? panel.width : SESSION_RAIL_WIDTH }}
         >
           <WorktreePanel
             key={sessionId}
@@ -308,6 +301,9 @@ export default function CoderLayout() {
             pullRequest={pullRequest}
             onLoadMoreCommits={loadMoreCommits}
             loadingMoreCommits={loadingMoreCommits}
+            collapsed={!panelUp}
+            onExpand={() => setPanelOpen(true)}
+            onCollapse={() => setPanelOpen(false)}
           />
         </div>
       </div>

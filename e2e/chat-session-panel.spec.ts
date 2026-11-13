@@ -118,9 +118,21 @@ async function mockChatFiles(page: Page, sessionId: string) {
   );
 }
 
-/** The copy of the panel that is on screen. */
+/** The panel with its tabs up. */
 function panel(page: Page) {
-  return page.locator('[data-slot="session-panel"]').filter({ visible: true }).first();
+  return page.locator('[data-slot="session-panel"][data-state="open"]:visible').first();
+}
+
+/** The strip of tabs it keeps while it is put away. */
+function rail(page: Page) {
+  return page.locator('[data-slot="session-panel-rail"]:visible').first();
+}
+
+/** Puts the panel away, so the rail is what brings it back. */
+async function putAway(page: Page) {
+  // The share in the transcript puts the panel up on its own; wait for it.
+  await page.getByRole("button", { name: "Hide the session panel" }).click();
+  await expect(rail(page)).toBeVisible();
 }
 
 function panelButton(page: Page) {
@@ -149,12 +161,9 @@ test.describe("chat session panel", () => {
 
   test("opens the file the chat shared beside the transcript", async () => {
     await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
-    await expect(panel(page)).toBeHidden();
 
-    const opened = page.waitForRequest(/\/api\/files\/raw\?.*report\.md/);
-    await panelButton(page).click();
+    // The share in the transcript is what the panel puts itself up on.
     await expect(panel(page)).toBeVisible();
-    await opened;
 
     // The path reads as the agent named it, not as the volume stores it.
     await expect(panel(page).getByText(FILE_PATH, { exact: true })).toBeVisible();
@@ -167,15 +176,18 @@ test.describe("chat session panel", () => {
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
 
-    // The header button puts it away again, as it does for a coder chat.
-    await panelButton(page).click();
-    await expect(panel(page)).toBeHidden();
+    // The strip's own control puts it away, and its rail stays.
+    await page.getByRole("button", { name: "Hide the session panel" }).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(rail(page)).toBeVisible();
+    expect((await rail(page).boundingBox())!.width).toBeLessThan(60);
   });
 
   test("shows what the context holds and what fires into it, in one tab", async () => {
     await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
-    await panelButton(page).click();
-    await panel(page).getByRole("tab", { name: "Status" }).click();
+    await putAway(page);
+    await rail(page).getByRole("button", { name: "Status", exact: true }).click();
+    await expect(panel(page)).toBeVisible();
 
     // The context block is the card the transcript reports, not a new number.
     await expect(panel(page).getByText("31%")).toBeVisible();
@@ -210,7 +222,8 @@ test.describe("chat session panel", () => {
 
   test("remembers the width its edge was dragged to", async () => {
     await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
-    await panelButton(page).click();
+    await putAway(page);
+    await page.getByRole("button", { name: "Show the session panel" }).click();
     const handle = page.locator('[role="separator"][aria-label="Resize the files panel"]:visible');
     await expect(handle).toBeVisible();
 
@@ -221,7 +234,8 @@ test.describe("chat session panel", () => {
     await expect.poll(async () => (await handle.boundingBox())!.x).toBeLessThan(before - 8);
 
     await gotoAndSettle(page, `/dashboard/chat/${sessionId}`);
-    await panelButton(page).click();
+    await putAway(page);
+    await page.getByRole("button", { name: "Show the session panel" }).click();
     await expect.poll(async () => (await handle.boundingBox())!.x).toBeLessThan(before - 8);
   });
 

@@ -51,8 +51,9 @@ import { useSessionLinks } from "./session-links-panel";
 import { useChatStream } from "./use-chat-stream";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { CHAT_MIN_WIDTH, useResizableWidth } from "@/hooks/use-resizable-width";
-import { PanelResizeHandle } from "@/components/layout/panel-resize-handle";
+import { PanelResizeHandle, PanelResizeSpacer } from "@/components/layout/panel-resize-handle";
 import { ChatPanel, ChatPanelSheet } from "./chat-panel";
+import { SESSION_RAIL_WIDTH } from "@/components/session/session-panel";
 import { latestShownFile, type ShownFile } from "@/lib/chat/shown-file";
 import { CommandSheet } from "./command-sheet";
 import { getCommandMeta } from "@/lib/commands/catalog";
@@ -123,10 +124,11 @@ export function ChatInterface({
   const router = useRouter();
   // Watchers bound to this conversation. feeds the Linked button/panel.
   const { links, reload: reloadLinks } = useSessionLinks(sessionId);
-  // The session panel, by the tab it shows, or null while it is away. It opens
-  // closed: a chat starts with the transcript. Its width is what the browser
-  // remembers.
-  const [panelTab, setPanelTab] = useState<string | null>(null);
+  // The session panel: the tab it shows, and whether it is up. It starts away,
+  // so a chat opens on the transcript; the rail of its tabs stays in view.
+  // Its width is what the browser remembers.
+  const [panelTab, setPanelTab] = useState("status");
+  const [panelOpen, setPanelOpen] = useState(false);
   // The share whose file the panel has already opened, so a chat reopened
   // tomorrow does not open it again.
   const revealedShare = useRef<string | null>(null);
@@ -326,7 +328,7 @@ export function ChatInterface({
     if (!latestShare || !filesInline || revealedShare.current === latestShare.id) return;
     revealedShare.current = latestShare.id;
     // The panel opens on the file the panel then resolves; see `ChatPanel`.
-    setPanelTab((current) => current ?? "status");
+    setPanelOpen(true);
   }, [latestShare, filesInline]);
 
   /**
@@ -1099,16 +1101,22 @@ export function ChatInterface({
               onSaveTitle={saveTitle}
               onTemporaryChange={onTemporaryChange}
               onNewChat={onNewChat}
-              linksCount={links?.length ?? 0}
-              linksOpen={panelTab === "status"}
-              onToggleLinks={() => setPanelTab((open) => (open === "status" ? null : "status"))}
-              {...(sessionPanel
+              {...(sessionPanel && !filesInline
                 ? {
-                    onToggleSessionPanel: () =>
-                      setPanelTab((open) => (open === null ? "status" : null)),
-                    sessionPanelOpen: panelTab !== null,
+                    onToggleSessionPanel: () => setPanelOpen((open) => !open),
+                    sessionPanelOpen: panelOpen,
                   }
                 : {})}
+              linksCount={sessionPanel ? (links?.length ?? 0) : 0}
+              linksOpen={panelOpen && panelTab === "status"}
+              onToggleLinks={() => {
+                if (panelOpen && panelTab === "status") {
+                  setPanelOpen(false);
+                  return;
+                }
+                setPanelTab("status");
+                setPanelOpen(true);
+              }}
               {...(mobileListTrigger ? { mobileListTrigger } : {})}
               {...(headerActions ? { extraActions: headerActions } : {})}
               {...(hideTemporaryToggle ? { hideTemporaryToggle } : {})}
@@ -1198,17 +1206,30 @@ export function ChatInterface({
 
         {/* The session panel. desktop: a column with its own drag handle.
             phone: the sheet below, so the transcript keeps the screen. */}
-        {filesInline && panelTab !== null && (
+        {filesInline && (
           <>
-            <PanelResizeHandle
-              handle={filesPanelWidth.handleProps}
-              dragging={filesPanelWidth.dragging}
-            />
-            <div className="flex shrink-0 flex-col" style={{ width: filesPanelWidth.width }}>
+            {panelOpen ? (
+              <PanelResizeHandle
+                handle={filesPanelWidth.handleProps}
+                dragging={filesPanelWidth.dragging}
+              />
+            ) : (
+              <PanelResizeSpacer />
+            )}
+            <div
+              className="flex shrink-0 flex-col overflow-hidden"
+              style={{ width: panelOpen ? filesPanelWidth.width : SESSION_RAIL_WIDTH }}
+            >
               <ChatPanel
                 sessionId={sessionId}
                 tab={panelTab}
-                onTabChange={setPanelTab}
+                onTabChange={(id) => {
+                  setPanelTab(id);
+                  setPanelOpen(true);
+                }}
+                collapsed={!panelOpen}
+                onExpand={() => setPanelOpen(true)}
+                onCollapse={() => setPanelOpen(false)}
                 links={links}
                 sharedFile={latestShare}
                 messages={messages}
@@ -1219,10 +1240,10 @@ export function ChatInterface({
 
         {sessionPanel && filesRoom !== null && !filesInline && (
           <ChatPanelSheet
-            open={panelTab !== null}
-            onOpenChange={(open) => setPanelTab(open ? (panelTab ?? "status") : null)}
+            open={panelOpen}
+            onOpenChange={setPanelOpen}
             sessionId={sessionId}
-            tab={panelTab ?? "status"}
+            tab={panelTab}
             onTabChange={setPanelTab}
             links={links}
             sharedFile={latestShare}
