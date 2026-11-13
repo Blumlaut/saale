@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Check, Copy, ExternalLink, GitBranch, Loader2, LogOut } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  ExternalLink,
+  GitBranch,
+  Loader2,
+  LogOut,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -148,7 +157,7 @@ export function GithubCard() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  {app.installations.length > 0 ? "Manage repositories" : "Install on GitHub"}
+                  Install / manage on GitHub
                   <ExternalLink className="ml-1 h-3 w-3" />
                 </a>
               </Button>
@@ -164,17 +173,10 @@ export function GithubCard() {
                       className="flex items-center justify-between gap-2"
                     >
                       <span className="font-mono text-[11px]">{entry.accountLogin}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[11px]"
+                      <RepositoriesButton
+                        installation={entry}
                         onClick={() => setPicking(entry.installationId)}
-                      >
-                        {entry.repositorySelection === "selected" && entry.repositories
-                          ? `${entry.repositories.length} repositories`
-                          : "All repositories"}
-                      </Button>
+                      />
                     </div>
                   ))}
               </div>
@@ -239,6 +241,44 @@ function installationSummary(accounts: readonly string[]): string {
   const rest = accounts.length - named.length;
   if (rest <= 0) return named.join(", ");
   return `${named.join(", ")} and ${rest} more`;
+}
+
+/**
+ * The per-installation control that opens Saale's repository picker.
+ *
+ * The count alone reads as a status line, so it carries an action icon: what it
+ * shows is the set Saale last read from GitHub, and the click is what changes
+ * it. GitHub's own page stays the other button, a few lines up.
+ */
+function RepositoriesButton({
+  installation,
+  onClick,
+}: {
+  installation: {
+    accountLogin: string;
+    repositorySelection: string;
+    repositories: string[] | null;
+  };
+  onClick: () => void;
+}) {
+  const label =
+    installation.repositorySelection === "selected" && installation.repositories
+      ? `${installation.repositories.length} repositories`
+      : "All repositories";
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-6 shrink-0 px-2 text-[11px]"
+      onClick={onClick}
+      aria-label={`Repositories for ${installation.accountLogin}: ${label}`}
+    >
+      <SlidersHorizontal className="mr-1 h-3 w-3" />
+      {label}
+    </Button>
+  );
 }
 
 /** The card's one action when nothing is connected, and whatever went wrong. */
@@ -523,7 +563,7 @@ function RepositoryDialog({
           </DialogTitle>
           <DialogDescription>
             {choices
-              ? `Which repositories Saale may use on ${choices.accountLogin}.`
+              ? `Which repositories Saale may use on ${choices.accountLogin}. This sets the installation itself — the same set as “Only select repositories” on GitHub.`
               : "Loading what this installation covers…"}
           </DialogDescription>
         </DialogHeader>
@@ -778,17 +818,10 @@ function GithubSetupDialog({
               {installations.map((entry) => (
                 <div key={entry.installationId} className="flex items-center justify-between gap-2">
                   <span className="font-mono text-xs">{entry.accountLogin}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 px-2 text-[11px]"
+                  <RepositoriesButton
+                    installation={entry}
                     onClick={() => onChooseRepositories(entry.installationId)}
-                  >
-                    {entry.repositorySelection === "selected" && entry.repositories
-                      ? `${entry.repositories.length} repositories`
-                      : "All repositories"}
-                  </Button>
+                  />
                 </div>
               ))}
             </div>

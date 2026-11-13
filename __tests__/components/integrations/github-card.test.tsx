@@ -36,6 +36,21 @@ const appAuthorized: GithubAppSection = {
 /** Authorized, but installed nowhere: step 2 of the setup assistant. */
 const appAuthorizedNoInstall: GithubAppSection = { ...appAuthorized, installations: [] };
 
+/** One installation narrowed to two repositories by hand. */
+const appNarrowed: GithubAppSection = {
+  ...appAuthorized,
+  installations: [
+    {
+      installationId: "42",
+      accountLogin: "octocat",
+      accountType: "User",
+      repositorySelection: "selected",
+      repositories: ["saale", "site"],
+      suspended: false,
+    },
+  ],
+};
+
 /** A login gh keeps in its own config, which is what a command would use. */
 const cliLogin: GithubStatus = {
   credential: {
@@ -203,5 +218,65 @@ describe("GithubCard", () => {
       await within(dialog).findByRole("button", { name: /Install on GitHub/ }),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/Install Saale on the account/)).toBeInTheDocument();
+  });
+
+  it("keeps GitHub's own page and Saale's picker apart as two actions", async () => {
+    // Both change which repositories the installation covers, but only GitHub's
+    // page installs, uninstalls and switches the all/selected mode. The box used
+    // to offer them as "Manage repositories" and a bare count, which read as the
+    // same thing (and as a status line rather than a button).
+    mockStatus(appNarrowed, noCredential);
+    render(<GithubCard />);
+
+    const github = await screen.findByRole("link", { name: /Install \/ manage on GitHub/ });
+    expect(github).toHaveAttribute("href", "https://github.com/settings/installations/42");
+
+    expect(
+      screen.getByRole("button", { name: "Repositories for octocat: 2 repositories" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens Saale's picker from the row and says it is the installation's own set", async () => {
+    const choices = {
+      installationId: "42",
+      accountLogin: "octocat",
+      accountType: "User",
+      selection: "selected",
+      canManage: true,
+      installed: [
+        { id: "10", name: "saale", fullName: "octocat/saale" },
+        { id: "11", name: "site", fullName: "octocat/site" },
+      ],
+      candidates: [
+        { id: "10", fullName: "octocat/saale", installed: true },
+        { id: "12", fullName: "octocat/docs", installed: false },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          ({
+            ok: true,
+            status: 200,
+            json: async () =>
+              url.includes("/github/repositories")
+                ? choices
+                : { app: appNarrowed, cli: noCredential },
+          }) as unknown as Response,
+      ),
+    );
+    render(<GithubCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Repositories for octocat: 2 repositories" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(/the same set as “Only select repositories” on GitHub/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: "octocat/saale" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "octocat/docs" })).not.toBeChecked();
   });
 });
