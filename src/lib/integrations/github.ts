@@ -160,6 +160,61 @@ export interface GithubAppSection {
   pending: { userCode: string; verificationUri: string; expiresAt: string } | null;
 }
 
+/**
+ * The repository permissions Saale works with.
+ *
+ * `GET /app` answers with whatever an app actually holds, so this list is what
+ * the setup steps measure that answer against: an admin who registered the app
+ * by hand reads here what is missing and what it costs. The last entry is the
+ * one the repository picker needs — GitHub accepts those two calls only from an
+ * app that holds it.
+ */
+export interface GithubAppPermission {
+  /** The key in `GET /app`'s permissions map. */
+  name: string;
+  /** The row's name in GitHub's app form, and in the admin panel's list. */
+  label: string;
+  /** "read" or "write". */
+  level: string;
+  /** What a workspace loses without it. */
+  why: string;
+}
+
+export const GITHUB_APP_PERMISSIONS: readonly GithubAppPermission[] = [
+  { name: "contents", label: "Contents", level: "write", why: "clone, fetch and push" },
+  {
+    name: "pull_requests",
+    label: "Pull requests",
+    level: "write",
+    why: "open and read pull requests",
+  },
+  {
+    name: "workflows",
+    label: "Workflows",
+    level: "write",
+    why: "push a branch that touches .github/workflows",
+  },
+  { name: "checks", label: "Checks", level: "read", why: "the check badge on a branch" },
+  { name: "metadata", label: "Metadata", level: "read", why: "every app has to ask for it" },
+];
+
+/** How GitHub's form words a level, for a list that is read next to it. */
+export function permissionLevelLabel(level: string): string {
+  return level === "write" ? "Read & write" : "Read";
+}
+
+/** Whether a held level reaches what is asked for: write covers read, never the other way. */
+function coversLevel(held: string | undefined, needed: string): boolean {
+  return held === "write" || held === needed;
+}
+
+/** What an app's permission set is missing, in the order above. */
+export function missingGithubAppPermissions(
+  held: Record<string, string> | null | undefined,
+): GithubAppPermission[] {
+  return GITHUB_APP_PERMISSIONS.filter((entry) => !coversLevel(held?.[entry.name], entry.level));
+}
+
 /** The entry gh keeps itself, skipping any it was handed through the environment. */
 function storedCredential(entries: { host: string; entry: HostEntry }[]): GithubCredential | null {
   for (const { host, entry } of entries) {

@@ -32,6 +32,11 @@ import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  GITHUB_APP_PERMISSIONS,
+  permissionLevelLabel,
+  type GithubAppPermission,
+} from "@/lib/integrations/github";
 import { deleteJson, fetchJson, patchJson, putJson } from "@/lib/http";
 
 /** The app as the API serializes it: identity and state, never the secrets. */
@@ -42,6 +47,8 @@ interface GithubAppSummary {
   name: string;
   ownerLogin: string;
   permissions: Record<string, string> | null;
+  /** What the app was registered without, out of the permissions Saale uses. */
+  missingPermissions: GithubAppPermission[];
   enabled: boolean;
   updatedAt: string;
 }
@@ -81,7 +88,7 @@ const CREDENTIAL_OPTIONS = [
   {
     value: "app" as const,
     label: "This instance's GitHub App",
-    detail: "Acts as the app, narrowed per chat to that chat's repository.",
+    detail: "Acts as the app: every repository the installation covers, at the chat's permissions.",
   },
   {
     value: "variable" as const,
@@ -91,12 +98,6 @@ const CREDENTIAL_OPTIONS = [
 ];
 
 /** Permissions the app needs, in the words GitHub's form uses. */
-const REQUIRED_PERMISSIONS: { name: string; level: string; why: string }[] = [
-  { name: "Contents", level: "Read & write", why: "clone, fetch and push" },
-  { name: "Pull requests", level: "Read & write", why: "open and read pull requests" },
-  { name: "Workflows", level: "Read & write", why: "push branches that touch a workflow file" },
-  { name: "Checks", level: "Read", why: "the check badge on a branch" },
-];
 
 /**
  * The instance's GitHub App, set up one step at a time.
@@ -179,7 +180,18 @@ export function GithubAppPanel() {
       const data = await putJson<AppResponse>("/api/admin/github/app", form);
       setApp(data.app);
       setForm(EMPTY_FORM);
-      toast.success("GitHub App saved");
+      // The save is also the verification: say what the app is missing while the
+      // admin is still in the form, not when a chat first needs it.
+      const missing = data.app?.missingPermissions ?? [];
+      if (missing.length > 0) {
+        toast.warning(
+          `GitHub App saved, but it was registered without ${missing
+            .map((entry) => entry.name)
+            .join(", ")}`,
+        );
+      } else {
+        toast.success("GitHub App saved");
+      }
       // The next step is the one that was waiting for these credentials.
       setStep(3);
     } catch (err) {
@@ -351,6 +363,41 @@ export function GithubAppPanel() {
                     ))}
                 </div>
               </div>
+            )}
+
+            {/* What the app asked for is not what Saale needs: the check is the
+                reason the panel exists, so a missing permission is a warning
+                here and not something the first chat discovers. */}
+            {app.missingPermissions.length > 0 ? (
+              <div className="border-destructive/40 bg-destructive/10 space-y-1.5 rounded-2xl border px-3 py-2">
+                <p className="text-destructive flex items-start gap-2 text-xs font-medium">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {app.missingPermissions.length === 1
+                    ? "One permission Saale works with is missing."
+                    : `${app.missingPermissions.length} permissions Saale works with are missing.`}
+                </p>
+                <ul className="text-muted-foreground space-y-1 text-xs">
+                  {app.missingPermissions.map((permission) => (
+                    <li key={permission.name}>
+                      <span className="text-foreground">
+                        {permission.label} ({permissionLevelLabel(permission.level)})
+                      </span>{" "}
+                      — {permission.why}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground text-xs">
+                  Add them on GitHub under the app&apos;s settings, then answer GitHub&apos;s
+                  “Update permissions”. Every installation approves the new set once.
+                </p>
+              </div>
+            ) : (
+              app.permissions && (
+                <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  Every permission Saale works with is granted.
+                </p>
+              )
             )}
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -540,20 +587,20 @@ export function GithubAppPanel() {
                     <p className="text-muted-foreground text-[11px]">everything else: no access</p>
                   </div>
                   <ul className="divide-border/60 divide-y">
-                    {REQUIRED_PERMISSIONS.map((permission) => (
+                    {GITHUB_APP_PERMISSIONS.map((permission) => (
                       <li
                         key={permission.name}
                         className="flex items-center justify-between gap-3 px-3 py-2"
                       >
                         <div className="min-w-0">
-                          <p className="text-xs font-medium">{permission.name}</p>
+                          <p className="text-xs font-medium">{permission.label}</p>
                           <p className="text-muted-foreground text-[11px]">{permission.why}</p>
                         </div>
                         <Badge
                           variant="outline"
                           className="shrink-0 rounded-full font-mono text-[10px]"
                         >
-                          {permission.level}
+                          {permissionLevelLabel(permission.level)}
                         </Badge>
                       </li>
                     ))}

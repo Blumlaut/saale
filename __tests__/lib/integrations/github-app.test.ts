@@ -6,8 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { db } = vi.hoisted(() => ({
   db: {
-    githubApp: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
-    githubInstallation: { upsert: vi.fn(), deleteMany: vi.fn() },
+    githubApp: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      deleteMany: vi.fn(),
+    },
+    githubInstallation: { upsert: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
     githubInstallationAccess: {
       upsert: vi.fn(),
       deleteMany: vi.fn(),
@@ -53,6 +59,7 @@ const client = vi.hoisted(() => ({
   readUserLogin: vi.fn(),
   listInstallations: vi.fn(),
   listInstallationRepositories: vi.fn(),
+  listInstallationRepositoryRefs: vi.fn(),
   createInstallationToken: vi.fn(),
 }));
 
@@ -65,6 +72,9 @@ import { GithubApiError } from "@/lib/integrations/github-app-client";
 import {
   GithubAppError,
   deleteGithubApp,
+  readGithubAppSummary,
+  readGithubAppSummaryFresh,
+  readGithubInstallationRepositories,
   githubInstallationForOwner,
   mintGithubInstallationToken,
   pollGithubAppLogin,
@@ -126,6 +136,14 @@ beforeEach(() => {
   db.githubInstallationAccess.findMany.mockResolvedValue([]);
   db.githubUserToken.deleteMany.mockResolvedValue({ count: 0 });
   client.createAppJwt.mockResolvedValue("jwt-1");
+  // The picker re-reads the app's permissions; an app of this age holds neither
+  // of the installation ones unless a test says otherwise.
+  client.readAppIdentity.mockResolvedValue({
+    slug: "saale",
+    name: "Saale",
+    ownerLogin: "askguenther",
+    permissions: { contents: "write" },
+  });
 });
 
 afterEach(() => {
@@ -180,6 +198,13 @@ describe("saveGithubApp", () => {
       }),
     );
     expect(summary).toMatchObject({ slug: "saale", ownerLogin: "askguenther", enabled: true });
+    // Verifying is also where the form learns what the app was registered without.
+    expect(summary.missingPermissions.map((entry) => entry.name)).toEqual([
+      "pull_requests",
+      "workflows",
+      "checks",
+      "metadata",
+    ]);
     // Nothing secret comes back out.
     expect(JSON.stringify(summary)).not.toContain("secret");
   });
@@ -463,6 +488,135 @@ describe("syncGithubInstallations", () => {
     await syncGithubInstallations(USER);
 
     expect(client.listInstallationRepositories).not.toHaveBeenCalled();
+  });
+});
+
+describe("readGithubInstallationRepositories", () => {
+  const accessRow = (suspended = false) => ({
+    userId: USER,
+    installationId: "row-1",
+    installation: {
+      id: "row-1",
+      installationId: "1234",
+      accountLogin: "Acme",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: ["saale"],
+      suspendedAt: suspended ? new Date() : null,
+    },
+  });
+
+  const freshToken = () => ({
+    userId: USER,
+    encryptedAccessToken: "enc:ghu_access",
+    encryptedRefreshToken: "enc:ghr",
+    accessExpiresAt: new Date(Date.now() + 4 * 60 * 60_000),
+    refreshExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000),
+    login: "octocat",
+  });
+
+  it("answers with the set the installation covers, and nothing else", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
+    db.githubUserToken.findUnique.mockResolvedValue(freshToken());
+    client.listInstallationRepositoryRefs.mockResolvedValue([
+      { id: "10", name: "saale", fullName: "acme/saale" },
+      { id: "11", name: "site", fullName: "acme/site" },
+    ]);
+
+    const repositories = await readGithubInstallationRepositories(USER, "1234");
+
+    expect(repositories).toEqual({
+      installationId: "1234",
+      accountLogin: "Acme",
+      accountType: "Organization",
+      selection: "selected",
+      installed: [
+        { id: "10", name: "saale", fullName: "acme/saale" },
+        { id: "11", name: "site", fullName: "acme/site" },
+      ],
+    });
+    // It reads with the account's own token, so GitHub answers for this person.
+    expect(client.listInstallationRepositoryRefs).toHaveBeenCalledWith("ghu_access", "1234");
+  });
+
+  it("finds the installation by GitHub's id, which is what the card sends", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow());
+    db.githubUserToken.findUnique.mockResolvedValue(freshToken());
+    client.listInstallationRepositoryRefs.mockResolvedValue([]);
+
+    await readGithubInstallationRepositories(USER, "1234");
+
+    expect(db.githubInstallationAccess.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: USER, installation: { installationId: "1234" } },
+      }),
+    );
+  });
+
+  it("refuses an installation another account holds", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(null);
+
+    await expect(readGithubInstallationRepositories(USER, "1234")).rejects.toThrow(/no access/);
+    expect(client.listInstallationRepositoryRefs).not.toHaveBeenCalled();
+  });
+
+  it("refuses a suspended installation", async () => {
+    db.githubInstallationAccess.findFirst.mockResolvedValue(accessRow(true));
+
+    await expect(readGithubInstallationRepositories(USER, "1234")).rejects.toThrow(/suspended/);
+  });
+});
+
+describe("the app's permissions against Saale's needs", () => {
+  it("reports what the saved app was registered without", async () => {
+    db.githubApp.findUnique.mockResolvedValue({
+      ...APP_ROW,
+      permissions: { contents: "write", pull_requests: "write" },
+    });
+
+    const summary = await readGithubAppSummary();
+
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toEqual([
+      "workflows",
+      "checks",
+      "metadata",
+    ]);
+  });
+
+  it("re-reads GitHub rather than repeating what was saved months ago", async () => {
+    // An admin who just granted the missing permission should see that the panel
+    // agrees, not the verdict of the last save.
+    db.githubApp.findUnique.mockResolvedValue({ ...APP_ROW, permissions: { contents: "write" } });
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+      permissions: {
+        contents: "write",
+        pull_requests: "write",
+        workflows: "write",
+        checks: "read",
+        metadata: "read",
+        installation_repositories: "write",
+      },
+    });
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.missingPermissions).toEqual([]);
+    expect(db.githubApp.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "global" } }),
+    );
+  });
+
+  it("keeps the stored set when GitHub cannot be asked", async () => {
+    db.githubApp.findUnique.mockResolvedValue({ ...APP_ROW, permissions: { contents: "write" } });
+    client.readAppIdentity.mockRejectedValue(new GithubApiError("Bad credentials", 401));
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.permissions).toEqual({ contents: "write" });
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toContain("metadata");
   });
 });
 

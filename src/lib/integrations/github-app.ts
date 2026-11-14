@@ -30,16 +30,14 @@ import type { Prisma } from "@prisma/client";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { missingGithubAppPermissions, type GithubAppPermission } from "./github";
 import {
   GithubApiError,
   createAppJwt,
   createInstallationToken,
-  addInstallationRepository,
   listInstallationRepositories,
   listInstallationRepositoryRefs,
   listInstallations,
-  listRepositoryChoices,
-  removeInstallationRepository,
   pollDeviceCode,
   readAppIdentity,
   readUserLogin,
@@ -104,6 +102,11 @@ export interface GithubAppSummary {
   name: string;
   ownerLogin: string;
   permissions: Record<string, string> | null;
+  /**
+   * What the app was registered without, out of the permissions Saale works
+   * with. Computed from `permissions`, so it is as fresh as the set next to it.
+   */
+  missingPermissions: GithubAppPermission[];
   enabled: boolean;
   updatedAt: Date;
 }
@@ -224,15 +227,37 @@ export async function readGithubAppSummary(): Promise<GithubAppSummary | null> {
     });
   if (!row) return null;
 
+  const permissions = isStringRecord(row.permissions) ? row.permissions : null;
+
   return {
     appId: row.appId,
     clientId: row.clientId,
     slug: row.slug,
     name: row.name,
     ownerLogin: row.ownerLogin,
-    permissions: isStringRecord(row.permissions) ? row.permissions : null,
+    permissions,
+    missingPermissions: missingGithubAppPermissions(permissions),
     enabled: row.enabled,
     updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * The app as the admin panel should show it, with the permissions GitHub has now.
+ *
+ * The stored set is only as fresh as the last save, and a permission is added on
+ * GitHub's side rather than in Saale: without this read the panel would keep
+ * reporting what the app was registered with, and an admin who just granted the
+ * missing one would see the old verdict. One `GET /app` when the panel opens.
+ */
+export async function readGithubAppSummaryFresh(): Promise<GithubAppSummary | null> {
+  const summary = await readGithubAppSummary();
+  if (!summary) return null;
+  const permissions = await refreshGithubAppPermissions();
+  return {
+    ...summary,
+    permissions,
+    missingPermissions: missingGithubAppPermissions(permissions),
   };
 }
 
@@ -316,7 +341,10 @@ export async function saveGithubApp(input: GithubAppInput): Promise<GithubAppSum
     slug: row.slug,
     name: row.name,
     ownerLogin: row.ownerLogin,
-    permissions: isStringRecord(row.permissions) ? row.permissions : null,
+    // The verification two steps up is the only fresh answer about the app, so
+    // the form says what it is missing while the admin is still on it.
+    permissions: identity.permissions ?? null,
+    missingPermissions: missingGithubAppPermissions(identity.permissions),
     enabled: row.enabled,
     updatedAt: row.updatedAt,
   };
@@ -732,8 +760,8 @@ export async function githubInstallationForOwner(
 
 // ─── Which repositories an installation may use ─────────────────────────────
 
-/** One installation's repository set, as the picker shows it. */
-export interface GithubRepositoryChoices {
+/** One installation's repository set, as the card shows it. */
+export interface GithubInstallationRepositories {
   /** GitHub's installation id. */
   installationId: string;
   accountLogin: string;
@@ -741,22 +769,20 @@ export interface GithubRepositoryChoices {
   accountType: string;
   /** "all" or "selected". */
   selection: string;
-  /**
-   * Whether Saale can change the set. GitHub only removes repositories from an
-   * installation that was granted "Only select repositories"; an "All
-   * repositories" installation has to be switched on GitHub first.
-   */
-  canManage: boolean;
-  /** Repositories the installation covers. */
+  /** Repositories the installation covers, which is the whole answer. */
   installed: { id: string; name: string; fullName: string }[];
-  /** Repositories this account could add, with the installed ones marked. */
-  candidates: { id: string; fullName: string; installed: boolean }[];
 }
 
-/** The access row for one installation of one account, or a refusal. */
+/**
+ * The access row for one installation of one account, or a refusal.
+ *
+ * The id is GitHub's — the number the card shows, the API paths take and the
+ * picker sends back — not Saale's own row id. The access row is what says
+ * whether this account may act on that installation at all.
+ */
 async function requireInstallationAccess(userId: string, installationId: string) {
-  const row = await prisma.githubInstallationAccess.findUnique({
-    where: { userId_installationId: { userId, installationId } },
+  const row = await prisma.githubInstallationAccess.findFirst({
+    where: { userId, installation: { installationId } },
     include: { installation: true },
   });
   if (!row) throw new GithubAppError("This account has no access to that GitHub installation.");
@@ -766,70 +792,55 @@ async function requireInstallationAccess(userId: string, installationId: string)
 }
 
 /**
- * What one installation covers, and what could be added to it.
+ * The app's permissions as GitHub has them now, written back when they moved.
  *
- * Both reads use the account's own token, so GitHub answers with what *this*
- * person may do — the picker never offers a repository the user cannot install
- * the app on.
+ * The stored copy is only as fresh as the last save in the admin panel, and a
+ * permission added on GitHub is exactly the change that happens without Saale
+ * knowing: the card would keep saying the picker cannot work, or offer a save
+ * GitHub refuses. One `GET /app` beside a picker read is cheaper than being
+ * wrong, and a read GitHub refuses leaves the stored set alone.
  */
-export async function readGithubRepositoryChoices(
-  userId: string,
-  installationId: string,
-): Promise<GithubRepositoryChoices> {
-  const installation = await requireInstallationAccess(userId, installationId);
-  const access = await readGithubUserAccess(userId);
-  if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
+async function refreshGithubAppPermissions(): Promise<Record<string, string> | null> {
+  const stored = await readGithubAppSummary();
+  if (!stored) return null;
+  const credentials = await readGithubAppCredentials();
+  if (!credentials) return stored.permissions;
 
-  const [installed, all] = await Promise.all([
-    listInstallationRepositoryRefs(access.accessToken, installation.installationId),
-    listRepositoryChoices(access.accessToken),
-  ]);
-
-  const owner = installation.accountLogin.toLowerCase();
-  const installedIds = new Set(installed.map((entry) => entry.id));
-  const candidates = all
-    .filter((entry) => entry.canAdmin && entry.owner.toLowerCase() === owner)
-    .map((entry) => ({
-      id: entry.id,
-      fullName: entry.fullName,
-      installed: installedIds.has(entry.id),
-    }))
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
-
-  return {
-    installationId: installation.installationId,
-    accountLogin: installation.accountLogin,
-    accountType: installation.accountType,
-    selection: installation.repositorySelection,
-    canManage: installation.repositorySelection === "selected",
-    installed,
-    candidates,
-  };
+  try {
+    const jwt = await createAppJwt({
+      appId: credentials.appId,
+      privateKey: credentials.privateKey,
+    });
+    const identity = await readAppIdentity(jwt);
+    const fresh = identity.permissions ?? null;
+    if (JSON.stringify(fresh) !== JSON.stringify(stored.permissions)) {
+      await prisma.githubApp.update({
+        where: { id: GITHUB_APP_ID },
+        data: fresh ? { permissions: fresh as Prisma.InputJsonValue } : {},
+      });
+    }
+    return fresh;
+  } catch (err) {
+    console.error("Failed to re-read the GitHub App's permissions:", err);
+    return stored.permissions;
+  }
 }
 
 /**
- * Set which repositories the installation covers.
+ * What one installation covers.
  *
- * Only the difference is sent, one call per repository, because GitHub's
- * endpoint moves exactly one. The stored repository list and the sync mark are
- * refreshed afterwards, so the card and the next mint see the new set.
- *
- * A token already minted for a repository that was just removed keeps working
- * until it expires (an hour at most) — GitHub does not revoke installation
- * tokens when an installation shrinks.
+ * Read with the account's own token, so GitHub answers with what *this* person
+ * may see. Saale shows the set and nothing else: changing it is GitHub's own
+ * page, because GitHub only lets an app narrow or extend an installation from
+ * there (the API's two installation calls refuse a repository the installation
+ * does not already cover, and a personal installation cannot be extended over
+ * the API at all).
  */
-export async function applyGithubRepositoryChoices(
+export async function readGithubInstallationRepositories(
   userId: string,
   installationId: string,
-  repositoryIds: readonly string[],
-): Promise<GithubRepositoryChoices> {
+): Promise<GithubInstallationRepositories> {
   const installation = await requireInstallationAccess(userId, installationId);
-  if (installation.repositorySelection !== "selected") {
-    throw new GithubAppError(
-      "This installation covers all repositories. Switch it to “Only select repositories” on GitHub first, then choose here.",
-    );
-  }
-
   const access = await readGithubUserAccess(userId);
   if (!access) throw new GithubAppError("Connect GitHub again: the authorization has expired.");
 
@@ -837,31 +848,14 @@ export async function applyGithubRepositoryChoices(
     access.accessToken,
     installation.installationId,
   );
-  const wanted = new Set(repositoryIds);
-  const installedIds = new Set(installed.map((entry) => entry.id));
 
-  const add = [...wanted].filter((id) => !installedIds.has(id));
-  const remove = [...installedIds].filter((id) => !wanted.has(id));
-
-  for (const id of add) {
-    await addInstallationRepository(access.accessToken, installation.installationId, id);
-  }
-  for (const id of remove) {
-    await removeInstallationRepository(access.accessToken, installation.installationId, id);
-  }
-
-  // Keep the stored row honest: the card lists it without asking GitHub again.
-  const after = await listInstallationRepositoryRefs(
-    access.accessToken,
-    installation.installationId,
-  );
-  await prisma.githubInstallation.update({
-    where: { id: installation.id },
-    data: { repositories: after.map((entry) => entry.name) },
-  });
-  await forgetGithubInstallationSync(userId);
-
-  return readGithubRepositoryChoices(userId, installationId);
+  return {
+    installationId: installation.installationId,
+    accountLogin: installation.accountLogin,
+    accountType: installation.accountType,
+    selection: installation.repositorySelection,
+    installed,
+  };
 }
 
 // ─── Minting ────────────────────────────────────────────────────────────────

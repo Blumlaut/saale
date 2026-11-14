@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchJson, postJson, putJson } from "@/lib/http";
+import { fetchJson, postJson } from "@/lib/http";
 import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
 
 export type { GithubAppSection };
@@ -12,17 +12,20 @@ interface GithubConnection {
   cli: GithubStatus;
 }
 
-/** One installation's repository set, as the picker shows it. */
-export interface GithubRepositoryChoices {
+/** One installation's repository set, which the card shows as it is. */
+export interface GithubInstallationRepositories {
   installationId: string;
   accountLogin: string;
   /** "User" | "Organization" — decides where GitHub's settings page lives. */
   accountType: string;
   selection: string;
-  /** False when the installation covers every repository; GitHub then refuses. */
-  canManage: boolean;
   installed: { id: string; name: string; fullName: string }[];
-  candidates: { id: string; fullName: string; installed: boolean }[];
+}
+
+/** A read either way: the set, or the sentence that says why there is none. */
+export interface GithubRepositoriesAnswer {
+  repositories: GithubInstallationRepositories | null;
+  error: string | null;
 }
 
 /** Before the first read: nothing known, so nothing claimed. */
@@ -150,37 +153,22 @@ export function useGithub() {
     }
   }, [apply]);
 
-  /** The repository set of one installation, for the picker. */
+  /** The repository set of one installation, for the card's list. */
   const loadRepositories = useCallback(
-    async (installationId: string): Promise<GithubRepositoryChoices | null> => {
+    async (installationId: string): Promise<GithubRepositoriesAnswer> => {
       try {
-        return await fetchJson<GithubRepositoryChoices>(
-          `/api/integrations/github/repositories?installation=${encodeURIComponent(installationId)}`,
-        );
+        return {
+          repositories: await fetchJson<GithubInstallationRepositories>(
+            `/api/integrations/github/repositories?installation=${encodeURIComponent(installationId)}`,
+          ),
+          error: null,
+        };
       } catch (err) {
         console.error("Failed to read the installation's repositories:", err);
-        setError(err instanceof Error ? err.message : "Failed to read the repositories");
-        return null;
-      }
-    },
-    [],
-  );
-
-  /** Apply a selection; the installation is what changes, not only a token. */
-  const saveRepositories = useCallback(
-    async (
-      installationId: string,
-      repositoryIds: readonly string[],
-    ): Promise<GithubRepositoryChoices | null> => {
-      try {
-        return await putJson<GithubRepositoryChoices>("/api/integrations/github/repositories", {
-          installationId,
-          repositoryIds: [...repositoryIds],
-        });
-      } catch (err) {
-        console.error("Failed to change the installation's repositories:", err);
-        setError(err instanceof Error ? err.message : "Failed to change the repositories");
-        return null;
+        return {
+          repositories: null,
+          error: err instanceof Error ? err.message : "Failed to read the repositories",
+        };
       }
     },
     [],
@@ -198,6 +186,5 @@ export function useGithub() {
     cancel,
     disconnect,
     loadRepositories,
-    saveRepositories,
   };
 }

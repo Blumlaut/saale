@@ -11,6 +11,7 @@ import {
   GithubAppError,
   deleteGithubApp,
   readGithubAppSummary,
+  readGithubAppSummaryFresh,
   saveGithubApp,
   setGithubAppEnabled,
 } from "@/lib/integrations/github-app";
@@ -80,7 +81,9 @@ export async function GET() {
   if (!authResult.ok) return authResult.response;
 
   return NextResponse.json({
-    app: await readGithubAppSummary(),
+    // Fresh permissions, so the panel's verdict on the app is GitHub's current
+    // one rather than what was saved last.
+    app: await readGithubAppSummaryFresh(),
     ...registrationUrls(),
     ...(await setupProgress()),
     tokenPrecedence: await readGithubTokenPrecedence(),

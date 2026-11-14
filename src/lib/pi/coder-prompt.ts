@@ -73,16 +73,16 @@ const GH_TOKEN_PROMPT = `\`GH_TOKEN\` is set in your environment, so \`gh\` and 
 /**
  * What the workspace's GitHub App means for a command in this chat.
  *
- * The token is minted per command and narrowed to this chat's repository, which
- * is a security property, not an inconvenience: an agent steered by a hostile
- * issue text must not reach a second repository the account happens to have
- * released. Said plainly, a refusal reads as the boundary it is instead of a
- * fault to work around.
+ * The token is minted per command and carries the installation's set of
+ * repositories at the chat's permissions, so the installation is the boundary,
+ * not this chat. An agent steered by a hostile issue text must read a refusal as
+ * the boundary it is instead of a fault to work around, and must not go looking
+ * for the account's own wider credential.
  */
 const GITHUB_APP_PROMPT = `GitHub:
-- Saale mints a \`GH_TOKEN\` for each command you run. It belongs to this workspace's GitHub App and reaches exactly this chat's repository, so \`git\` and \`gh\` work on it without credentials.
+- Saale mints a \`GH_TOKEN\` for each command you run. It belongs to this workspace's GitHub App and carries every repository GitHub approved for the app, at this chat's permissions, so \`git\` and \`gh\` work on all of them without credentials.
 - \`gh\` is not signed in. Do not run \`gh auth login\`; it would put a wider credential beside this one.
-- The token covers one repository. Another repository of the same account, even one released to the app, answers "repository not found", and where Saale knows the chat is outside the installation the command carries no credential at all — neither \`git\` nor \`gh\` answers: that is the boundary, not a bug. Say so instead of retrying or looking for a way around it.
+- The installation is the ceiling, not this chat. A repository GitHub did not approve for the app answers a refusal (a private one as "repository not found"), and where your account has no installation for the owner at all the command carries no credential — neither \`git\` nor \`gh\` answers: that is the boundary, not a bug. Say so instead of retrying or looking for a way around it. A pull request into a repository the app is not installed on stays a 403, and no credential of yours changes that.
 - The workspace also keeps a credential of the user's own, for terminals and for \`gh\` outside a chat. Never look for a wider credential than the one a command was given, and never work around a refusal by finding another one.
 - Never print the token or write it into a file.
 - Commits carry the connected GitHub account's own identity, and a pull request Saale opens is authored by that account. Leave \`user.name\` and \`user.email\` alone.`;

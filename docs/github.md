@@ -40,6 +40,12 @@ Repository permissions — the rest stays "No access":
 | Checks        | Read           | the check badge on a branch                    |
 | Metadata      | Read           | mandatory                                      |
 
+Adding a permission to an app that already exists is **Update permissions** on
+the app's settings, and then every installation has to approve the new set once.
+Saale re-reads the app's permissions whenever the admin panel opens and whenever
+the app credentials are saved, so its check catches up on its own — the
+credentials do not have to be saved again.
+
 Then generate a **private key** (a `.pem`, downloadable once) and a **client
 secret**. The app id and the client id are on the same page.
 
@@ -47,8 +53,12 @@ secret**. The app id and the client id are on the same page.
 
 **Admin → Settings → GitHub**: app id, client id, client secret, private key →
 **Save and verify**. Saale signs a JWT with the key and reads `GET /app`, so a
-wrong id or key is refused at the form instead of failing in the first chat. The
-secret and the key are stored encrypted and never shown again.
+wrong id or key is refused at the form instead of failing in the first chat. That
+answer also carries the app's permissions, and the form says which of the ones
+above it was registered without — the picker's permission included, with what it
+costs. The panel keeps checking: it re-reads `GET /app` whenever it opens, warns
+about anything missing, and says so plainly when nothing is. The secret and the
+key are stored encrypted and never shown again.
 
 The app can be switched off there without deleting it. Removing it deletes the
 installations and every token an account authorized with it; the authorization
@@ -73,13 +83,18 @@ may use.
 opens GitHub's install page. The choice of repositories happens there, not in
 Saale: it is GitHub's security boundary, and the app cannot install itself.
 
-Once installed, **the repository set can be changed in Saale**: the button on an
-installation opens a picker of the repositories that account administers, and
-saving adds or removes them through
-`PUT`/`DELETE /user/installations/{id}/repositories/{repo_id}`. An installation
-granted "All repositories" cannot be narrowed this way — GitHub only removes from
-an installation that was switched to "Only select repositories", and the picker
-says so.
+Once installed, the button beside an installation **shows what the installation
+covers**, which is the ceiling GitHub enforces for every token Saale mints, and
+links to GitHub's page where the set is changed.
+
+The set is changed on GitHub rather than in Saale, and that is not an omission.
+GitHub's two calls for it (`PUT`/`DELETE
+/user/installations/{id}/repositories/{repo_id}`) refuse a repository the
+installation does not already cover — with the app permission, an admin account
+and the newest API version — so the only thing they can do is remove. A personal
+installation cannot be extended over the API at all; the calls are documented as
+organization-level. A picker that offered to add repositories would be offering
+something GitHub answers with `403 Resource not accessible by integration`.
 
 ## What happens in a workspace
 
@@ -94,15 +109,20 @@ sign-out, and before a command that talks to a remote:
 - **CLI source.** Those three are removed; `gh`'s own login, which Saale never
   touches, is what commands use.
 
-In a **coder chat** the token is narrower still: Saale mints an installation
-token for that chat's repository alone (`contents`, `pull_requests`, `workflows`
-write, `checks` read) and puts it in the command's `GH_TOKEN`. Both the git
-helper and the shim prefer a token from the environment, so `git push` and
-`gh pr create` in that chat cannot reach another repository. Nothing is minted
-for a repository the installation does not cover: the command then carries **no**
-credential — the helper list is reset, git is told not to prompt, and the `gh`
-shim exits — so both `git` and `gh` fail instead of quietly reaching for
-something wider.
+In a **coder chat** Saale mints an installation token with the chat's
+permissions (`contents`, `pull_requests`, `workflows` write, `checks` read) and
+puts it in the command's `GH_TOKEN`, which both the git helper and the shim
+prefer. The token is the installation's, not one repository's: a change leaves
+the repository it started in — a branch on a fork, a pull request against the
+upstream it was forked from, a second repository read on the way — so the ceiling
+is whatever GitHub approved for this account, and a push anywhere else is refused
+by GitHub.
+
+Nothing is minted when the account has no app, no installation for the
+repository's owner, or a source that is not the app; the workspace's own
+credential answers as before. A repository the installation does not cover is not
+in the token either — GitHub refuses that push, and Saale writes the reason to the
+log next to it.
 
 That boundary holds for the commands Saale starts, and it is worth saying plainly
 where it stops: the workspace keeps a token file (the account's own token) so a
@@ -124,13 +144,14 @@ is read on every reconcile, so changing it takes effect at the next read.
 
 ## When something does not work
 
-| What you see                                     | Why                                                                    | Fix                                                                       |
-| ------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `GitHub refused these credentials` when saving   | app id and key do not belong together, or the key was truncated        | paste the whole `.pem`, including the BEGIN/END lines                     |
-| `The private key could not be read`              | the pasted key is not a PEM file (both PKCS#1 and PKCS#8 are accepted) | download it again from the app's settings                                 |
-| The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                               |
-| A push fails with `403` in a chat                | the installation does not cover that repository                        | add it in the picker, or on GitHub for an "All repositories" installation |
-| Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                                     |
+| What you see                                     | Why                                                                    | Fix                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `GitHub refused these credentials` when saving   | app id and key do not belong together, or the key was truncated        | paste the whole `.pem`, including the BEGIN/END lines                   |
+| `The private key could not be read`              | the pasted key is not a PEM file (both PKCS#1 and PKCS#8 are accepted) | download it again from the app's settings                               |
+| The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                             |
+| `The app may not change its own installations`   | the app was registered without `installation_repositories: write`      | add the permission on GitHub, then approve it once for the installation |
+| A push fails with `403` in a chat                | the installation does not cover that repository                        | add it on GitHub, under the installation's repository access            |
+| Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                                   |
 
 ## Several accounts on one instance
 
@@ -155,8 +176,9 @@ Two things decide what a stranger gets:
 - **“Any account”** at app registration. On “Only this account”, other accounts
   can authorize the app but cannot install it, so they reach no repository.
 - **Who installs it, sets the ceiling.** The installer picks the repositories
-  (or grants all), and Saale narrows further per chat. Changing the set later
-  needs admin access on the repository, which is why a plain member sees an
+  (or grants all), and that set is what every chat of theirs may reach: Saale
+  narrows to the chat's permissions, not to its repository. Changing the set
+  later needs admin access on the repository, which is why a plain member sees an
   empty picker.
 
 Signing one account out removes only its own token and access rows; the
@@ -182,6 +204,6 @@ history:
 | the workspace's `.gitconfig` | `[user]` is the connected account and its `users.noreply.github.com` address, so GitHub links the commit to the profile |
 | `gh pr create`               | runs with the account's own token (`resolveGithubUserEnv`), so the pull request's author is the account, not the app    |
 
-Everything else in a chat keeps the narrowed installation token: pushes are
-still limited to the chat's repository. Attribution changes who is _recorded_,
-not what a command may touch.
+Everything else in a chat keeps the installation's token, so a push is limited by
+what GitHub approved for the installation, not by the chat's own repository.
+Attribution changes who is _recorded_, not what a command may touch.
