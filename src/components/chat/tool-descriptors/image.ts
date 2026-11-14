@@ -47,6 +47,8 @@ export const imageToolDescriptor: ToolDescriptor = {
         title,
         ...(prompt ? { detail: truncate(prompt, MAX_PROMPT) } : {}),
         status: toolStatus(toolCall),
+        // The sweep is the answer to "is anything happening", so it is open.
+        defaultOpen: true,
         blocks: [{ kind: "rendering", label: renderingLabel(toolCall) }],
       };
     }
@@ -69,6 +71,8 @@ export const imageToolDescriptor: ToolDescriptor = {
       title,
       detail: truncate(meta.prompt, MAX_PROMPT),
       status: toolStatus(toolCall, `${meta.width}×${meta.height}`),
+      // The picture is what the call was for, so the card opens on it.
+      defaultOpen: true,
       blocks,
     };
   },
