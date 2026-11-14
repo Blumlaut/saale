@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DecisionModelField } from "@/components/shared/decision-model-field";
+import { SlotModelField } from "@/components/shared/slot-model-field";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Page, PageAction, PageActions, PageScroll, PageStatus } from "@/components/layout/page";
 import {
@@ -48,6 +48,8 @@ export function ModelAvailability() {
   const [defaultModel, setDefaultModel] = useState("");
   /** The decision model that judges what Auto would run, as `provider:model`. */
   const [decisionModel, setDecisionModel] = useState<string | null>(null);
+  /** The image model accounts render with, as `provider:model`. */
+  const [imageModel, setImageModel] = useState<string | null>(null);
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
@@ -101,6 +103,7 @@ export function ModelAvailability() {
         : "",
     );
     setDecisionModel(adminSettings.approvalDecisionModel);
+    setImageModel(adminSettings.imageModel);
     setModelEnabled(fromGlobalProviderModels(adminSettings.globalProviderModels));
   }, [adminSettings]);
 
@@ -167,8 +170,9 @@ export function ModelAvailability() {
       globalModelProvider: defaultModel ? (provider ?? "") : "",
       globalModelName: defaultModel ? modelName : "",
       approvalDecisionModel: decisionModel,
+      imageModel,
     });
-  }, [adminSettings, availableModels, modelEnabled, defaultModel, decisionModel, save]);
+  }, [adminSettings, availableModels, modelEnabled, defaultModel, decisionModel, imageModel, save]);
 
   const isLoading = modelsLoading && settingsLoading;
 
@@ -233,13 +237,30 @@ export function ModelAvailability() {
             {/* What Auto runs on its own, for the accounts without a pick */}
             <GlassPanel>
               <GlassPanelContent>
-                <DecisionModelField
-                  value={decisionModel}
-                  onChange={setDecisionModel}
-                  fallback={null}
-                  endpoint="/api/admin/providers/models"
-                  description="Judges the tool calls Auto would run on its own, for accounts that have not picked one."
-                />
+                <div className="space-y-4">
+                  <SlotModelField
+                    type="classifier"
+                    label="Decision model"
+                    value={decisionModel}
+                    onChange={setDecisionModel}
+                    fallback={null}
+                    placeholder="Built-in checks"
+                    clearLabel="Clear the decision model"
+                    endpoint="/api/admin/providers/models"
+                    description="Judges the tool calls Auto would run on its own, for accounts that have not picked one."
+                  />
+                  <SlotModelField
+                    type="image"
+                    label="Image model"
+                    value={imageModel}
+                    onChange={setImageModel}
+                    fallback={null}
+                    placeholder="No image tool"
+                    clearLabel="Clear the image model"
+                    endpoint="/api/admin/providers/models"
+                    description="Renders images for accounts that have not picked one. Without a model the agent gets no image tool at all."
+                  />
+                </div>
               </GlassPanelContent>
             </GlassPanel>
 

@@ -565,6 +565,21 @@ const APPROVAL_DECISION_MODEL_PROPERTY: UserProperty = {
   write: (_row, value) => ({ approvalDecisionModel: normalizeModelReference(value) }),
 };
 
+/** `models.imageModel`. the model the agent's generate_image tool calls. */
+const IMAGE_MODEL_PROPERTY: UserProperty = {
+  key: "models.imageModel",
+  group: GROUP.models,
+  label: "Image model",
+  description:
+    'Model the agent renders images with, as "provider:model". Without one it has no image tool at all. Set to null to follow the instance default.',
+  columns: ["imageModel"],
+  apply: "sessions",
+  scope: "user",
+  schema: modelReferenceSchema,
+  read: (row) => row.imageModel,
+  write: (_row, value) => ({ imageModel: normalizeModelReference(value) }),
+};
+
 /**
  * `coder.tools.category.<key>.enabled`. whether a category is on for new coder
  * chats, where the default set is the worktree tools and little else.
@@ -812,6 +827,19 @@ const ADMIN_PROPERTY_DEFINITIONS: AdminProperty[] = [
     schema: modelReferenceSchema,
     read: (row) => row.approvalDecisionModel,
     write: (_row, value) => ({ approvalDecisionModel: normalizeModelReference(value) }),
+  },
+  {
+    key: "admin.imageModel",
+    group: GROUP.models,
+    label: "Image model",
+    description:
+      'Model the agent renders images with, for accounts that have not picked one, as "provider:model". Set to null to leave every account without an image tool.',
+    columns: ["imageModel"],
+    apply: "allSessions",
+    scope: "admin",
+    schema: modelReferenceSchema,
+    read: (row) => row.imageModel,
+    write: (_row, value) => ({ imageModel: normalizeModelReference(value) }),
   },
   {
     key: "admin.providerModels",
@@ -1165,6 +1193,7 @@ export const USER_PROPERTIES: readonly UserProperty[] = [
   ...categoryExposureProperties(),
   ...toolPolicyProperties(),
   APPROVAL_DECISION_MODEL_PROPERTY,
+  IMAGE_MODEL_PROPERTY,
   ...coderCategoryProperties(),
   ...sidebarProperties(),
   ...notificationProperties(),

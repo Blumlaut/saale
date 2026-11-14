@@ -25,7 +25,6 @@ import {
 } from "@/lib/providers/images/openai-images";
 import { isModelAllowed, readGlobalModelConfig } from "@/lib/providers/model-availability";
 import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
-import { listSlotModels, MODEL_SLOTS, type SlotModelSummary } from "./model-slots";
 
 /**
  * A model offered to the UI. `reasoning`, `contextWindow` and `maxOutputTokens`
@@ -371,22 +370,6 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
       : allModels.filter((m) => isModelAllowed(globalConfig, m.provider, m.id));
 
   return { modelRuntime, models };
-}
-
-/** A classifier model the UI can offer: an id, and what to call it. */
-export type ClassifierModelSummary = SlotModelSummary;
-
-/**
- * The decision models a runtime can call, grouped by provider.
- *
- * Classifiers are a separate list in Pi: a decision model answers typed
- * questions instead of chatting, so it is never offered where a chat model is
- * picked and never reached through `getModel`.
- */
-export function listClassifierModels(
-  runtime: ModelRuntime,
-): Promise<Record<string, ClassifierModelSummary[]>> {
-  return listSlotModels(runtime, MODEL_SLOTS.decision);
 }
 
 /** Build the model runtime for one user, with every provider they can reach. */

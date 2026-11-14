@@ -78,6 +78,8 @@ const baseSettings: UserSettings = {
   toolExposure: null,
   approvalDecisionModel: null,
   instanceApprovalDecisionModel: null,
+  imageModel: null,
+  instanceImageModel: null,
   pushNotifications: null,
 };
 

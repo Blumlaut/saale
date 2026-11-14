@@ -42,6 +42,8 @@ interface ModelsApiResponse {
   >;
   /** Decision models, which never appear among the chat models. */
   classifiers?: Record<string, Array<{ id: string; name: string }>>;
+  /** Image models, likewise kept apart from the chat models. */
+  imageModels?: Record<string, Array<{ id: string; name: string }>>;
   providers?: Array<{ id: string; name: string }>;
 }
 
@@ -75,9 +77,19 @@ interface ModelPickerProps {
   endpoint?: string;
   /**
    * Which models to offer: a chat model answers, a classifier judges typed
-   * questions (the approval decision model).
+   * questions (the approval decision model), an image model renders pictures.
    */
-  type?: "chat" | "classifier";
+  type?: "chat" | "classifier" | "image";
+}
+
+/** The list one picker type offers, out of what the models API returns. */
+function listFor(
+  data: ModelsApiResponse,
+  type: "chat" | "classifier" | "image",
+): Record<string, PickerEntry[]> {
+  if (type === "classifier") return data.classifiers ?? {};
+  if (type === "image") return data.imageModels ?? {};
+  return data.models ?? {};
 }
 
 /**
@@ -111,10 +123,9 @@ export function ModelPicker({
     fetchJson<ModelsApiResponse>(endpoint)
       .then((data) => {
         const all: ModelInfo[] = [];
-        // A classifier has no badges to show: it neither reasons before
-        // answering nor reads images.
-        const groups: Record<string, PickerEntry[]> =
-          type === "classifier" ? (data.classifiers ?? {}) : (data.models ?? {});
+        // Only a chat model carries the badges: a classifier neither reasons
+        // before answering nor reads images, and an image model renders.
+        const groups: Record<string, PickerEntry[]> = listFor(data, type);
         for (const [provider, modelsList] of Object.entries(groups)) {
           const providerName =
             (data.providers ?? []).find((p) => p.id === provider)?.name ?? provider;
@@ -307,6 +318,14 @@ export function ModelPicker({
                   Add a llama.cpp endpoint that serves one
                 </p>
               </div>
+            ) : !hasResults && type === "image" ? (
+              <div className="py-8 text-center">
+                <p className="text-muted-foreground text-sm">No image models</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Connect OpenRouter, or mark one of your own endpoint&apos;s models as an image
+                  model
+                </p>
+              </div>
             ) : !hasResults ? (
               <div className="py-8 text-center">
                 <p className="text-muted-foreground text-sm">No models available</p>
@@ -394,7 +413,8 @@ export function ModelPicker({
             <Separator />
             <div className="px-3 py-1.5">
               <span className="text-muted-foreground text-[11px]">
-                {totalFiltered} {type === "classifier" ? "decision " : ""}model
+                {totalFiltered}{" "}
+                {type === "classifier" ? "decision " : type === "image" ? "image " : ""}model
                 {totalFiltered !== 1 ? "s" : ""} available
               </span>
             </div>
