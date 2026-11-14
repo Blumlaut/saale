@@ -132,6 +132,38 @@ describe("GET /api/admin/providers/models", () => {
     ]);
   });
 
+  it("lists an image model beside the chat models", async () => {
+    stubRuntime(
+      [
+        model({ provider: "custom", id: "qwen3" }),
+        model({
+          provider: "custom",
+          id: "qwen-image",
+          reasoning: false,
+          vision: true,
+          image: true,
+          contextWindow: undefined,
+          maxOutputTokens: undefined,
+        }),
+      ],
+      { custom: "OpenAI-compatible" },
+    );
+
+    const body = await (await GET()).json();
+
+    expect(body.models.custom).toEqual([
+      {
+        id: "qwen3",
+        name: "Claude Sonnet",
+        reasoning: true,
+        vision: true,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
+      { id: "qwen-image", name: "Claude Sonnet", reasoning: false, vision: true, image: true },
+    ]);
+  });
+
   it("marks Saale's own endpoint as configurable", async () => {
     stubRuntime([model({ provider: "custom", id: "local" })], { custom: "OpenAI-compatible" });
 

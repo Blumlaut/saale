@@ -42,6 +42,8 @@ export interface AvailableModel {
   contextWindow?: number | undefined;
   maxOutputTokens?: number | undefined;
   vision: boolean;
+  /** The model renders images, which only the admin's list offers. */
+  image?: true;
 }
 
 /** A model definition passed to `registerProvider`. */
@@ -220,7 +222,7 @@ export async function registerDiscoveredModels(
   const capabilities = options.capabilities ?? {};
   const reported = new Map(listing.models.map((model) => [model.id, model.capabilities]));
   const isImage = (model: { id: string; imageModel?: true }): boolean =>
-    model.imageModel === true || configuredImage(capabilities, model.id) === true;
+    configuredImage(capabilities, model.id) ?? model.imageModel === true;
   const chatModels = listing.models.filter((model) => !model.decisionModel && !isImage(model));
 
   runtime.registerProvider(options.provider, {
@@ -388,9 +390,44 @@ export function buildGlobalModelRuntime() {
 }
 
 /**
+ * The image models a runtime can render with, as entries a model list shows.
+ *
+ * Pi keeps them off its chat list, so neither the availability snapshot nor the
+ * endpoint discovery carries them.
+ */
+async function listImageModels(runtime: ModelRuntime): Promise<AvailableModel[]> {
+  try {
+    const available = await runtime.getAvailableOfType("image");
+    return available.map((model) => ({
+      provider: model.provider,
+      id: model.id,
+      name: model.name,
+      // An image model that takes a picture is the image-editing one.
+      vision: model.input.includes("image"),
+      image: true as const,
+    }));
+  } catch (err) {
+    console.error("Failed to list the image models:", err);
+    return [];
+  }
+}
+
+/**
  * Build the global configuration's runtime for the admin's model list: every
  * model the configuration can offer, including the ones currently switched off.
  */
-export function buildAdminModelList() {
-  return buildRuntime({ kind: "global" }, { applyModelFilter: false });
+export async function buildAdminModelList() {
+  const { modelRuntime, models } = await buildRuntime(
+    { kind: "global" },
+    { applyModelFilter: false },
+  );
+
+  // The switches cover every model a user can pick, image models included.
+  const image = await listImageModels(modelRuntime);
+  const known = new Set(models.map((model) => `${model.provider}:${model.id}`));
+
+  return {
+    modelRuntime,
+    models: [...models, ...image.filter((model) => !known.has(`${model.provider}:${model.id}`))],
+  };
 }
