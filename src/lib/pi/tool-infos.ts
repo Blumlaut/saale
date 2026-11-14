@@ -470,7 +470,7 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
   {
     name: "edit_image",
     label: "Edit Image",
-    description: "Change a picture from the workspace with the account's image model",
+    description: "Change or combine workspace pictures with the account's image model",
     icon: Wand2,
     category: "image",
     defaultPolicy: "ask",
@@ -888,7 +888,7 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   bash: { command: "Command" },
   show_file: { filePath: "File", description: "Note" },
   generate_image: { prompt: "Prompt" },
-  edit_image: { image: "Picture", prompt: "Change" },
+  edit_image: { images: "Pictures", prompt: "Change" },
   codemode: { code: "Script" },
   chat_respond: { sessionId: "Chat", message: "Message" },
   chat_create: { message: "Message", title: "Title" },

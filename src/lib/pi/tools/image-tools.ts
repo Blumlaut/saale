@@ -25,6 +25,16 @@ export const IMAGE_TOOL_NAMES = [GENERATE_IMAGE_TOOL_NAME, EDIT_IMAGE_TOOL_NAME]
 /** Largest reference image sent back to the model's endpoint. */
 const MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
 
+/**
+ * How many pictures one edit may carry.
+ *
+ * Combining two pictures is the usual case: a subject and a setting, or a face
+ * and a style. The endpoints cap it too, and a request with more references
+ * than the model was trained on renders whatever it manages rather than saying
+ * no, so the ceiling is here.
+ */
+const MAX_REFERENCES = 4;
+
 const GENERATED_IMAGE_SCHEMA = Type.Object({
   path: Type.String({ description: "Workspace path of the rendered image." }),
   model: Type.String(),
@@ -45,11 +55,10 @@ type GeneratedImage = {
 };
 
 /**
- * The `size` argument, offering the account's own list.
+ * The `size` argument, offering the sizes the model was given.
  *
- * The endpoint renders whatever it is asked for, so the agent gets the sizes
- * this account set rather than a free string the server would reject or
- * silently round.
+ * The endpoint renders whatever it is asked for, so the agent gets the model's
+ * own list rather than a free string the server would reject or silently round.
  */
 function sizeParameter(sizes: readonly string[]) {
   const list = normalizeImageSizes(sizes);
@@ -57,7 +66,7 @@ function sizeParameter(sizes: readonly string[]) {
     Type.String({
       enum: list,
       description:
-        `Resolution as "WxH". Omit it for ${list[0]}, the account's default. ` +
+        `Resolution as "WxH". Omit it for ${list[0]}, the model's default. ` +
         `Anything more square, tall or wide has to be one of: ${list.join(", ")}.`,
     }),
   );
@@ -99,15 +108,15 @@ async function renderImage(options: {
   userId: string;
   sessionId: string;
   prompt: string;
-  /** Workspace path of the picture to work from. */
-  reference?: string | undefined;
+  /** Workspace paths of the pictures to work from, in the order the prompt names them. */
+  references?: readonly string[] | undefined;
   /** The resolution the agent asked for, already resolved against the account's list. */
   size?: string | undefined;
   signal?: AbortSignal | undefined;
   /** What the model did, for the sentence the model reads. */
   verb: "Rendered" | "Edited";
 }): Promise<ToolOutcome<GeneratedImage, undefined>> {
-  const { userId, sessionId, prompt, reference, size, signal, verb } = options;
+  const { userId, sessionId, prompt, references = [], size, signal, verb } = options;
 
   const resolved = await loadImageModel(userId);
   if (!resolved) {
@@ -118,13 +127,17 @@ async function renderImage(options: {
   const { runtime, model, pick } = resolved;
 
   const input: ImagesInputContent[] = [{ type: "text", text: prompt }];
-  if (reference) {
+  if (references.length > 0) {
     if (!model.input.includes("image")) {
       throw new Error(
         `${model.name} renders from a prompt alone, so it cannot edit a picture. Use generate_image.`,
       );
     }
-    input.push(await readReferenceImage(userId, reference, sessionId));
+    // Order matters: the model reads them in this order and the prompt refers
+    // to them by position.
+    for (const reference of references) {
+      input.push(await readReferenceImage(userId, reference, sessionId));
+    }
   }
 
   const result = await runtime.generateImages(
@@ -215,15 +228,19 @@ function createEditImageTool(userId: string, sessionId: string, sizes: readonly 
     name: EDIT_IMAGE_TOOL_NAME,
     label: "Edit Image",
     description:
-      "Change a picture that is already in the workspace: the account's image model renders a " +
-      "new version from it plus your instructions, and the original stays as it is. The result " +
-      "is saved to the workspace, shown to the user, and its path returned. Takes from seconds " +
-      "to a few minutes.",
+      "Change a picture that is already in the workspace, or combine it with others: the " +
+      "account's image model renders a new version from those pictures plus your instructions, " +
+      "and the originals stay as they are. The result is saved to the workspace, shown to the " +
+      "user, and its path returned. Takes from seconds to a few minutes.",
     parameters: Type.Object({
-      image: Type.String({
+      images: Type.Array(Type.String(), {
+        minItems: 1,
+        maxItems: MAX_REFERENCES,
         description:
-          "Workspace path of the picture to change, relative to the chat's worktree. Read it " +
-          "first if you do not know what it shows.",
+          "Workspace paths of the pictures to work from, relative to the chat's worktree. One " +
+          "picture edits it; two or more combine them, and the model sees them in this order, " +
+          'so name them by position in the prompt ("the person from the second picture, in ' +
+          'the room from the first"). Read them first if you do not know what they show.',
       }),
       prompt: Type.String({
         description:
@@ -238,7 +255,7 @@ function createEditImageTool(userId: string, sessionId: string, sizes: readonly 
         userId,
         sessionId,
         prompt: params.prompt,
-        reference: params.image,
+        references: params.images,
         size: pickImageSize(sizes, params.size),
         signal,
         verb: "Edited",

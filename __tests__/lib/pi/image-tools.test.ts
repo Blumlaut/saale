@@ -134,7 +134,7 @@ describe("image tools", () => {
     });
 
     const text = textOf(
-      await run("edit_image", { image: "generated/fox.png", prompt: "make it snow" }),
+      await run("edit_image", { images: ["generated/fox.png"], prompt: "make it snow" }),
     );
 
     expect(generateImages).toHaveBeenCalledWith(
@@ -162,7 +162,7 @@ describe("image tools", () => {
     });
 
     await expect(
-      run("edit_image", { image: "generated/fox.png", prompt: "make it snow" }),
+      run("edit_image", { images: ["generated/fox.png"], prompt: "make it snow" }),
     ).rejects.toThrow("cannot edit a picture");
     expect(generate).not.toHaveBeenCalled();
   });
@@ -176,9 +176,52 @@ describe("image tools", () => {
       buffer: Buffer.from("hi"),
     });
 
-    await expect(run("edit_image", { image: "notes.txt", prompt: "x" })).rejects.toThrow(
+    await expect(run("edit_image", { images: ["notes.txt"], prompt: "x" })).rejects.toThrow(
       "is not an image",
     );
+  });
+
+  // Combining two pictures is the reason the tool takes a list: the model reads
+  // them in order, so the list reaches the endpoint as it was given.
+  it("sends every picture of a combined edit, in order", async () => {
+    const generateImages = stubImageModel(RENDERED);
+    hoisted.readWorkspaceFile.mockImplementation(async (_userId: string, path: string) => ({
+      fileName: path.split("/").pop(),
+      mimeType: "image/png",
+      size: 3,
+      buffer: Buffer.from(path),
+    }));
+
+    await run("edit_image", {
+      images: ["generated/room.png", "generated/person.png"],
+      prompt: "put the person from the second picture in the room from the first",
+    });
+
+    expect(generateImages.mock.calls[0]![1]).toEqual({
+      input: [
+        { type: "text", text: "put the person from the second picture in the room from the first" },
+        {
+          type: "image",
+          data: Buffer.from("generated/room.png").toString("base64"),
+          mimeType: "image/png",
+        },
+        {
+          type: "image",
+          data: Buffer.from("generated/person.png").toString("base64"),
+          mimeType: "image/png",
+        },
+      ],
+    });
+  });
+
+  it("offers at most four pictures and needs one", () => {
+    const edit = tools().find((tool) => tool.name === "edit_image")!;
+    const schema = edit.parameters as unknown as {
+      properties: { images: { minItems: number; maxItems: number } };
+    };
+
+    expect(schema.properties.images.minItems).toBe(1);
+    expect(schema.properties.images.maxItems).toBe(4);
   });
 
   // A provider that reports no price leaves the turn's cost at zero rather than

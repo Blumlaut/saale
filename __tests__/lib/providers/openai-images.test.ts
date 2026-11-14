@@ -84,6 +84,34 @@ describe("generateImages (openai-images)", () => {
     expect(result.output).toHaveLength(1);
   });
 
+  // Combining pictures needs the array field. Both OpenAI and stable-diffusion's
+  // server read `image[]` for a batch and `image` only as the single-image
+  // fallback, so a second picture in `image` is dropped without a word.
+  it("sends several reference images in the array field", async () => {
+    const fetchMock = stubServer({ data: [{ b64_json: "Y29tYmluZWQ=" }] });
+
+    await generateImages(
+      MODEL,
+      {
+        input: [
+          { type: "text", text: "put the fox in the lighthouse" },
+          { type: "image", data: "cm9vbQ==", mimeType: "image/png" },
+          { type: "image", data: "Zm94", mimeType: "image/webp" },
+        ],
+      },
+      { apiKey: "secret" },
+    );
+
+    const [url, init] = fetchMock.mock.calls[0]! as [string, { body: FormData }];
+    expect(url).toBe("http://localhost:8081/v1/images/edits");
+    const files = init.body.getAll("image[]") as File[];
+    expect(files).toHaveLength(2);
+    expect(files.map((file) => file.type)).toEqual(["image/png", "image/webp"]);
+    expect(files.map((file) => file.name)).toEqual(["reference-0.png", "reference-1.webp"]);
+    // The single-image field would make the server read only the first.
+    expect(init.body.getAll("image")).toHaveLength(0);
+  });
+
   // Without a size the endpoint picks its own, and a diffusion server picks the
   // small one: the account's resolution has to reach the request.
   it("sends the size the caller asked for", async () => {
