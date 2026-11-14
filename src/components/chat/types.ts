@@ -19,6 +19,11 @@ export interface ToolCallData {
    * `args`/`result`. Present only on redacted public-share payloads.
    */
   redacted?: string;
+  /**
+   * The picture this call produced, on a share payload: where to fetch it from,
+   * and the size its frame takes. Never a workspace path.
+   */
+  image?: { src: string; width?: number; height?: number };
 }
 
 export interface AttachmentData {
