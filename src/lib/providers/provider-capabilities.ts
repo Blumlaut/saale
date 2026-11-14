@@ -16,10 +16,12 @@ import {
   mergeDetectedCapabilities,
   parseImageEdit,
   parseImageInputEdit,
+  parseImageSizesEdit,
   parseModelCapabilityMap,
   parseVisionEdit,
   serializeModelCapabilityMap,
   withModelFlag,
+  withModelImageSizes,
   withModelLimits,
   withoutModelFlag,
   type ModelCapabilityFlag,
@@ -49,6 +51,8 @@ export interface ModelSettingsEdit {
   image?: boolean | null;
   /** Absent = leave as stored; `null` = back on automatic detection. */
   imageInput?: boolean | null;
+  /** Absent = leave as stored; a list = the resolutions this model renders at. */
+  imageSizes?: string[] | null;
   /** Absent = leave as stored; `null` = inherit the endpoint's default. */
   contextWindow?: number | null;
   maxOutputTokens?: number | null;
@@ -65,6 +69,7 @@ export function parseModelSettingsEdit(body: {
   vision?: unknown;
   image?: unknown;
   imageInput?: unknown;
+  imageSizes?: unknown;
   contextWindow?: unknown;
   maxOutputTokens?: unknown;
 }): ModelSettingsEdit | { error: string } {
@@ -78,22 +83,27 @@ export function parseModelSettingsEdit(body: {
   const limits = parseModelLimitEdit(body);
   if ("error" in limits) return limits;
 
+  const imageSizes = parseImageSizesEdit(body);
+  if ("error" in imageSizes) return imageSizes;
+
   const edit: ModelSettingsEdit = { modelId: vision.modelId };
   if (body.vision !== undefined) edit.vision = vision.vision;
   if (body.image !== undefined) edit.image = image.image;
   if (body.imageInput !== undefined) edit.imageInput = imageInput.imageInput;
   if (limits.contextWindow !== undefined) edit.contextWindow = limits.contextWindow;
   if (limits.maxOutputTokens !== undefined) edit.maxOutputTokens = limits.maxOutputTokens;
+  if (body.imageSizes !== undefined) edit.imageSizes = imageSizes.imageSizes;
 
   const changed =
     edit.vision !== undefined ||
     edit.image !== undefined ||
     edit.imageInput !== undefined ||
     edit.contextWindow !== undefined ||
-    edit.maxOutputTokens !== undefined;
+    edit.maxOutputTokens !== undefined ||
+    edit.imageSizes !== undefined;
   if (!changed) {
     return {
-      error: "vision, image, imageInput, contextWindow or maxOutputTokens is required",
+      error: "vision, image, imageInput, imageSizes, contextWindow or maxOutputTokens is required",
     };
   }
 
@@ -124,6 +134,14 @@ export async function setProviderModelSettings(options: {
     contextWindow: options.edit.contextWindow,
     maxOutputTokens: options.edit.maxOutputTokens,
   });
+
+  if (options.edit.imageSizes !== undefined) {
+    modelCapabilities = withModelImageSizes(
+      modelCapabilities,
+      options.edit.modelId,
+      options.edit.imageSizes ?? undefined,
+    );
+  }
 
   await prisma.providerApiKey.update({
     where: { id: options.keyId },

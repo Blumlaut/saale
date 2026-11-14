@@ -32,19 +32,12 @@ import {
   Brain,
   ChevronDown,
   Eye,
-  Frame,
   Loader2,
   RotateCcw,
   ShieldCheck,
   Sparkles,
   SlidersHorizontal,
 } from "lucide-react";
-import {
-  IMAGE_SIZE_PRESETS,
-  MAX_IMAGE_SIZES,
-  normalizeImageSizes,
-  pickImageSize,
-} from "@/lib/providers/images/sizes";
 import { AutosavedPage } from "../components/save-state";
 import { ProviderManagement } from "../components/provider-management";
 import { useUserSettings } from "../components/user-settings-provider";
@@ -53,21 +46,6 @@ import type { AvailableModel, AvailableProvider } from "../types";
 interface FullModelInfo extends AvailableModel {
   provider: string;
   providerName: string;
-}
-
-/**
- * The list after turning one size on or off.
- *
- * The last one stays: an image tool with no size to send falls back to whatever
- * the endpoint decides, which is the resolution nobody picked.
- */
-function toggleImageSize(sizes: readonly string[], value: string): string[] {
-  const current = normalizeImageSizes(sizes);
-  if (!current.includes(value)) {
-    return normalizeImageSizes([...current, value]);
-  }
-  const next = current.filter((size) => size !== value);
-  return next.length > 0 ? next : current;
 }
 
 /** What a model without its own limits inherits from the endpoint. */
@@ -265,8 +243,6 @@ export function ModelsSection() {
 
   if (!settings) return null;
 
-  const imageSizes = normalizeImageSizes(settings.imageSizes);
-
   const defaultLabel = defaultModel
     ? (allModels.find((m) => `${m.provider}/${m.id}` === defaultModel)?.name ??
       defaultSelection?.model)
@@ -406,7 +382,7 @@ export function ModelsSection() {
               </div>
 
               {/* Rendering a picture is its own model, so it takes a row here too */}
-              <div className="py-3">
+              <div className="py-3 last:pb-0">
                 <SlotModelField
                   key={`image-${pickerKey}`}
                   type="image"
@@ -420,42 +396,6 @@ export function ModelsSection() {
                   clearLabel="Clear the image model"
                   endpoint="/api/providers/models"
                 />
-              </div>
-
-              {/* A render takes the size it is given, and the size it picks on its
-                  own is the small one nobody asked for. */}
-              <div className="flex flex-col gap-3 py-3 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <Frame className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">Image resolutions</p>
-                    <p className="text-muted-foreground text-xs">
-                      {`${pickImageSize(imageSizes, undefined)} unless the agent picks another.`}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 sm:max-w-[60%] sm:justify-end">
-                  {IMAGE_SIZE_PRESETS.map((preset) => {
-                    const on = imageSizes.includes(preset.value);
-                    const full = !on && imageSizes.length >= MAX_IMAGE_SIZES;
-                    return (
-                      <Button
-                        key={preset.value}
-                        variant={on ? "secondary" : "ghost"}
-                        size="xs"
-                        aria-pressed={on}
-                        disabled={full}
-                        title={full ? `Turn one of the ${MAX_IMAGE_SIZES} off first` : undefined}
-                        className={cn("font-mono text-[11px]", !on && "text-muted-foreground")}
-                        onClick={() =>
-                          update({ imageSizes: toggleImageSize(imageSizes, preset.value) })
-                        }
-                      >
-                        {preset.value.replace("x", "×")}
-                      </Button>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           </div>

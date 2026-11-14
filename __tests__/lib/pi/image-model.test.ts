@@ -4,6 +4,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     appSettings: { findUnique: vi.fn() },
     adminSettings: { findUnique: vi.fn() },
+    providerApiKey: { findMany: vi.fn() },
   },
 }));
 
@@ -25,6 +26,22 @@ function imageModel(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** One endpoint row, as the runtime reads it. */
+function endpointRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "key-1",
+    userId: null,
+    provider: "custom",
+    label: "",
+    baseUrl: "http://localhost:8080/v1",
+    encryptedKey: "enc()",
+    contextWindow: null,
+    maxOutputTokens: null,
+    modelCapabilities: null,
+    ...overrides,
+  };
+}
+
 /** The runtime a user scope builds, with the models it can see. */
 function stubRuntime(available: unknown[]) {
   const runtime = { getModelOfType: vi.fn().mockReturnValue(available[0]) };
@@ -40,6 +57,7 @@ describe("resolveImageModel", () => {
     vi.clearAllMocks();
     vi.mocked(prisma.appSettings.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.adminSettings.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.providerApiKey.findMany).mockResolvedValue([]);
   });
 
   // The account that never opened Settings → Models has to inherit whatever the
@@ -77,18 +95,55 @@ describe("resolveImageCapabilities", () => {
     vi.mocked(prisma.appSettings.findUnique).mockResolvedValue({
       imageModel: "custom:qwen-image-2.1-turbo",
     } as never);
+    vi.mocked(prisma.providerApiKey.findMany).mockResolvedValue([]);
   });
 
   it("offers editing to a model that takes a picture", async () => {
     stubRuntime([imageModel()]);
 
-    expect(await resolveImageCapabilities("user-1")).toEqual({ generate: true, edit: true });
+    expect(await resolveImageCapabilities("user-1")).toEqual({
+      generate: true,
+      edit: true,
+      sizes: ["1024x1024"],
+    });
   });
 
   it("offers only generation to a model that renders from a prompt alone", async () => {
     stubRuntime([imageModel({ input: ["text"] })]);
 
-    expect(await resolveImageCapabilities("user-1")).toEqual({ generate: true, edit: false });
+    expect(await resolveImageCapabilities("user-1")).toEqual({
+      generate: true,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
+  });
+
+  // The resolutions describe what the endpoint renders, so they are recorded on
+  // the model and apply to every account that uses it.
+  it("renders at the resolutions the admin recorded for the model", async () => {
+    stubRuntime([imageModel()]);
+    vi.mocked(prisma.providerApiKey.findMany).mockResolvedValue([
+      endpointRow({
+        modelCapabilities: {
+          "qwen-image-2.1-turbo": { image: true, imageSizes: ["2048x2048", "1536x1024"] },
+        },
+      }),
+    ] as never);
+
+    const capabilities = await resolveImageCapabilities("user-1");
+
+    expect(capabilities.sizes).toEqual(["2048x2048", "1536x1024"]);
+  });
+
+  it("skips a recorded resolution the endpoints cannot render", async () => {
+    stubRuntime([imageModel()]);
+    vi.mocked(prisma.providerApiKey.findMany).mockResolvedValue([
+      endpointRow({
+        modelCapabilities: { "qwen-image-2.1-turbo": { imageSizes: ["9000x9000", "512x512"] } },
+      }),
+    ] as never);
+
+    expect((await resolveImageCapabilities("user-1")).sizes).toEqual(["512x512"]);
   });
 
   // A pick whose model the account's providers no longer serve (a deleted
@@ -97,13 +152,21 @@ describe("resolveImageCapabilities", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     stubRuntime([undefined]);
 
-    expect(await resolveImageCapabilities("user-1")).toEqual({ generate: false, edit: false });
+    expect(await resolveImageCapabilities("user-1")).toEqual({
+      generate: false,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
   });
 
   it("keeps an image model out of reach that Pi reports as another type", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     stubRuntime([imageModel({ type: "chat" })]);
 
-    expect(await resolveImageCapabilities("user-1")).toEqual({ generate: false, edit: false });
+    expect(await resolveImageCapabilities("user-1")).toEqual({
+      generate: false,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
   });
 });

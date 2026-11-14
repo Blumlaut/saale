@@ -7,7 +7,7 @@ import { canExec as canRunCommands } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
-import { resolveImageCapabilities, resolveImageSizes } from "./image-model";
+import { resolveImageCapabilities } from "./image-model";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createImageTools } from "./tools/image-tools";
@@ -194,11 +194,11 @@ export async function resolveTools(
 
   // Image generation needs a model to call: nobody picked one, or Pi has no such
   // model for this account, means no tool to offer.
-  const [imageCapabilities, imageSizes] = await Promise.all([
-    resolveImageCapabilities(userId, options.modelRuntime),
-    resolveImageSizes(userId),
-  ]);
-  const buildContext: ToolBuildContext = { editImages: imageCapabilities.edit, imageSizes };
+  const imageCapabilities = await resolveImageCapabilities(userId, options.modelRuntime);
+  const buildContext: ToolBuildContext = {
+    editImages: imageCapabilities.edit,
+    imageSizes: imageCapabilities.sizes,
+  };
 
   // Backward compat: map legacy keys to terminal
   const terminalEnabled =

@@ -21,6 +21,8 @@ export interface AvailableModel {
   image?: boolean;
   /** Whether it takes a picture to edit. Absent means it does. */
   imageInput?: boolean;
+  /** Resolutions the admin picked for this image model. Absent means the default. */
+  imageSizes?: string[];
   /** Context window Pi will compact against. */
   contextWindow?: number;
   /** Output cap Pi sends as the request's token budget. */

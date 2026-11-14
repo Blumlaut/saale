@@ -10,7 +10,9 @@
 import type { ImageApi, ImageModel } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { normalizeImageSizes } from "@/lib/providers/images/sizes";
+import { configuredImageSizes, parseModelCapabilityMap } from "@/lib/providers/capabilities";
+import { readEndpointRows } from "@/lib/providers/endpoint";
+import { DEFAULT_IMAGE_SIZES } from "@/lib/providers/images/sizes";
 import { MODEL_SLOTS, parseSlotModelPick, slotModel, type SlotModelPick } from "./model-slots";
 import { buildModelRuntime } from "./models";
 
@@ -33,17 +35,32 @@ export async function resolveImageModel(userId: string): Promise<SlotModelPick |
 }
 
 /**
- * The resolutions this account renders at, the first one being the default.
+ * The resolutions a model renders at, as the admin recorded them for it.
  *
  * A render without a size is whatever the endpoint picks on its own, which for
- * a diffusion server is far below the resolution the model was trained on.
+ * a diffusion server is far below the resolution the model was trained on. The
+ * list belongs to the model rather than to the account: it describes what that
+ * endpoint can render, and the agent picks one of the entries per request.
+ *
+ * Model metadata is recorded on the endpoint row, which an admin owns, so a
+ * model Pi serves from its own catalog has no list of its own and falls back to
+ * the default.
  */
-export async function resolveImageSizes(userId: string): Promise<string[]> {
-  const settings = await prisma.appSettings.findUnique({
-    where: { userId },
-    select: { imageSizes: true },
-  });
-  return normalizeImageSizes(settings?.imageSizes);
+export async function resolveModelImageSizes(options: {
+  userId: string;
+  provider: string;
+  modelId: string;
+}): Promise<string[]> {
+  // The row an admin recorded the model on is a global one, so this reads both
+  // scopes the way the runtime does: the account's own row, else the instance's.
+  const row = (await readEndpointRows({ kind: "user", userId: options.userId })).find(
+    (endpoint) => endpoint.provider === options.provider,
+  );
+  const recorded = row
+    ? configuredImageSizes(parseModelCapabilityMap(row.modelCapabilities), options.modelId)
+    : undefined;
+
+  return recorded ?? [...DEFAULT_IMAGE_SIZES];
 }
 
 /**
@@ -56,6 +73,8 @@ export async function resolveImageSizes(userId: string): Promise<string[]> {
 export interface ImageCapabilities {
   generate: boolean;
   edit: boolean;
+  /** The resolutions the model renders at, the first one being the default. */
+  sizes: string[];
 }
 
 /**
@@ -69,16 +88,24 @@ export async function resolveImageCapabilities(
   runtime?: ModelRuntime,
 ): Promise<ImageCapabilities> {
   const pick = await resolveImageModel(userId);
-  if (!pick) return { generate: false, edit: false };
+  if (!pick) return { generate: false, edit: false, sizes: [...DEFAULT_IMAGE_SIZES] };
 
   const modelRuntime = runtime ?? (await buildModelRuntime(userId)).modelRuntime;
   const model = slotModel(modelRuntime, MODEL_SLOTS.image, pick);
   if (!model || model.type !== "image") {
     console.error(`The configured image model is not in the catalog: ${pick.provider}/${pick.id}`);
-    return { generate: false, edit: false };
+    return { generate: false, edit: false, sizes: [...DEFAULT_IMAGE_SIZES] };
   }
 
-  return { generate: true, edit: model.input.includes("image") };
+  return {
+    generate: true,
+    edit: model.input.includes("image"),
+    sizes: await resolveModelImageSizes({
+      userId,
+      provider: pick.provider,
+      modelId: pick.id,
+    }),
+  };
 }
 
 /** The model to call, with the runtime whose credentials it needs. */

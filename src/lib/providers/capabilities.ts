@@ -22,6 +22,8 @@
  * compact. An absent limit inherits the endpoint's default for that field.
  */
 
+import { isImageSize, MAX_IMAGE_SIZES } from "./images/sizes";
+
 /** What Saale knows about one discovered model. */
 export interface ModelCapabilities {
   /** Whether the model accepts image input. Absent = not known. */
@@ -33,6 +35,12 @@ export interface ModelCapabilities {
    * what the OpenAI images API means by `/v1/images/edits`.
    */
   imageInput?: boolean;
+  /**
+   * Resolutions an image model renders at, as "WxH". The admin picks them for
+   * the model, and the agent picks one of them per request. Absent = the default
+   * list.
+   */
+  imageSizes?: string[];
   /** Context window of this model. Absent = inherit the endpoint's default. */
   contextWindow?: number;
   /** Output cap for this model. Absent = inherit the endpoint's default. */
@@ -421,6 +429,8 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
     if (typeof raw.vision === "boolean") capabilities.vision = raw.vision;
     if (typeof raw.image === "boolean") capabilities.image = raw.image;
     if (typeof raw.imageInput === "boolean") capabilities.imageInput = raw.imageInput;
+    const imageSizes = parseStoredImageSizes(raw.imageSizes);
+    if (imageSizes) capabilities.imageSizes = imageSizes;
     const contextWindow = storedTokenLimit(raw.contextWindow);
     if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
     const maxOutputTokens = storedTokenLimit(raw.maxOutputTokens);
@@ -460,6 +470,56 @@ export function configuredImageInput(
   modelId: string,
 ): boolean | undefined {
   return configuredFlag(map, modelId, "imageInput");
+}
+
+/** The resolutions recorded for an image model, if the admin picked any. */
+export function configuredImageSizes(
+  map: ModelCapabilityMap,
+  modelId: string,
+): string[] | undefined {
+  const sizes = map[modelId]?.imageSizes;
+  return Array.isArray(sizes) && sizes.length > 0 ? sizes : undefined;
+}
+
+/**
+ * The resolutions recorded in a stored column.
+ *
+ * Unlike the account-level list this one never invents a default: absent means
+ * nobody chose, which is what makes the reader fall back deliberately.
+ */
+function parseStoredImageSizes(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sizes = value.filter((entry): entry is string => typeof entry === "string");
+  return parseImageSizesList(sizes);
+}
+
+/** Valid sizes out of a list, deduplicated and capped, or undefined when none. */
+export function parseImageSizesList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sizes: string[] = [];
+  for (const entry of value) {
+    const size = typeof entry === "string" ? entry.trim().toLowerCase() : "";
+    if (!isImageSize(size) || sizes.includes(size)) continue;
+    sizes.push(size);
+    if (sizes.length === MAX_IMAGE_SIZES) break;
+  }
+  return sizes.length > 0 ? sizes : undefined;
+}
+
+/** A copy of `map` with `modelId`'s resolutions set, or dropped for the default. */
+export function withModelImageSizes(
+  map: ModelCapabilityMap,
+  modelId: string,
+  sizes: string[] | undefined,
+): ModelCapabilityMap {
+  const { imageSizes: _dropped, ...rest } = map[modelId] ?? {};
+  if (!sizes || sizes.length === 0) {
+    const next = { ...map };
+    if (Object.keys(rest).length === 0) delete next[modelId];
+    else next[modelId] = rest;
+    return next;
+  }
+  return { ...map, [modelId]: { ...rest, imageSizes: sizes } };
 }
 
 /** The token limits recorded for a model, with nothing inherited. */
@@ -565,11 +625,16 @@ export function withModelLimits(
  */
 export function serializeModelCapabilityMap(
   map: ModelCapabilityMap,
-): Record<string, Record<string, boolean | number>> {
-  const serialized: Record<string, Record<string, boolean | number>> = {};
+): Record<string, Record<string, boolean | number | string[]>> {
+  const serialized: Record<string, Record<string, boolean | number | string[]>> = {};
   for (const [modelId, capabilities] of Object.entries(map)) {
-    const entry: Record<string, boolean | number> = {};
-    if (typeof capabilities.vision === "boolean") entry.vision = capabilities.vision;
+    const entry: Record<string, boolean | number | string[]> = {};
+    for (const flag of ["vision", "image", "imageInput"] as const) {
+      if (typeof capabilities[flag] === "boolean") entry[flag] = capabilities[flag];
+    }
+    if (capabilities.imageSizes && capabilities.imageSizes.length > 0) {
+      entry.imageSizes = capabilities.imageSizes;
+    }
     if (typeof capabilities.contextWindow === "number") {
       entry.contextWindow = capabilities.contextWindow;
     }
@@ -638,6 +703,41 @@ export function parseImageEdit(body: { modelId?: unknown; image?: unknown }) {
 /** The image-input flag of an edit to one model's settings. */
 export function parseImageInputEdit(body: { modelId?: unknown; imageInput?: unknown }) {
   return parseFlagEdit("imageInput", body);
+}
+
+/**
+ * The resolutions of an edit to one image model, as the admin picks them.
+ *
+ * `null` (or an empty list) puts the model back on the default list. An entry
+ * that is not a size the endpoints render is refused rather than dropped, so a
+ * typo in the form says so instead of quietly shrinking the list.
+ */
+export function parseImageSizesEdit(body: {
+  modelId?: unknown;
+  imageSizes?: unknown;
+}): { modelId: string; imageSizes: string[] | null } | { error: string } {
+  const modelId = body.modelId;
+  if (typeof modelId !== "string" || modelId.length === 0) {
+    return { error: "modelId is required" };
+  }
+  if (body.imageSizes === null || body.imageSizes === undefined) {
+    return { modelId, imageSizes: null };
+  }
+  if (!Array.isArray(body.imageSizes)) {
+    return { error: 'imageSizes must be a list of "WxH" sizes, or null' };
+  }
+  for (const entry of body.imageSizes) {
+    if (typeof entry !== "string" || !isImageSize(entry.trim().toLowerCase())) {
+      return {
+        error: `${String(entry)} is not a resolution. Use "WxH" with both sides divisible by 8, for example "1024x1024".`,
+      };
+    }
+  }
+  const sizes = parseImageSizesList(body.imageSizes) ?? [];
+  if (sizes.length > MAX_IMAGE_SIZES) {
+    return { error: `Pick at most ${MAX_IMAGE_SIZES} resolutions` };
+  }
+  return { modelId, imageSizes: sizes.length > 0 ? sizes : null };
 }
 
 /**

@@ -51,8 +51,6 @@ export interface UserSettings {
   instanceApprovalDecisionModel: string | null;
   /** Image model the agent renders with, as "provider:model". */
   imageModel: string | null;
-  /** Sizes this account's renders may use, as "WxH". The first is the default. */
-  imageSizes: string[];
   /** Read-only: the instance's image model, which this account follows while its own pick is empty. */
   instanceImageModel: string | null;
   /** Sparse push switches: a category equal to its default is left out. */
@@ -91,7 +89,6 @@ export async function serializeUserSettings(settings: AppSettings): Promise<User
       ? formatModelReference(instanceDecisionModel.provider, instanceDecisionModel.id)
       : null,
     imageModel: settings.imageModel,
-    imageSizes: settings.imageSizes,
     instanceImageModel: instanceImageModel
       ? formatModelReference(instanceImageModel.provider, instanceImageModel.id)
       : null,
