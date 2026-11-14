@@ -535,6 +535,10 @@ export function ChatInterface({
   const runCommand = useCallback(
     async (name: string, args = "", value?: string) => {
       setCommandBusy(true);
+      // A command that renders or summarises answers only when it is done, so
+      // the composer would otherwise sit silent for a minute or more.
+      const progress = getCommandMeta(name)?.progress;
+      const progressToast = progress ? toast.loading(progress) : undefined;
       try {
         const result = await postJson<CommandApiResponse>(
           `/api/chat/sessions/${sessionId}/command`,
@@ -549,6 +553,7 @@ export function ChatInterface({
         });
       } finally {
         setCommandBusy(false);
+        if (progressToast !== undefined) toast.dismiss(progressToast);
       }
     },
     [sessionId, applyCommandResult],
