@@ -20,6 +20,7 @@ const VISIBLE_CHIPS = 2;
  * A dropdown that holds several values, with a search box over its options.
  *
  * The options come from whoever owns the list; the pick is the caller's state.
+ * `max` caps how many the value may hold, and says so in the footer.
  */
 export function MultiSelect({
   id,
@@ -29,6 +30,7 @@ export function MultiSelect({
   placeholder = "Choose values",
   searchPlaceholder = "Search",
   emptyLabel = "Nothing matches that search.",
+  max,
   triggerClassName,
 }: {
   id?: string;
@@ -38,6 +40,7 @@ export function MultiSelect({
   placeholder?: string;
   searchPlaceholder?: string;
   emptyLabel?: string;
+  max?: number;
   triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,8 +53,15 @@ export function MultiSelect({
   );
   const visible = useMemo(() => filterOptions(options, search), [options, search]);
 
+  const full = max !== undefined && value.length >= max;
+
   const toggle = (option: string) => {
-    onChange(selected.has(option) ? value.filter((entry) => entry !== option) : [...value, option]);
+    if (selected.has(option)) {
+      onChange(value.filter((entry) => entry !== option));
+      return;
+    }
+    if (full) return;
+    onChange([...value, option]);
   };
 
   const close = (next: boolean) => {
@@ -90,14 +100,25 @@ export function MultiSelect({
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="text-muted-foreground text-xs">
-            {value.length === 0 ? "Nothing picked" : `${value.length} picked`}
+            {value.length === 0
+              ? "Nothing picked"
+              : max === undefined
+                ? `${value.length} picked`
+                : `${value.length} of ${max} picked`}
           </span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onChange([...new Set([...value, ...visible.map((o) => o.value)])])}
-              disabled={visible.length === 0}
+              onClick={() =>
+                onChange(
+                  [...new Set([...value, ...visible.map((o) => o.value)])].slice(
+                    0,
+                    max ?? Number.POSITIVE_INFINITY,
+                  ),
+                )
+              }
+              disabled={visible.length === 0 || full}
             >
               Add shown
             </Button>
@@ -116,25 +137,36 @@ export function MultiSelect({
       {visible.length === 0 ? (
         <PickerEmpty>{emptyLabel}</PickerEmpty>
       ) : (
-        visible.map((option) => (
-          <label
-            key={option.value}
-            className="hover:bg-accent/60 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5"
-            role="option"
-            aria-selected={selected.has(option.value)}
-          >
-            <Checkbox
-              checked={selected.has(option.value)}
-              onCheckedChange={() => toggle(option.value)}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm">{option.label}</span>
-              {option.hint ? (
-                <span className="text-muted-foreground block truncate text-xs">{option.hint}</span>
-              ) : null}
-            </span>
-          </label>
-        ))
+        visible.map((option) => {
+          const on = selected.has(option.value);
+          return (
+            <label
+              key={option.value}
+              className={
+                on || !full
+                  ? "hover:bg-accent/60 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5"
+                  : "flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 opacity-50"
+              }
+              role="option"
+              aria-selected={on}
+              aria-disabled={!on && full}
+            >
+              <Checkbox
+                checked={on}
+                disabled={!on && full}
+                onCheckedChange={() => toggle(option.value)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{option.label}</span>
+                {option.hint ? (
+                  <span className="text-muted-foreground block truncate text-xs">
+                    {option.hint}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+          );
+        })
       )}
     </PickerShell>
   );
