@@ -153,7 +153,7 @@ test.describe("transcript budget", () => {
     try {
       await expect(page.getByText("Answer 19")).toBeVisible();
 
-      // 620 messages, 600 of them step cards: the window stops at the row budget.
+      // 620 messages, 600 of them steps: the window stops at the turn count.
       await expect(page.getByText("Question 19")).toBeVisible();
       await expect(page.getByText("Question 0")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /earlier messages?$/ })).toBeVisible();
@@ -161,10 +161,28 @@ test.describe("transcript budget", () => {
       const cost = await costOf(page);
       test.info().annotations.push({ type: "cost", description: JSON.stringify(cost) });
 
-      // 20 turns of 30 steps: the window stops at the row budget, so four
-      // turns are mounted. It used to be all 20, with a card or a summary row
-      // for every step under them.
-      expect(cost.turns).toBeLessThanOrEqual(6);
+      // Twenty turns are forty render groups, their prompts and their runs. A
+      // run costs a line here, so the turn count is what stops the window; the
+      // step-by-step transcript stops at the row budget, well short of ten.
+      expect(cost.turns).toBeLessThanOrEqual(10);
+    } finally {
+      await close();
+    }
+  });
+
+  test("keeps a long finished turn on screen while the next one works", async ({ browser }) => {
+    // A long turn is a line in the condensed transcript, so the next turn
+    // starting cannot crowd it out of the window.
+    const messages = [
+      ...transcript(1, STEPS * 8),
+      { ...userMessage(1, 1000), content: "Question 1" },
+      { ...stepMessage("a1", "u1", 0, 1001), content: "Working on it", toolCalls: undefined },
+    ];
+    const { page, close } = await openChat(browser, messages);
+    try {
+      await expect(page.getByText("Answer 0")).toBeVisible();
+      await expect(page.getByText("Question 1")).toBeVisible();
+      await expect(page.getByRole("button", { name: /earlier messages?$/ })).toHaveCount(0);
     } finally {
       await close();
     }
