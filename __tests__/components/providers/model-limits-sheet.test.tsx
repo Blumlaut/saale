@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -41,6 +41,17 @@ function renderSheet(props: Partial<Parameters<typeof ModelLimitsSheet>[0]> = {}
   );
 }
 
+/** Open the resolutions dropdown. */
+function openResolutions() {
+  fireEvent.click(screen.getByLabelText("Pick resolutions"));
+}
+
+/** Click one of the dropdown's entries by the resolution it holds. */
+function toggleOption(size: string) {
+  const option = screen.getByRole("option", { name: new RegExp(size.replace("x", " × ")) });
+  fireEvent.click(within(option).getByRole("checkbox"));
+}
+
 describe("the model sheet's resolutions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,26 +61,27 @@ describe("the model sheet's resolutions", () => {
   it("offers the presets to the admin, and says what the agent does with them", () => {
     renderSheet();
 
+    openResolutions();
+
     expect(screen.getByText("Resolutions")).toBeInTheDocument();
-    expect(screen.getByText(/renders at 1024×1024/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "2048×2048" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /2048 × 2048/ })).toBeInTheDocument();
+    expect(screen.getByText(/No list, so a render uses 1024×1024/)).toBeInTheDocument();
   });
 
   it("starts from the resolutions the model already has", () => {
     renderSheet({ target: target({ imageSizes: ["2048x2048", "1536x1024"] }) });
 
-    expect(screen.getByRole("button", { name: "2048×2048" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
     expect(screen.getByText(/uses 2048×2048 by default/)).toBeInTheDocument();
+    openResolutions();
+    expect(screen.getByText("2 of 6 picked")).toBeInTheDocument();
   });
 
   it("saves the picked list with the model's limits", async () => {
     renderSheet();
 
-    fireEvent.click(screen.getByRole("button", { name: "2048×2048" }));
-    fireEvent.click(screen.getByRole("button", { name: "1536×1024" }));
+    openResolutions();
+    toggleOption("2048x2048");
+    toggleOption("1536x1024");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(patchJson).toHaveBeenCalled());
@@ -86,7 +98,8 @@ describe("the model sheet's resolutions", () => {
   it("puts the model back on the default list", async () => {
     renderSheet({ target: target({ imageSizes: ["2048x2048"] }) });
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to the default" }));
+    openResolutions();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(patchJson).toHaveBeenCalled());
@@ -121,6 +134,12 @@ describe("the model sheet's resolutions", () => {
       }),
     });
 
-    expect(screen.getByRole("button", { name: "2048×2048" })).toBeDisabled();
+    openResolutions();
+
+    expect(screen.getByText("6 of 6 picked")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /2048 × 2048/ })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 });
