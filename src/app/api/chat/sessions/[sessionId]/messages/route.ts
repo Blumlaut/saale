@@ -14,6 +14,8 @@ import {
   setPendingPrompt,
 } from "@/lib/redis";
 import { deleteAllImages } from "@/lib/image-attachment";
+import { renderedImagesToDelete } from "@/lib/chat/rendered-images";
+import { renderedImagePaths } from "@/lib/chat/tool-meta";
 import {
   interruptPendingApprovals,
   type ApprovalInterruptMode,
@@ -448,7 +450,18 @@ export async function DELETE(
     where: { messageId },
     select: { storagePath: true },
   });
-  const storagePaths = attachments.map((a) => a.storagePath);
+  const message = await prisma.chatMessage.findFirst({
+    where: { id: messageId, sessionId },
+    select: { toolCalls: true },
+  });
+  const storagePaths = [
+    ...attachments.map((a) => a.storagePath),
+    ...(await renderedImagesToDelete({
+      userId: authResult.userId,
+      paths: [...new Set(renderedImagePaths(message?.toolCalls))],
+      excluded: { messageId },
+    })),
+  ];
 
   // Delete image files from disk. throws if any deletion fails
   if (storagePaths.length > 0) {

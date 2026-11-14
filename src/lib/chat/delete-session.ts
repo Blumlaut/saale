@@ -9,7 +9,8 @@
  * 2. For a coder chat, remove its worktree and its branch, and stop what it
  *    left running. A checkout holding work that exists nowhere else refuses,
  *    and that refusal aborts the delete, so the chat never outlives its work
- * 3. Delete attachment files from disk (fails fast, leaving the DB intact)
+ * 3. Delete attachment files and the chat's rendered pictures from disk (fails
+ *    fast, leaving the DB intact)
  * 4. Delete the session row (cascade removes messages + attachment records +
  *    watcher rows)
  * 5. Unschedule the chat's watchers (the cascade cannot reach BullMQ state)
@@ -21,6 +22,8 @@ import { prisma } from "@/lib/db";
 import { deleteAllImages } from "@/lib/image-attachment";
 import { isSessionActive } from "@/lib/redis";
 import { unscheduleWatcher } from "@/lib/queue";
+import { renderedImagePaths } from "./tool-meta";
+import { renderedImagesToDelete } from "./rendered-images";
 import { keepAutoDeletedSession, type AutoDeleteKeepReason } from "./auto-delete";
 import { getProvisioning } from "@/lib/coder/provisioning";
 import { loadChatCheckout } from "@/lib/coder/checkout";
@@ -68,7 +71,15 @@ export async function deleteChatSession(
     where: { sessionId, session: { userId } },
     include: { attachments: true },
   });
-  const storagePaths = messages.flatMap((m) => m.attachments.map((a) => a.storagePath));
+  const rendered = [...new Set(messages.flatMap((m) => renderedImagePaths(m.toolCalls)))];
+  const storagePaths = [
+    ...messages.flatMap((m) => m.attachments.map((a) => a.storagePath)),
+    ...(await renderedImagesToDelete({
+      userId,
+      paths: rendered,
+      excluded: { sessionId },
+    })),
+  ];
 
   // Files first: a failure here leaves the DB intact for a retry.
   if (storagePaths.length > 0) {
