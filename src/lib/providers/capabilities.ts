@@ -26,6 +26,8 @@
 export interface ModelCapabilities {
   /** Whether the model accepts image input. Absent = not known. */
   vision?: boolean;
+  /** Whether the model generates images instead of answering text. Absent = not known. */
+  image?: boolean;
   /** Context window of this model. Absent = inherit the endpoint's default. */
   contextWindow?: number;
   /** Output cap for this model. Absent = inherit the endpoint's default. */
@@ -200,6 +202,11 @@ export interface ListedModel {
    * llama.cpp's `/v1/systemone` serves (see `decision-model.ts`).
    */
   decisionModel?: true;
+  /**
+   * The endpoint says the model produces images, which is what a diffusion
+   * server lists.
+   */
+  imageModel?: true;
 }
 
 export interface EndpointListing {
@@ -257,6 +264,21 @@ function listedDecisionModel(entry: Record<string, unknown>): boolean {
 }
 
 /**
+ * Whether a listing entry says the model produces images rather than text.
+ *
+ * vLLM and llama-server state a model's output modalities; a diffusion server
+ * that serves the OpenAI images API (`stable-diffusion.cpp`) states nothing, so
+ * its models are marked on the endpoint's own model settings instead.
+ */
+function listedImageModel(entry: Record<string, unknown>): boolean {
+  const capabilities = asRecord(entry.capabilities);
+  if (typeof capabilities?.image === "boolean") return capabilities.image;
+
+  const modalities = asRecord(entry.architecture)?.output_modalities;
+  return Array.isArray(modalities) && modalities.includes("image");
+}
+
+/**
  * Read an OpenAI-compatible `/models` payload.
  *
  * Most servers list ids and nothing else, but the ones that state a model's
@@ -290,6 +312,7 @@ export function parseEndpointListing(payload: unknown): EndpointListing {
       id,
       capabilities,
       ...(listedDecisionModel(entry!) ? { decisionModel: true as const } : {}),
+      ...(listedImageModel(entry!) ? { imageModel: true as const } : {}),
     });
   }
 
@@ -391,6 +414,7 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
     const raw = entry as Record<string, unknown>;
     const capabilities: ModelCapabilities = {};
     if (typeof raw.vision === "boolean") capabilities.vision = raw.vision;
+    if (typeof raw.image === "boolean") capabilities.image = raw.image;
     const contextWindow = storedTokenLimit(raw.contextWindow);
     if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
     const maxOutputTokens = storedTokenLimit(raw.maxOutputTokens);
@@ -405,6 +429,12 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
 export function configuredVision(map: ModelCapabilityMap, modelId: string): boolean | undefined {
   const vision = map[modelId]?.vision;
   return typeof vision === "boolean" ? vision : undefined;
+}
+
+/** The image-generation flag recorded for a model (detected, or set by hand), if any. */
+export function configuredImage(map: ModelCapabilityMap, modelId: string): boolean | undefined {
+  const image = map[modelId]?.image;
+  return typeof image === "boolean" ? image : undefined;
 }
 
 /** The token limits recorded for a model, with nothing inherited. */
@@ -434,6 +464,26 @@ export function withoutModelVision(map: ModelCapabilityMap, modelId: string): Mo
   const entry = next[modelId];
   if (!entry) return next;
   const { vision: _vision, ...rest } = entry;
+  if (Object.keys(rest).length === 0) delete next[modelId];
+  else next[modelId] = rest;
+  return next;
+}
+
+/** A copy of `map` with `modelId`'s image-generation flag set. */
+export function withModelImage(
+  map: ModelCapabilityMap,
+  modelId: string,
+  image: boolean,
+): ModelCapabilityMap {
+  return { ...map, [modelId]: { ...map[modelId], image } };
+}
+
+/** A copy of `map` with `modelId` back on automatic capability detection. */
+export function withoutModelImage(map: ModelCapabilityMap, modelId: string): ModelCapabilityMap {
+  const next = { ...map };
+  const entry = next[modelId];
+  if (!entry) return next;
+  const { image: _image, ...rest } = entry;
   if (Object.keys(rest).length === 0) delete next[modelId];
   else next[modelId] = rest;
   return next;
@@ -527,6 +577,22 @@ export function parseVisionEdit(body: {
     return { error: "vision must be a boolean, or null to reset to auto" };
   }
   return { modelId, vision: body.vision };
+}
+
+/** The image-generation flag of an edit to one model's settings. */
+export function parseImageEdit(body: {
+  modelId?: unknown;
+  image?: unknown;
+}): { modelId: string; image: boolean | null } | { error: string } {
+  const modelId = body.modelId;
+  if (typeof modelId !== "string" || modelId.length === 0) {
+    return { error: "modelId is required" };
+  }
+  if (body.image === null || body.image === undefined) return { modelId, image: null };
+  if (typeof body.image !== "boolean") {
+    return { error: "image must be a boolean, or null to reset to auto" };
+  }
+  return { modelId, image: body.image };
 }
 
 /**
