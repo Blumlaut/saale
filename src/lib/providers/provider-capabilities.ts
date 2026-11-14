@@ -14,11 +14,14 @@ import { fetchEndpointListing } from "@/lib/pi/models";
 import {
   detectModelCapabilities,
   mergeDetectedCapabilities,
+  parseImageEdit,
   parseModelCapabilityMap,
   parseVisionEdit,
   serializeModelCapabilityMap,
+  withModelImage,
   withModelLimits,
   withModelVision,
+  withoutModelImage,
   withoutModelVision,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
@@ -39,6 +42,8 @@ export interface ModelSettingsEdit {
   modelId: string;
   /** Absent = leave as stored; `null` = back on automatic detection. */
   vision?: boolean | null;
+  /** Absent = leave as stored; `null` = back on automatic detection. */
+  image?: boolean | null;
   /** Absent = leave as stored; `null` = inherit the endpoint's default. */
   contextWindow?: number | null;
   maxOutputTokens?: number | null;
@@ -53,26 +58,32 @@ export interface ModelSettingsEdit {
 export function parseModelSettingsEdit(body: {
   modelId?: unknown;
   vision?: unknown;
+  image?: unknown;
   contextWindow?: unknown;
   maxOutputTokens?: unknown;
 }): ModelSettingsEdit | { error: string } {
   const vision = parseVisionEdit(body);
   if ("error" in vision) return vision;
 
+  const image = parseImageEdit(body);
+  if ("error" in image) return image;
+
   const limits = parseModelLimitEdit(body);
   if ("error" in limits) return limits;
 
   const edit: ModelSettingsEdit = { modelId: vision.modelId };
   if (body.vision !== undefined) edit.vision = vision.vision;
+  if (body.image !== undefined) edit.image = image.image;
   if (limits.contextWindow !== undefined) edit.contextWindow = limits.contextWindow;
   if (limits.maxOutputTokens !== undefined) edit.maxOutputTokens = limits.maxOutputTokens;
 
   const changed =
     edit.vision !== undefined ||
+    edit.image !== undefined ||
     edit.contextWindow !== undefined ||
     edit.maxOutputTokens !== undefined;
   if (!changed) {
-    return { error: "vision, contextWindow or maxOutputTokens is required" };
+    return { error: "vision, image, contextWindow or maxOutputTokens is required" };
   }
 
   return edit;
@@ -94,6 +105,13 @@ export async function setProviderModelSettings(options: {
       options.edit.vision === null
         ? withoutModelVision(modelCapabilities, options.edit.modelId)
         : withModelVision(modelCapabilities, options.edit.modelId, options.edit.vision);
+  }
+
+  if (options.edit.image !== undefined) {
+    modelCapabilities =
+      options.edit.image === null
+        ? withoutModelImage(modelCapabilities, options.edit.modelId)
+        : withModelImage(modelCapabilities, options.edit.modelId, options.edit.image);
   }
 
   modelCapabilities = withModelLimits(modelCapabilities, options.edit.modelId, {

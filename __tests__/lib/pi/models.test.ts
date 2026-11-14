@@ -298,6 +298,59 @@ describe("buildModelRuntime", () => {
     ]);
   });
 
+  it("registers a model the endpoint says generates images as an image model", async () => {
+    stubEndpointRow({ encryptedKey: "enc()" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [
+            { id: "qwen3", architecture: { output_modalities: ["text"] } },
+            { id: "flux", architecture: { output_modalities: ["image"] } },
+          ],
+        }),
+      }),
+    );
+    const runtime = stubRuntime();
+
+    const { models } = await buildModelRuntime("user-1");
+
+    expect(runtime.registerProvider).toHaveBeenCalledWith(
+      "custom",
+      expect.objectContaining({
+        models: [
+          expect.objectContaining({ id: "qwen3" }),
+          expect.objectContaining({ id: "flux", type: "image", api: "openai-images" }),
+        ],
+        images: { "openai-images": { generateImages: expect.any(Function) } },
+      }),
+    );
+    // An image model is never offered as a chat model.
+    expect(models.map((model) => `${model.provider}:${model.id}`)).toEqual(["custom:qwen3"]);
+  });
+
+  it("registers a model the user marked as image-generating the same way", async () => {
+    stubEndpointRow({
+      encryptedKey: "enc()",
+      modelCapabilities: { "sd-cpp-local": { image: true } },
+    });
+    stubModelListing(["sd-cpp-local", "qwen3"]);
+    const runtime = stubRuntime();
+
+    await buildModelRuntime("user-1");
+
+    expect(runtime.registerProvider).toHaveBeenCalledWith(
+      "custom",
+      expect.objectContaining({
+        models: expect.arrayContaining([
+          expect.objectContaining({ id: "sd-cpp-local", type: "image" }),
+        ]),
+      }),
+    );
+  });
+
   it("prefers the user's own endpoint over the global one", async () => {
     stubEndpointRows(
       [{ baseUrl: "http://user-host:8080/v1" }],
