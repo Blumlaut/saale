@@ -84,6 +84,53 @@ describe("generateImages (openai-images)", () => {
     expect(result.output).toHaveLength(1);
   });
 
+  // Without a size the endpoint picks its own, and a diffusion server picks the
+  // small one: the account's resolution has to reach the request.
+  it("sends the size the caller asked for", async () => {
+    const fetchMock = stubServer({ data: [{ b64_json: "aW1n" }] });
+
+    await generateImages(
+      MODEL,
+      { input: [{ type: "text", text: "a fox" }] },
+      { apiKey: "secret", metadata: { size: "2048x2048" } },
+    );
+
+    const request = fetchMock.mock.calls[0]![1] as { body: string };
+    expect(JSON.parse(request.body)).toEqual({
+      model: "flux",
+      prompt: "a fox",
+      n: 1,
+      size: "2048x2048",
+    });
+  });
+
+  it("sends the size as a field of an edit", async () => {
+    const fetchMock = stubServer({ data: [{ b64_json: "ZWRpdA==" }] });
+
+    await generateImages(
+      MODEL,
+      {
+        input: [
+          { type: "text", text: "Make it snow" },
+          { type: "image", data: "cmVm", mimeType: "image/png" },
+        ],
+      },
+      { apiKey: "secret", metadata: { size: "1536x1024" } },
+    );
+
+    const [, init] = fetchMock.mock.calls[0]! as [string, { body: FormData }];
+    expect(init.body.get("size")).toBe("1536x1024");
+  });
+
+  it("leaves the size out when nothing asked for one", async () => {
+    const fetchMock = stubServer({ data: [{ b64_json: "aW1n" }] });
+
+    await generateImages(MODEL, { input: [{ type: "text", text: "a fox" }] }, { apiKey: "secret" });
+
+    const request = fetchMock.mock.calls[0]![1] as { body: string };
+    expect(JSON.parse(request.body)).not.toHaveProperty("size");
+  });
+
   it("reports the server's reason instead of throwing", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     stubServer({ error: "no recipe selected" }, { status: 400 });

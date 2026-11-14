@@ -77,6 +77,7 @@ const baseSettings: UserSettings = {
   toolPolicies: null,
   toolExposure: null,
   approvalDecisionModel: null,
+  imageSizes: [],
   instanceApprovalDecisionModel: null,
   imageModel: null,
   instanceImageModel: null,

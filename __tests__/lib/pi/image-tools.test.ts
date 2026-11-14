@@ -37,7 +37,7 @@ function stubImageModel(
 
 /** The tools an account with a model that edits gets. */
 function tools() {
-  return createImageTools("user-1", "session-1", { edit: true });
+  return createImageTools("user-1", "session-1", { edit: true, sizes: ["1024x1024"] });
 }
 
 /** Run one named tool the way Pi does, and read the result it produces. */
@@ -77,7 +77,9 @@ describe("image tools", () => {
   it("offers the edit tool only to a model that takes a picture", () => {
     expect(tools().map((tool) => tool.name)).toEqual(["generate_image", "edit_image"]);
     expect(
-      createImageTools("user-1", "session-1", { edit: false }).map((tool) => tool.name),
+      createImageTools("user-1", "session-1", { edit: false, sizes: ["1024x1024"] }).map(
+        (tool) => tool.name,
+      ),
     ).toEqual(["generate_image"]);
   });
 
@@ -98,6 +100,28 @@ describe("image tools", () => {
     expect(text).toContain("generated/img-1.png");
     expect(text).toContain('"_saaleImageMeta"');
     expect(text).toContain('"width":1024');
+  });
+
+  it("renders at the account's default size unless the agent picks another", async () => {
+    const generateImages = stubImageModel(RENDERED);
+    const sized = createImageTools("user-1", "session-1", {
+      edit: true,
+      sizes: ["2048x2048", "1024x1024"],
+    });
+    const execute = sized.find((tool) => tool.name === "generate_image")!.execute as unknown as (
+      id: string,
+      params: unknown,
+    ) => Promise<unknown>;
+
+    await execute("call-1", { prompt: "a fox" });
+    await execute("call-2", { prompt: "a fox", size: "1024x1024" });
+    await execute("call-3", { prompt: "a fox", size: "512x512" });
+
+    const sizes = generateImages.mock.calls.map(
+      (call) => (call[2] as { metadata?: { size?: string } }).metadata?.size,
+    );
+    // The first size is the default, and a size outside the list is not sent.
+    expect(sizes).toEqual(["2048x2048", "1024x1024", "2048x2048"]);
   });
 
   it("edits a workspace picture and keeps the original", async () => {

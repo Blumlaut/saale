@@ -10,6 +10,7 @@
 import type { ImageApi, ImageModel } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
+import { normalizeImageSizes } from "@/lib/providers/images/sizes";
 import { MODEL_SLOTS, parseSlotModelPick, slotModel, type SlotModelPick } from "./model-slots";
 import { buildModelRuntime } from "./models";
 
@@ -29,6 +30,20 @@ export async function resolveImageModel(userId: string): Promise<SlotModelPick |
     select: { imageModel: true },
   });
   return parseSlotModelPick(settings?.imageModel) ?? (await readInstanceImageModel());
+}
+
+/**
+ * The resolutions this account renders at, the first one being the default.
+ *
+ * A render without a size is whatever the endpoint picks on its own, which for
+ * a diffusion server is far below the resolution the model was trained on.
+ */
+export async function resolveImageSizes(userId: string): Promise<string[]> {
+  const settings = await prisma.appSettings.findUnique({
+    where: { userId },
+    select: { imageSizes: true },
+  });
+  return normalizeImageSizes(settings?.imageSizes);
 }
 
 /**
