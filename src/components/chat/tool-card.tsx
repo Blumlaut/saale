@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, ExternalLink, Sparkles, Star } from "lucide-
 import { plural } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
 import { ToolStatusBadge } from "./tool-status-badge";
+import { ImageFrame } from "./image-tile";
 import { WorkspaceImage } from "./workspace-image";
 import type {
   ToolCardBlock,
@@ -180,7 +181,7 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
     case "diff":
       return <ToolDiff block={block} />;
     case "image":
-      return <WorkspaceImage path={block.path} />;
+      return <WorkspaceImage path={block.path} width={block.width} height={block.height} />;
     case "rendering":
       return <RenderingBlock block={block} />;
     case "code":
@@ -201,24 +202,24 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
 }
 
 /**
- * A tile that sweeps while a long call runs.
+ * A tile that shimmers while a long call runs.
  *
  * The badge says "running" for every tool, which for a render of a minute reads
  * as nothing happening. This is the whole answer the card can give: the endpoint
- * reports no progress, so the tile moves and claims no percentage.
+ * reports no progress, so the tile shimmers and claims no percentage. It takes
+ * the shape of the resolution the call asked for, which is where the picture
+ * then lands.
  */
 function RenderingBlock({ block }: { block: Extract<ToolCardBlock, { kind: "rendering" }> }) {
   return (
-    <div
-      className="bg-muted border-border relative h-32 w-full overflow-hidden rounded-lg border"
-      role="status"
-      aria-label={block.label}
-    >
-      <div className="animate-image-sweep bg-primary/15 absolute inset-y-0 left-0 w-1/3" />
-      <div className="relative flex h-full flex-col items-center justify-center gap-1.5">
-        <Sparkles className="text-primary size-5 animate-pulse" />
-        <span className="text-muted-foreground text-[11px]">{block.label}</span>
-      </div>
+    <div role="status" aria-label={block.label}>
+      <ImageFrame width={block.width} height={block.height}>
+        <div className="animate-image-shimmer via-foreground/10 absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
+        <div className="relative flex h-full flex-col items-center justify-center gap-1.5">
+          <Sparkles className="text-primary size-5 animate-pulse" />
+          <span className="text-muted-foreground text-[11px]">{block.label}</span>
+        </div>
+      </ImageFrame>
     </div>
   );
 }

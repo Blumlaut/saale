@@ -403,18 +403,18 @@ These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
   animation: pop-dot 0.6s ease-out forwards;
 }
 
-@keyframes image-sweep {
+@keyframes image-shimmer {
   from {
     transform: translateX(-100%);
   }
   to {
-    transform: translateX(300%);
+    transform: translateX(100%);
   }
 }
 
-/* A slow sweep, because a render takes longer than any transition this app has. */
-.animate-image-sweep {
-  animation: image-sweep 2.4s ease-in-out infinite;
+/* A slow shimmer, because a render takes longer than any transition here. */
+.animate-image-shimmer {
+  animation: image-shimmer 2.4s ease-in-out infinite;
 }
 
 /* ===== Reduced motion ===== */
