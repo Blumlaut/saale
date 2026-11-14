@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ModelPicker } from "@/components/shared/model-picker";
-import { DecisionModelField } from "@/components/shared/decision-model-field";
+import { SlotModelField } from "@/components/shared/slot-model-field";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -35,6 +35,7 @@ import {
   Loader2,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   SlidersHorizontal,
 } from "lucide-react";
 import { AutosavedPage } from "../components/save-state";
@@ -346,13 +347,34 @@ export function ModelsSection() {
 
               {/* Judging what Auto runs is work of its own, so it takes a row here */}
               <div className="py-3 last:pb-0">
-                <DecisionModelField
+                <SlotModelField
                   key={`decision-${pickerKey}`}
+                  type="classifier"
+                  label="Decision model"
                   icon={ShieldCheck}
                   description={null}
                   value={settings.approvalDecisionModel ?? null}
-                  onChange={(value) => update({ approvalDecisionModel: value })}
+                  onChange={(value: string | null) => update({ approvalDecisionModel: value })}
                   fallback={settings.instanceApprovalDecisionModel ?? null}
+                  placeholder="Built-in checks"
+                  clearLabel="Clear the decision model"
+                  endpoint="/api/providers/models"
+                />
+              </div>
+
+              {/* Rendering a picture is its own model, so it takes a row here too */}
+              <div className="py-3 last:pb-0">
+                <SlotModelField
+                  key={`image-${pickerKey}`}
+                  type="image"
+                  label="Image model"
+                  icon={Sparkles}
+                  description={null}
+                  value={settings.imageModel ?? null}
+                  onChange={(value: string | null) => update({ imageModel: value })}
+                  fallback={settings.instanceImageModel ?? null}
+                  placeholder="No image tool"
+                  clearLabel="Clear the image model"
                   endpoint="/api/providers/models"
                 />
               </div>

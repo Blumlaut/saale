@@ -9,7 +9,14 @@ vi.mock("@/lib/pi/models", () => ({
   // The admin list uses the unfiltered builder: it has to show models that are
   // currently switched off so they can be switched back on.
   buildAdminModelList: vi.fn(),
-  listClassifierModels: vi.fn(),
+}));
+
+vi.mock("@/lib/pi/model-slots", () => ({
+  MODEL_SLOTS: {
+    decision: { id: "decision", type: "classifier" },
+    image: { id: "image", type: "image" },
+  },
+  listSlotModels: vi.fn(),
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
@@ -17,7 +24,7 @@ vi.mock("@/lib/providers/endpoint", () => ({
 }));
 
 import { requirePermission } from "@/lib/auth";
-import { listClassifierModels } from "@/lib/pi/models";
+import { listSlotModels } from "@/lib/pi/model-slots";
 import * as piModels from "@/lib/pi/models";
 import * as endpoint from "@/lib/providers/endpoint";
 import { GET } from "@/app/api/admin/providers/models/route";
@@ -55,7 +62,7 @@ describe("GET /api/admin/providers/models", () => {
     } as never);
     stubRuntime([]);
     vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
-    vi.mocked(listClassifierModels).mockResolvedValue({});
+    vi.mocked(listSlotModels).mockResolvedValue({});
   });
 
   it("returns 401 when the caller is not an admin", async () => {
@@ -211,6 +218,12 @@ describe("GET /api/admin/providers/models", () => {
   it("returns an empty listing when the global configuration has no models", async () => {
     const body = await (await GET()).json();
 
-    expect(body).toEqual({ models: {}, providers: [], classifiers: {}, endpointLimits: {} });
+    expect(body).toEqual({
+      models: {},
+      providers: [],
+      classifiers: {},
+      imageModels: {},
+      endpointLimits: {},
+    });
   });
 });
