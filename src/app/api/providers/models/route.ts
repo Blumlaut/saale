@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { buildModelRuntime } from "@/lib/pi/models";
 import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
+  configuredImage,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -72,12 +73,15 @@ export async function GET(request: NextRequest) {
     if (!byProvider[provider]) {
       byProvider[provider] = [];
     }
-    const overrides = configuredLimits(storedByProvider.get(provider) ?? {}, model.id);
+    const stored = storedByProvider.get(provider) ?? {};
+    const overrides = configuredLimits(stored, model.id);
     byProvider[provider]!.push({
       id: model.id,
       name: model.name,
       reasoning: model.reasoning ?? false,
       vision: model.vision,
+      // What the user marked on this endpoint, so the list can offer to undo it.
+      ...(configuredImage(stored, model.id) === true ? { image: true } : {}),
       contextWindow: "contextWindow" in model ? model.contextWindow : undefined,
       maxOutputTokens: model.maxOutputTokens,
       ...(definesProviderModels(provider) && Object.keys(overrides).length > 0

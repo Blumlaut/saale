@@ -17,6 +17,8 @@ export interface AvailableModel {
   reasoning: boolean;
   /** Whether the resolved model definition accepts image input. */
   vision?: boolean;
+  /** Whether the user marked this endpoint model as one that generates images. */
+  image?: boolean;
   /** Context window Pi will compact against. */
   contextWindow?: number;
   /** Output cap Pi sends as the request's token budget. */

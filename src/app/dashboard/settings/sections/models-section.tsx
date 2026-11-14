@@ -86,6 +86,7 @@ export function ModelsSection() {
   const [allModels, setAllModels] = useState<FullModelInfo[]>([]);
   const [search, setSearch] = useState("");
   const [savingVision, setSavingVision] = useState<string | null>(null);
+  const [savingImage, setSavingImage] = useState<string | null>(null);
   const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
   /** Endpoint provider id → the defaults its models fall back to. */
   const [endpointLimits, setEndpointLimits] = useState<Record<string, EndpointLimits>>({});
@@ -196,6 +197,24 @@ export function ModelsSection() {
       console.error("Failed to save whether the model sees images:", err);
     }
     setSavingVision(null);
+  };
+
+  /**
+   * Mark the model as one that renders pictures instead of answering.
+   *
+   * Pi keeps image models out of the chat list, so the row moves to the image
+   * picker on the next load.
+   */
+  const toggleImageModel = async (provider: string, modelId: string, image: boolean) => {
+    const key = `${provider}:${modelId}`;
+    setSavingImage(key);
+    try {
+      await patchJson("/api/providers/capabilities", { provider, modelId, image });
+      await loadInventory();
+    } catch (err) {
+      console.error("Failed to save whether the model renders images:", err);
+    }
+    setSavingImage(null);
   };
 
   const groups = useMemo(() => {
@@ -504,6 +523,15 @@ export function ModelsSection() {
                                             reasoning
                                           </Badge>
                                         ) : null}
+                                        {model.image ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="gap-1 rounded-full px-1.5 text-[10px] font-normal text-violet-600 dark:text-violet-400"
+                                          >
+                                            <Sparkles className="h-3 w-3" />
+                                            image
+                                          </Badge>
+                                        ) : null}
                                         {model.vision ? (
                                           <Badge
                                             variant="outline"
@@ -570,6 +598,34 @@ export function ModelsSection() {
                                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                             ) : (
                                               <Eye className="h-3.5 w-3.5" />
+                                            )}
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className={cn(
+                                              model.image
+                                                ? "text-violet-600 dark:text-violet-400"
+                                                : "text-muted-foreground/60",
+                                            )}
+                                            title={
+                                              model.image
+                                                ? "This model renders images"
+                                                : "Mark this model as an image model"
+                                            }
+                                            disabled={savingImage === `${providerKey}:${model.id}`}
+                                            onClick={() =>
+                                              void toggleImageModel(
+                                                providerKey,
+                                                model.id,
+                                                !model.image,
+                                              )
+                                            }
+                                          >
+                                            {savingImage === `${providerKey}:${model.id}` ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Sparkles className="h-3.5 w-3.5" />
                                             )}
                                           </Button>
                                         </>

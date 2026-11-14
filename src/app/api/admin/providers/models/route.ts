@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth";
 import { buildAdminModelList } from "@/lib/pi/models";
 import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
+  configuredImage,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -49,6 +50,7 @@ export async function GET() {
       name: string;
       reasoning: boolean;
       vision: boolean;
+      image?: true;
       contextWindow: number | undefined;
       maxOutputTokens: number | undefined;
       overrides?: { contextWindow?: number; maxOutputTokens?: number };
@@ -56,13 +58,15 @@ export async function GET() {
   > = {};
 
   for (const m of available) {
-    const overrides = configuredLimits(storedByProvider.get(m.provider) ?? {}, m.id);
+    const stored = storedByProvider.get(m.provider) ?? {};
+    const overrides = configuredLimits(stored, m.id);
     const list = (models[m.provider] ??= []);
     list.push({
       id: m.id,
       name: m.name,
       reasoning: m.reasoning ?? false,
       vision: m.vision,
+      ...(configuredImage(stored, m.id) === true ? { image: true as const } : {}),
       contextWindow: m.contextWindow,
       maxOutputTokens: m.maxOutputTokens,
       ...(definesProviderModels(m.provider) && Object.keys(overrides).length > 0
