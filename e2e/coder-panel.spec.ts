@@ -591,6 +591,27 @@ test.describe("coder panel", () => {
     await context.close();
   });
 
+  test("keeps one panel, the worktree's, beside the chat", async ({ browser }) => {
+    // Wide enough for a plain chat's panel to fit beside the worktree's: the
+    // room it would take is what made a second one show up here.
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {},
+      { viewport: { width: 1600, height: 900 } },
+    );
+
+    // The plain chat's own panel has no business here: its rails and tabs
+    // belong to a chat that has no checkout to show.
+    await expect(page.locator('[data-slot="session-panel"]:visible')).toHaveCount(1);
+    await expect(page.locator('[data-slot="session-panel-rail"]:visible')).toHaveCount(0);
+    await expect(
+      shown(page, '[role="separator"][aria-label="Resize the worktree panel"]'),
+    ).toBeVisible();
+
+    await context.close();
+  });
+
   test("puts the worktree panel away to its rail and keeps it away", async ({ browser }) => {
     const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
     const handle = () =>

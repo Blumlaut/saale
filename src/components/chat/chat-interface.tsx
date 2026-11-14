@@ -1206,7 +1206,7 @@ export function ChatInterface({
 
         {/* The session panel. desktop: a column with its own drag handle.
             phone: the sheet below, so the transcript keeps the screen. */}
-        {filesInline && (
+        {sessionPanel && filesInline && (
           <>
             {panelOpen ? (
               <PanelResizeHandle
