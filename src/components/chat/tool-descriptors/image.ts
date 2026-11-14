@@ -4,11 +4,12 @@ import { truncate } from "@/lib/format";
 import { toolIcon } from "@/lib/pi/tool-infos";
 import { isToolCallInProgress, toolStatus } from "../tool-status";
 import type { ToolCardBlock, ToolCardModel, ToolDescriptor, ToolFact } from "../tool-card-model";
+import type { ToolCallData } from "../types";
 
 /** Longest prompt shown beside the card's title. */
 const MAX_PROMPT = 80;
 
-/** The metadata block the image tool appends to its result. */
+/** The metadata block the image tools append to their result. */
 interface ImageMeta {
   type?: string;
   path: string;
@@ -19,16 +20,37 @@ interface ImageMeta {
   height: number;
 }
 
+/** What each tool is called, wherever the card names it. */
+const TITLES: Record<string, string> = {
+  generate_image: "Generate Image",
+  edit_image: "Edit Image",
+};
+
 /**
- * The image card: what was rendered, shown as the picture itself.
+ * The image cards: what was rendered, shown as the picture itself.
  *
- * The tool writes the file into the workspace and reports its path, so the card
+ * The tools write the file into the workspace and report its path, so the card
  * previews it the way a `read` of an image does, with the prompt and the size
- * above it.
+ * above it. Until the bytes exist there is nothing to preview: a render takes
+ * minutes and the endpoint reports no progress, so the card sweeps instead of
+ * sitting on a badge that says "running".
  */
 export const imageToolDescriptor: ToolDescriptor = {
-  names: ["generate_image"],
+  names: ["generate_image", "edit_image"],
   describe(toolCall): ToolCardModel | null {
+    const prompt = stringArg(toolCall.args.prompt);
+    const title = TITLES[toolCall.name] ?? "Image";
+
+    if (isToolCallInProgress(toolCall)) {
+      return {
+        icon: toolIcon(toolCall.name),
+        title,
+        ...(prompt ? { detail: truncate(prompt, MAX_PROMPT) } : {}),
+        status: toolStatus(toolCall),
+        blocks: [{ kind: "rendering", label: renderingLabel(toolCall) }],
+      };
+    }
+
     const meta = extractToolMeta<ImageMeta>(toolCall.result);
     if (!meta?.path) return null;
 
@@ -43,14 +65,20 @@ export const imageToolDescriptor: ToolDescriptor = {
     ];
 
     return {
-      icon: toolIcon("generate_image"),
-      title: "Generate Image",
+      icon: toolIcon(toolCall.name),
+      title,
       detail: truncate(meta.prompt, MAX_PROMPT),
-      status: toolStatus(
-        toolCall,
-        isToolCallInProgress(toolCall) ? undefined : `${meta.width}×${meta.height}`,
-      ),
+      status: toolStatus(toolCall, `${meta.width}×${meta.height}`),
       blocks,
     };
   },
 };
+
+/** What the sweeping tile says the call is doing. */
+function renderingLabel(toolCall: ToolCallData): string {
+  return toolCall.name === "edit_image" ? "Editing the picture…" : "Rendering the picture…";
+}
+
+function stringArg(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}

@@ -70,6 +70,7 @@ describe("tool card routing", () => {
     "calendar_upcoming",
     "calendar_search",
     "generate_image",
+    "edit_image",
   ]);
 
   it("sends every tool with a result format to its own card, and the rest to the generic card", () => {
@@ -826,15 +827,50 @@ describe("image descriptor", () => {
     expect(facts[0]?.note).toBe("openrouter");
   });
 
-  it("has nothing to describe until the render lands", () => {
+  // A render takes minutes and the endpoint reports no progress, so a running
+  // call gets a moving tile rather than the same badge every other tool has.
+  it("sweeps while the picture is being rendered", () => {
+    const running = imageToolDescriptor.describe(
+      call("generate_image", undefined, {
+        status: "running",
+        args: { prompt: "A red fox in the snow" },
+      }),
+    );
+
+    expect(running?.status.tone).toBe("running");
+    expect(running?.detail).toBe("A red fox in the snow");
+    expect(firstBlock(running, "rendering").label).toBe("Rendering the picture…");
+  });
+
+  it("says it is editing when the call works from a picture", () => {
+    const running = imageToolDescriptor.describe(
+      call("edit_image", undefined, { status: "running", args: { image: "generated/fox.png" } }),
+    );
+
+    expect(running?.title).toBe("Edit Image");
+    expect(firstBlock(running, "rendering").label).toBe("Editing the picture…");
+  });
+
+  it("describes an edit with the picture it produced", () => {
+    const model = imageToolDescriptor.describe(call("edit_image", result));
+
+    expect(model?.title).toBe("Edit Image");
+    expect(firstBlock(model, "image").path).toBe("generated/render.png");
+  });
+
+  it("has nothing to describe when the call failed before producing a picture", () => {
     expect(imageToolDescriptor.describe(call("generate_image", undefined))).toBeNull();
   });
 
   // The card is the attachment: a picture the user asked for must not be folded
   // into the collapsed run of calls that produced it.
   it("renders as an attachment, outside the collapsed run", () => {
-    const split = splitToolCalls([call("generate_image", result), call("web_search", result)]);
+    const split = splitToolCalls([
+      call("generate_image", result),
+      call("edit_image", result),
+      call("web_search", result),
+    ]);
 
-    expect(split.attachments.map((entry) => entry.name)).toEqual(["generate_image"]);
+    expect(split.attachments.map((entry) => entry.name)).toEqual(["generate_image", "edit_image"]);
   });
 });
