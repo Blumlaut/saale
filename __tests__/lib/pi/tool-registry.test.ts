@@ -103,6 +103,7 @@ vi.mock("@/lib/permissions/feature-access", () => ({
 // The image tools need a model to call; these cases are about the categories.
 vi.mock("@/lib/pi/image-model", () => ({
   resolveImageCapabilities: vi.fn(async () => ({ generate: false, edit: false })),
+  resolveImageSizes: vi.fn(async () => ["1024x1024"]),
 }));
 vi.mock("@/lib/pi/tools/image-tools", () => ({
   createImageTools: vi.fn((userId: string, _sessionId: string, options: { edit: boolean }) =>
