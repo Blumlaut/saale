@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { findToolInfo, toolIcon } from "@/lib/pi/tool-infos";
+import { ImageFrame } from "./image-tile";
 import { ToolStatusBadge } from "./tool-status-badge";
 import { toolStatus } from "./tool-status";
 import type { ToolCallData } from "./types";
@@ -15,6 +16,10 @@ import type { ToolCallData } from "./types";
  * `ShareViewer` renders this and nothing else, so a card built for the owner's
  * data cannot reach a share page: `__tests__/share-redaction-coverage.test.ts`
  * keeps every raw card module out of the share surface.
+ *
+ * The one thing a share shows of a result is a rendered picture. Its URL comes
+ * from the share endpoint, which resolves the file from that call's own result
+ * in the session, so a shared page holds no workspace path at all.
  */
 export const RedactedToolCall = memo(function RedactedToolCall({
   toolCall,
@@ -34,6 +39,19 @@ export const RedactedToolCall = memo(function RedactedToolCall({
         </span>
         <ToolStatusBadge status={toolStatus(toolCall)} />
       </div>
+      {toolCall.image && (
+        <div className="px-3 pb-3">
+          <ImageFrame width={toolCall.image.width} height={toolCall.image.height}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- served by the share endpoint */}
+            <img
+              src={toolCall.image.src}
+              alt={label}
+              loading="lazy"
+              className="h-full w-full object-contain"
+            />
+          </ImageFrame>
+        </div>
+      )}
     </div>
   );
 });

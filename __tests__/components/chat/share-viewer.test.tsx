@@ -69,6 +69,46 @@ function renderShare(messages: Message[]) {
   );
 }
 
+/**
+ * A rendered picture is the one result a share page shows, and it comes from the
+ * session's own images by call id: the payload carries the size, never the path.
+ */
+describe("a rendered picture", () => {
+  it("shows the image the call produced, fetched through the share token", () => {
+    renderShare([
+      step("a1", [
+        call("call-1", "generate_image", "Rendered an image", {
+          image: { src: "/api/chat/sessions/share/tok/images/call-1", width: 1024, height: 1024 },
+        }),
+      ]),
+    ]);
+
+    const image = screen.getByRole("img", { name: "Generate Image" });
+    expect(image).toHaveAttribute("src", "/api/chat/sessions/share/tok/images/call-1");
+    expect(screen.queryByRole("button", { name: /Used \d+ tool/ })).toBeNull();
+  });
+
+  it("keeps the picture outside the run of steps that made it", () => {
+    renderShare([
+      step("a1", [call("call-1", "bash", "Ran a shell command")]),
+      step("a2", [
+        call("call-2", "generate_image", "Rendered an image", {
+          image: { src: "/api/chat/sessions/share/tok/images/call-2", width: 512, height: 512 },
+        }),
+      ]),
+    ]);
+
+    expect(screen.getByRole("button", { name: /Used 1 tool/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Generate Image" })).toBeInTheDocument();
+  });
+
+  it("shows no picture for a call that rendered none", () => {
+    renderShare([step("a1", [call("call-1", "bash", "Ran a shell command")])]);
+
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+});
+
 /** The activity row's toggle  the count reports the whole run. */
 function toolsRow(): HTMLElement {
   return screen.getByRole("button", { name: /Used \d+ tool/ });
