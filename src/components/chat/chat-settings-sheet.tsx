@@ -54,10 +54,35 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[400px] sm:max-w-none">
         <SheetHeader className="border-border/30 border-b px-4 pt-4 pb-3">
           <SheetTitle>Chat settings</SheetTitle>
-          <SheetDescription>Thinking level and the tools this chat can use.</SheetDescription>
+          <SheetDescription>
+            The tools this chat can use, and how long the model may think.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div>
+            <p className="console-label text-muted-foreground">Tools</p>
+            <div className="mt-1">
+              {TOOL_CATEGORIES.map((category, index) => (
+                <div key={category.key}>
+                  {index > 0 && <Separator />}
+                  <ToolCategoryRow
+                    category={category}
+                    controls={
+                      <Switch
+                        checked={isCategoryEnabled(settings.toolConfig, category.key)}
+                        onCheckedChange={() => settings.onToggleTool(category.key)}
+                        aria-label={category.label}
+                      />
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Separator className="my-5" />
+
           <div className="space-y-2">
             <Label>Thinking</Label>
             {/* Every level on the surface: picking one costs a single click. */}
@@ -79,29 +104,6 @@ export function ChatSettingsSheet({ settings }: { settings: ChatSettings }) {
                   ? "This model does not offer that level. it falls back to its own default."
                   : "How long the model may think before answering."}
             </p>
-          </div>
-
-          <Separator className="my-5" />
-
-          <div>
-            <p className="console-label text-muted-foreground">Tools</p>
-            <div className="mt-1">
-              {TOOL_CATEGORIES.map((category, index) => (
-                <div key={category.key}>
-                  {index > 0 && <Separator />}
-                  <ToolCategoryRow
-                    category={category}
-                    controls={
-                      <Switch
-                        checked={isCategoryEnabled(settings.toolConfig, category.key)}
-                        onCheckedChange={() => settings.onToggleTool(category.key)}
-                        aria-label={category.label}
-                      />
-                    }
-                  />
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </SheetContent>

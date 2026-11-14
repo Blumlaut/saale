@@ -344,19 +344,6 @@ export function SearchSection() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          htmlFor="search-language"
-          label="Language"
-          description='Language code a search asks in, such as "en" or "all".'
-        >
-          <Input
-            id="search-language"
-            value={language ?? settings?.webSearchLanguage ?? "all"}
-            onChange={(event) => setLanguage(event.target.value)}
-            className="h-8 w-24 text-sm"
-          />
-        </SettingsRow>
-
         <SettingsRow htmlFor="search-safe-search" label="Safe search">
           <Select
             value={String(safeSearch ?? settings?.webSearchSafeSearch ?? 0)}
@@ -375,6 +362,19 @@ export function SearchSection() {
               ))}
             </SelectContent>
           </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          htmlFor="search-language"
+          label="Language"
+          description='Language code a search asks in, such as "en" or "all".'
+        >
+          <Input
+            id="search-language"
+            value={language ?? settings?.webSearchLanguage ?? "all"}
+            onChange={(event) => setLanguage(event.target.value)}
+            className="h-8 w-24 text-sm"
+          />
         </SettingsRow>
 
         <NumberRow

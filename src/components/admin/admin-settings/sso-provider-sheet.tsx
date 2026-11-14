@@ -137,6 +137,22 @@ export function SsoProviderSheet({ open, onOpenChange, provider, onSaved }: SsoP
             className="flex-1 overflow-y-auto px-6 py-5"
           >
             <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <Label htmlFor="sso-enabled" className="text-xs">
+                    Offered on the login page
+                  </Label>
+                  <p className="text-muted-foreground text-xs">
+                    Off keeps the credentials, and hides the button.
+                  </p>
+                </div>
+                <Switch
+                  id="sso-enabled"
+                  checked={form.enabled}
+                  onCheckedChange={(enabled) => update({ enabled })}
+                />
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="sso-name" className="text-xs">
                   Name *
@@ -232,22 +248,6 @@ export function SsoProviderSheet({ open, onOpenChange, provider, onSaved }: SsoP
                   spellCheck={false}
                 />
                 <p className="text-muted-foreground text-xs">openid is always asked for.</p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <Label htmlFor="sso-enabled" className="text-xs">
-                    Offered on the login page
-                  </Label>
-                  <p className="text-muted-foreground text-xs">
-                    Off keeps the credentials, and hides the button.
-                  </p>
-                </div>
-                <Switch
-                  id="sso-enabled"
-                  checked={form.enabled}
-                  onCheckedChange={(enabled) => update({ enabled })}
-                />
               </div>
 
               {provider ? (

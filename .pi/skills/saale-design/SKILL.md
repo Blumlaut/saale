@@ -155,6 +155,17 @@ overflow-y-auto` div for the scroll region.
 - The guard is `e2e/coder-panel.spec.ts` ("keeps the file rows tight"), which
   measures a row at ≤ 28px. A new side-panel list needs the same measurement.
 
+### Settings Grouping
+
+A settings page is scanned, so a section groups its rows by control type and every page uses the same order:
+
+1. Toggles (`Switch`, `Checkbox`)
+2. Choices (`Select`, `MultiSelect`, `SegmentedControl`)
+3. Values (`Input`, number field, `Textarea`)
+4. Actions (a row whose control is a button)
+
+The order is per section, holds when a group has one row, and never interleaves. Two toggles with a dropdown between them become one toggle group at the top. Detail and the row shape: [references/inputs.md](references/inputs.md).
+
 ### A File's Editor Lives in the Panel
 
 A file opens in a tab of the resizable panel that holds the files (the coder
@@ -288,21 +299,22 @@ A terminal-inspired surface belongs to the components that are terminals: `coder
 
 ## Anti-Patterns (Never Do These)
 
-| Anti-pattern                           | Why                                                                       | Alternative                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Raw HTML elements                      | Inconsistent styling, no accessibility                                    | shadcn/ui components                                                   |
-| `bg-white/N` overlay fills             | Glass idiom — invisible or wrong on flat panels in one of the modes       | Token fills: `bg-accent`, `bg-muted`                                   |
-| `backdrop-blur` on panels              | Glass residue — console surfaces are opaque                               | Remove it; borders carry the depth                                     |
-| Gradients / glows                      | Not the console language                                                  | Flat colors + 1px borders                                              |
-| Pill-shaped buttons                    | Old design                                                                | `rounded-lg` (12px) rectangular                                        |
-| Rainbow status colors                  | Distracting                                                               | Muted semantic colors, orange = primary action only                    |
-| ALL CAPS body text                     | Aggressive                                                                | Sentence case (micro-labels excepted)                                  |
-| Monospace UI text                      | Developer-tool vibe                                                       | Inter for words; Geist Mono for code, commands, paths, logs            |
-| Terminal styling outside a terminal    | Backend tool cosplay                                                      | Plain console surfaces; terminals are the one place for prompts        |
-| Animated backgrounds                   | Distracting                                                               | Static solid background                                                |
-| Page-sized rows in a side panel        | The panel gutter adds to the component's, so a column scrolls like a page | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e            |
-| An editor in a sheet or popover        | Its width is fixed and it hides the chat, and Monaco needs the room       | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
-| A view preference in a bare `useState` | Forgotten on the next visit                                               | `usePersistedState`                                                    |
+| Anti-pattern                           | Why                                                                               | Alternative                                                            |
+| -------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Raw HTML elements                      | Inconsistent styling, no accessibility                                            | shadcn/ui components                                                   |
+| `bg-white/N` overlay fills             | Glass idiom — invisible or wrong on flat panels in one of the modes               | Token fills: `bg-accent`, `bg-muted`                                   |
+| `backdrop-blur` on panels              | Glass residue — console surfaces are opaque                                       | Remove it; borders carry the depth                                     |
+| Gradients / glows                      | Not the console language                                                          | Flat colors + 1px borders                                              |
+| Pill-shaped buttons                    | Old design                                                                        | `rounded-lg` (12px) rectangular                                        |
+| Rainbow status colors                  | Distracting                                                                       | Muted semantic colors, orange = primary action only                    |
+| ALL CAPS body text                     | Aggressive                                                                        | Sentence case (micro-labels excepted)                                  |
+| Monospace UI text                      | Developer-tool vibe                                                               | Inter for words; Geist Mono for code, commands, paths, logs            |
+| Terminal styling outside a terminal    | Backend tool cosplay                                                              | Plain console surfaces; terminals are the one place for prompts        |
+| Animated backgrounds                   | Distracting                                                                       | Static solid background                                                |
+| Page-sized rows in a side panel        | The panel gutter adds to the component's, so a column scrolls like a page         | `dense` variant: `text-xs`, `py-1`, `px-2`; measured in e2e            |
+| An editor in a sheet or popover        | Its width is fixed and it hides the chat, and Monaco needs the room               | `FileBrowser` `onOpenFile` → a tab in the resizable panel (`FileView`) |
+| Interleaved control types              | A section is read in order, so the eye hunts for each control again on every page | Group by type: toggles, choices, values, actions                       |
+| A view preference in a bare `useState` | Forgotten on the next visit                                                       | `usePersistedState`                                                    |
 
 ## Review Checklist
 

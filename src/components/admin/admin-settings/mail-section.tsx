@@ -157,6 +157,24 @@ export function MailSection() {
               />
             </SettingsRow>
 
+            <SettingsRow htmlFor="mail-security" label="Encryption">
+              <Select
+                value={draft.security}
+                onValueChange={(security) => edit({ security: security ?? "starttls" })}
+              >
+                <SelectTrigger id="mail-security" className="h-8 w-full sm:w-40">
+                  <SelectValue>{SECURITY_LABELS[draft.security]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {MAIL_SECURITIES.map((security) => (
+                    <SelectItem key={security} value={security}>
+                      {SECURITY_LABELS[security]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingsRow>
+
             <SettingsRow
               htmlFor="mail-host"
               label="Host"
@@ -180,24 +198,6 @@ export function MailSection() {
               min={1}
               max={65535}
             />
-
-            <SettingsRow htmlFor="mail-security" label="Encryption">
-              <Select
-                value={draft.security}
-                onValueChange={(security) => edit({ security: security ?? "starttls" })}
-              >
-                <SelectTrigger id="mail-security" className="h-8 w-full sm:w-40">
-                  <SelectValue>{SECURITY_LABELS[draft.security]}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {MAIL_SECURITIES.map((security) => (
-                    <SelectItem key={security} value={security}>
-                      {SECURITY_LABELS[security]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </SettingsRow>
 
             <SettingsRow
               htmlFor="mail-username"

@@ -18,6 +18,9 @@ that it is empty now.
 
 ## Skills — load before the work
 
+If you have no skills in your context, look one up: `ls .pi/skills`, then read the matching
+`SKILL.md`.
+
 | Area                                                    | File                                      |
 | ------------------------------------------------------- | ----------------------------------------- |
 | Migrations, any DB change                               | `.pi/skills/database-migrations/SKILL.md` |

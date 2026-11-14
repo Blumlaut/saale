@@ -33,25 +33,6 @@ export function AppearanceSection() {
           </div>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Theme</Label>
-              <div className="grid grid-cols-3 gap-3">
-                {THEME_NAMES.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTheme(t)}
-                    className={`rounded-2xl border-2 p-4 text-center transition-all ${
-                      (theme ?? DEFAULT_THEME) === t
-                        ? "border-primary bg-primary/5"
-                        : "border-border/50 hover:border-border"
-                    }`}
-                  >
-                    <p className="text-sm font-medium capitalize">{t}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <Label htmlFor="compact-activity">Compact activity</Label>
@@ -70,6 +51,25 @@ export function AppearanceSection() {
                   onCheckedChange={(checked) => update({ compactActivity: checked })}
                 />
               </span>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Theme</Label>
+              <div className="grid grid-cols-3 gap-3">
+                {THEME_NAMES.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`rounded-2xl border-2 p-4 text-center transition-all ${
+                      (theme ?? DEFAULT_THEME) === t
+                        ? "border-primary bg-primary/5"
+                        : "border-border/50 hover:border-border"
+                    }`}
+                  >
+                    <p className="text-sm font-medium capitalize">{t}</p>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </GlassPanelContent>

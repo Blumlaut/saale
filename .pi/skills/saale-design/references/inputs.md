@@ -172,9 +172,36 @@ className =
 - Use `aria-invalid="true"` for accessibility
 - Never use red backgrounds on inputs (only border color change)
 
+## Settings Grouping
+
+A settings page is scanned, never read. Rows of one control type sit together, in the same order on every page and in every section, so a person scrolling the page learns where each kind of control turns up:
+
+1. **Toggles** — `Switch`, `Checkbox`
+2. **Choices** — `Select`, `MultiSelect`, `SegmentedControl`
+3. **Values** — `Input`, `NumberRow`, `Textarea`
+4. **Actions** — a row whose control is a button (Test connection, Reconnect, Regenerate)
+
+```tsx
+// what the section does, how it behaves, then what it is pointed at
+<PageSection title="Search">
+  <SettingsRow label="Enabled">…Switch…</SettingsRow>
+  <SettingsRow label="Enabled sources">…MultiSelect…</SettingsRow>
+  <SettingsRow label="Results per page">…NumberRow…</SettingsRow>
+  <SettingsRow label="Connection">…Button…</SettingsRow>
+</PageSection>
+```
+
+- The order is per section, meaning a `PageSection` or a divided block inside a panel. It holds when a group has one row.
+- Group before dividers: two toggles around a dropdown belong in one toggle group, and the section gets a title instead of a stray divider.
+- Keep the order across pages. A user who learned that switches sit at the top of a section finds them there in account settings and in admin settings alike.
+- Rows in a group share one shape: label and description on the left, control on the right (`SettingsRow` in `src/components/admin/admin-settings/settings-rows.tsx`).
+- A sheet that edits one thing follows the same order, with the switch that turns the object on above its name field.
+- A search box or filter that narrows a list sits at the top of that list, above its rows. It is a toolbar and stays out of the stack.
+- A dialog that writes data (a new memory, a task, a calendar event) follows its own field order. The grouping is for settings.
+
 ## Rules
 
-- **Labels always above inputs.** No floating labels, no inline labels.
+- **Labels above inputs in forms.** No floating labels, no inline labels.
 - **No required asterisks in labels.** Use `aria-required` and show "Required" in helper text if needed.
 - **Consistent spacing.** `space-y-2` between label and input, `space-y-6` between fields.
 - **Actions in footer.** Form submit/cancel buttons go in `GlassPanelFooter`.
