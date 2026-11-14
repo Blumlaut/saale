@@ -100,9 +100,29 @@ vi.mock("@/lib/permissions/feature-access", () => ({
   loadUserFeatures: vi.fn(async () => ALL_FEATURES_ON),
 }));
 
+// The image tools need a model to call; these cases are about the categories.
+vi.mock("@/lib/pi/image-model", () => ({
+  resolveImageCapabilities: vi.fn(async () => ({
+    generate: false,
+    edit: false,
+    sizes: ["1024x1024"],
+  })),
+}));
+vi.mock("@/lib/pi/tools/image-tools", () => ({
+  createImageTools: vi.fn((userId: string, _sessionId: string, options: { edit: boolean }) =>
+    options.edit
+      ? [
+          { name: "generate_image", userId },
+          { name: "edit_image", userId },
+        ]
+      : [{ name: "generate_image", userId }],
+  ),
+}));
+
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
+import { resolveImageCapabilities } from "@/lib/pi/image-model";
 import { FEATURES, type FeatureMap } from "@/lib/permissions/features";
 import * as sandboxClient from "@/lib/sandbox/client";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
@@ -156,6 +176,53 @@ describe("resolveTools", () => {
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["mail_accounts", "mail_read"]);
+  });
+
+  // Rendering costs money on every hosted provider, so a session with no image
+  // model gets no tool at all: nothing to call, nothing to declare.
+  it("leaves the image tool out when no image model is configured", async () => {
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).not.toContain("generate_image");
+  });
+
+  it("includes the image tool once an image model is picked", async () => {
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({
+      generate: true,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).toEqual(["generate_image"]);
+  });
+
+  // Editing needs a picture to send, which a prompt-only model cannot take, so
+  // the model is never offered the call it would have to refuse.
+  it("adds the edit tool only for a model that takes a picture", async () => {
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({
+      generate: true,
+      edit: true,
+      sizes: ["1024x1024"],
+    });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).toEqual(["generate_image", "edit_image"]);
+  });
+
+  it("drops the image tools when their feature is switched off", async () => {
+    vi.mocked(resolveImageCapabilities).mockResolvedValue({
+      generate: true,
+      edit: true,
+      sizes: ["1024x1024"],
+    });
+    vi.mocked(loadUserFeatures).mockResolvedValueOnce({ ...ALL_FEATURES_ON, image: false });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).not.toContain("generate_image");
   });
 
   it("keeps a tool whose policy only asks", async () => {

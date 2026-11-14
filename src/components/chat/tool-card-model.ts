@@ -68,8 +68,17 @@ export type ToolCardBlock =
   | { kind: "facts"; items: readonly ToolFact[] }
   /** A command's captured output. stdout and stderr share one box. */
   | { kind: "output"; stdout: string; stderr: string }
-  /** An image in the user's workspace, previewed from its path. */
-  | { kind: "image"; path: string }
+  /**
+   * An image in the user's workspace, previewed from its path. The size is what
+   * the call reported, so the frame takes the picture's shape.
+   */
+  | { kind: "image"; path: string; width?: number; height?: number }
+  /**
+   * Work that has not produced anything yet and takes long enough that the
+   * badge alone reads as stuck (a render). The renderer shimmers it, at the
+   * shape the call asked for so the card does not jump when it lands.
+   */
+  | { kind: "rendering"; label: string; width?: number; height?: number }
   | { kind: "diff"; lines: readonly string[]; max?: number }
   | { kind: "code"; text: string; label?: string; tone?: "muted" | "danger"; max?: number }
   | { kind: "text"; text: string; mono?: boolean; clamp?: boolean; tone?: "muted" | "danger" }

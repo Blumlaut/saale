@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DecisionModelField } from "@/components/shared/decision-model-field";
+import { SlotModelField } from "@/components/shared/slot-model-field";
 import { ModelPicker } from "@/components/shared/model-picker";
 import { Page, PageAction, PageActions, PageScroll, PageStatus } from "@/components/layout/page";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { Bot, Brain, Loader2, Save, Search, Eye, SlidersHorizontal } from "lucide-react";
+import { Bot, Brain, Loader2, Save, Search, Eye, SlidersHorizontal, Sparkles } from "lucide-react";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -48,6 +48,8 @@ export function ModelAvailability() {
   const [defaultModel, setDefaultModel] = useState("");
   /** The decision model that judges what Auto would run, as `provider:model`. */
   const [decisionModel, setDecisionModel] = useState<string | null>(null);
+  /** The image model accounts render with, as `provider:model`. */
+  const [imageModel, setImageModel] = useState<string | null>(null);
 
   // Per-model toggle state (Set of enabled model IDs per provider)
   const [modelEnabled, setModelEnabled] = useState<Record<string, Set<string>>>({});
@@ -55,6 +57,8 @@ export function ModelAvailability() {
   // ─── Capability (vision) status ───
   const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
   const [savingVision, setSavingVision] = useState<string | null>(null);
+  /** The model whose image-generation flag is being saved, as `provider:model`. */
+  const [savingImage, setSavingImage] = useState<string | null>(null);
 
   // ─── Per-model limits ───
   const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
@@ -101,6 +105,7 @@ export function ModelAvailability() {
         : "",
     );
     setDecisionModel(adminSettings.approvalDecisionModel);
+    setImageModel(adminSettings.imageModel);
     setModelEnabled(fromGlobalProviderModels(adminSettings.globalProviderModels));
   }, [adminSettings]);
 
@@ -118,6 +123,19 @@ export function ModelAvailability() {
     modelProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
 
   /** Record whether a global provider's model can see images. */
+  /** Mark a global endpoint's model as one that renders pictures instead of answering. */
+  const handleToggleImageModel = async (provider: string, modelId: string, image: boolean) => {
+    const key = `${provider}:${modelId}`;
+    setSavingImage(key);
+    try {
+      await patchJson("/api/admin/providers/capabilities", { provider, modelId, image });
+      await loadModels();
+    } catch (err) {
+      console.error("Failed to save whether the model renders images:", err);
+    }
+    setSavingImage(null);
+  };
+
   const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
     const key = `${provider}:${modelId}`;
     setSavingVision(key);
@@ -142,6 +160,8 @@ export function ModelAvailability() {
       maxOutputTokens: model.maxOutputTokens,
       overrides: model.overrides,
       endpointLimits: endpointLimits[providerId] ?? null,
+      image: model.image === true,
+      imageSizes: model.imageSizes,
     });
   };
 
@@ -167,8 +187,9 @@ export function ModelAvailability() {
       globalModelProvider: defaultModel ? (provider ?? "") : "",
       globalModelName: defaultModel ? modelName : "",
       approvalDecisionModel: decisionModel,
+      imageModel,
     });
-  }, [adminSettings, availableModels, modelEnabled, defaultModel, decisionModel, save]);
+  }, [adminSettings, availableModels, modelEnabled, defaultModel, decisionModel, imageModel, save]);
 
   const isLoading = modelsLoading && settingsLoading;
 
@@ -233,13 +254,30 @@ export function ModelAvailability() {
             {/* What Auto runs on its own, for the accounts without a pick */}
             <GlassPanel>
               <GlassPanelContent>
-                <DecisionModelField
-                  value={decisionModel}
-                  onChange={setDecisionModel}
-                  fallback={null}
-                  endpoint="/api/admin/providers/models"
-                  description="Judges the tool calls Auto would run on its own, for accounts that have not picked one."
-                />
+                <div className="space-y-4">
+                  <SlotModelField
+                    type="classifier"
+                    label="Decision model"
+                    value={decisionModel}
+                    onChange={setDecisionModel}
+                    fallback={null}
+                    placeholder="Built-in checks"
+                    clearLabel="Clear the decision model"
+                    endpoint="/api/admin/providers/models"
+                    description="Judges the tool calls Auto would run on its own, for accounts that have not picked one."
+                  />
+                  <SlotModelField
+                    type="image"
+                    label="Image model"
+                    value={imageModel}
+                    onChange={setImageModel}
+                    fallback={null}
+                    placeholder="No image tool"
+                    clearLabel="Clear the image model"
+                    endpoint="/api/admin/providers/models"
+                    description="Renders images for accounts that have not picked one. Without a model the agent gets no image tool at all."
+                  />
+                </div>
               </GlassPanelContent>
             </GlassPanel>
 
@@ -389,6 +427,36 @@ export function ModelAvailability() {
                                 </Button>
                               )}
 
+                              {/* A diffusion model answers with pictures, and Pi keeps
+                                  those off the chat list entirely. */}
+                              {canConfigureModels(provider.id) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className={cn(
+                                    "shrink-0",
+                                    model.image
+                                      ? "text-violet-600 dark:text-violet-400"
+                                      : "text-muted-foreground/60 hover:text-foreground",
+                                  )}
+                                  title={
+                                    model.image
+                                      ? "Renders images. click to turn that off"
+                                      : "Mark this model as an image model"
+                                  }
+                                  disabled={savingImage === `${provider.id}:${model.id}`}
+                                  onClick={() =>
+                                    handleToggleImageModel(provider.id, model.id, !model.image)
+                                  }
+                                >
+                                  {savingImage === `${provider.id}:${model.id}` ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              )}
+
                               {/* Undo a wrong (or absent) answer from the endpoint. */}
                               {canConfigureModels(provider.id) && (
                                 <Button
@@ -444,6 +512,7 @@ export function ModelAvailability() {
           if (!open) setLimitsTarget(null);
         }}
         capabilitiesEndpoint="/api/admin/providers/capabilities"
+        allowImageSizes
         onSaved={() => {
           void loadModels();
         }}

@@ -6,6 +6,7 @@ import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calen
 import { codemodeDescriptor } from "@/components/chat/tool-descriptors/codemode";
 import { fileToolDescriptor } from "@/components/chat/tool-descriptors/file";
 import { describeGenericToolCall } from "@/components/chat/tool-descriptors/generic";
+import { imageToolDescriptor } from "@/components/chat/tool-descriptors/image";
 import { aggregateToolStatus } from "@/components/chat/tool-status";
 import { infraToolDescriptor } from "@/components/chat/tool-descriptors/infra";
 import { mailToolDescriptor } from "@/components/chat/tool-descriptors/mail";
@@ -68,6 +69,8 @@ describe("tool card routing", () => {
     "mail_read",
     "calendar_upcoming",
     "calendar_search",
+    "generate_image",
+    "edit_image",
   ]);
 
   it("sends every tool with a result format to its own card, and the rest to the generic card", () => {
@@ -799,5 +802,87 @@ describe("aggregate status of a run of calls", () => {
       tone: "danger",
       label: "failed",
     });
+  });
+});
+
+describe("image descriptor", () => {
+  const result = withMeta("_saaleImageMeta", {
+    path: "generated/render.png",
+    model: "flux",
+    provider: "openrouter",
+    prompt: "A red fox in the snow",
+    width: 1024,
+    height: 768,
+  });
+
+  it("describes a render with the picture itself", () => {
+    const model = imageToolDescriptor.describe(call("generate_image", result));
+
+    expect(model?.title).toBe("Generate Image");
+    expect(model?.detail).toBe("A red fox in the snow");
+    expect(model?.status).toEqual({ tone: "success", label: "1024×768" });
+    expect(firstBlock(model, "image")).toEqual({
+      kind: "image",
+      path: "generated/render.png",
+      // The card takes the picture's shape from these two.
+      width: 1024,
+      height: 768,
+    });
+    const facts = firstBlock(model, "facts").items;
+    expect(facts[0]?.text).toBe("flux");
+    expect(facts[0]?.note).toBe("openrouter");
+  });
+
+  // A render takes minutes and the endpoint reports no progress, so a running
+  // call gets a shimmer rather than the same badge every other tool has.
+  it("shimmers while the picture is being rendered", () => {
+    const running = imageToolDescriptor.describe(
+      call("generate_image", undefined, {
+        status: "running",
+        args: { prompt: "A red fox in the snow", size: "1536x1024" },
+      }),
+    );
+
+    expect(running?.status.tone).toBe("running");
+    expect(running?.detail).toBe("A red fox in the snow");
+    expect(firstBlock(running, "rendering")).toEqual({
+      kind: "rendering",
+      label: "Rendering the picture…",
+      // The shape the picture lands in, so the card does not jump when it does.
+      width: 1536,
+      height: 1024,
+    });
+  });
+
+  it("says it is editing when the call works from a picture", () => {
+    const running = imageToolDescriptor.describe(
+      call("edit_image", undefined, { status: "running", args: { image: "generated/fox.png" } }),
+    );
+
+    expect(running?.title).toBe("Edit Image");
+    expect(firstBlock(running, "rendering").label).toBe("Editing the picture…");
+  });
+
+  it("describes an edit with the picture it produced", () => {
+    const model = imageToolDescriptor.describe(call("edit_image", result));
+
+    expect(model?.title).toBe("Edit Image");
+    expect(firstBlock(model, "image").path).toBe("generated/render.png");
+  });
+
+  it("has nothing to describe when the call failed before producing a picture", () => {
+    expect(imageToolDescriptor.describe(call("generate_image", undefined))).toBeNull();
+  });
+
+  // The card is the attachment: a picture the user asked for must not be folded
+  // into the collapsed run of calls that produced it.
+  it("renders as an attachment, outside the collapsed run", () => {
+    const split = splitToolCalls([
+      call("generate_image", result),
+      call("edit_image", result),
+      call("web_search", result),
+    ]);
+
+    expect(split.attachments.map((entry) => entry.name)).toEqual(["generate_image", "edit_image"]);
   });
 });

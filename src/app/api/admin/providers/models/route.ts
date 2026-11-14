@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { requirePermission } from "@/lib/auth";
-import { buildAdminModelList, listClassifierModels } from "@/lib/pi/models";
+import { buildAdminModelList } from "@/lib/pi/models";
+import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
+  configuredImage,
+  configuredImageSizes,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -26,7 +29,10 @@ export async function GET() {
     buildAdminModelList(),
     readEndpointRows({ kind: "global" }),
   ]);
-  const classifiers = await listClassifierModels(modelRuntime);
+  const [classifiers, imageModels] = await Promise.all([
+    listSlotModels(modelRuntime, MODEL_SLOTS.decision),
+    listSlotModels(modelRuntime, MODEL_SLOTS.image),
+  ]);
 
   // What the admin set per model on each global endpoint, so the editor can tell
   // an override from an inherited value.
@@ -45,20 +51,29 @@ export async function GET() {
       name: string;
       reasoning: boolean;
       vision: boolean;
+      image?: true;
       contextWindow: number | undefined;
       maxOutputTokens: number | undefined;
       overrides?: { contextWindow?: number; maxOutputTokens?: number };
+      imageSizes?: string[];
     }>
   > = {};
 
   for (const m of available) {
-    const overrides = configuredLimits(storedByProvider.get(m.provider) ?? {}, m.id);
+    const stored = storedByProvider.get(m.provider) ?? {};
+    const overrides = configuredLimits(stored, m.id);
     const list = (models[m.provider] ??= []);
     list.push({
       id: m.id,
       name: m.name,
       reasoning: m.reasoning ?? false,
       vision: m.vision,
+      ...(m.image === true || configuredImage(stored, m.id) === true
+        ? { image: true as const }
+        : {}),
+      ...(configuredImageSizes(stored, m.id)
+        ? { imageSizes: configuredImageSizes(stored, m.id)! }
+        : {}),
       contextWindow: m.contextWindow,
       maxOutputTokens: m.maxOutputTokens,
       ...(definesProviderModels(m.provider) && Object.keys(overrides).length > 0
@@ -79,6 +94,8 @@ export async function GET() {
     providers,
     // Decision models, for the one picker that takes one.
     classifiers,
+    // Image models, for the picker that renders pictures.
+    imageModels,
     // Per endpoint: the defaults a model's own value falls back to.
     endpointLimits: Object.fromEntries(
       endpoints

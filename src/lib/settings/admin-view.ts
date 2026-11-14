@@ -31,6 +31,8 @@ export interface AdminSettingsView {
   voiceLanguage: string | null;
   /** Decision model that judges what Auto would run, as `provider:model`. */
   approvalDecisionModel: string | null;
+  /** Image model the agent renders with, as `provider:model`. */
+  imageModel: string | null;
   /** Whether a coder chat is told to end every commit with `commitAttributionText`. */
   commitAttributionEnabled: boolean;
   /** The trailer line, with the `SAALE_*` variables left for the shell. */
@@ -61,6 +63,7 @@ export function serializeAdminSettings(settings: AdminSettings): AdminSettingsVi
     voiceModel: settings.voiceModel,
     voiceLanguage: settings.voiceLanguage,
     approvalDecisionModel: settings.approvalDecisionModel,
+    imageModel: settings.imageModel,
     commitAttributionEnabled: settings.commitAttributionEnabled,
     commitAttributionText: settings.commitAttributionText,
   };

@@ -6,7 +6,7 @@
  * MUST stay in sync with the actual tool definitions in src/lib/pi/tools/.
  */
 import type { LucideIcon } from "lucide-react";
-import { FilePen, FilePlus, FileText, Wrench } from "lucide-react";
+import { FilePen, FilePlus, FileText, Image as ImageIcon, Wand2, Wrench } from "lucide-react";
 import { getToolCategory, type ToolCategoryKey, type ToolExposure } from "@/lib/pi/tool-categories";
 
 export type ToolPolicy = "allow" | "auto" | "ask" | "off";
@@ -456,6 +456,27 @@ export const ALL_TOOL_INFOS: ToolInfo[] = [
     summaryTemplate: "Fetching {url}",
   },
 
+  // ── Images ────────────────────────────────────────────────────────
+  {
+    name: "generate_image",
+    label: "Generate Image",
+    description: "Render an image from a prompt with the account's image model",
+    icon: ImageIcon,
+    category: "image",
+    // Rendering costs money on every hosted provider, so it asks first.
+    defaultPolicy: "ask",
+    summaryTemplate: 'Rendering "{prompt}"',
+  },
+  {
+    name: "edit_image",
+    label: "Edit Image",
+    description: "Change or combine workspace pictures with the account's image model",
+    icon: Wand2,
+    category: "image",
+    defaultPolicy: "ask",
+    summaryTemplate: 'Editing "{prompt}"',
+  },
+
   // ── Memory ────────────────────────────────────────────────────────
   {
     name: "memory_index",
@@ -866,6 +887,8 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   edit: { path: "File", edits: "Edits" },
   bash: { command: "Command" },
   show_file: { filePath: "File", description: "Note" },
+  generate_image: { prompt: "Prompt" },
+  edit_image: { images: "Pictures", prompt: "Change" },
   codemode: { code: "Script" },
   chat_respond: { sessionId: "Chat", message: "Message" },
   chat_create: { message: "Message", title: "Title" },

@@ -18,6 +18,7 @@ import { createContactTools } from "@/lib/pi/tools/contact-tools";
 import { createJobTools } from "@/lib/pi/tools/job-tools";
 import { createCalendarTools } from "@/lib/pi/tools/calendar-tools";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
+import { createImageTools } from "@/lib/pi/tools/image-tools";
 import { createMemoryTools } from "@/lib/pi/tools/memory-tools";
 import { createTaskTools } from "@/lib/pi/tools/task-tools";
 import { createAutomationTools } from "@/lib/pi/tools/automation-tools";
@@ -57,6 +58,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createJobTools(userId),
     createCalendarTools(userId),
     createWebTools(),
+    createImageTools(userId, sessionId, { edit: true, sizes: ["1024x1024"] }),
     createMemoryTools(userId),
     createTaskTools(userId),
     createAutomationTools(userId, sessionId),

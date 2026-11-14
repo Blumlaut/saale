@@ -5,10 +5,11 @@ import type { ReactNode } from "react";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, ExternalLink, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Sparkles, Star } from "lucide-react";
 import { plural } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
 import { ToolStatusBadge } from "./tool-status-badge";
+import { ImageFrame } from "./image-tile";
 import { WorkspaceImage } from "./workspace-image";
 import type {
   ToolCardBlock,
@@ -180,7 +181,9 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
     case "diff":
       return <ToolDiff block={block} />;
     case "image":
-      return <WorkspaceImage path={block.path} />;
+      return <WorkspaceImage path={block.path} width={block.width} height={block.height} />;
+    case "rendering":
+      return <RenderingBlock block={block} />;
     case "code":
       return <ToolCode block={block} />;
     case "text":
@@ -196,6 +199,29 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
         </div>
       );
   }
+}
+
+/**
+ * A tile that shimmers while a long call runs.
+ *
+ * The badge says "running" for every tool, which for a render of a minute reads
+ * as nothing happening. This is the whole answer the card can give: the endpoint
+ * reports no progress, so the tile shimmers and claims no percentage. It takes
+ * the shape of the resolution the call asked for, which is where the picture
+ * then lands.
+ */
+function RenderingBlock({ block }: { block: Extract<ToolCardBlock, { kind: "rendering" }> }) {
+  return (
+    <div role="status" aria-label={block.label}>
+      <ImageFrame width={block.width} height={block.height}>
+        <div className="animate-image-shimmer via-foreground/10 absolute inset-0 bg-gradient-to-r from-transparent to-transparent" />
+        <div className="relative flex h-full flex-col items-center justify-center gap-1.5">
+          <Sparkles className="text-primary size-5 animate-pulse" />
+          <span className="text-muted-foreground text-[11px]">{block.label}</span>
+        </div>
+      </ImageFrame>
+    </div>
+  );
 }
 
 /** A list of rows, capped until expanded. */

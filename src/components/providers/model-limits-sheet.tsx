@@ -4,8 +4,17 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -15,6 +24,11 @@ import {
 } from "@/components/ui/sheet";
 import { patchJson } from "@/lib/http";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
+import {
+  DEFAULT_IMAGE_SIZES,
+  IMAGE_SIZE_PRESETS,
+  MAX_IMAGE_SIZES,
+} from "@/lib/providers/images/sizes";
 
 /**
  * One discovered model's token limits.
@@ -36,8 +50,20 @@ export interface ModelLimitsTarget {
   maxOutputTokens?: number | undefined;
   /** What the user recorded for this model. empty fields inherit. */
   overrides?: { contextWindow?: number; maxOutputTokens?: number } | undefined;
+  /**
+   * Whether the endpoint takes a picture to edit, when the user said it does
+   * not. Absent means it does, which is what the images API assumes.
+   */
+  imageInput?: boolean | undefined;
   /** The endpoint-wide default the model falls back to. */
   endpointLimits: { contextWindow: number | null; maxOutputTokens: number | null } | null;
+  /** Whether this model renders pictures, which is what resolutions are for. */
+  image?: boolean | undefined;
+  /**
+   * The resolutions recorded for this image model; absent means the default
+   * list applies.
+   */
+  imageSizes?: string[] | undefined;
 }
 
 export interface ModelLimitsSheetProps {
@@ -47,6 +73,11 @@ export interface ModelLimitsSheetProps {
   capabilitiesEndpoint: string;
   /** Called after a save so the caller can reload what it shows. */
   onSaved: () => void;
+  /**
+   * Whether this editor may set the model's resolutions. The admin owns them:
+   * the list describes what the endpoint renders, and the agent picks from it.
+   */
+  allowImageSizes?: boolean;
 }
 
 /** What the endpoint falls back to per field, for the placeholders. */
@@ -57,6 +88,16 @@ function inherited(
   const endpointValue = target.endpointLimits?.[field];
   if (typeof endpointValue === "number") return endpointValue;
   return field === "contextWindow" ? PI_DEFAULT_CONTEXT_WINDOW : PI_DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
+/** The size a render uses when the agent names none. */
+function firstSize(sizes: readonly string[]): string {
+  return (sizes[0] ?? DEFAULT_IMAGE_SIZES[0]!).replace("x", "×");
+}
+
+/** The list with one size moved to the front, which is what makes it the default. */
+function promoteSize(sizes: readonly string[], value: string): string[] {
+  return [value, ...sizes.filter((size) => size !== value)];
 }
 
 /** A limit the user typed: `undefined` when empty, null when unusable. */
@@ -71,9 +112,12 @@ export function ModelLimitsSheet({
   onOpenChange,
   capabilitiesEndpoint,
   onSaved,
+  allowImageSizes = false,
 }: ModelLimitsSheetProps) {
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState("");
+  const [imageInput, setImageInput] = useState(true);
+  const [imageSizes, setImageSizes] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +129,8 @@ export function ModelLimitsSheet({
     setMaxOutputTokens(
       target.overrides?.maxOutputTokens ? String(target.overrides.maxOutputTokens) : "",
     );
+    setImageInput(target.imageInput !== false);
+    setImageSizes(target.imageSizes ?? []);
     setError(null);
   }, [target]);
 
@@ -107,6 +153,8 @@ export function ModelLimitsSheet({
         modelId: target.modelId,
         contextWindow: context ?? null,
         maxOutputTokens: output ?? null,
+        imageInput,
+        ...(allowImageSizes && target.image ? { imageSizes } : {}),
       });
       onSaved();
       onOpenChange(false);
@@ -167,6 +215,81 @@ export function ModelLimitsSheet({
               request&apos;s token budget, so they have to describe this model on this endpoint. An
               empty field inherits the endpoint&apos;s default.
             </p>
+
+            {/* A diffusion model is offered a reference picture only when the
+                endpoint serves /v1/images/edits for it. */}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor="model-image-input">
+                  Takes a picture to edit
+                </Label>
+                <p className="text-muted-foreground text-[11px]">
+                  Off turns image editing off for this model: the agent is only offered a prompt.
+                </p>
+              </div>
+              <Switch
+                id="model-image-input"
+                checked={imageInput}
+                onCheckedChange={setImageInput}
+                aria-label="This model takes a picture to edit"
+              />
+            </div>
+
+            {/* What the model may render at. The agent picks one of these per
+                request; the first is what it uses when it picks none. */}
+            {allowImageSizes && target.image ? (
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs" htmlFor="model-image-sizes">
+                  Resolutions
+                </Label>
+                <MultiSelect
+                  id="model-image-sizes"
+                  options={IMAGE_SIZE_PRESETS.map((preset) => ({
+                    value: preset.value,
+                    label: preset.label,
+                  }))}
+                  value={imageSizes}
+                  onChange={setImageSizes}
+                  max={MAX_IMAGE_SIZES}
+                  placeholder="Pick resolutions"
+                  searchPlaceholder="Search resolutions"
+                />
+                {imageSizes.length > 1 ? (
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <Label className="text-xs" htmlFor="model-image-size-default">
+                      Default
+                    </Label>
+                    <Select
+                      items={Object.fromEntries(
+                        imageSizes.map((size) => [size, size.replace("x", " × ")]),
+                      )}
+                      value={imageSizes[0]!}
+                      onValueChange={(value) => {
+                        if (value) setImageSizes(promoteSize(imageSizes, value));
+                      }}
+                    >
+                      <SelectTrigger size="sm" id="model-image-size-default">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {imageSizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size.replace("x", " × ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                <p className="text-muted-foreground text-[11px]">
+                  {imageSizes.length === 0
+                    ? `No list, so a render uses ${firstSize(DEFAULT_IMAGE_SIZES)}.`
+                    : imageSizes.length === 1
+                      ? `The agent renders at ${firstSize(imageSizes)}.`
+                      : `The agent picks one per request and uses ${firstSize(imageSizes)} unless it asks for another.`}
+                </p>
+              </div>
+            ) : null}
 
             <p className="text-muted-foreground text-[11px] tabular-nums">
               Now sending {target.contextWindow?.toLocaleString() ?? ""} context /{" "}

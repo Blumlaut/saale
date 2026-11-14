@@ -9,7 +9,14 @@ vi.mock("@/lib/pi/models", () => ({
   // The admin list uses the unfiltered builder: it has to show models that are
   // currently switched off so they can be switched back on.
   buildAdminModelList: vi.fn(),
-  listClassifierModels: vi.fn(),
+}));
+
+vi.mock("@/lib/pi/model-slots", () => ({
+  MODEL_SLOTS: {
+    decision: { id: "decision", type: "classifier" },
+    image: { id: "image", type: "image" },
+  },
+  listSlotModels: vi.fn(),
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
@@ -17,7 +24,7 @@ vi.mock("@/lib/providers/endpoint", () => ({
 }));
 
 import { requirePermission } from "@/lib/auth";
-import { listClassifierModels } from "@/lib/pi/models";
+import { listSlotModels } from "@/lib/pi/model-slots";
 import * as piModels from "@/lib/pi/models";
 import * as endpoint from "@/lib/providers/endpoint";
 import { GET } from "@/app/api/admin/providers/models/route";
@@ -55,7 +62,7 @@ describe("GET /api/admin/providers/models", () => {
     } as never);
     stubRuntime([]);
     vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
-    vi.mocked(listClassifierModels).mockResolvedValue({});
+    vi.mocked(listSlotModels).mockResolvedValue({});
   });
 
   it("returns 401 when the caller is not an admin", async () => {
@@ -125,6 +132,38 @@ describe("GET /api/admin/providers/models", () => {
     ]);
   });
 
+  it("lists an image model beside the chat models", async () => {
+    stubRuntime(
+      [
+        model({ provider: "custom", id: "qwen3" }),
+        model({
+          provider: "custom",
+          id: "qwen-image",
+          reasoning: false,
+          vision: true,
+          image: true,
+          contextWindow: undefined,
+          maxOutputTokens: undefined,
+        }),
+      ],
+      { custom: "OpenAI-compatible" },
+    );
+
+    const body = await (await GET()).json();
+
+    expect(body.models.custom).toEqual([
+      {
+        id: "qwen3",
+        name: "Claude Sonnet",
+        reasoning: true,
+        vision: true,
+        contextWindow: 200_000,
+        maxOutputTokens: 64_000,
+      },
+      { id: "qwen-image", name: "Claude Sonnet", reasoning: false, vision: true, image: true },
+    ]);
+  });
+
   it("marks Saale's own endpoint as configurable", async () => {
     stubRuntime([model({ provider: "custom", id: "local" })], { custom: "OpenAI-compatible" });
 
@@ -166,6 +205,37 @@ describe("GET /api/admin/providers/models", () => {
       },
     ]);
     expect(piModels.buildAdminModelList).toHaveBeenCalled();
+  });
+
+  // The resolutions belong to the model, so the admin's per-model editor reads
+  // them from here and the sheet starts on what was picked.
+  it("reports the resolutions recorded for an image model", async () => {
+    stubRuntime([model({ provider: "custom", id: "qwen-image", reasoning: false, image: true })], {
+      custom: "OpenAI-compatible",
+    });
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([
+      {
+        id: "key-1",
+        userId: null,
+        provider: "custom",
+        label: "",
+        baseUrl: "http://localhost:11434/v1",
+        encryptedKey: "enc()",
+        contextWindow: null,
+        maxOutputTokens: null,
+        modelCapabilities: {
+          "qwen-image": { image: true, imageSizes: ["2048x2048", "1536x1024"] },
+        },
+      },
+    ]);
+
+    const body = await (await GET()).json();
+
+    expect(body.models.custom[0]).toMatchObject({
+      id: "qwen-image",
+      image: true,
+      imageSizes: ["2048x2048", "1536x1024"],
+    });
   });
 
   it("reports a per-model limit override and the endpoint defaults behind it", async () => {
@@ -211,6 +281,12 @@ describe("GET /api/admin/providers/models", () => {
   it("returns an empty listing when the global configuration has no models", async () => {
     const body = await (await GET()).json();
 
-    expect(body).toEqual({ models: {}, providers: [], classifiers: {}, endpointLimits: {} });
+    expect(body).toEqual({
+      models: {},
+      providers: [],
+      classifiers: {},
+      imageModels: {},
+      endpointLimits: {},
+    });
   });
 });

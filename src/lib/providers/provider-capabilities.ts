@@ -14,12 +14,17 @@ import { fetchEndpointListing } from "@/lib/pi/models";
 import {
   detectModelCapabilities,
   mergeDetectedCapabilities,
+  parseImageEdit,
+  parseImageInputEdit,
+  parseImageSizesEdit,
   parseModelCapabilityMap,
   parseVisionEdit,
   serializeModelCapabilityMap,
+  withModelFlag,
+  withModelImageSizes,
   withModelLimits,
-  withModelVision,
-  withoutModelVision,
+  withoutModelFlag,
+  type ModelCapabilityFlag,
   type ModelCapabilityMap,
 } from "@/lib/providers/capabilities";
 import { definesProviderModels } from "@/lib/providers/config";
@@ -34,11 +39,20 @@ export function rejectUnconfigurableProvider(provider: unknown): string | null {
   return null;
 }
 
+/** The flags an edit can set, in the order it writes them. */
+const EDITABLE_FLAGS: readonly ModelCapabilityFlag[] = ["vision", "image", "imageInput"];
+
 /** A validated edit to one model's settings. */
 export interface ModelSettingsEdit {
   modelId: string;
   /** Absent = leave as stored; `null` = back on automatic detection. */
   vision?: boolean | null;
+  /** Absent = leave as stored; `null` = back on automatic detection. */
+  image?: boolean | null;
+  /** Absent = leave as stored; `null` = back on automatic detection. */
+  imageInput?: boolean | null;
+  /** Absent = leave as stored; a list = the resolutions this model renders at. */
+  imageSizes?: string[] | null;
   /** Absent = leave as stored; `null` = inherit the endpoint's default. */
   contextWindow?: number | null;
   maxOutputTokens?: number | null;
@@ -53,34 +67,52 @@ export interface ModelSettingsEdit {
 export function parseModelSettingsEdit(body: {
   modelId?: unknown;
   vision?: unknown;
+  image?: unknown;
+  imageInput?: unknown;
+  imageSizes?: unknown;
   contextWindow?: unknown;
   maxOutputTokens?: unknown;
 }): ModelSettingsEdit | { error: string } {
   const vision = parseVisionEdit(body);
   if ("error" in vision) return vision;
+  const image = parseImageEdit(body);
+  if ("error" in image) return image;
+  const imageInput = parseImageInputEdit(body);
+  if ("error" in imageInput) return imageInput;
 
   const limits = parseModelLimitEdit(body);
   if ("error" in limits) return limits;
 
+  const imageSizes = parseImageSizesEdit(body);
+  if ("error" in imageSizes) return imageSizes;
+
   const edit: ModelSettingsEdit = { modelId: vision.modelId };
   if (body.vision !== undefined) edit.vision = vision.vision;
+  if (body.image !== undefined) edit.image = image.image;
+  if (body.imageInput !== undefined) edit.imageInput = imageInput.imageInput;
   if (limits.contextWindow !== undefined) edit.contextWindow = limits.contextWindow;
   if (limits.maxOutputTokens !== undefined) edit.maxOutputTokens = limits.maxOutputTokens;
+  if (body.imageSizes !== undefined) edit.imageSizes = imageSizes.imageSizes;
 
   const changed =
     edit.vision !== undefined ||
+    edit.image !== undefined ||
+    edit.imageInput !== undefined ||
     edit.contextWindow !== undefined ||
-    edit.maxOutputTokens !== undefined;
+    edit.maxOutputTokens !== undefined ||
+    edit.imageSizes !== undefined;
   if (!changed) {
-    return { error: "vision, contextWindow or maxOutputTokens is required" };
+    return {
+      error: "vision, image, imageInput, imageSizes, contextWindow or maxOutputTokens is required",
+    };
   }
 
   return edit;
 }
 
 /**
- * Record one model's vision flag and limits, leaving every other model. and
- * every field the edit does not mention. alone.
+ * Record one model's capability flags and limits, leaving every other model
+ * and every field the edit does not mention. alone.
  */
 export async function setProviderModelSettings(options: {
   keyId: string;
@@ -89,17 +121,27 @@ export async function setProviderModelSettings(options: {
 }): Promise<ModelCapabilityMap> {
   let modelCapabilities = parseModelCapabilityMap(options.stored);
 
-  if (options.edit.vision !== undefined) {
+  for (const flag of EDITABLE_FLAGS) {
+    const value = options.edit[flag];
+    if (value === undefined) continue;
     modelCapabilities =
-      options.edit.vision === null
-        ? withoutModelVision(modelCapabilities, options.edit.modelId)
-        : withModelVision(modelCapabilities, options.edit.modelId, options.edit.vision);
+      value === null
+        ? withoutModelFlag(modelCapabilities, options.edit.modelId, flag)
+        : withModelFlag(modelCapabilities, options.edit.modelId, flag, value);
   }
 
   modelCapabilities = withModelLimits(modelCapabilities, options.edit.modelId, {
     contextWindow: options.edit.contextWindow,
     maxOutputTokens: options.edit.maxOutputTokens,
   });
+
+  if (options.edit.imageSizes !== undefined) {
+    modelCapabilities = withModelImageSizes(
+      modelCapabilities,
+      options.edit.modelId,
+      options.edit.imageSizes ?? undefined,
+    );
+  }
 
   await prisma.providerApiKey.update({
     where: { id: options.keyId },

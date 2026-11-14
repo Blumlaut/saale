@@ -37,7 +37,22 @@ export interface RedactedToolCall {
   isError: boolean | undefined;
   /** The only detail a share page shows. never derived from the result body. */
   redacted: string;
+  /**
+   * The call produced a picture. A share page shows it from the session's own
+   * images (`/api/chat/sessions/share/<token>/images/<call id>`), so nothing
+   * about where it is stored crosses the boundary. the size is the shape only.
+   */
+  image?: { width?: number; height?: number };
 }
+
+/**
+ * The tools that hand the user a picture.
+ *
+ * They are the one exception to "a share page shows no result content": the
+ * rendered image is what the chat is about, and it is served back through the
+ * share token rather than embedded here.
+ */
+const IMAGE_TOOLS = new Set(["generate_image", "edit_image"]);
 
 interface SummaryRule {
   text: string;
@@ -70,6 +85,8 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   // Saale
   codemode: { text: "Ran a script" },
   show_file: { text: "Shared a file" },
+  generate_image: { text: "Rendered an image" },
+  edit_image: { text: "Edited an image" },
   web_search: {
     text: "Searched the web",
     count: { field: "count", one: "result", many: "results" },
@@ -207,6 +224,8 @@ export function summarizeToolCallForShare(name: string, result: string | undefin
  * path or command that caused it.
  */
 export function redactToolCallForShare(toolCall: RedactableToolCall): RedactedToolCall {
+  const image = IMAGE_TOOLS.has(toolCall.name) ? imageShape(toolCall.result) : undefined;
+
   return {
     id: toolCall.id,
     name: toolCall.name,
@@ -215,6 +234,18 @@ export function redactToolCallForShare(toolCall: RedactableToolCall): RedactedTo
     error: undefined,
     isError: toolCall.isError,
     redacted: summarizeToolCallForShare(toolCall.name, toolCall.result),
+    ...(image ? { image } : {}),
+  };
+}
+
+/** The two numbers a share page draws the picture's frame with, when it has them. */
+function imageShape(result: string | undefined): { width?: number; height?: number } {
+  const meta = extractToolMetaBlock(result)?.meta;
+  const width = meta?.width;
+  const height = meta?.height;
+  return {
+    ...(typeof width === "number" && width > 0 ? { width } : {}),
+    ...(typeof height === "number" && height > 0 ? { height } : {}),
   };
 }
 

@@ -7,6 +7,7 @@ const hoisted = vi.hoisted(() => ({
   ensureUserSettings: vi.fn(),
   applyUserSettingsPatch: vi.fn(),
   readInstanceDecisionModel: vi.fn(),
+  readInstanceImageModel: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireSession: hoisted.requireSession }));
@@ -21,6 +22,9 @@ vi.mock("@/lib/settings/update", async () => {
 });
 vi.mock("@/lib/pi/decision-model", () => ({
   readInstanceDecisionModel: hoisted.readInstanceDecisionModel,
+}));
+vi.mock("@/lib/pi/image-model", () => ({
+  readInstanceImageModel: hoisted.readInstanceImageModel,
 }));
 
 import { GET, PATCH } from "@/app/api/settings/route";
@@ -45,6 +49,7 @@ function settingsRow(overrides: Partial<AppSettings> = {}): AppSettings {
     toolPolicies: null,
     toolExposure: null,
     approvalDecisionModel: null,
+    imageModel: null,
     sidebarItems: null,
     pushNotifications: null,
     features: null,
@@ -69,6 +74,7 @@ beforeEach(() => {
   hoisted.ensureUserSettings.mockResolvedValue(settingsRow());
   hoisted.applyUserSettingsPatch.mockResolvedValue(settingsRow());
   hoisted.readInstanceDecisionModel.mockResolvedValue(null);
+  hoisted.readInstanceImageModel.mockResolvedValue(null);
 });
 
 describe("GET /api/settings", () => {

@@ -403,6 +403,20 @@ These live in the `components` layer so Tailwind utilities (e.g. `hidden`,
   animation: pop-dot 0.6s ease-out forwards;
 }
 
+@keyframes image-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A slow shimmer, because a render takes longer than any transition here. */
+.animate-image-shimmer {
+  animation: image-shimmer 2.4s ease-in-out infinite;
+}
+
 /* ===== Reduced motion ===== */
 
 @media (prefers-reduced-motion: reduce) {

@@ -42,7 +42,7 @@ const storedCalls = JSON.stringify([
 
 describe("serializeSharedChatMessage", () => {
   it("redacts tool calls instead of passing them through", () => {
-    const message = serializeSharedChatMessage(row({ toolCalls: storedCalls }));
+    const message = serializeSharedChatMessage(row({ toolCalls: storedCalls }), "tok");
 
     expect(message.toolCalls).toEqual([
       expect.objectContaining({
@@ -75,7 +75,7 @@ describe("serializeSharedChatMessage", () => {
   });
 
   it("drops the owner's thinking and attachments", () => {
-    const message = serializeSharedChatMessage(row());
+    const message = serializeSharedChatMessage(row(), "tok");
 
     expect(message.thinking).toBeUndefined();
     expect(message.attachments).toBeUndefined();
@@ -85,14 +85,42 @@ describe("serializeSharedChatMessage", () => {
   it("keeps the token count on a compaction message, not its text", () => {
     const message = serializeSharedChatMessage(
       row({ role: "compaction", thinking: "14800", content: "summarised" }),
+      "tok",
     );
 
     expect(message.compaction).toEqual({ tokensBefore: 14800 });
     expect(message.thinking).toBeUndefined();
   });
 
+  // The picture is what the chat is about, so a share page may show it, and it
+  // is fetched through the token that page already holds.
+  it("points a rendered picture at the share endpoint, not at the workspace", () => {
+    const message = serializeSharedChatMessage(
+      row({
+        toolCalls: JSON.stringify([
+          {
+            id: "tc-render",
+            name: "generate_image",
+            args: { prompt: "a fox" },
+            result:
+              'Rendered it\n{"_saaleImageMeta":{"path":"generated/9b1c.png","width":1024,"height":768}}',
+            isError: false,
+          },
+        ]),
+      }),
+      "tok",
+    );
+
+    expect(message.toolCalls?.[0]?.image).toEqual({
+      src: "/api/chat/sessions/share/tok/images/tc-render",
+      width: 1024,
+      height: 768,
+    });
+    expect(JSON.stringify(message)).not.toContain("generated/9b1c.png");
+  });
+
   it("omits tool calls when the row has none", () => {
-    expect(serializeSharedChatMessage(row()).toolCalls).toBeUndefined();
-    expect(serializeSharedChatMessage(row({ toolCalls: "[]" })).toolCalls).toEqual([]);
+    expect(serializeSharedChatMessage(row(), "tok").toolCalls).toBeUndefined();
+    expect(serializeSharedChatMessage(row({ toolCalls: "[]" }), "tok").toolCalls).toEqual([]);
   });
 });

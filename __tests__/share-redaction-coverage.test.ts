@@ -43,6 +43,8 @@ const NON_CARD_MODULES = [
   "src/components/chat/tool-card-model.ts",
   "src/components/chat/tool-status.ts",
   "src/components/chat/tool-status-badge.tsx",
+  // A frame with no data behind it: it draws the shape of a picture.
+  "src/components/chat/image-tile.tsx",
 ];
 
 /**
@@ -65,6 +67,13 @@ const TOOL_CALL_READERS: Array<{
     path: "src/app/api/chat/sessions/share/[token]/copy/route.ts",
     access: "public",
     guardedBy: "redactStoredToolCalls()",
+  },
+  {
+    // Serves one rendered picture, at the path that call's own result names, so
+    // nothing the request says can reach another file.
+    path: "src/app/api/chat/sessions/share/[token]/images/[callId]/route.ts",
+    access: "public",
+    guardedBy: "imagePathOf() + readWorkspaceFile()",
   },
 ];
 

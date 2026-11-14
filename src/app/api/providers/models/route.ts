@@ -2,8 +2,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { buildModelRuntime, listClassifierModels } from "@/lib/pi/models";
+import { buildModelRuntime } from "@/lib/pi/models";
+import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
+  configuredImage,
+  configuredImageInput,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -24,7 +27,10 @@ export async function GET(request: NextRequest) {
     buildModelRuntime(authResult.user.id),
     readEndpointRows({ kind: "user", userId: authResult.user.id }),
   ]);
-  const classifiers = await listClassifierModels(modelRuntime);
+  const [classifiers, imageModels] = await Promise.all([
+    listSlotModels(modelRuntime, MODEL_SLOTS.decision),
+    listSlotModels(modelRuntime, MODEL_SLOTS.image),
+  ]);
 
   // What the user set per model on each endpoint, so the editor can tell an
   // override from an inherited value.
@@ -68,12 +74,16 @@ export async function GET(request: NextRequest) {
     if (!byProvider[provider]) {
       byProvider[provider] = [];
     }
-    const overrides = configuredLimits(storedByProvider.get(provider) ?? {}, model.id);
+    const stored = storedByProvider.get(provider) ?? {};
+    const overrides = configuredLimits(stored, model.id);
     byProvider[provider]!.push({
       id: model.id,
       name: model.name,
       reasoning: model.reasoning ?? false,
       vision: model.vision,
+      // What the user marked on this endpoint, so the list can offer to undo it.
+      ...(configuredImage(stored, model.id) === true ? { image: true } : {}),
+      ...(configuredImageInput(stored, model.id) === false ? { imageInput: false } : {}),
       contextWindow: "contextWindow" in model ? model.contextWindow : undefined,
       maxOutputTokens: model.maxOutputTokens,
       ...(definesProviderModels(provider) && Object.keys(overrides).length > 0
@@ -96,6 +106,8 @@ export async function GET(request: NextRequest) {
     models: byProvider,
     // Decision models, for the one picker that takes one.
     classifiers,
+    // Image models, for the picker that renders pictures.
+    imageModels,
     totalModels: displayModels.length,
     disabledModels: Array.from(disabledSet),
     // Per endpoint: the defaults a model's own value falls back to.

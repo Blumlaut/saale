@@ -22,10 +22,25 @@
  * compact. An absent limit inherits the endpoint's default for that field.
  */
 
+import { isImageSize, MAX_IMAGE_SIZES } from "./images/sizes";
+
 /** What Saale knows about one discovered model. */
 export interface ModelCapabilities {
   /** Whether the model accepts image input. Absent = not known. */
   vision?: boolean;
+  /** Whether the model generates images instead of answering text. Absent = not known. */
+  image?: boolean;
+  /**
+   * Whether an image model takes a picture to edit. Absent = it does, which is
+   * what the OpenAI images API means by `/v1/images/edits`.
+   */
+  imageInput?: boolean;
+  /**
+   * Resolutions an image model renders at, as "WxH". The admin picks them for
+   * the model, and the agent picks one of them per request. Absent = the default
+   * list.
+   */
+  imageSizes?: string[];
   /** Context window of this model. Absent = inherit the endpoint's default. */
   contextWindow?: number;
   /** Output cap for this model. Absent = inherit the endpoint's default. */
@@ -200,6 +215,11 @@ export interface ListedModel {
    * llama.cpp's `/v1/systemone` serves (see `decision-model.ts`).
    */
   decisionModel?: true;
+  /**
+   * The endpoint says the model produces images, which is what a diffusion
+   * server lists.
+   */
+  imageModel?: true;
 }
 
 export interface EndpointListing {
@@ -257,6 +277,21 @@ function listedDecisionModel(entry: Record<string, unknown>): boolean {
 }
 
 /**
+ * Whether a listing entry says the model produces images rather than text.
+ *
+ * vLLM and llama-server state a model's output modalities; a diffusion server
+ * that serves the OpenAI images API (`stable-diffusion.cpp`) states nothing, so
+ * its models are marked on the endpoint's own model settings instead.
+ */
+function listedImageModel(entry: Record<string, unknown>): boolean {
+  const capabilities = asRecord(entry.capabilities);
+  if (typeof capabilities?.image === "boolean") return capabilities.image;
+
+  const modalities = asRecord(entry.architecture)?.output_modalities;
+  return Array.isArray(modalities) && modalities.includes("image");
+}
+
+/**
  * Read an OpenAI-compatible `/models` payload.
  *
  * Most servers list ids and nothing else, but the ones that state a model's
@@ -290,6 +325,7 @@ export function parseEndpointListing(payload: unknown): EndpointListing {
       id,
       capabilities,
       ...(listedDecisionModel(entry!) ? { decisionModel: true as const } : {}),
+      ...(listedImageModel(entry!) ? { imageModel: true as const } : {}),
     });
   }
 
@@ -391,6 +427,10 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
     const raw = entry as Record<string, unknown>;
     const capabilities: ModelCapabilities = {};
     if (typeof raw.vision === "boolean") capabilities.vision = raw.vision;
+    if (typeof raw.image === "boolean") capabilities.image = raw.image;
+    if (typeof raw.imageInput === "boolean") capabilities.imageInput = raw.imageInput;
+    const imageSizes = parseStoredImageSizes(raw.imageSizes);
+    if (imageSizes) capabilities.imageSizes = imageSizes;
     const contextWindow = storedTokenLimit(raw.contextWindow);
     if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
     const maxOutputTokens = storedTokenLimit(raw.maxOutputTokens);
@@ -401,10 +441,85 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
   return map;
 }
 
+/** The flags Saale records per model, beside the token limits. */
+export type ModelCapabilityFlag = "vision" | "image" | "imageInput";
+
+/** One recorded flag of a model, or undefined when it is not known. */
+export function configuredFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+): boolean | undefined {
+  const value = map[modelId]?.[flag];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 /** The vision flag recorded for a model (detected, or set by hand), if any. */
 export function configuredVision(map: ModelCapabilityMap, modelId: string): boolean | undefined {
-  const vision = map[modelId]?.vision;
-  return typeof vision === "boolean" ? vision : undefined;
+  return configuredFlag(map, modelId, "vision");
+}
+
+/** The image-generation flag recorded for a model (detected, or set by hand), if any. */
+export function configuredImage(map: ModelCapabilityMap, modelId: string): boolean | undefined {
+  return configuredFlag(map, modelId, "image");
+}
+
+/** Whether the recorded settings let this image model take a picture to edit. */
+export function configuredImageInput(
+  map: ModelCapabilityMap,
+  modelId: string,
+): boolean | undefined {
+  return configuredFlag(map, modelId, "imageInput");
+}
+
+/** The resolutions recorded for an image model, if the admin picked any. */
+export function configuredImageSizes(
+  map: ModelCapabilityMap,
+  modelId: string,
+): string[] | undefined {
+  const sizes = map[modelId]?.imageSizes;
+  return Array.isArray(sizes) && sizes.length > 0 ? sizes : undefined;
+}
+
+/**
+ * The resolutions recorded in a stored column.
+ *
+ * Unlike the account-level list this one never invents a default: absent means
+ * nobody chose, which is what makes the reader fall back deliberately.
+ */
+function parseStoredImageSizes(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sizes = value.filter((entry): entry is string => typeof entry === "string");
+  return parseImageSizesList(sizes);
+}
+
+/** Valid sizes out of a list, deduplicated and capped, or undefined when none. */
+export function parseImageSizesList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const sizes: string[] = [];
+  for (const entry of value) {
+    const size = typeof entry === "string" ? entry.trim().toLowerCase() : "";
+    if (!isImageSize(size) || sizes.includes(size)) continue;
+    sizes.push(size);
+    if (sizes.length === MAX_IMAGE_SIZES) break;
+  }
+  return sizes.length > 0 ? sizes : undefined;
+}
+
+/** A copy of `map` with `modelId`'s resolutions set, or dropped for the default. */
+export function withModelImageSizes(
+  map: ModelCapabilityMap,
+  modelId: string,
+  sizes: string[] | undefined,
+): ModelCapabilityMap {
+  const { imageSizes: _dropped, ...rest } = map[modelId] ?? {};
+  if (!sizes || sizes.length === 0) {
+    const next = { ...map };
+    if (Object.keys(rest).length === 0) delete next[modelId];
+    else next[modelId] = rest;
+    return next;
+  }
+  return { ...map, [modelId]: { ...rest, imageSizes: sizes } };
 }
 
 /** The token limits recorded for a model, with nothing inherited. */
@@ -419,24 +534,57 @@ export function configuredLimits(
   return limits;
 }
 
+/** A copy of `map` with one of `modelId`'s flags set. */
+export function withModelFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+  value: boolean,
+): ModelCapabilityMap {
+  return { ...map, [modelId]: { ...map[modelId], [flag]: value } };
+}
+
+/** A copy of `map` with one of `modelId`'s flags back on automatic detection. */
+export function withoutModelFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+): ModelCapabilityMap {
+  const next = { ...map };
+  const entry = next[modelId];
+  if (!entry) return next;
+  const { [flag]: _dropped, ...rest } = entry;
+  if (Object.keys(rest).length === 0) delete next[modelId];
+  else next[modelId] = rest;
+  return next;
+}
+
 /** A copy of `map` with `modelId`'s vision flag set. */
 export function withModelVision(
   map: ModelCapabilityMap,
   modelId: string,
   vision: boolean,
 ): ModelCapabilityMap {
-  return { ...map, [modelId]: { ...map[modelId], vision } };
+  return withModelFlag(map, modelId, "vision", vision);
 }
 
 /** A copy of `map` with `modelId` back on automatic capability detection. */
 export function withoutModelVision(map: ModelCapabilityMap, modelId: string): ModelCapabilityMap {
-  const next = { ...map };
-  const entry = next[modelId];
-  if (!entry) return next;
-  const { vision: _vision, ...rest } = entry;
-  if (Object.keys(rest).length === 0) delete next[modelId];
-  else next[modelId] = rest;
-  return next;
+  return withoutModelFlag(map, modelId, "vision");
+}
+
+/** A copy of `map` with `modelId`'s image-generation flag set. */
+export function withModelImage(
+  map: ModelCapabilityMap,
+  modelId: string,
+  image: boolean,
+): ModelCapabilityMap {
+  return withModelFlag(map, modelId, "image", image);
+}
+
+/** A copy of `map` with `modelId` back on automatic capability detection. */
+export function withoutModelImage(map: ModelCapabilityMap, modelId: string): ModelCapabilityMap {
+  return withoutModelFlag(map, modelId, "image");
 }
 
 /**
@@ -477,11 +625,16 @@ export function withModelLimits(
  */
 export function serializeModelCapabilityMap(
   map: ModelCapabilityMap,
-): Record<string, Record<string, boolean | number>> {
-  const serialized: Record<string, Record<string, boolean | number>> = {};
+): Record<string, Record<string, boolean | number | string[]>> {
+  const serialized: Record<string, Record<string, boolean | number | string[]>> = {};
   for (const [modelId, capabilities] of Object.entries(map)) {
-    const entry: Record<string, boolean | number> = {};
-    if (typeof capabilities.vision === "boolean") entry.vision = capabilities.vision;
+    const entry: Record<string, boolean | number | string[]> = {};
+    for (const flag of ["vision", "image", "imageInput"] as const) {
+      if (typeof capabilities[flag] === "boolean") entry[flag] = capabilities[flag];
+    }
+    if (capabilities.imageSizes && capabilities.imageSizes.length > 0) {
+      entry.imageSizes = capabilities.imageSizes;
+    }
     if (typeof capabilities.contextWindow === "number") {
       entry.contextWindow = capabilities.contextWindow;
     }
@@ -513,20 +666,78 @@ export function mergeDetectedCapabilities(
   return merged;
 }
 
-/** Validate a capability edit from a request body. */
-export function parseVisionEdit(body: {
-  modelId?: unknown;
-  vision?: unknown;
-}): { modelId: string; vision: boolean | null } | { error: string } {
+/**
+ * Validate a capability edit from a request body.
+ *
+ * An omitted field leaves the flag as it is, and `null` puts it back on
+ * automatic detection, so the editor writes one flag at a time.
+ */
+export function parseFlagEdit<TField extends ModelCapabilityFlag>(
+  field: TField,
+  body: { modelId?: unknown } & Partial<Record<TField, unknown>>,
+): ({ modelId: string } & Record<TField, boolean | null>) | { error: string } {
   const modelId = body.modelId;
   if (typeof modelId !== "string" || modelId.length === 0) {
     return { error: "modelId is required" };
   }
-  if (body.vision === null || body.vision === undefined) return { modelId, vision: null };
-  if (typeof body.vision !== "boolean") {
-    return { error: "vision must be a boolean, or null to reset to auto" };
+  const value = body[field];
+  if (value === null || value === undefined) {
+    return { modelId, [field]: null } as { modelId: string } & Record<TField, boolean | null>;
   }
-  return { modelId, vision: body.vision };
+  if (typeof value !== "boolean") {
+    return { error: `${field} must be a boolean, or null to reset to auto` };
+  }
+  return { modelId, [field]: value } as { modelId: string } & Record<TField, boolean | null>;
+}
+
+/** The vision flag of an edit to one model's settings. */
+export function parseVisionEdit(body: { modelId?: unknown; vision?: unknown }) {
+  return parseFlagEdit("vision", body);
+}
+
+/** The image-generation flag of an edit to one model's settings. */
+export function parseImageEdit(body: { modelId?: unknown; image?: unknown }) {
+  return parseFlagEdit("image", body);
+}
+
+/** The image-input flag of an edit to one model's settings. */
+export function parseImageInputEdit(body: { modelId?: unknown; imageInput?: unknown }) {
+  return parseFlagEdit("imageInput", body);
+}
+
+/**
+ * The resolutions of an edit to one image model, as the admin picks them.
+ *
+ * `null` (or an empty list) puts the model back on the default list. An entry
+ * that is not a size the endpoints render is refused rather than dropped, so a
+ * typo in the form says so instead of quietly shrinking the list.
+ */
+export function parseImageSizesEdit(body: {
+  modelId?: unknown;
+  imageSizes?: unknown;
+}): { modelId: string; imageSizes: string[] | null } | { error: string } {
+  const modelId = body.modelId;
+  if (typeof modelId !== "string" || modelId.length === 0) {
+    return { error: "modelId is required" };
+  }
+  if (body.imageSizes === null || body.imageSizes === undefined) {
+    return { modelId, imageSizes: null };
+  }
+  if (!Array.isArray(body.imageSizes)) {
+    return { error: 'imageSizes must be a list of "WxH" sizes, or null' };
+  }
+  for (const entry of body.imageSizes) {
+    if (typeof entry !== "string" || !isImageSize(entry.trim().toLowerCase())) {
+      return {
+        error: `${String(entry)} is not a resolution. Use "WxH" with both sides divisible by 8, for example "1024x1024".`,
+      };
+    }
+  }
+  const sizes = parseImageSizesList(body.imageSizes) ?? [];
+  if (sizes.length > MAX_IMAGE_SIZES) {
+    return { error: `Pick at most ${MAX_IMAGE_SIZES} resolutions` };
+  }
+  return { modelId, imageSizes: sizes.length > 0 ? sizes : null };
 }
 
 /**

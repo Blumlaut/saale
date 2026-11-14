@@ -7,10 +7,19 @@ import {
   parseVisionEdit,
   resolveModelInput,
   serializeModelCapabilityMap,
+  configuredImage,
+  configuredImageInput,
+  configuredImageSizes,
   configuredLimits,
   configuredVision,
+  withModelFlag,
+  withModelImage,
+  withModelImageSizes,
   withModelLimits,
   withModelVision,
+  parseImageSizesEdit,
+  withoutModelFlag,
+  withoutModelImage,
   withoutModelVision,
 } from "@/lib/providers/capabilities";
 
@@ -203,6 +212,129 @@ describe("parseEndpointListing", () => {
   it("treats a payload with no data array as an empty listing", () => {
     expect(parseEndpointListing({ error: "nope" })).toEqual({ models: [], loadOnDemand: false });
     expect(parseEndpointListing(null)).toEqual({ models: [], loadOnDemand: false });
+  });
+
+  // A diffusion server states that it produces images rather than text. One
+  // that says nothing (stable-diffusion.cpp) is marked by hand, see
+  // `configuredImage`.
+  it("marks a model that produces images", () => {
+    expect(
+      parseEndpointListing({
+        data: [
+          { id: "flux", architecture: { output_modalities: ["image"] } },
+          { id: "sd", capabilities: { image: true } },
+          { id: "qwen3", architecture: { output_modalities: ["text"] } },
+        ],
+      }).models,
+    ).toEqual([
+      { id: "flux", capabilities: {}, imageModel: true },
+      { id: "sd", capabilities: {}, imageModel: true },
+      { id: "qwen3", capabilities: {} },
+    ]);
+  });
+});
+
+describe("withModelImage / withoutModelImage", () => {
+  it("sets one model without touching the others", () => {
+    expect(withModelImage({ other: { vision: true } }, "flux", true)).toEqual({
+      other: { vision: true },
+      flux: { image: true },
+    });
+    expect(configuredImage({ flux: { image: false } }, "flux")).toBe(false);
+    expect(configuredImage({}, "flux")).toBeUndefined();
+  });
+
+  // A diffusion server is free not to serve /v1/images/edits; the flag is how
+  // the agent learns it is only offered a prompt.
+  it("records whether an image model takes a picture to edit", () => {
+    const stored = withModelFlag({ flux: { image: true } }, "flux", "imageInput", false);
+
+    expect(stored.flux).toEqual({ image: true, imageInput: false });
+    expect(configuredImageInput(stored, "flux")).toBe(false);
+    expect(configuredImageInput({}, "flux")).toBeUndefined();
+    expect(withoutModelFlag(stored, "flux", "imageInput")).toEqual({ flux: { image: true } });
+  });
+
+  it("keeps the other capabilities of the model it resets", () => {
+    expect(withoutModelImage({ flux: { image: true, vision: false } }, "flux")).toEqual({
+      flux: { vision: false },
+    });
+    expect(withoutModelImage({ flux: { image: true } }, "flux")).toEqual({});
+  });
+});
+
+describe("image resolutions recorded on a model", () => {
+  it("round-trips through the stored column", () => {
+    const stored = serializeModelCapabilityMap({
+      flux: { image: true, imageSizes: ["2048x2048", "1024x1024"] },
+    });
+
+    expect(stored).toEqual({ flux: { image: true, imageSizes: ["2048x2048", "1024x1024"] } });
+    expect(parseModelCapabilityMap(stored).flux?.imageSizes).toEqual(["2048x2048", "1024x1024"]);
+  });
+
+  // Every flag the editor writes has to survive the column, or a toggle looks
+  // saved and is gone by the next read.
+  it("stores every recorded flag", () => {
+    expect(
+      serializeModelCapabilityMap({
+        flux: { vision: true, image: true, imageInput: false },
+      }),
+    ).toEqual({ flux: { vision: true, image: true, imageInput: false } });
+  });
+
+  it("drops a stored size the endpoints cannot render", () => {
+    const map = parseModelCapabilityMap({
+      flux: { imageSizes: ["1024x1024", "abc", "9000x9000"] },
+    });
+
+    expect(map.flux?.imageSizes).toEqual(["1024x1024"]);
+  });
+
+  it("reports the list, and nothing when the admin picked none", () => {
+    expect(configuredImageSizes({ flux: { imageSizes: ["512x512"] } }, "flux")).toEqual([
+      "512x512",
+    ]);
+    expect(configuredImageSizes({ flux: { image: true } }, "flux")).toBeUndefined();
+    expect(configuredImageSizes({}, "flux")).toBeUndefined();
+  });
+
+  it("clears the list back to nothing without losing the model's other flags", () => {
+    const cleared = withModelImageSizes(
+      { flux: { image: true, imageSizes: ["512x512"] } },
+      "flux",
+      undefined,
+    );
+
+    expect(cleared).toEqual({ flux: { image: true } });
+    expect(
+      configuredImageSizes(withModelImageSizes({}, "gone", undefined), "gone"),
+    ).toBeUndefined();
+  });
+
+  it("refuses an edit that is not a list of sizes", () => {
+    expect(parseImageSizesEdit({ modelId: "flux", imageSizes: "1024x1024" })).toEqual({
+      error: 'imageSizes must be a list of "WxH" sizes, or null',
+    });
+    expect(parseImageSizesEdit({ modelId: "flux", imageSizes: ["1023x1024"] })).toMatchObject({
+      error: expect.stringContaining("1023x1024"),
+    });
+    expect(parseImageSizesEdit({ imageSizes: [] })).toEqual({ error: "modelId is required" });
+  });
+
+  it("normalizes an edit and reads an empty one as the default", () => {
+    expect(parseImageSizesEdit({ modelId: "flux", imageSizes: ["1024x1024"] })).toEqual({
+      modelId: "flux",
+      imageSizes: ["1024x1024"],
+    });
+    expect(parseImageSizesEdit({ modelId: "flux", imageSizes: [] })).toEqual({
+      modelId: "flux",
+      imageSizes: null,
+    });
+    expect(parseImageSizesEdit({ modelId: "flux", imageSizes: null })).toEqual({
+      modelId: "flux",
+      imageSizes: null,
+    });
   });
 });
 
