@@ -100,9 +100,18 @@ vi.mock("@/lib/permissions/feature-access", () => ({
   loadUserFeatures: vi.fn(async () => ALL_FEATURES_ON),
 }));
 
+// The image tools need a model to call; these cases are about the categories.
+vi.mock("@/lib/pi/image-model", () => ({
+  resolveImageModel: vi.fn(async () => null),
+}));
+vi.mock("@/lib/pi/tools/image-tools", () => ({
+  createImageTools: vi.fn((userId: string) => ({ name: "generate_image", userId })),
+}));
+
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
+import { resolveImageModel } from "@/lib/pi/image-model";
 import { FEATURES, type FeatureMap } from "@/lib/permissions/features";
 import * as sandboxClient from "@/lib/sandbox/client";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
@@ -156,6 +165,31 @@ describe("resolveTools", () => {
     );
 
     expect(tools.map((tool) => tool.name)).toEqual(["mail_accounts", "mail_read"]);
+  });
+
+  // Rendering costs money on every hosted provider, so a session with no image
+  // model gets no tool at all: nothing to call, nothing to declare.
+  it("leaves the image tool out when no image model is configured", async () => {
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).not.toContain("generate_image");
+  });
+
+  it("includes the image tool once an image model is picked", async () => {
+    vi.mocked(resolveImageModel).mockResolvedValueOnce({ provider: "openrouter", id: "flux" });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).toContain("generate_image");
+  });
+
+  it("drops the image tool when its feature is switched off", async () => {
+    vi.mocked(resolveImageModel).mockResolvedValue({ provider: "openrouter", id: "flux" });
+    vi.mocked(loadUserFeatures).mockResolvedValueOnce({ ...ALL_FEATURES_ON, image: false });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).not.toContain("generate_image");
   });
 
   it("keeps a tool whose policy only asks", async () => {

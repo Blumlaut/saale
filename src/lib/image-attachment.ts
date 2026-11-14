@@ -21,13 +21,6 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 /**
- * Generate a user-scoped directory for image attachments.
- */
-function getUserImageDir(userId: string): string {
-  return path.join(userWorkspacePath(userId), "images");
-}
-
-/**
  * Validate that an uploaded file is an allowed image type and within size limits.
  */
 export function validateImageUpload(file: File): string | null {
@@ -50,23 +43,31 @@ export function validateImageUpload(file: File): string | null {
  * - Converts to WebP with alpha channel support (quality 80)
  * - Returns metadata about the stored file
  */
-export async function processAndStoreImage(
+/**
+ * Write one image into the user's workspace as a PNG.
+ *
+ * `dir` is relative to the workspace root: `images` holds what the user sent (a
+ * `ChatAttachment` owns each file), `generated` what the agent rendered.
+ *
+ * - Resizes to fit within MAX_DIMENSION while preserving aspect ratio
+ * - Converts to PNG with alpha channel support
+ * - Returns metadata about the stored file
+ */
+async function writeWorkspaceImage(
   userId: string,
   fileBuffer: Buffer,
-  _originalName: string,
-  _originalMimeType: string,
-  _originalSize: number,
+  dir: string,
 ): Promise<{
   storageId: string;
   storagePath: string;
   width: number;
   height: number;
 }> {
-  const imageDir = getUserImageDir(userId);
+  const imageDir = path.join(userWorkspacePath(userId), dir);
   await fs.mkdir(imageDir, { recursive: true });
 
   const storageId = randomUUID();
-  const storagePath = `images/${storageId}.png`;
+  const storagePath = `${dir}/${storageId}.png`;
   const fullPath = path.join(userWorkspacePath(userId), storagePath);
 
   // Process with sharp: auto-orient, resize, convert to PNG.
@@ -92,6 +93,39 @@ export async function processAndStoreImage(
     width: metadata.width,
     height: metadata.height,
   };
+}
+
+/**
+ * Store an uploaded image as the attachment it belongs to.
+ *
+ * Returns metadata about the stored file.
+ */
+export async function processAndStoreImage(
+  userId: string,
+  fileBuffer: Buffer,
+  _originalName: string,
+  _originalMimeType: string,
+  _originalSize: number,
+): Promise<{
+  storageId: string;
+  storagePath: string;
+  width: number;
+  height: number;
+}> {
+  return writeWorkspaceImage(userId, fileBuffer, "images");
+}
+
+/**
+ * Store an image the agent generated.
+ *
+ * Kept apart from `images/`: that directory is swept for files no
+ * `ChatAttachment` owns, and a generated image has no attachment row.
+ */
+export function storeGeneratedImage(
+  userId: string,
+  imageBuffer: Buffer,
+): Promise<{ storageId: string; storagePath: string; width: number; height: number }> {
+  return writeWorkspaceImage(userId, imageBuffer, "generated");
 }
 
 /**

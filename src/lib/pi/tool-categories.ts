@@ -27,6 +27,7 @@ import {
   Users,
   FolderGit2,
   Plug,
+  Image,
 } from "lucide-react";
 
 export interface ToolCategory {
@@ -115,6 +116,16 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     description: "Search and fetch web content",
     icon: Globe,
     defaultEnabled: true,
+    defaultExposure: "direct",
+  },
+  {
+    key: "image",
+    label: "Images",
+    description: "Render images with the account's image model",
+    icon: Image,
+    defaultEnabled: true,
+    // Rendering is a deliberate act with a real cost, so the model has to know
+    // the tool exists without a discovery step it would never think to take.
     defaultExposure: "direct",
   },
   {
