@@ -8,11 +8,14 @@ import {
   resolveModelInput,
   serializeModelCapabilityMap,
   configuredImage,
+  configuredImageInput,
   configuredLimits,
   configuredVision,
+  withModelFlag,
   withModelImage,
   withModelLimits,
   withModelVision,
+  withoutModelFlag,
   withoutModelImage,
   withoutModelVision,
 } from "@/lib/providers/capabilities";
@@ -236,6 +239,17 @@ describe("withModelImage / withoutModelImage", () => {
     });
     expect(configuredImage({ flux: { image: false } }, "flux")).toBe(false);
     expect(configuredImage({}, "flux")).toBeUndefined();
+  });
+
+  // A diffusion server is free not to serve /v1/images/edits; the flag is how
+  // the agent learns it is only offered a prompt.
+  it("records whether an image model takes a picture to edit", () => {
+    const stored = withModelFlag({ flux: { image: true } }, "flux", "imageInput", false);
+
+    expect(stored.flux).toEqual({ image: true, imageInput: false });
+    expect(configuredImageInput(stored, "flux")).toBe(false);
+    expect(configuredImageInput({}, "flux")).toBeUndefined();
+    expect(withoutModelFlag(stored, "flux", "imageInput")).toEqual({ flux: { image: true } });
   });
 
   it("keeps the other capabilities of the model it resets", () => {

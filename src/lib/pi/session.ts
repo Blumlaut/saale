@@ -117,6 +117,7 @@ export async function buildSessionDeps(options: {
     createSandboxScopedTools,
     ...(options.toolExposure ? { exposure: options.toolExposure } : {}),
     toolPolicies: options.toolPolicies,
+    modelRuntime,
   });
   allCustomTools.push(...resolvedTools);
 

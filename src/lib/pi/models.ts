@@ -6,6 +6,7 @@ import {
   parseModelCapabilityMap,
   resolveModelInput,
   configuredImage,
+  configuredImageInput,
   configuredLimits,
   configuredVision,
   type EndpointListing,
@@ -172,16 +173,20 @@ function defineDecisionModel(
  *
  * It produces images instead of answering, so Pi lists it apart from the chat
  * models. `openai-images` is the adapter this module registers for the
- * provider, and the endpoint decides whether it serves `/v1/images/edits` for
- * the reference images it is offered.
+ * provider. Its `input` says whether the endpoint takes a picture to edit,
+ * which is the one thing a diffusion server is free not to implement.
  */
-function defineImageModel(id: string): ProviderModelDefinition {
+function defineImageModel(
+  id: string,
+  options: { capabilities: ModelCapabilityMap },
+): ProviderModelDefinition {
+  const edits = configuredImageInput(options.capabilities, id) !== false;
   return {
     id,
     name: id,
     type: "image",
     api: OPENAI_IMAGES_API,
-    input: ["text", "image"],
+    input: edits ? ["text", "image"] : ["text"],
     output: ["image"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   };
@@ -229,7 +234,7 @@ export async function registerDiscoveredModels(
             if (model.decisionModel) {
               return defineDecisionModel(model.id, { limits: options.limits, capabilities });
             }
-            if (isImage(model)) return defineImageModel(model.id);
+            if (isImage(model)) return defineImageModel(model.id, { capabilities });
             return defineDiscoveredModel(runtime, options.provider, model.id, {
               limits: options.limits,
               capabilities,

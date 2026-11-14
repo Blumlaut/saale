@@ -19,6 +19,8 @@ export interface AvailableModel {
   vision?: boolean;
   /** Whether the user marked this endpoint model as one that generates images. */
   image?: boolean;
+  /** Whether it takes a picture to edit. Absent means it does. */
+  imageInput?: boolean;
   /** Context window Pi will compact against. */
   contextWindow?: number;
   /** Output cap Pi sends as the request's token budget. */

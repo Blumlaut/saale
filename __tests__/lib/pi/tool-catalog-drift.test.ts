@@ -58,7 +58,7 @@ async function implementedTools(): Promise<ToolDefinition[]> {
     createJobTools(userId),
     createCalendarTools(userId),
     createWebTools(),
-    createImageTools(userId, sessionId),
+    createImageTools(userId, sessionId, { edit: true }),
     createMemoryTools(userId),
     createTaskTools(userId),
     createAutomationTools(userId, sessionId),
