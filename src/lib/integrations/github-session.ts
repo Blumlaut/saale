@@ -86,8 +86,8 @@ const NO_CREDENTIAL_ENV: Record<string, string> = {
 };
 
 /**
- * The environment a command in one coder chat should carry, with an installation
- * token narrowed to that chat's repository.
+ * The environment a command in one coder chat should carry: the installation's
+ * token, at the chat's permissions.
  */
 export async function resolveGithubSessionEnv(
   userId: string,

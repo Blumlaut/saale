@@ -176,8 +176,9 @@ Two things decide what a stranger gets:
 - **“Any account”** at app registration. On “Only this account”, other accounts
   can authorize the app but cannot install it, so they reach no repository.
 - **Who installs it, sets the ceiling.** The installer picks the repositories
-  (or grants all), and Saale narrows further per chat. Changing the set later
-  needs admin access on the repository, which is why a plain member sees an
+  (or grants all), and that set is what every chat of theirs may reach: Saale
+  narrows to the chat's permissions, not to its repository. Changing the set
+  later needs admin access on the repository, which is why a plain member sees an
   empty picker.
 
 Signing one account out removes only its own token and access rows; the
@@ -203,6 +204,6 @@ history:
 | the workspace's `.gitconfig` | `[user]` is the connected account and its `users.noreply.github.com` address, so GitHub links the commit to the profile |
 | `gh pr create`               | runs with the account's own token (`resolveGithubUserEnv`), so the pull request's author is the account, not the app    |
 
-Everything else in a chat keeps the narrowed installation token: pushes are
-still limited to the chat's repository. Attribution changes who is _recorded_,
-not what a command may touch.
+Everything else in a chat keeps the installation's token, so a push is limited by
+what GitHub approved for the installation, not by the chat's own repository.
+Attribution changes who is _recorded_, not what a command may touch.

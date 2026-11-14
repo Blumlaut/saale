@@ -57,11 +57,12 @@ export async function createSandboxScopedTools(
     identity: userIdentity(userId),
     root: homeDir,
     // A name the user set wins over Saale's — except `GH_TOKEN`, where the app's
-    // narrowed installation token has to win: it is what confines a chat to its
-    // own repository. Resolved per command, because the token lasts an hour.
+    // installation token has to win: it is what puts the installation's ceiling
+    // where the account's own token would not. Resolved per command, because the
+    // token lasts an hour.
     env: async () => {
       // One GitHub credential per command, never two: the policy either hands in
-      // the app's narrowed token and drops the account's own `GH_TOKEN`, or it
+      // the app's installation token and drops the account's own `GH_TOKEN`, or it
       // leaves that variable alone and delivers nothing.
       const policy = await githubCredentialPolicy(userId).catch((err: unknown) => {
         console.error(`Failed to resolve the GitHub credential policy of ${userId}:`, err);

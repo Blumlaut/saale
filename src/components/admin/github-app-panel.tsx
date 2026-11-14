@@ -88,7 +88,7 @@ const CREDENTIAL_OPTIONS = [
   {
     value: "app" as const,
     label: "This instance's GitHub App",
-    detail: "Acts as the app, narrowed per chat to that chat's repository.",
+    detail: "Acts as the app: every repository the installation covers, at the chat's permissions.",
   },
   {
     value: "variable" as const,

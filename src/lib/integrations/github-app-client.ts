@@ -3,7 +3,7 @@
  *
  * Everything here is a request and its answer: signing the app JWT, the device
  * flow, refreshing a user token, listing installations, and minting an
- * installation token that is narrowed to one repository. No database, no cache,
+ * installation token — narrowed to repositories where the caller asks for it. No database, no cache,
  * no retries — `github-app.ts` owns the state and decides when to call in.
  *
  * Two kinds of credential come out of it, and they are not interchangeable:
