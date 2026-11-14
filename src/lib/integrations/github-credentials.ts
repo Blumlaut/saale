@@ -223,7 +223,7 @@ if [ -n "$SAALE_NO_GITHUB_CREDENTIAL" ]; then
   echo "saale: this chat carries no GitHub credential for its repository" >&2
   exit 1
 fi
-if [ -z "$GH_TOKEN" ]; then # a chat's narrowed token wins
+if [ -z "$GH_TOKEN" ]; then # the chat's token wins
   token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' "\${CREDENTIAL_FILE}" 2>/dev/null)
   if [ -n "$token" ]; then
     GH_TOKEN="$token"
@@ -362,8 +362,8 @@ async function applyGitIdentity(userId: string, author: { login: string } | null
  * An installation token is the app, so a pull request it opens is authored by
  * the app's bot. Opening one is a single call whose author is read, so it uses
  * the person's own authorization instead — which also carries only what that
- * person may reach. Writes that a chat runs keep the narrowed installation
- * token; this is not a replacement for it.
+ * person may reach. Writes that a chat runs keep the installation's token; this
+ * is not a replacement for it.
  *
  * `ownEnv` is the account's own sandbox variables, because
  * `admin.githubTokenPrecedence = "variable"` promises that a `GH_TOKEN` kept

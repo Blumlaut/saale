@@ -179,19 +179,20 @@ describe("buildCoderSystemPrompt custom instructions", () => {
 });
 
 /**
- * The app's token is Saale's, not the user's, and it is narrowed per chat.
+ * The app's token is Saale's, not the user's, and its ceiling is the installation.
  *
  * An agent that reads a refusal as a bug will retry, look for a credential of
  * its own, or try to log `gh` in — the two things that would put a wider
- * credential beside the narrow one. So the boundary has to be in the prompt,
- * and the prompt has to say which credential is in play.
+ * credential beside the one the command was given. So the boundary has to be in
+ * the prompt, and the prompt has to say which credential is in play.
  */
 describe("buildCoderSystemPrompt with the GitHub app", () => {
   const prompt = buildCoderSystemPrompt({ toolConfig: { terminal: true }, githubApp: true });
 
-  it("says the token reaches this chat's repository only", () => {
+  it("names the installation, not the chat, as the boundary", () => {
     expect(prompt).toContain("Saale mints a `GH_TOKEN` for each command");
-    expect(prompt).toContain("reaches exactly this chat's repository");
+    expect(prompt).toContain("carries every repository GitHub approved for the app");
+    expect(prompt).toContain("The installation is the ceiling, not this chat");
     expect(prompt).toContain("that is the boundary, not a bug");
   });
 
