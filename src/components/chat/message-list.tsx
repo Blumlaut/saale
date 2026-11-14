@@ -32,6 +32,15 @@ import { toolMark } from "./tool-marks";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
+import {
+  STEP_REVEAL_ROWS,
+  WINDOW_ROW_BUDGET,
+  revealStartFor,
+  stepWindowStart,
+  tailWindowStart,
+  windowAnchor,
+  type WindowTurns,
+} from "@/lib/chat/render-window";
 import { dropBlankText } from "@/lib/chat/turn-text";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
 import { getAssistantCopyText } from "@/lib/chat/copy-response";
@@ -112,66 +121,9 @@ const tailOffset = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientH
  */
 const atTail = (el: HTMLElement, band = BOTTOM_EPSILON_PX) => tailOffset(el) - el.scrollTop <= band;
 
-/** Messages a group mounts: one per bubble, one per turn in a run. */
-const groupRows = (group: MessageGroup) =>
-  group.type === "assistant-group" ? group.messages.length : 1;
-
-/**
- * First group of the window: the newest groups that fit the turn and row
- * limits. The newest group always makes it in, and `AssistantGroup` bounds a
- * single turn that is larger than the budget on its own.
- */
-function windowStartFor(groups: readonly MessageGroup[]): number {
-  let rows = 0;
-  let start = groups.length;
-  while (start > 0 && groups.length - start < INITIAL_WINDOW_GROUPS) {
-    const next = start - 1;
-    const cost = groupRows(groups[next]!);
-    if (rows > 0 && rows + cost > WINDOW_ROW_BUDGET) break;
-    rows += cost;
-    start = next;
-  }
-  return start;
-}
-
-/**
- * First group after revealing earlier ones: at most `WINDOW_GROWTH_GROUPS`
- * more turns, and no more than one row budget's worth of messages.
- */
-function revealStartFor(groups: readonly MessageGroup[], from: number): number {
-  let rows = 0;
-  let start = from;
-  while (start > 0 && from - start < WINDOW_GROWTH_GROUPS) {
-    const next = start - 1;
-    const cost = groupRows(groups[next]!);
-    if (rows > 0 && rows + cost > WINDOW_ROW_BUDGET) break;
-    rows += cost;
-    start = next;
-  }
-  return start;
-}
-
-/**
- * Rendering window. A long transcript is thousands of DOM nodes (markdown,
- * highlighting, tool cards), and every layout pass pays for all of them
- * including the composer's per-keystroke autosize reflow. Only the tail is
- * rendered; earlier turns are revealed on demand.
- *
- * Counted in rows as well as turns: a coder turn runs hundreds of steps, each
- * its own message with its own card, so 20 turns of a busy chat is a window of
- * thousands of mounted components (~2KB of heap each). The row budget is what
- * bounds that.
- */
-const INITIAL_WINDOW_GROUPS = 20;
-const WINDOW_GROWTH_GROUPS = 30;
-/**
- * Messages the transcript mounts at once. The window counts turns and rows, and
- * a single turn larger than the whole budget is cut to it: one number bounds
- * what a transcript can cost, however a run was shaped.
- */
-const WINDOW_ROW_BUDGET = 150;
-/** Messages one click of a turn's earlier-steps control adds. */
-const STEP_REVEAL_ROWS = 60;
+/** What a group is rendered under: its first message's key, which a rebuild keeps. */
+const groupAnchor = (group: MessageGroup): string =>
+  group.type === "assistant-group" ? messageKey(group.messages[0]!) : messageKey(group.message);
 
 /**
  * Memoized: the composer draft lives in ChatInterface, so an un-memoized list
@@ -257,13 +209,59 @@ export const MessageList = memo(
     const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
 
     // ── Render window ────────────────────────────────────────────────────────
+    // What each turn costs to mount, read per turn as the window walks back.
+    // The condensed transcript folds a run into a line or two, so its cost
+    // there is the lines it shows. Capped at a window's worth whatever the
+    // shape: past that a turn folds its own rows.
+    const windowTurns = useMemo<WindowTurns>(() => {
+      const costs = new Map<number, number>();
+      return {
+        length: groupedMessages.length,
+        anchor: (index) => groupAnchor(groupedMessages[index]!),
+        prompt: (index) => groupedMessages[index]!.type !== "assistant-group",
+        rows: (index) => {
+          const cached = costs.get(index);
+          if (cached !== undefined) return cached;
+          const group = groupedMessages[index]!;
+          const rows =
+            group.type !== "assistant-group"
+              ? 1
+              : compactActivity
+                ? compactBlocks(group.messages, splitToolCalls).length
+                : group.messages.length;
+          const capped = Math.min(rows, WINDOW_ROW_BUDGET);
+          costs.set(index, capped);
+          return capped;
+        },
+      };
+    }, [groupedMessages, compactActivity]);
+
     // `revealedFrom`: the user asked for earlier turns. that start stays frozen,
     // so a reveal is never undone under a reader's feet.
     // `pinnedStart`: the window held while they are scrolled away from the bottom.
     const [revealedFrom, setRevealedFrom] = useState<number | null>(null);
     const [pinnedStart, setPinnedStart] = useState<number | null>(null);
-    const tailStart = useMemo(() => windowStartFor(groupedMessages), [groupedMessages]);
-    const windowStart = revealedFrom ?? (isAtBottom ? tailStart : (pinnedStart ?? tailStart));
+    // The turn the tail window starts at, held across renders, so a run that
+    // keeps working appends below it. See `tailWindowStart` for when it lets go.
+    const [tailAnchor, setTailAnchor] = useState<string | null>(null);
+    const tailStart = useMemo(
+      () => tailWindowStart(windowTurns, tailAnchor),
+      [windowTurns, tailAnchor],
+    );
+    useEffect(() => {
+      const next = windowAnchor(windowTurns, tailStart);
+      if (next !== tailAnchor) setTailAnchor(next);
+    }, [windowTurns, tailStart, tailAnchor]);
+    // A start past the last turn holds nothing: the transcript shrank under a
+    // window that was opened on a longer one (a compaction, a reload).
+    const heldStart = (start: number | null) =>
+      start !== null && start < groupedMessages.length ? start : tailStart;
+    const windowStart =
+      revealedFrom !== null
+        ? heldStart(revealedFrom)
+        : isAtBottom
+          ? tailStart
+          : heldStart(pinnedStart);
 
     /**
      * Note the row the reader's view starts at, for the next reflow to hold.
@@ -626,7 +624,7 @@ export const MessageList = memo(
                       onLoadEarlier?.();
                       return;
                     }
-                    setRevealedFrom(revealStartFor(groupedMessages, windowStart));
+                    setRevealedFrom(revealStartFor(windowTurns, windowStart));
                   }}
                 >
                   <History className="mr-1.5 h-3.5 w-3.5" />
@@ -1074,9 +1072,10 @@ function AssistantGroupImpl({
   compactActivity: boolean;
 }) {
   const [expandedThinking, setExpandedThinking] = useState<Set<string>>(new Set());
-  // A coder turn runs hundreds of steps, each its own card and bubble, so the
-  // oldest of them fold away behind a control.
-  const [rowsShown, setRowsShown] = useState(WINDOW_ROW_BUDGET);
+  // Where the reader unfolded the run. A coder turn runs hundreds of steps, each
+  // its own card and bubble, so the oldest of them fold away behind a control;
+  // holding the unfold here keeps a step they opened on screen as more arrive.
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
 
   const toggleThinking = (key: string) => {
     setExpandedThinking((prev) => {
@@ -1113,14 +1112,13 @@ function AssistantGroupImpl({
   // Combined response text for the copy button (empty when no turn has text)
   const copyText = getAssistantCopyText(visibleMessages);
 
-  // The steps the step-by-step transcript renders. The newest always are, so a
-  // run in flight stays in view. The condensed one folds a run into a line each,
-  // so it reads every step whether or not they are unfolded.
-  const shownMessages =
-    !compactActivity && visibleMessages.length > rowsShown
-      ? visibleMessages.slice(-rowsShown)
-      : visibleMessages;
-  const foldedSteps = visibleMessages.length - shownMessages.length;
+  // The steps the step-by-step transcript renders: the newest window's worth,
+  // or everything from where the reader unfolded it. The condensed one folds a
+  // run into a line each, so it reads every step whether or not they are
+  // unfolded.
+  const foldStart = compactActivity ? 0 : stepWindowStart(visibleMessages.length, openedAt);
+  const shownMessages = visibleMessages.slice(foldStart);
+  const foldedSteps = foldStart;
 
   // The turn the run is working on, if any. Only its rows report progress, and
   // the flag is turn-scoped rather than per token. otherwise it drops every
@@ -1177,7 +1175,7 @@ function AssistantGroupImpl({
                   variant="ghost"
                   size="sm"
                   className="text-muted-foreground hover:text-foreground text-xs"
-                  onClick={() => setRowsShown((shown) => shown + STEP_REVEAL_ROWS)}
+                  onClick={() => setOpenedAt(Math.max(0, foldStart - STEP_REVEAL_ROWS))}
                 >
                   <History className="mr-1.5 h-3.5 w-3.5" />
                   Show {foldedSteps} earlier {foldedSteps === 1 ? "step" : "steps"}
