@@ -821,25 +821,37 @@ describe("image descriptor", () => {
     expect(model?.title).toBe("Generate Image");
     expect(model?.detail).toBe("A red fox in the snow");
     expect(model?.status).toEqual({ tone: "success", label: "1024×768" });
-    expect(firstBlock(model, "image").path).toBe("generated/render.png");
+    expect(firstBlock(model, "image")).toEqual({
+      kind: "image",
+      path: "generated/render.png",
+      // The card takes the picture's shape from these two.
+      width: 1024,
+      height: 768,
+    });
     const facts = firstBlock(model, "facts").items;
     expect(facts[0]?.text).toBe("flux");
     expect(facts[0]?.note).toBe("openrouter");
   });
 
   // A render takes minutes and the endpoint reports no progress, so a running
-  // call gets a moving tile rather than the same badge every other tool has.
-  it("sweeps while the picture is being rendered", () => {
+  // call gets a shimmer rather than the same badge every other tool has.
+  it("shimmers while the picture is being rendered", () => {
     const running = imageToolDescriptor.describe(
       call("generate_image", undefined, {
         status: "running",
-        args: { prompt: "A red fox in the snow" },
+        args: { prompt: "A red fox in the snow", size: "1536x1024" },
       }),
     );
 
     expect(running?.status.tone).toBe("running");
     expect(running?.detail).toBe("A red fox in the snow");
-    expect(firstBlock(running, "rendering").label).toBe("Rendering the picture…");
+    expect(firstBlock(running, "rendering")).toEqual({
+      kind: "rendering",
+      label: "Rendering the picture…",
+      // The shape the picture lands in, so the card does not jump when it does.
+      width: 1536,
+      height: 1024,
+    });
   });
 
   it("says it is editing when the call works from a picture", () => {
