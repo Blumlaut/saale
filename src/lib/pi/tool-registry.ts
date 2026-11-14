@@ -7,8 +7,10 @@ import { canExec as canRunCommands } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
+import { resolveImageModel } from "./image-model";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
+import { createImageTools } from "./tools/image-tools";
 import { createContactTools } from "./tools/contact-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
@@ -49,6 +51,7 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   chatSearch: (userId, sessionId) => createChatTools(userId, sessionId),
   telegram: (userId, sessionId) => createTelegramTools(userId, sessionId),
   web: () => createWebTools(),
+  image: (userId, sessionId) => createImageTools(userId, sessionId),
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
   watchers: (userId, sessionId) => createAutomationTools(userId, sessionId),
@@ -157,6 +160,10 @@ export async function resolveTools(
   // the user's tool config still says "enabled".
   const features = await loadUserFeatures(userId);
 
+  // Image generation needs a model to call: nobody picked one, or Pi has no such
+  // model for this account, means no tool to offer.
+  const imageModel = await resolveImageModel(userId);
+
   // Backward compat: map legacy keys to terminal
   const terminalEnabled =
     (config.terminal ||
@@ -182,6 +189,8 @@ export async function resolveTools(
     // registry mistake, so it stays ungated.
     const feature = featureForToolCategory(category.key);
     if (feature && !features[feature]) continue;
+
+    if (category.key === "image" && !imageModel) continue;
 
     if (config[category.key]) {
       const factory = TOOL_FACTORIES[category.key];

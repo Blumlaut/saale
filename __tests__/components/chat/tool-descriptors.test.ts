@@ -6,6 +6,7 @@ import { calendarToolDescriptor } from "@/components/chat/tool-descriptors/calen
 import { codemodeDescriptor } from "@/components/chat/tool-descriptors/codemode";
 import { fileToolDescriptor } from "@/components/chat/tool-descriptors/file";
 import { describeGenericToolCall } from "@/components/chat/tool-descriptors/generic";
+import { imageToolDescriptor } from "@/components/chat/tool-descriptors/image";
 import { aggregateToolStatus } from "@/components/chat/tool-status";
 import { infraToolDescriptor } from "@/components/chat/tool-descriptors/infra";
 import { mailToolDescriptor } from "@/components/chat/tool-descriptors/mail";
@@ -68,6 +69,7 @@ describe("tool card routing", () => {
     "mail_read",
     "calendar_upcoming",
     "calendar_search",
+    "generate_image",
   ]);
 
   it("sends every tool with a result format to its own card, and the rest to the generic card", () => {
@@ -799,5 +801,40 @@ describe("aggregate status of a run of calls", () => {
       tone: "danger",
       label: "failed",
     });
+  });
+});
+
+describe("image descriptor", () => {
+  const result = withMeta("_saaleImageMeta", {
+    path: "generated/render.png",
+    model: "flux",
+    provider: "openrouter",
+    prompt: "A red fox in the snow",
+    width: 1024,
+    height: 768,
+  });
+
+  it("describes a render with the picture itself", () => {
+    const model = imageToolDescriptor.describe(call("generate_image", result));
+
+    expect(model?.title).toBe("Generate Image");
+    expect(model?.detail).toBe("A red fox in the snow");
+    expect(model?.status).toEqual({ tone: "success", label: "1024×768" });
+    expect(firstBlock(model, "image").path).toBe("generated/render.png");
+    const facts = firstBlock(model, "facts").items;
+    expect(facts[0]?.text).toBe("flux");
+    expect(facts[0]?.note).toBe("openrouter");
+  });
+
+  it("has nothing to describe until the render lands", () => {
+    expect(imageToolDescriptor.describe(call("generate_image", undefined))).toBeNull();
+  });
+
+  // The card is the attachment: a picture the user asked for must not be folded
+  // into the collapsed run of calls that produced it.
+  it("renders as an attachment, outside the collapsed run", () => {
+    const split = splitToolCalls([call("generate_image", result), call("web_search", result)]);
+
+    expect(split.attachments.map((entry) => entry.name)).toEqual(["generate_image"]);
   });
 });

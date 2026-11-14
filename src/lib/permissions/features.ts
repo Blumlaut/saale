@@ -33,6 +33,7 @@ export const FEATURES = [
   "telegram",
   "web",
   "memory",
+  "image",
   "chatSearch",
   "coder",
 ] as const;
@@ -52,6 +53,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureKey, FeatureDefinition> = {
     description: "Inbox, contacts and the assistant's email tools.",
     toolCategories: ["email", "contacts"],
     navId: "mail",
+    defaultOn: true,
+  },
+  image: {
+    label: "Images",
+    description: "Image generation with the account's image model.",
+    toolCategories: ["image"],
     defaultOn: true,
   },
   calendar: {

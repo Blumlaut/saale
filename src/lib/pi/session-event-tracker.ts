@@ -61,7 +61,7 @@ import { publishSessionEvent, resetSessionEvents } from "./session-events";
 import { buildFinalAssistantMessage } from "./stream-logic";
 import { nextTextStep } from "./streamed-text";
 import { saveAssistantMessage } from "./stream-helpers";
-import { buildTurnStats, type TurnStats } from "./turn-stats";
+import { buildTurnStats, imageRenderCost, type TurnStats } from "./turn-stats";
 import { recordUsage, usageFromSession, type UsageKind } from "@/lib/usage/record";
 
 export interface SessionEventTrackerOptions {
@@ -657,7 +657,14 @@ export function createSessionEventTracker(
         // No errorMessage here: a failed turn may still be retried by the SDK,
         // so whether this attempt is a reported failure is only known at
         // agent_end (see the willRetry branch).
-        const turnStats = turnStatsFor(event.message);
+        // A render is billed by its own provider, so its price lands on the
+        // turn that asked for it.
+        const imageCost = imageRenderCost(turnToolCalls);
+        const messageStats = turnStatsFor(event.message);
+        const turnStats =
+          messageStats && imageCost > 0
+            ? { ...messageStats, cost: messageStats.cost + imageCost }
+            : messageStats;
         // The row this turn becomes is new, so it is billed here and nowhere
         // else: agent_end updates this same row when the run had one turn.
         recordTurnUsage(turnStats);

@@ -70,6 +70,7 @@ const SUMMARY_RULES: Record<string, SummaryRule> = {
   // Saale
   codemode: { text: "Ran a script" },
   show_file: { text: "Shared a file" },
+  generate_image: { text: "Rendered an image" },
   web_search: {
     text: "Searched the web",
     count: { field: "count", one: "result", many: "results" },
