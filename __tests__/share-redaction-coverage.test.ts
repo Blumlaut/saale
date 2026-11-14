@@ -59,6 +59,13 @@ const TOOL_CALL_READERS: Array<{
   guardedBy: string;
 }> = [
   {
+    // Finds the pictures a deleted message rendered so their files can go too.
+    // Nothing of the column reaches a client: the response is a confirmation.
+    path: "src/app/api/chat/sessions/[sessionId]/messages/route.ts",
+    access: "owner",
+    guardedBy: "requireChatSessionOwner()",
+  },
+  {
     path: "src/app/api/chat/sessions/share/[token]/messages/route.ts",
     access: "public",
     guardedBy: "loadSharedChat() → serializeSharedChatMessage()",
