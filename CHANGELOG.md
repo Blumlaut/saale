@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.11.13 - 2026-11-14
+
+- put the switches first in the remaining settings sheets (389ed9fa)
+- group settings rows by type on every page (ab08ee99)
+- keep the chat panel out of a coder chat (3cb46e19)
+- keep the session panel's edge on screen (7295d3e6)
+- give both chats one session panel (cf91e6a1)
+- let a phone land on the chat list (d73eea53)
+- let the browser view a pdf (2aa4eede)
+- say a chat is deleting instead of erroring (0bb099a9)
+- document mcp support in the readme (ba4fdf57)
+
 ## 2026.11.12 - 2026-11-13
 
 - drop the doc the move left behind (db87d454)
