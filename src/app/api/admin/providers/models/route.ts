@@ -66,7 +66,9 @@ export async function GET() {
       name: m.name,
       reasoning: m.reasoning ?? false,
       vision: m.vision,
-      ...(configuredImage(stored, m.id) === true ? { image: true as const } : {}),
+      ...(m.image === true || configuredImage(stored, m.id) === true
+        ? { image: true as const }
+        : {}),
       contextWindow: m.contextWindow,
       maxOutputTokens: m.maxOutputTokens,
       ...(definesProviderModels(m.provider) && Object.keys(overrides).length > 0
