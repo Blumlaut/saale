@@ -15,20 +15,34 @@ vi.mock("@/lib/files/workspace-file", () => ({ readWorkspaceFile: hoisted.readWo
 import { createImageTools } from "@/lib/pi/tools/image-tools";
 import { imageRenderCost } from "@/lib/pi/turn-stats";
 
-/** The runtime the tool calls, with one image model behind it. */
-function stubImageModel(result: Record<string, unknown>) {
+/** The runtime the tools call, with one image model behind it. */
+function stubImageModel(
+  result: Record<string, unknown>,
+  input: ("text" | "image")[] = ["text", "image"],
+) {
   const generateImages = vi.fn().mockResolvedValue(result);
   hoisted.loadImageModel.mockResolvedValue({
     runtime: { generateImages },
-    model: { type: "image", id: "flux", name: "Flux", provider: "openrouter" },
+    model: {
+      type: "image",
+      id: "flux",
+      name: "Flux",
+      provider: "openrouter",
+      input,
+    },
     pick: { provider: "openrouter", id: "flux" },
   });
   return generateImages;
 }
 
-/** Run the tool the way Pi does, and read the result it produces. */
-async function run(params: { prompt: string; image?: string }) {
-  const tool = createImageTools("user-1", "session-1");
+/** The tools an account with a model that edits gets. */
+function tools() {
+  return createImageTools("user-1", "session-1", { edit: true });
+}
+
+/** Run one named tool the way Pi does, and read the result it produces. */
+async function run(name: string, params: Record<string, unknown>) {
+  const tool = tools().find((candidate) => candidate.name === name)!;
   const execute = tool.execute as unknown as (
     id: string,
     params: unknown,
@@ -43,7 +57,13 @@ function textOf(result: { content: Array<{ type: string; text: string }> }): str
   return result.content.map((block) => block.text).join("");
 }
 
-describe("generate_image", () => {
+/** A result that rendered one picture. */
+const RENDERED = {
+  stopReason: "stop",
+  output: [{ type: "image", data: "aW1n", mimeType: "image/png" }],
+};
+
+describe("image tools", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     hoisted.storeGeneratedImage.mockResolvedValue({
@@ -54,59 +74,34 @@ describe("generate_image", () => {
     });
   });
 
-  it("renders a prompt, saves the picture and reports where it went", async () => {
-    const generateImages = stubImageModel({
-      stopReason: "stop",
-      output: [
-        { type: "image", data: Buffer.from("png-bytes").toString("base64"), mimeType: "image/png" },
-      ],
-    });
+  it("offers the edit tool only to a model that takes a picture", () => {
+    expect(tools().map((tool) => tool.name)).toEqual(["generate_image", "edit_image"]);
+    expect(
+      createImageTools("user-1", "session-1", { edit: false }).map((tool) => tool.name),
+    ).toEqual(["generate_image"]);
+  });
 
-    const result = await run({ prompt: "A red fox in the snow" });
-    const text = textOf(result);
+  it("renders a prompt, saves the picture and reports where it went", async () => {
+    const generateImages = stubImageModel(RENDERED);
+
+    const text = textOf(await run("generate_image", { prompt: "A red fox in the snow" }));
 
     expect(generateImages).toHaveBeenCalledWith(
       expect.objectContaining({ id: "flux" }),
       { input: [{ type: "text", text: "A red fox in the snow" }] },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(hoisted.storeGeneratedImage).toHaveBeenCalledWith("user-1", Buffer.from("png-bytes"));
+    expect(hoisted.storeGeneratedImage).toHaveBeenCalledWith(
+      "user-1",
+      Buffer.from("aW1n", "base64"),
+    );
     expect(text).toContain("generated/img-1.png");
     expect(text).toContain('"_saaleImageMeta"');
     expect(text).toContain('"width":1024');
   });
 
-  // A provider that reports no price leaves the turn's cost at zero rather than
-  // a guessed one; the metadata only carries a cost when it is real.
-  it("leaves the cost out when the provider bills nothing", async () => {
-    stubImageModel({
-      stopReason: "stop",
-      output: [{ type: "image", data: "aW1n", mimeType: "image/png" }],
-    });
-
-    const text = textOf(await run({ prompt: "a fox" }));
-
-    expect(text).not.toContain('"cost"');
-    expect(imageRenderCost([{ result: text }])).toBe(0);
-  });
-
-  it("adds the render's price to what the turn cost", async () => {
-    stubImageModel({
-      stopReason: "stop",
-      output: [{ type: "image", data: "aW1n", mimeType: "image/png" }],
-      usage: { input: 10, output: 20, totalTokens: 30, cost: { total: 0.04 } },
-    });
-
-    const text = textOf(await run({ prompt: "a fox" }));
-
-    expect(imageRenderCost([{ result: text }])).toBeCloseTo(0.04);
-  });
-
-  it("sends a workspace picture as the image to edit", async () => {
-    const generateImages = stubImageModel({
-      stopReason: "stop",
-      output: [{ type: "image", data: "ZWRpdA==", mimeType: "image/png" }],
-    });
+  it("edits a workspace picture and keeps the original", async () => {
+    const generateImages = stubImageModel(RENDERED);
     hoisted.readWorkspaceFile.mockResolvedValue({
       fileName: "fox.png",
       mimeType: "image/png",
@@ -114,7 +109,9 @@ describe("generate_image", () => {
       buffer: Buffer.from("ref"),
     });
 
-    await run({ prompt: "make it snow", image: "generated/fox.png" });
+    const text = textOf(
+      await run("edit_image", { image: "generated/fox.png", prompt: "make it snow" }),
+    );
 
     expect(generateImages).toHaveBeenCalledWith(
       expect.anything(),
@@ -126,18 +123,74 @@ describe("generate_image", () => {
       },
       expect.anything(),
     );
+    // The edited version is a new file; the picture it came from is untouched.
+    expect(hoisted.storeGeneratedImage).toHaveBeenCalledTimes(1);
+    expect(text).toContain("Edited");
+  });
+
+  it("refuses to edit with a model that renders from a prompt alone", async () => {
+    const [generate] = [stubImageModel(RENDERED, ["text"])];
+    hoisted.readWorkspaceFile.mockResolvedValue({
+      fileName: "fox.png",
+      mimeType: "image/png",
+      size: 3,
+      buffer: Buffer.from("ref"),
+    });
+
+    await expect(
+      run("edit_image", { image: "generated/fox.png", prompt: "make it snow" }),
+    ).rejects.toThrow("cannot edit a picture");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("refuses a reference that is not a picture", async () => {
+    stubImageModel(RENDERED);
+    hoisted.readWorkspaceFile.mockResolvedValue({
+      fileName: "notes.txt",
+      mimeType: "text/plain",
+      size: 3,
+      buffer: Buffer.from("hi"),
+    });
+
+    await expect(run("edit_image", { image: "notes.txt", prompt: "x" })).rejects.toThrow(
+      "is not an image",
+    );
+  });
+
+  // A provider that reports no price leaves the turn's cost at zero rather than
+  // a guessed one; the metadata only carries a cost when it is real.
+  it("leaves the cost out when the provider bills nothing", async () => {
+    stubImageModel(RENDERED);
+
+    const text = textOf(await run("generate_image", { prompt: "a fox" }));
+
+    expect(text).not.toContain('"cost"');
+    expect(imageRenderCost([{ result: text }])).toBe(0);
+  });
+
+  it("adds the render's price to what the turn cost", async () => {
+    stubImageModel({
+      ...RENDERED,
+      usage: { input: 10, output: 20, totalTokens: 30, cost: { total: 0.04 } },
+    });
+
+    const text = textOf(await run("generate_image", { prompt: "a fox" }));
+
+    expect(imageRenderCost([{ result: text }])).toBeCloseTo(0.04);
   });
 
   it("fails the call with the model's own reason", async () => {
     stubImageModel({ stopReason: "error", errorMessage: "no recipe selected", output: [] });
 
-    await expect(run({ prompt: "a fox" })).rejects.toThrow("no recipe selected");
+    await expect(run("generate_image", { prompt: "a fox" })).rejects.toThrow("no recipe selected");
     expect(hoisted.storeGeneratedImage).not.toHaveBeenCalled();
   });
 
   it("refuses to render with no image model configured", async () => {
     hoisted.loadImageModel.mockResolvedValue(null);
 
-    await expect(run({ prompt: "a fox" })).rejects.toThrow("No image model is configured");
+    await expect(run("generate_image", { prompt: "a fox" })).rejects.toThrow(
+      "No image model is configured",
+    );
   });
 });

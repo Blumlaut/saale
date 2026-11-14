@@ -102,16 +102,23 @@ vi.mock("@/lib/permissions/feature-access", () => ({
 
 // The image tools need a model to call; these cases are about the categories.
 vi.mock("@/lib/pi/image-model", () => ({
-  resolveImageModel: vi.fn(async () => null),
+  resolveImageCapabilities: vi.fn(async () => ({ generate: false, edit: false })),
 }));
 vi.mock("@/lib/pi/tools/image-tools", () => ({
-  createImageTools: vi.fn((userId: string) => ({ name: "generate_image", userId })),
+  createImageTools: vi.fn((userId: string, _sessionId: string, options: { edit: boolean }) =>
+    options.edit
+      ? [
+          { name: "generate_image", userId },
+          { name: "edit_image", userId },
+        ]
+      : [{ name: "generate_image", userId }],
+  ),
 }));
 
 // Import after mocks
 import { resolveTools } from "@/lib/pi/tool-registry";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
-import { resolveImageModel } from "@/lib/pi/image-model";
+import { resolveImageCapabilities } from "@/lib/pi/image-model";
 import { FEATURES, type FeatureMap } from "@/lib/permissions/features";
 import * as sandboxClient from "@/lib/sandbox/client";
 import { createWebTools } from "@/lib/pi/tools/web-tools";
@@ -176,15 +183,28 @@ describe("resolveTools", () => {
   });
 
   it("includes the image tool once an image model is picked", async () => {
-    vi.mocked(resolveImageModel).mockResolvedValueOnce({ provider: "openrouter", id: "flux" });
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({ generate: true, edit: false });
 
     const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
 
-    expect(tools.map((tool) => tool.name)).toContain("generate_image");
+    expect(tools.map((tool) => tool.name)).toEqual(["generate_image"]);
   });
 
-  it("drops the image tool when its feature is switched off", async () => {
-    vi.mocked(resolveImageModel).mockResolvedValue({ provider: "openrouter", id: "flux" });
+  // Editing needs a picture to send, which a prompt-only model cannot take, so
+  // the model is never offered the call it would have to refuse.
+  it("adds the edit tool only for a model that takes a picture", async () => {
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({ generate: true, edit: true });
+
+    const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
+
+    expect(tools.map((tool) => tool.name)).toEqual(["generate_image", "edit_image"]);
+  });
+
+  it("drops the image tools when their feature is switched off", async () => {
+    vi.mocked(resolveImageCapabilities).mockResolvedValue({
+      generate: true,
+      edit: true,
+    });
     vi.mocked(loadUserFeatures).mockResolvedValueOnce({ ...ALL_FEATURES_ON, image: false });
 
     const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);

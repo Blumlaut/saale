@@ -1,4 +1,4 @@
-import { type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type ModelRuntime, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ToolConfig, ToolCategoryKey, ToolExposureConfig } from "./tool-categories";
 import { DEFAULT_TOOL_EXPOSURE, TOOL_CATEGORIES } from "./tool-categories";
 import { findToolInfo } from "./tool-infos";
@@ -7,7 +7,7 @@ import { canExec as canRunCommands } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
-import { resolveImageModel } from "./image-model";
+import { resolveImageCapabilities } from "./image-model";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createImageTools } from "./tools/image-tools";
@@ -26,13 +26,32 @@ import { createProjectTools } from "@/lib/coder/tools";
 // ─── Tool Factory Registry ───────────────────────────────────────────────────
 
 /**
+ * What a factory may need beyond its user and session.
+ *
+ * Only the categories with a model behind them read it: an image model that
+ * takes no reference picture leaves `edit` false, and the edit tool is never
+ * built.
+ */
+interface ToolBuildContext {
+  /** Whether the account's image model takes a picture to edit. */
+  editImages: boolean;
+}
+
+/**
  * Factory function that creates tools for a given category.
  *
  * `sessionId` is the session the tools are being resolved for. most
  * categories ignore it, but a tool that acts on chats needs to know which
  * chat it belongs to (a chat must not respond to itself).
  */
-type ToolFactory = (userId: string, sessionId: string) => ToolDefinition[] | ToolDefinition;
+type ToolFactory = (
+  userId: string,
+  sessionId: string,
+  context: ToolBuildContext,
+) => ToolDefinition[] | ToolDefinition;
+
+/** Every tool available, for the catalog and the tools that only need names. */
+const EVERYTHING: ToolBuildContext = { editImages: true };
 
 /**
  * Registry mapping tool category keys to their factory functions.
@@ -51,7 +70,8 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   chatSearch: (userId, sessionId) => createChatTools(userId, sessionId),
   telegram: (userId, sessionId) => createTelegramTools(userId, sessionId),
   web: () => createWebTools(),
-  image: (userId, sessionId) => createImageTools(userId, sessionId),
+  image: (userId, sessionId, context) =>
+    createImageTools(userId, sessionId, { edit: context.editImages }),
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
   watchers: (userId, sessionId) => createAutomationTools(userId, sessionId),
@@ -90,7 +110,7 @@ export function getAllToolDefinitions(userId: string, sessionId: string): ToolDe
     const factory = TOOL_FACTORIES[category.key];
     if (!factory) continue;
 
-    const result = factory(userId, sessionId) as ToolDefinition[] | ToolDefinition;
+    const result = factory(userId, sessionId, EVERYTHING) as ToolDefinition[] | ToolDefinition;
     definitions.push(...(Array.isArray(result) ? result : [result]));
   }
 
@@ -152,6 +172,12 @@ export async function resolveTools(
     exposure?: ToolExposureConfig | null | undefined;
     /** Per-tool approval policies (`AppSettings.toolPolicies`). */
     toolPolicies?: Record<string, string> | null | undefined;
+    /**
+     * The runtime the caller already built, so resolving what the image model
+     * can do costs no second build. A caller without one gets it built only
+     * when an image model is picked.
+     */
+    modelRuntime?: ModelRuntime;
   },
 ): Promise<ToolDefinition[]> {
   const tools: ToolDefinition[] = [];
@@ -162,7 +188,8 @@ export async function resolveTools(
 
   // Image generation needs a model to call: nobody picked one, or Pi has no such
   // model for this account, means no tool to offer.
-  const imageModel = await resolveImageModel(userId);
+  const imageCapabilities = await resolveImageCapabilities(userId, options.modelRuntime);
+  const buildContext: ToolBuildContext = { editImages: imageCapabilities.edit };
 
   // Backward compat: map legacy keys to terminal
   const terminalEnabled =
@@ -190,12 +217,12 @@ export async function resolveTools(
     const feature = featureForToolCategory(category.key);
     if (feature && !features[feature]) continue;
 
-    if (category.key === "image" && !imageModel) continue;
+    if (category.key === "image" && !imageCapabilities.generate) continue;
 
     if (config[category.key]) {
       const factory = TOOL_FACTORIES[category.key];
       if (factory) {
-        const result = factory(userId, sessionId);
+        const result = factory(userId, sessionId, buildContext);
         if (Array.isArray(result)) {
           tools.push(...result);
         } else {

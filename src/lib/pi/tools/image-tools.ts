@@ -1,7 +1,8 @@
 /**
- * Image generation.
+ * Image generation and editing.
  *
- * One tool, backed by whichever image model the account picked. The bytes are
+ * Two tools over whichever image model the account picked: one renders from a
+ * prompt, one works from a picture already in the workspace. The bytes are
  * written into the user's workspace and the call returns the path, so the
  * transcript shows the picture through a file card and the model never receives
  * it back as an image block it would pay for.
@@ -12,9 +13,13 @@ import { Type } from "typebox";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { storeGeneratedImage } from "@/lib/image-attachment";
 import { loadImageModel } from "@/lib/pi/image-model";
-import { defineStructuredTool } from "./tool-result";
+import { defineStructuredTool, type ToolOutcome } from "./tool-result";
 
-export const IMAGE_TOOL_NAME = "generate_image";
+export const GENERATE_IMAGE_TOOL_NAME = "generate_image";
+export const EDIT_IMAGE_TOOL_NAME = "edit_image";
+
+/** Which image models take a picture to edit, for the tools that need one. */
+export const IMAGE_TOOL_NAMES = [GENERATE_IMAGE_TOOL_NAME, EDIT_IMAGE_TOOL_NAME] as const;
 
 /** Largest reference image sent back to the model's endpoint. */
 const MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
@@ -29,11 +34,20 @@ const GENERATED_IMAGE_SCHEMA = Type.Object({
   cost: Type.Optional(Type.Number()),
 });
 
+type GeneratedImage = {
+  path: string;
+  model: string;
+  provider: string;
+  width: number;
+  height: number;
+  cost?: number;
+};
+
 /**
  * The reference image, read out of the user's workspace.
  *
  * A path that is not there, or is not an image, fails the call with the reason
- * rather than generating something else.
+ * rather than rendering something else.
  */
 async function readReferenceImage(
   userId: string,
@@ -55,86 +69,159 @@ async function readReferenceImage(
   };
 }
 
-export function createImageTools(userId: string, sessionId: string) {
+/**
+ * Render one picture and store it.
+ *
+ * Both tools end here: the difference between them is a reference image, which
+ * turns the request into an edit on the endpoint.
+ */
+async function renderImage(options: {
+  userId: string;
+  sessionId: string;
+  prompt: string;
+  /** Workspace path of the picture to work from. */
+  reference?: string | undefined;
+  signal?: AbortSignal | undefined;
+  /** What the model did, for the sentence the model reads. */
+  verb: "Rendered" | "Edited";
+}): Promise<ToolOutcome<GeneratedImage, undefined>> {
+  const { userId, sessionId, prompt, reference, signal, verb } = options;
+
+  const resolved = await loadImageModel(userId);
+  if (!resolved) {
+    throw new Error(
+      "No image model is configured. Pick one under Settings → Models before rendering.",
+    );
+  }
+  const { runtime, model, pick } = resolved;
+
+  const input: ImagesInputContent[] = [{ type: "text", text: prompt }];
+  if (reference) {
+    if (!model.input.includes("image")) {
+      throw new Error(
+        `${model.name} renders from a prompt alone, so it cannot edit a picture. Use generate_image.`,
+      );
+    }
+    input.push(await readReferenceImage(userId, reference, sessionId));
+  }
+
+  const result = await runtime.generateImages(
+    model as ImageModel<ImageApi>,
+    { input },
+    signal ? { signal } : {},
+  );
+
+  if (result.stopReason !== "stop") {
+    throw new Error(result.errorMessage ?? `The image model stopped: ${result.stopReason}`);
+  }
+
+  const rendered = result.output.find(
+    (block): block is Extract<typeof block, { type: "image" }> => block.type === "image",
+  );
+  if (!rendered) throw new Error("The image model returned no image.");
+
+  const stored = await storeGeneratedImage(userId, Buffer.from(rendered.data, "base64"));
+  const cost = result.usage?.cost?.total;
+  const priced = typeof cost === "number" && cost > 0 ? { cost } : {};
+
+  return {
+    value: {
+      path: stored.storagePath,
+      model: model.id,
+      provider: pick.provider,
+      width: stored.width,
+      height: stored.height,
+      ...priced,
+    },
+    text:
+      `${verb} "${prompt}" with ${model.name} (${stored.width}×${stored.height}). ` +
+      `Saved to ${stored.storagePath} and shown to the user.`,
+    meta: {
+      _saaleImageMeta: {
+        path: stored.storagePath,
+        model: model.id,
+        provider: pick.provider,
+        prompt,
+        width: stored.width,
+        height: stored.height,
+        ...priced,
+      },
+    },
+  };
+}
+
+/** Render a new picture from a prompt. */
+function createGenerateImageTool(userId: string, sessionId: string) {
   return defineStructuredTool({
-    name: IMAGE_TOOL_NAME,
+    name: GENERATE_IMAGE_TOOL_NAME,
     label: "Generate Image",
     description:
       "Render an image from a text prompt with the account's image model. The picture is saved " +
-      "to the workspace and shown to the user in the chat, and the call returns its path. Pass " +
-      "`image` to work from a picture already in the workspace: the endpoint then edits it. A " +
-      "render takes from seconds to a few minutes, so make one call per picture rather than " +
+      "to the workspace and shown to the user in the chat, and the call returns its path. " +
+      "A render takes from seconds to a few minutes, so make one call per picture rather than " +
       "several at once.",
     parameters: Type.Object({
       prompt: Type.String({
         description: "What to render. Describe the subject, style and framing you want.",
       }),
-      image: Type.Optional(
-        Type.String({
-          description:
-            "Workspace path of a reference image to edit or build on, relative to the chat's " +
-            "worktree. Omit it to render from the prompt alone.",
-        }),
-      ),
     }),
     outputSchema: GENERATED_IMAGE_SCHEMA,
-    execute: async (_toolCallId, params, signal) => {
-      const { prompt, image } = params;
-
-      const resolved = await loadImageModel(userId);
-      if (!resolved) {
-        throw new Error(
-          "No image model is configured. Pick one under Settings → Models before rendering.",
-        );
-      }
-      const { runtime, model, pick } = resolved;
-
-      const input: ImagesInputContent[] = [{ type: "text", text: prompt }];
-      if (image) input.push(await readReferenceImage(userId, image, sessionId));
-
-      const result = await runtime.generateImages(
-        model as ImageModel<ImageApi>,
-        { input },
-        signal ? { signal } : {},
-      );
-
-      if (result.stopReason !== "stop") {
-        throw new Error(result.errorMessage ?? `The image model stopped: ${result.stopReason}`);
-      }
-
-      const rendered = result.output.find(
-        (block): block is Extract<typeof block, { type: "image" }> => block.type === "image",
-      );
-      if (!rendered) throw new Error("The image model returned no image.");
-
-      const stored = await storeGeneratedImage(userId, Buffer.from(rendered.data, "base64"));
-      const cost = result.usage?.cost?.total;
-      const size = `${stored.width}×${stored.height}`;
-
-      return {
-        value: {
-          path: stored.storagePath,
-          model: model.id,
-          provider: pick.provider,
-          width: stored.width,
-          height: stored.height,
-          ...(typeof cost === "number" && cost > 0 ? { cost } : {}),
-        },
-        text:
-          `Rendered "${prompt}" with ${model.name} (${size}). Saved to ${stored.storagePath} ` +
-          "and shown to the user.",
-        meta: {
-          _saaleImageMeta: {
-            path: stored.storagePath,
-            model: model.id,
-            provider: pick.provider,
-            prompt,
-            width: stored.width,
-            height: stored.height,
-            ...(typeof cost === "number" && cost > 0 ? { cost } : {}),
-          },
-        },
-      };
-    },
+    execute: async (_toolCallId, params, signal) =>
+      renderImage({
+        userId,
+        sessionId,
+        prompt: params.prompt,
+        signal,
+        verb: "Rendered",
+      }),
   });
+}
+
+/**
+ * Edit a picture already in the workspace, which is the same endpoint's
+ * `/v1/images/edits` call.
+ */
+function createEditImageTool(userId: string, sessionId: string) {
+  return defineStructuredTool({
+    name: EDIT_IMAGE_TOOL_NAME,
+    label: "Edit Image",
+    description:
+      "Change a picture that is already in the workspace: the account's image model renders a " +
+      "new version from it plus your instructions, and the original stays as it is. The result " +
+      "is saved to the workspace, shown to the user, and its path returned. Takes from seconds " +
+      "to a few minutes.",
+    parameters: Type.Object({
+      image: Type.String({
+        description:
+          "Workspace path of the picture to change, relative to the chat's worktree. Read it " +
+          "first if you do not know what it shows.",
+      }),
+      prompt: Type.String({
+        description:
+          "What to change and what the result should look like. The endpoint keeps the parts " +
+          "you do not name.",
+      }),
+    }),
+    outputSchema: GENERATED_IMAGE_SCHEMA,
+    execute: async (_toolCallId, params, signal) =>
+      renderImage({
+        userId,
+        sessionId,
+        prompt: params.prompt,
+        reference: params.image,
+        signal,
+        verb: "Edited",
+      }),
+  });
+}
+
+/**
+ * The image tools this account can use.
+ *
+ * `edit` needs a model that takes a picture, so a diffusion server told it only
+ * answers prompts gets the one tool it can serve.
+ */
+export function createImageTools(userId: string, sessionId: string, options: { edit: boolean }) {
+  const generate = createGenerateImageTool(userId, sessionId);
+  return options.edit ? [generate, createEditImageTool(userId, sessionId)] : [generate];
 }

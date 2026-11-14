@@ -6,6 +6,7 @@ import { buildModelRuntime } from "@/lib/pi/models";
 import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
   configuredImage,
+  configuredImageInput,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
       vision: model.vision,
       // What the user marked on this endpoint, so the list can offer to undo it.
       ...(configuredImage(stored, model.id) === true ? { image: true } : {}),
+      ...(configuredImageInput(stored, model.id) === false ? { imageInput: false } : {}),
       contextWindow: "contextWindow" in model ? model.contextWindow : undefined,
       maxOutputTokens: model.maxOutputTokens,
       ...(definesProviderModels(provider) && Object.keys(overrides).length > 0

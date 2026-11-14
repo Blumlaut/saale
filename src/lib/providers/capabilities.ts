@@ -28,6 +28,11 @@ export interface ModelCapabilities {
   vision?: boolean;
   /** Whether the model generates images instead of answering text. Absent = not known. */
   image?: boolean;
+  /**
+   * Whether an image model takes a picture to edit. Absent = it does, which is
+   * what the OpenAI images API means by `/v1/images/edits`.
+   */
+  imageInput?: boolean;
   /** Context window of this model. Absent = inherit the endpoint's default. */
   contextWindow?: number;
   /** Output cap for this model. Absent = inherit the endpoint's default. */
@@ -415,6 +420,7 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
     const capabilities: ModelCapabilities = {};
     if (typeof raw.vision === "boolean") capabilities.vision = raw.vision;
     if (typeof raw.image === "boolean") capabilities.image = raw.image;
+    if (typeof raw.imageInput === "boolean") capabilities.imageInput = raw.imageInput;
     const contextWindow = storedTokenLimit(raw.contextWindow);
     if (contextWindow !== undefined) capabilities.contextWindow = contextWindow;
     const maxOutputTokens = storedTokenLimit(raw.maxOutputTokens);
@@ -425,16 +431,35 @@ export function parseModelCapabilityMap(value: unknown): ModelCapabilityMap {
   return map;
 }
 
+/** The flags Saale records per model, beside the token limits. */
+export type ModelCapabilityFlag = "vision" | "image" | "imageInput";
+
+/** One recorded flag of a model, or undefined when it is not known. */
+export function configuredFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+): boolean | undefined {
+  const value = map[modelId]?.[flag];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 /** The vision flag recorded for a model (detected, or set by hand), if any. */
 export function configuredVision(map: ModelCapabilityMap, modelId: string): boolean | undefined {
-  const vision = map[modelId]?.vision;
-  return typeof vision === "boolean" ? vision : undefined;
+  return configuredFlag(map, modelId, "vision");
 }
 
 /** The image-generation flag recorded for a model (detected, or set by hand), if any. */
 export function configuredImage(map: ModelCapabilityMap, modelId: string): boolean | undefined {
-  const image = map[modelId]?.image;
-  return typeof image === "boolean" ? image : undefined;
+  return configuredFlag(map, modelId, "image");
+}
+
+/** Whether the recorded settings let this image model take a picture to edit. */
+export function configuredImageInput(
+  map: ModelCapabilityMap,
+  modelId: string,
+): boolean | undefined {
+  return configuredFlag(map, modelId, "imageInput");
 }
 
 /** The token limits recorded for a model, with nothing inherited. */
@@ -449,24 +474,43 @@ export function configuredLimits(
   return limits;
 }
 
+/** A copy of `map` with one of `modelId`'s flags set. */
+export function withModelFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+  value: boolean,
+): ModelCapabilityMap {
+  return { ...map, [modelId]: { ...map[modelId], [flag]: value } };
+}
+
+/** A copy of `map` with one of `modelId`'s flags back on automatic detection. */
+export function withoutModelFlag(
+  map: ModelCapabilityMap,
+  modelId: string,
+  flag: ModelCapabilityFlag,
+): ModelCapabilityMap {
+  const next = { ...map };
+  const entry = next[modelId];
+  if (!entry) return next;
+  const { [flag]: _dropped, ...rest } = entry;
+  if (Object.keys(rest).length === 0) delete next[modelId];
+  else next[modelId] = rest;
+  return next;
+}
+
 /** A copy of `map` with `modelId`'s vision flag set. */
 export function withModelVision(
   map: ModelCapabilityMap,
   modelId: string,
   vision: boolean,
 ): ModelCapabilityMap {
-  return { ...map, [modelId]: { ...map[modelId], vision } };
+  return withModelFlag(map, modelId, "vision", vision);
 }
 
 /** A copy of `map` with `modelId` back on automatic capability detection. */
 export function withoutModelVision(map: ModelCapabilityMap, modelId: string): ModelCapabilityMap {
-  const next = { ...map };
-  const entry = next[modelId];
-  if (!entry) return next;
-  const { vision: _vision, ...rest } = entry;
-  if (Object.keys(rest).length === 0) delete next[modelId];
-  else next[modelId] = rest;
-  return next;
+  return withoutModelFlag(map, modelId, "vision");
 }
 
 /** A copy of `map` with `modelId`'s image-generation flag set. */
@@ -475,18 +519,12 @@ export function withModelImage(
   modelId: string,
   image: boolean,
 ): ModelCapabilityMap {
-  return { ...map, [modelId]: { ...map[modelId], image } };
+  return withModelFlag(map, modelId, "image", image);
 }
 
 /** A copy of `map` with `modelId` back on automatic capability detection. */
 export function withoutModelImage(map: ModelCapabilityMap, modelId: string): ModelCapabilityMap {
-  const next = { ...map };
-  const entry = next[modelId];
-  if (!entry) return next;
-  const { image: _image, ...rest } = entry;
-  if (Object.keys(rest).length === 0) delete next[modelId];
-  else next[modelId] = rest;
-  return next;
+  return withoutModelFlag(map, modelId, "image");
 }
 
 /**
@@ -563,36 +601,43 @@ export function mergeDetectedCapabilities(
   return merged;
 }
 
-/** Validate a capability edit from a request body. */
-export function parseVisionEdit(body: {
-  modelId?: unknown;
-  vision?: unknown;
-}): { modelId: string; vision: boolean | null } | { error: string } {
+/**
+ * Validate a capability edit from a request body.
+ *
+ * An omitted field leaves the flag as it is, and `null` puts it back on
+ * automatic detection, so the editor writes one flag at a time.
+ */
+export function parseFlagEdit<TField extends ModelCapabilityFlag>(
+  field: TField,
+  body: { modelId?: unknown } & Partial<Record<TField, unknown>>,
+): ({ modelId: string } & Record<TField, boolean | null>) | { error: string } {
   const modelId = body.modelId;
   if (typeof modelId !== "string" || modelId.length === 0) {
     return { error: "modelId is required" };
   }
-  if (body.vision === null || body.vision === undefined) return { modelId, vision: null };
-  if (typeof body.vision !== "boolean") {
-    return { error: "vision must be a boolean, or null to reset to auto" };
+  const value = body[field];
+  if (value === null || value === undefined) {
+    return { modelId, [field]: null } as { modelId: string } & Record<TField, boolean | null>;
   }
-  return { modelId, vision: body.vision };
+  if (typeof value !== "boolean") {
+    return { error: `${field} must be a boolean, or null to reset to auto` };
+  }
+  return { modelId, [field]: value } as { modelId: string } & Record<TField, boolean | null>;
+}
+
+/** The vision flag of an edit to one model's settings. */
+export function parseVisionEdit(body: { modelId?: unknown; vision?: unknown }) {
+  return parseFlagEdit("vision", body);
 }
 
 /** The image-generation flag of an edit to one model's settings. */
-export function parseImageEdit(body: {
-  modelId?: unknown;
-  image?: unknown;
-}): { modelId: string; image: boolean | null } | { error: string } {
-  const modelId = body.modelId;
-  if (typeof modelId !== "string" || modelId.length === 0) {
-    return { error: "modelId is required" };
-  }
-  if (body.image === null || body.image === undefined) return { modelId, image: null };
-  if (typeof body.image !== "boolean") {
-    return { error: "image must be a boolean, or null to reset to auto" };
-  }
-  return { modelId, image: body.image };
+export function parseImageEdit(body: { modelId?: unknown; image?: unknown }) {
+  return parseFlagEdit("image", body);
+}
+
+/** The image-input flag of an edit to one model's settings. */
+export function parseImageInputEdit(body: { modelId?: unknown; imageInput?: unknown }) {
+  return parseFlagEdit("imageInput", body);
 }
 
 /**
