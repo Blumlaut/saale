@@ -65,6 +65,46 @@ export function extractToolMetaBlock(result: string | undefined): ToolMetaBlock 
   return null;
 }
 
+/** Where the agent writes what it renders, relative to the workspace root. */
+export const GENERATED_IMAGE_DIR = "generated";
+
+/**
+ * The picture one tool call rendered, when it rendered one.
+ *
+ * The path comes from the stored result, so a caller can trust it as something
+ * the render wrote rather than something a request asked for.
+ */
+export function renderedImagePath(result: string | undefined): string | undefined {
+  const block = extractToolMetaBlock(result);
+  if (block?.key !== "_saaleImageMeta") return undefined;
+
+  const path = block.meta.path;
+  if (typeof path !== "string" || !path.startsWith(`${GENERATED_IMAGE_DIR}/`)) return undefined;
+  // A stored result is only as trustworthy as what wrote it, so nothing climbs
+  // out of the folder the renders live in.
+  return path.split("/").includes("..") ? undefined : path;
+}
+
+/** Every picture a turn rendered, in the order the calls ran. */
+export function renderedImagePaths(toolCallsJson: string | null | undefined): string[] {
+  if (!toolCallsJson) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(toolCallsJson);
+  } catch (err) {
+    console.error("Failed to parse a message's tool calls:", err);
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((call: { result?: unknown }) =>
+      renderedImagePath(typeof call?.result === "string" ? call.result : undefined),
+    )
+    .filter((path): path is string => path !== undefined);
+}
+
 /**
  * The metadata block as a typed shape.
  *

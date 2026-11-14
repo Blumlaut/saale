@@ -2,15 +2,12 @@ import { NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import { DEFAULT_SHARE_ACCESS } from "@/lib/chat/share-access";
-import { extractToolMetaBlock } from "@/lib/chat/tool-meta";
+import { renderedImagePath } from "@/lib/chat/tool-meta";
 import { prisma } from "@/lib/db";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
 
 /** The tools whose picture a share page may show. */
 const IMAGE_TOOLS = new Set(["generate_image", "edit_image"]);
-
-/** Where the agent writes what it renders, relative to the workspace root. */
-const GENERATED_DIR = "generated";
 
 /**
  * GET /api/chat/sessions/share/:token/images/:callId. One rendered picture of a
@@ -89,10 +86,7 @@ function imagePathOf(toolCallsJson: string, callId: string): string | undefined 
   );
   if (!call || typeof call.name !== "string" || !IMAGE_TOOLS.has(call.name)) return undefined;
 
-  const path = extractToolMetaBlock(typeof call.result === "string" ? call.result : undefined)?.meta
-    .path;
-  if (typeof path !== "string" || !path.startsWith(`${GENERATED_DIR}/`)) return undefined;
-  return path;
+  return renderedImagePath(typeof call.result === "string" ? call.result : undefined);
 }
 
 function notFound() {

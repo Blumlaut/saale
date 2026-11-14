@@ -75,6 +75,19 @@ import { autoDeleteChatSession, deleteChatSession } from "@/lib/chat/delete-sess
 const USER_ID = "user-1";
 const SESSION_ID = "chat-1";
 
+/** A stored `generate_image` call, whose result carries the metadata block. */
+function renderedCall(path: string) {
+  return {
+    id: "call-1",
+    name: "generate_image",
+    args: { prompt: "a fox" },
+    result: `Rendered "a fox".\n${JSON.stringify({
+      _saaleImageMeta: { path, model: "flux", provider: "openrouter", width: 1024, height: 1024 },
+    })}`,
+    isError: false,
+  };
+}
+
 describe("deleteChatSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -133,6 +146,77 @@ describe("deleteChatSession", () => {
     expect(mockDeleteAllImages.mock.invocationCallOrder[0]!).toBeLessThan(
       mockDeleteMany.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("deletes the pictures the chat rendered", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { attachments: [], toolCalls: JSON.stringify([renderedCall("generated/fox.webp")]) },
+      { attachments: [], toolCalls: null },
+    ]);
+    // No other chat names it, so nothing holds it back.
+    mockFindMany.mockResolvedValueOnce([]);
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockDeleteAllImages).toHaveBeenCalledWith(USER_ID, ["generated/fox.webp"]);
+    // The lookup is scoped to this user and skips the chat being deleted.
+    expect(mockFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          session: { userId: USER_ID },
+          NOT: { sessionId: SESSION_ID },
+        }),
+      }),
+    );
+  });
+
+  it("keeps a picture another chat still shows", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      { attachments: [], toolCalls: JSON.stringify([renderedCall("generated/fox.webp")]) },
+    ]);
+    mockFindMany.mockResolvedValueOnce([
+      {
+        content: "here it is again",
+        toolCalls: JSON.stringify([{ args: { path: "generated/fox.webp" } }]),
+      },
+    ]);
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockDeleteAllImages).not.toHaveBeenCalled();
+  });
+
+  it("never deletes outside the folder the renders live in", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      {
+        attachments: [],
+        toolCalls: JSON.stringify([
+          renderedCall("generated/../../etc/passwd"),
+          renderedCall("user-1/photo.png"),
+        ]),
+      },
+    ]);
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockDeleteAllImages).not.toHaveBeenCalled();
+  });
+
+  it("deletes a picture once even when two calls rendered the same file", async () => {
+    mockFindMany.mockResolvedValueOnce([
+      {
+        attachments: [],
+        toolCalls: JSON.stringify([
+          renderedCall("generated/fox.webp"),
+          renderedCall("generated/fox.webp"),
+        ]),
+      },
+    ]);
+    mockFindMany.mockResolvedValueOnce([]);
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(mockDeleteAllImages).toHaveBeenCalledWith(USER_ID, ["generated/fox.webp"]);
   });
 
   it("skips image cleanup when the chat has no attachments", async () => {
