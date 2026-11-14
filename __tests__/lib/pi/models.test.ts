@@ -107,6 +107,7 @@ function stubEndpointRow(overrides?: Record<string, unknown>, scope: "user" | "g
 function stubRuntime(overrides: Record<string, unknown> = {}) {
   const runtime = {
     getAvailableSnapshot: vi.fn().mockReturnValue([]),
+    getAvailableOfType: vi.fn().mockResolvedValue([]),
     getModel: vi.fn(),
     setRuntimeApiKey: vi.fn().mockResolvedValue(undefined),
     getProvider: vi.fn(),
@@ -329,6 +330,59 @@ describe("buildModelRuntime", () => {
     );
     // An image model is never offered as a chat model.
     expect(models.map((model) => `${model.provider}:${model.id}`)).toEqual(["custom:qwen3"]);
+  });
+
+  // Pi keeps image models off its chat list, so a discovery that only reported
+  // chat models left the admin's switches without the one list that can turn an
+  // image model on.
+  it("lists the image models beside the chat models for the admin to switch on", async () => {
+    stubEndpointRows([{ encryptedKey: "enc()" }], [{ encryptedKey: "enc()" }]);
+    stubModelListing(["qwen3"]);
+    stubRuntime({
+      getAvailableOfType: vi.fn().mockResolvedValue([
+        {
+          provider: "custom",
+          id: "flux",
+          name: "flux",
+          input: ["text", "image"],
+        },
+      ]),
+    });
+
+    const { models } = await buildAdminModelList();
+
+    expect(models).toEqual([
+      expect.objectContaining({ provider: "custom", id: "qwen3" }),
+      expect.objectContaining({
+        provider: "custom",
+        id: "flux",
+        name: "flux",
+        vision: true,
+        image: true,
+      }),
+    ]);
+  });
+
+  it("keeps a model the user marked as text-generating off the image list", async () => {
+    stubEndpointRow({
+      encryptedKey: "enc()",
+      modelCapabilities: { flux: { image: false } },
+    });
+    stubModelListing(["flux"]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ id: "flux", architecture: { output_modalities: ["image"] } }],
+        }),
+      }),
+    );
+
+    const { models } = await buildModelRuntime("user-1");
+
+    expect(models.map((model) => `${model.provider}:${model.id}`)).toEqual(["custom:flux"]);
   });
 
   it("registers a model the user marked as image-generating the same way", async () => {
