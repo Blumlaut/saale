@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { cn, ROW_ACTION } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronRight, ExternalLink, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, Sparkles, Star } from "lucide-react";
 import { plural } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
 import { ToolStatusBadge } from "./tool-status-badge";
@@ -181,6 +181,8 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
       return <ToolDiff block={block} />;
     case "image":
       return <WorkspaceImage path={block.path} />;
+    case "rendering":
+      return <RenderingBlock block={block} />;
     case "code":
       return <ToolCode block={block} />;
     case "text":
@@ -196,6 +198,29 @@ function ToolBlock({ block }: { block: ToolCardBlock }) {
         </div>
       );
   }
+}
+
+/**
+ * A tile that sweeps while a long call runs.
+ *
+ * The badge says "running" for every tool, which for a render of a minute reads
+ * as nothing happening. This is the whole answer the card can give: the endpoint
+ * reports no progress, so the tile moves and claims no percentage.
+ */
+function RenderingBlock({ block }: { block: Extract<ToolCardBlock, { kind: "rendering" }> }) {
+  return (
+    <div
+      className="bg-muted border-border relative h-32 w-full overflow-hidden rounded-lg border"
+      role="status"
+      aria-label={block.label}
+    >
+      <div className="animate-image-sweep bg-primary/15 absolute inset-y-0 left-0 w-1/3" />
+      <div className="relative flex h-full flex-col items-center justify-center gap-1.5">
+        <Sparkles className="text-primary size-5 animate-pulse" />
+        <span className="text-muted-foreground text-[11px]">{block.label}</span>
+      </div>
+    </div>
+  );
 }
 
 /** A list of rows, capped until expanded. */
