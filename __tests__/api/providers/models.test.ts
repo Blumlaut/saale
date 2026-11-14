@@ -11,12 +11,22 @@ vi.mock("@/lib/db", () => ({
     appSettings: {
       findUnique: vi.fn(),
     },
+    adminSettings: {
+      findUnique: vi.fn(),
+    },
   },
 }));
 
 vi.mock("@/lib/pi/models", () => ({
   buildModelRuntime: vi.fn(),
-  listClassifierModels: vi.fn(),
+}));
+
+vi.mock("@/lib/pi/model-slots", () => ({
+  MODEL_SLOTS: {
+    decision: { id: "decision", type: "classifier" },
+    image: { id: "image", type: "image" },
+  },
+  listSlotModels: vi.fn(),
 }));
 
 vi.mock("@/lib/providers/endpoint", () => ({
@@ -26,6 +36,7 @@ vi.mock("@/lib/providers/endpoint", () => ({
 import * as auth from "@/lib/auth";
 import * as db from "@/lib/db";
 import * as models from "@/lib/pi/models";
+import * as slots from "@/lib/pi/model-slots";
 import * as endpoint from "@/lib/providers/endpoint";
 import { GET } from "@/app/api/providers/models/route";
 
@@ -33,7 +44,7 @@ describe("GET /api/providers/models", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(endpoint.readEndpointRows).mockResolvedValue([]);
-    vi.mocked(models.listClassifierModels).mockResolvedValue({});
+    vi.mocked(slots.listSlotModels).mockResolvedValue({});
   });
 
   /* ── Auth ── */

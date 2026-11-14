@@ -10,6 +10,7 @@
 
 import type { AppSettings } from "@prisma/client";
 import { readInstanceDecisionModel } from "@/lib/pi/decision-model";
+import { readInstanceImageModel } from "@/lib/pi/image-model";
 import { formatModelReference } from "@/lib/pi/model-ref";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure";
 import type { ToolConfig, ToolExposureConfig } from "@/lib/pi/tool-categories";
@@ -48,13 +49,20 @@ export interface UserSettings {
    * its own pick is empty.
    */
   instanceApprovalDecisionModel: string | null;
+  /** Image model the agent renders with, as "provider:model". */
+  imageModel: string | null;
+  /** Read-only: the instance's image model, which this account follows while its own pick is empty. */
+  instanceImageModel: string | null;
   /** Sparse push switches: a category equal to its default is left out. */
   pushNotifications: Partial<NotificationPreferences> | null;
 }
 
 /** The row as the account reads it, with the instance values it falls back to. */
 export async function serializeUserSettings(settings: AppSettings): Promise<UserSettings> {
-  const instanceDecisionModel = await readInstanceDecisionModel();
+  const [instanceDecisionModel, instanceImageModel] = await Promise.all([
+    readInstanceDecisionModel(),
+    readInstanceImageModel(),
+  ]);
   // The JSON columns are validated by the registry that writes them, so they
   // hold the shapes the client declares.
   return {
@@ -79,6 +87,10 @@ export async function serializeUserSettings(settings: AppSettings): Promise<User
     approvalDecisionModel: settings.approvalDecisionModel,
     instanceApprovalDecisionModel: instanceDecisionModel
       ? formatModelReference(instanceDecisionModel.provider, instanceDecisionModel.id)
+      : null,
+    imageModel: settings.imageModel,
+    instanceImageModel: instanceImageModel
+      ? formatModelReference(instanceImageModel.provider, instanceImageModel.id)
       : null,
     pushNotifications: settings.pushNotifications as Partial<NotificationPreferences> | null,
   };

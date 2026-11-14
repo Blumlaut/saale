@@ -607,6 +607,9 @@ model AdminSettings {
   /// Decision model every account's Auto tool calls are judged by, as
   /// "provider:model". Null leaves the built-in command checks.
   approvalDecisionModel    String?
+  /// Image model every account's generate_image tool calls, as
+  /// "provider:model". Null follows `AppSettings.imageModel`.
+  imageModel               String?
   /// Whether a coder chat is told to end every commit message it writes with
   /// `commitAttributionText`.
   commitAttributionEnabled Boolean  @default(false)
@@ -725,6 +728,9 @@ model AppSettings {
   /// Decision model that judges the tool calls Auto would run on its own, as
   /// "provider:model". Null follows `AdminSettings.approvalDecisionModel`.
   approvalDecisionModel   String?
+  /// Image model that renders the agent's generate_image calls, as
+  /// "provider:model". Null leaves the tool out for accounts that picked none.
+  imageModel              String?
   /// The active GitHub source, one at a time: "" (nothing linked), "cli" (the
   /// GitHub CLI's own login) or "app" (this instance's GitHub App).
   githubSource            String  @default("")
