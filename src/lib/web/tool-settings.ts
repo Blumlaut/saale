@@ -11,7 +11,7 @@ import {
   DEFAULT_MAX_CHARS,
   DEFAULT_MAX_REDIRECTS,
   DEFAULT_RESULTS_PER_CALL,
-  DEFAULT_SEARCH_CATEGORY,
+  DEFAULT_SEARCH_CATEGORIES,
   MAX_FETCH_TIMEOUT_MS,
   MAX_MAX_CHARS,
   MAX_MAX_REDIRECTS,
@@ -50,7 +50,7 @@ export async function readWebTools(): Promise<WebToolsSettings> {
       categories:
         row?.webSearchCategories && row.webSearchCategories.length > 0
           ? row.webSearchCategories
-          : [DEFAULT_SEARCH_CATEGORY],
+          : [...DEFAULT_SEARCH_CATEGORIES],
       safeSearch: safeSearchLevel(row?.webSearchSafeSearch ?? 0),
       language: row?.webSearchLanguage?.trim() || "all",
       resultsPerCall: clampSetting(

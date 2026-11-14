@@ -25,7 +25,7 @@ import {
   DEFAULT_MAX_CHARS,
   DEFAULT_MAX_REDIRECTS,
   DEFAULT_RESULTS_PER_CALL,
-  DEFAULT_SEARCH_CATEGORY,
+  DEFAULT_SEARCH_CATEGORIES,
   MAX_FETCH_TIMEOUT_MS,
   MAX_MAX_CHARS,
   MAX_MAX_REDIRECTS,
@@ -155,7 +155,7 @@ export function SearchSection() {
   }, [instance]);
 
   const selectedCategories = useMemo(
-    () => categories ?? settings?.webSearchCategories ?? [DEFAULT_SEARCH_CATEGORY],
+    () => categories ?? settings?.webSearchCategories ?? [...DEFAULT_SEARCH_CATEGORIES],
     [categories, settings?.webSearchCategories],
   );
 
@@ -428,5 +428,5 @@ export function SearchSection() {
 /** The pick as it is stored: trimmed, without duplicates, never empty. */
 function cleanCategories(values: readonly string[]): string[] {
   const names = values.map((value) => value.trim()).filter((value) => value.length > 0);
-  return names.length > 0 ? [...new Set(names)] : [DEFAULT_SEARCH_CATEGORY];
+  return names.length > 0 ? [...new Set(names)] : [...DEFAULT_SEARCH_CATEGORIES];
 }

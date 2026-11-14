@@ -3,7 +3,7 @@
  * Queries a self-hosted SearXNG instance via its JSON API.
  */
 
-import { DEFAULT_SEARCH_CATEGORY } from "@/lib/web/tools-config";
+import { DEFAULT_SEARCH_CATEGORIES } from "@/lib/web/tools-config";
 
 const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://saale-searxng:8080";
 
@@ -81,7 +81,7 @@ export async function searchWeb(options: SearchOptions): Promise<SearXNGResponse
   if (options.engines) {
     params.set("engines", options.engines);
   } else {
-    params.set("categories", options.categories ?? DEFAULT_SEARCH_CATEGORY);
+    params.set("categories", options.categories ?? DEFAULT_SEARCH_CATEGORIES.join(","));
   }
   if (options.timeRange) {
     params.set("time_range", options.timeRange);

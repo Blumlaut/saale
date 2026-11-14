@@ -9,8 +9,11 @@
  * no category. Categories decide the search when it names no engine.
  */
 
-/** SearXNG's default result set. */
-export const DEFAULT_SEARCH_CATEGORY = "general";
+/**
+ * SearXNG's default result set. The two sets share only some engines, and a
+ * scrape engine that suspends itself empties `general` long before `web`.
+ */
+export const DEFAULT_SEARCH_CATEGORIES: readonly string[] = ["general", "web"];
 
 /** Results one call returns when the model asks for no number. */
 export const DEFAULT_RESULTS_PER_CALL = 10;
