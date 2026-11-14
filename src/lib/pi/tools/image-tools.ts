@@ -8,11 +8,8 @@
  * it back as an image block it would pay for.
  */
 
-import type { ImageApi, ImageModel, ImagesInputContent } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { readWorkspaceFile } from "@/lib/files/workspace-file";
-import { storeGeneratedImage } from "@/lib/image-attachment";
-import { loadImageModel } from "@/lib/pi/image-model";
+import { MAX_REFERENCES, renderImage } from "@/lib/image-render";
 import { normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
 import { defineStructuredTool, type ToolOutcome } from "./tool-result";
 
@@ -21,19 +18,6 @@ export const EDIT_IMAGE_TOOL_NAME = "edit_image";
 
 /** Which image models take a picture to edit, for the tools that need one. */
 export const IMAGE_TOOL_NAMES = [GENERATE_IMAGE_TOOL_NAME, EDIT_IMAGE_TOOL_NAME] as const;
-
-/** Largest reference image sent back to the model's endpoint. */
-const MAX_REFERENCE_BYTES = 15 * 1024 * 1024;
-
-/**
- * How many pictures one edit may carry.
- *
- * Combining two pictures is the usual case: a subject and a setting, or a face
- * and a style. The endpoints cap it too, and a request with more references
- * than the model was trained on renders whatever it manages rather than saying
- * no, so the ceiling is here.
- */
-const MAX_REFERENCES = 4;
 
 const GENERATED_IMAGE_SCHEMA = Type.Object({
   path: Type.String({ description: "Workspace path of the rendered image." }),
@@ -72,120 +56,23 @@ function sizeParameter(sizes: readonly string[]) {
   );
 }
 
-/**
- * The reference image, read out of the user's workspace.
- *
- * A path that is not there, or is not an image, fails the call with the reason
- * rather than rendering something else.
- */
-async function readReferenceImage(
-  userId: string,
-  filePath: string,
-  sessionId: string,
-): Promise<ImagesInputContent> {
-  const file = await readWorkspaceFile(userId, filePath, { session: sessionId });
-  if (!file.mimeType.startsWith("image/")) {
-    throw new Error(`${file.fileName} is not an image (${file.mimeType})`);
-  }
-  if (file.size > MAX_REFERENCE_BYTES) {
-    throw new Error(`${file.fileName} is larger than 15MB, which no endpoint accepts`);
-  }
-
-  return {
-    type: "image",
-    data: Buffer.from(file.buffer).toString("base64"),
-    mimeType: file.mimeType,
-  };
-}
-
-/**
- * Render one picture and store it.
- *
- * Both tools end here: the difference between them is a reference image, which
- * turns the request into an edit on the endpoint.
- */
-async function renderImage(options: {
+/** One render, in the shape a tool result takes: the value, its sentence, its metadata. */
+async function renderToOutcome(options: {
   userId: string;
   sessionId: string;
   prompt: string;
-  /** Workspace paths of the pictures to work from, in the order the prompt names them. */
   references?: readonly string[] | undefined;
-  /** The resolution the agent asked for, already resolved against the model's list. */
   size?: string | undefined;
   signal?: AbortSignal | undefined;
-  /** What the model did, for the sentence the model reads. */
   verb: "Rendered" | "Edited";
 }): Promise<ToolOutcome<GeneratedImage, undefined>> {
-  const { userId, sessionId, prompt, references = [], size, signal, verb } = options;
-
-  const resolved = await loadImageModel(userId);
-  if (!resolved) {
-    throw new Error(
-      "No image model is configured. Pick one under Settings → Models before rendering.",
-    );
-  }
-  const { runtime, model, pick } = resolved;
-
-  const input: ImagesInputContent[] = [{ type: "text", text: prompt }];
-  if (references.length > 0) {
-    if (!model.input.includes("image")) {
-      throw new Error(
-        `${model.name} renders from a prompt alone, so it cannot edit a picture. Use generate_image.`,
-      );
-    }
-    // Order matters: the model reads them in this order and the prompt refers
-    // to them by position.
-    for (const reference of references) {
-      input.push(await readReferenceImage(userId, reference, sessionId));
-    }
-  }
-
-  const result = await runtime.generateImages(
-    model as ImageModel<ImageApi>,
-    { input },
-    {
-      ...(signal ? { signal } : {}),
-      // `metadata` is Pi's channel for provider-neutral request fields.
-      ...(size ? { metadata: { size } } : {}),
-    },
-  );
-
-  if (result.stopReason !== "stop") {
-    throw new Error(result.errorMessage ?? `The image model stopped: ${result.stopReason}`);
-  }
-
-  const rendered = result.output.find(
-    (block): block is Extract<typeof block, { type: "image" }> => block.type === "image",
-  );
-  if (!rendered) throw new Error("The image model returned no image.");
-
-  const stored = await storeGeneratedImage(userId, Buffer.from(rendered.data, "base64"));
-  const cost = result.usage?.cost?.total;
-  const priced = typeof cost === "number" && cost > 0 ? { cost } : {};
+  const { image, sentence } = await renderImage(options);
+  const { prompt: _prompt, ...value } = image;
 
   return {
-    value: {
-      path: stored.storagePath,
-      model: model.id,
-      provider: pick.provider,
-      width: stored.width,
-      height: stored.height,
-      ...priced,
-    },
-    text:
-      `${verb} "${prompt}" with ${model.name} (${stored.width}×${stored.height}). ` +
-      `Saved to ${stored.storagePath} and shown to the user.`,
-    meta: {
-      _saaleImageMeta: {
-        path: stored.storagePath,
-        model: model.id,
-        provider: pick.provider,
-        prompt,
-        width: stored.width,
-        height: stored.height,
-        ...priced,
-      },
-    },
+    value,
+    text: sentence,
+    meta: { _saaleImageMeta: image },
   };
 }
 
@@ -207,7 +94,7 @@ function createGenerateImageTool(userId: string, sessionId: string, sizes: reado
     }),
     outputSchema: GENERATED_IMAGE_SCHEMA,
     execute: async (_toolCallId, params, signal) =>
-      renderImage({
+      renderToOutcome({
         userId,
         sessionId,
         prompt: params.prompt,
@@ -251,7 +138,7 @@ function createEditImageTool(userId: string, sessionId: string, sizes: readonly 
     }),
     outputSchema: GENERATED_IMAGE_SCHEMA,
     execute: async (_toolCallId, params, signal) =>
-      renderImage({
+      renderToOutcome({
         userId,
         sessionId,
         prompt: params.prompt,

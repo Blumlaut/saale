@@ -47,6 +47,11 @@ export interface CommandMeta {
   /** Extra names the same command answers to. surfaces never list these. */
   aliases?: readonly string[];
   description: string;
+  /**
+   * What a surface says while the command runs. Only for a command that takes
+   * long enough that a silent composer reads as a dropped request.
+   */
+  progress?: string;
   surfaces: readonly CommandSurface[];
   icon: LucideIcon;
 }

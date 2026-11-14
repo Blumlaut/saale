@@ -97,10 +97,13 @@ describe("command catalog", () => {
     // description, which is how the menu stays findable by intent.
     expect(searchCommands("web", "approvals").map((meta) => meta.name)).toEqual(["stfu"]);
 
-    // "s" matches two names and every description: the names come first.
+    // "s" matches two names and most descriptions: the names come first.
     const ranked = searchCommands("web", "s").map((meta) => meta.name);
     expect(ranked.slice(0, 2)).toEqual(["stfu", "stop"]);
-    expect(ranked).toHaveLength(listCommands("web").length);
+    const byDescription = listCommands("web").filter((meta) =>
+      meta.description.toLowerCase().includes("s"),
+    );
+    expect(ranked).toHaveLength(byDescription.length);
 
     // An alias finds its command by name, not by description.
     expect(searchCommands("web", "yolo").map((meta) => meta.name)).toEqual(["stfu"]);

@@ -1,4 +1,4 @@
-import { Bot, MessageSquarePlus, ShieldCheck, Sparkles, Square } from "lucide-react";
+import { Bot, Image, MessageSquarePlus, ShieldCheck, Sparkles, Square } from "lucide-react";
 import type { CommandMeta, CommandSurface } from "./types";
 
 /**
@@ -22,6 +22,7 @@ export const COMMAND_CATALOG = [
   {
     name: "compact",
     description: "Summarise this conversation to free up context",
+    progress: "Summarising the conversation…",
     surfaces: ["web", "telegram"],
     icon: Sparkles,
   },
@@ -30,6 +31,13 @@ export const COMMAND_CATALOG = [
     description: "Choose the model this chat answers with",
     surfaces: ["web", "telegram"],
     icon: Bot,
+  },
+  {
+    name: "image",
+    description: "Render a picture from a prompt, without the agent",
+    progress: "Rendering the picture…",
+    surfaces: ["web"],
+    icon: Image,
   },
   {
     name: "stfu",
