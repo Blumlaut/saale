@@ -4,13 +4,13 @@
  * A diffusion server renders whatever it is asked for, and the size it picks on
  * its own is the one nobody chose: stable-diffusion.cpp answers a request with
  * no `size` at 512×512, which is far below what the model is trained on. So an
- * account owns a list of sizes, the first one is the default, and the agent can
- * pick any of the others when the request needs a different shape.
+ * image model owns a list of sizes, the first one is the default, and the agent
+ * can pick any of the others when the request needs a different shape.
  *
- * Pure data, so the settings form and the server read the same list.
+ * Pure data, so the admin's form and the server read the same list.
  */
 
-/** One entry of the account's list: the value an endpoint takes, and its label. */
+/** One entry of a model's list: the value an endpoint takes, and its label. */
 export interface ImageSizePreset {
   /** `WxH`, as the OpenAI images API spells it. */
   value: string;
@@ -18,7 +18,7 @@ export interface ImageSizePreset {
 }
 
 /**
- * The sizes the settings form offers, in the order it shows them.
+ * The sizes the admin may pick from, in the order they are shown.
  *
  * 1024×1024 first because it is what every OpenAI-compatible images endpoint
  * accepts; the 2K entries are what Qwen-Image and friends are trained on, and
@@ -35,10 +35,10 @@ export const IMAGE_SIZE_PRESETS: readonly ImageSizePreset[] = [
   { value: "2048x2048", label: "2048 × 2048 · large square" },
 ];
 
-/** What a render uses when the account never picked a list. */
+/** What a render uses when a model has no list of its own. */
 export const DEFAULT_IMAGE_SIZES: readonly string[] = ["1024x1024"];
 
-/** Sizes one account may offer: enough for the shapes, short enough to choose from. */
+/** Sizes one model may offer: enough for the shapes, short enough to choose from. */
 export const MAX_IMAGE_SIZES = 6;
 
 /** `1024x1024`: two sides, no units, no sign. */
@@ -85,7 +85,7 @@ export function normalizeImageSizes(value: unknown): string[] {
   return sizes.length > 0 ? sizes : [...DEFAULT_IMAGE_SIZES];
 }
 
-/** The size a render uses, out of the account's list, when the agent names one. */
+/** The size a render uses, out of the model's list, when the agent names one. */
 export function pickImageSize(sizes: readonly string[], requested?: unknown): string {
   const list = normalizeImageSizes(sizes);
   const wanted = typeof requested === "string" ? requested.trim().toLowerCase() : "";

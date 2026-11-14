@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +21,6 @@ import {
   DEFAULT_IMAGE_SIZES,
   IMAGE_SIZE_PRESETS,
   MAX_IMAGE_SIZES,
-  isImageSize,
 } from "@/lib/providers/images/sizes";
 
 /**
@@ -81,12 +81,6 @@ function inherited(
   const endpointValue = target.endpointLimits?.[field];
   if (typeof endpointValue === "number") return endpointValue;
   return field === "contextWindow" ? PI_DEFAULT_CONTEXT_WINDOW : PI_DEFAULT_MAX_OUTPUT_TOKENS;
-}
-
-/** The list after turning one resolution on or off, in the order they were picked. */
-function toggleSize(sizes: readonly string[], value: string): string[] {
-  const next = sizes.includes(value) ? sizes.filter((size) => size !== value) : [...sizes, value];
-  return next.filter(isImageSize).slice(0, MAX_IMAGE_SIZES);
 }
 
 /** The size a render uses when the agent names none. */
@@ -232,50 +226,27 @@ export function ModelLimitsSheet({
             {/* What the model may render at. The agent picks one of these per
                 request; the first is what it uses when it picks none. */}
             {allowImageSizes && target.image ? (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-xs">Resolutions</Label>
-                  <span className="text-muted-foreground text-[11px]">
-                    {imageSizes.length}/{MAX_IMAGE_SIZES}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {IMAGE_SIZE_PRESETS.map((preset) => {
-                    const on = imageSizes.includes(preset.value);
-                    const full = !on && imageSizes.length >= MAX_IMAGE_SIZES;
-                    return (
-                      <Button
-                        key={preset.value}
-                        type="button"
-                        size="xs"
-                        variant={on ? "secondary" : "ghost"}
-                        aria-pressed={on}
-                        disabled={full}
-                        title={full ? `Pick at most ${MAX_IMAGE_SIZES}` : preset.label}
-                        className="font-mono text-[11px]"
-                        onClick={() => setImageSizes(toggleSize(imageSizes, preset.value))}
-                      >
-                        {preset.value.replace("x", "×")}
-                      </Button>
-                    );
-                  })}
-                </div>
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs" htmlFor="model-image-sizes">
+                  Resolutions
+                </Label>
+                <MultiSelect
+                  id="model-image-sizes"
+                  options={IMAGE_SIZE_PRESETS.map((preset) => ({
+                    value: preset.value,
+                    label: preset.label,
+                  }))}
+                  value={imageSizes}
+                  onChange={setImageSizes}
+                  max={MAX_IMAGE_SIZES}
+                  placeholder="Pick resolutions"
+                  searchPlaceholder="Search resolutions"
+                />
                 <p className="text-muted-foreground text-[11px]">
                   {imageSizes.length > 0
                     ? `The agent picks one per request and uses ${firstSize(imageSizes)} by default.`
-                    : `None picked. The agent renders at ${firstSize(DEFAULT_IMAGE_SIZES)}.`}
+                    : `No list, so a render uses ${firstSize(DEFAULT_IMAGE_SIZES)}.`}
                 </p>
-                {imageSizes.length > 0 ? (
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    className="text-muted-foreground h-7 px-2 text-[11px]"
-                    onClick={() => setImageSizes([])}
-                  >
-                    Back to the default
-                  </Button>
-                ) : null}
               </div>
             ) : null}
 

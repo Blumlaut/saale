@@ -110,7 +110,7 @@ async function renderImage(options: {
   prompt: string;
   /** Workspace paths of the pictures to work from, in the order the prompt names them. */
   references?: readonly string[] | undefined;
-  /** The resolution the agent asked for, already resolved against the account's list. */
+  /** The resolution the agent asked for, already resolved against the model's list. */
   size?: string | undefined;
   signal?: AbortSignal | undefined;
   /** What the model did, for the sentence the model reads. */
