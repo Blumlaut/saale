@@ -5,6 +5,13 @@ import { AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -86,6 +93,11 @@ function inherited(
 /** The size a render uses when the agent names none. */
 function firstSize(sizes: readonly string[]): string {
   return (sizes[0] ?? DEFAULT_IMAGE_SIZES[0]!).replace("x", "×");
+}
+
+/** The list with one size moved to the front, which is what makes it the default. */
+function promoteSize(sizes: readonly string[], value: string): string[] {
+  return [value, ...sizes.filter((size) => size !== value)];
 }
 
 /** A limit the user typed: `undefined` when empty, null when unusable. */
@@ -242,10 +254,39 @@ export function ModelLimitsSheet({
                   placeholder="Pick resolutions"
                   searchPlaceholder="Search resolutions"
                 />
+                {imageSizes.length > 1 ? (
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <Label className="text-xs" htmlFor="model-image-size-default">
+                      Default
+                    </Label>
+                    <Select
+                      items={Object.fromEntries(
+                        imageSizes.map((size) => [size, size.replace("x", " × ")]),
+                      )}
+                      value={imageSizes[0]!}
+                      onValueChange={(value) => {
+                        if (value) setImageSizes(promoteSize(imageSizes, value));
+                      }}
+                    >
+                      <SelectTrigger size="sm" id="model-image-size-default">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {imageSizes.map((size) => (
+                          <SelectItem key={size} value={size}>
+                            {size.replace("x", " × ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
                 <p className="text-muted-foreground text-[11px]">
-                  {imageSizes.length > 0
-                    ? `The agent picks one per request and uses ${firstSize(imageSizes)} by default.`
-                    : `No list, so a render uses ${firstSize(DEFAULT_IMAGE_SIZES)}.`}
+                  {imageSizes.length === 0
+                    ? `No list, so a render uses ${firstSize(DEFAULT_IMAGE_SIZES)}.`
+                    : imageSizes.length === 1
+                      ? `The agent renders at ${firstSize(imageSizes)}.`
+                      : `The agent picks one per request and uses ${firstSize(imageSizes)} unless it asks for another.`}
                 </p>
               </div>
             ) : null}
