@@ -22,6 +22,7 @@ import type {
   ImagesOutputContent,
   Usage,
 } from "@earendil-works/pi-ai";
+import { isImageSize } from "./sizes";
 
 /** The images api this adapter implements. */
 export const OPENAI_IMAGES_API = "openai-images";
@@ -123,6 +124,18 @@ function readUsage(raw: unknown, model: ImageModel<ImageApi>): Usage | undefined
   };
 }
 
+/**
+ * The size the caller asked for, out of `options.metadata`.
+ *
+ * Pi's options carry provider-neutral metadata precisely for this: the account
+ * picks the resolution, the endpoint gets it as `size`, and a server that does
+ * not support it ignores the field.
+ */
+function requestedSize(options: ImagesOptions | undefined): string | undefined {
+  const size = options?.metadata?.size;
+  return isImageSize(size) ? size : undefined;
+}
+
 /** The request body of a generation, after the caller's own rewrite. */
 async function generationPayload(
   model: ImageModel<ImageApi>,
@@ -130,17 +143,25 @@ async function generationPayload(
   options: ImagesOptions | undefined,
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = { model: model.id, prompt, n: 1 };
+  const size = requestedSize(options);
+  if (size) body.size = size;
   const rewritten = await options?.onPayload?.(body, model);
   return typeof rewritten === "object" && rewritten !== null
     ? (rewritten as Record<string, unknown>)
     : body;
 }
 
-function editPayload(model: ImageModel<ImageApi>, input: SplitInput): FormData {
+function editPayload(
+  model: ImageModel<ImageApi>,
+  input: SplitInput,
+  options: ImagesOptions | undefined,
+): FormData {
   const form = new FormData();
   form.set("model", model.id);
   form.set("prompt", input.prompt);
   form.set("n", "1");
+  const size = requestedSize(options);
+  if (size) form.set("size", size);
   input.images.forEach((image, index) => {
     const bytes = Buffer.from(image.data, "base64");
     form.append(
@@ -182,7 +203,7 @@ export async function generateImages(
   };
   let body: BodyInit;
   if (editing) {
-    body = editPayload(model, input);
+    body = editPayload(model, input, options);
   } else {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(await generationPayload(model, input.prompt, options));

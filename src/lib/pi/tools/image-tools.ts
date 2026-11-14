@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import { readWorkspaceFile } from "@/lib/files/workspace-file";
 import { storeGeneratedImage } from "@/lib/image-attachment";
 import { loadImageModel } from "@/lib/pi/image-model";
+import { normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
 import { defineStructuredTool, type ToolOutcome } from "./tool-result";
 
 export const GENERATE_IMAGE_TOOL_NAME = "generate_image";
@@ -42,6 +43,25 @@ type GeneratedImage = {
   height: number;
   cost?: number;
 };
+
+/**
+ * The `size` argument, offering the account's own list.
+ *
+ * The endpoint renders whatever it is asked for, so the agent gets the sizes
+ * this account set rather than a free string the server would reject or
+ * silently round.
+ */
+function sizeParameter(sizes: readonly string[]) {
+  const list = normalizeImageSizes(sizes);
+  return Type.Optional(
+    Type.String({
+      enum: list,
+      description:
+        `Resolution as "WxH". Omit it for ${list[0]}, the account's default. ` +
+        `Anything more square, tall or wide has to be one of: ${list.join(", ")}.`,
+    }),
+  );
+}
 
 /**
  * The reference image, read out of the user's workspace.
@@ -81,11 +101,13 @@ async function renderImage(options: {
   prompt: string;
   /** Workspace path of the picture to work from. */
   reference?: string | undefined;
+  /** The resolution the agent asked for, already resolved against the account's list. */
+  size?: string | undefined;
   signal?: AbortSignal | undefined;
   /** What the model did, for the sentence the model reads. */
   verb: "Rendered" | "Edited";
 }): Promise<ToolOutcome<GeneratedImage, undefined>> {
-  const { userId, sessionId, prompt, reference, signal, verb } = options;
+  const { userId, sessionId, prompt, reference, size, signal, verb } = options;
 
   const resolved = await loadImageModel(userId);
   if (!resolved) {
@@ -108,7 +130,11 @@ async function renderImage(options: {
   const result = await runtime.generateImages(
     model as ImageModel<ImageApi>,
     { input },
-    signal ? { signal } : {},
+    {
+      ...(signal ? { signal } : {}),
+      // `metadata` is Pi's channel for provider-neutral request fields.
+      ...(size ? { metadata: { size } } : {}),
+    },
   );
 
   if (result.stopReason !== "stop") {
@@ -151,7 +177,7 @@ async function renderImage(options: {
 }
 
 /** Render a new picture from a prompt. */
-function createGenerateImageTool(userId: string, sessionId: string) {
+function createGenerateImageTool(userId: string, sessionId: string, sizes: readonly string[]) {
   return defineStructuredTool({
     name: GENERATE_IMAGE_TOOL_NAME,
     label: "Generate Image",
@@ -164,6 +190,7 @@ function createGenerateImageTool(userId: string, sessionId: string) {
       prompt: Type.String({
         description: "What to render. Describe the subject, style and framing you want.",
       }),
+      size: sizeParameter(sizes),
     }),
     outputSchema: GENERATED_IMAGE_SCHEMA,
     execute: async (_toolCallId, params, signal) =>
@@ -171,6 +198,8 @@ function createGenerateImageTool(userId: string, sessionId: string) {
         userId,
         sessionId,
         prompt: params.prompt,
+        // A size outside the list is not the endpoint's to guess at.
+        size: pickImageSize(sizes, params.size),
         signal,
         verb: "Rendered",
       }),
@@ -181,7 +210,7 @@ function createGenerateImageTool(userId: string, sessionId: string) {
  * Edit a picture already in the workspace, which is the same endpoint's
  * `/v1/images/edits` call.
  */
-function createEditImageTool(userId: string, sessionId: string) {
+function createEditImageTool(userId: string, sessionId: string, sizes: readonly string[]) {
   return defineStructuredTool({
     name: EDIT_IMAGE_TOOL_NAME,
     label: "Edit Image",
@@ -201,6 +230,7 @@ function createEditImageTool(userId: string, sessionId: string) {
           "What to change and what the result should look like. The endpoint keeps the parts " +
           "you do not name.",
       }),
+      size: sizeParameter(sizes),
     }),
     outputSchema: GENERATED_IMAGE_SCHEMA,
     execute: async (_toolCallId, params, signal) =>
@@ -209,6 +239,7 @@ function createEditImageTool(userId: string, sessionId: string) {
         sessionId,
         prompt: params.prompt,
         reference: params.image,
+        size: pickImageSize(sizes, params.size),
         signal,
         verb: "Edited",
       }),
@@ -221,7 +252,12 @@ function createEditImageTool(userId: string, sessionId: string) {
  * `edit` needs a model that takes a picture, so a diffusion server told it only
  * answers prompts gets the one tool it can serve.
  */
-export function createImageTools(userId: string, sessionId: string, options: { edit: boolean }) {
-  const generate = createGenerateImageTool(userId, sessionId);
-  return options.edit ? [generate, createEditImageTool(userId, sessionId)] : [generate];
+export function createImageTools(
+  userId: string,
+  sessionId: string,
+  options: { edit: boolean; sizes: readonly string[] },
+) {
+  const sizes = normalizeImageSizes(options.sizes);
+  const generate = createGenerateImageTool(userId, sessionId, sizes);
+  return options.edit ? [generate, createEditImageTool(userId, sessionId, sizes)] : [generate];
 }

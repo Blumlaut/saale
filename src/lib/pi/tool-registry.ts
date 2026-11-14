@@ -7,10 +7,11 @@ import { canExec as canRunCommands } from "@/lib/sandbox/client";
 import { loadUserFeatures } from "@/lib/permissions/feature-access";
 import { featureForToolCategory } from "@/lib/permissions/features";
 import { withAbortSignal } from "./tool-abort";
-import { resolveImageCapabilities } from "./image-model";
+import { resolveImageCapabilities, resolveImageSizes } from "./image-model";
 import { createChatTools, createShowFileTool } from "./tools/chat-tools";
 import { createMailTools } from "./tools/mail-tools";
 import { createImageTools } from "./tools/image-tools";
+import { DEFAULT_IMAGE_SIZES } from "@/lib/providers/images/sizes";
 import { createContactTools } from "./tools/contact-tools";
 import { createJobTools } from "./tools/job-tools";
 import { createCalendarTools } from "./tools/calendar-tools";
@@ -35,6 +36,8 @@ import { createProjectTools } from "@/lib/coder/tools";
 interface ToolBuildContext {
   /** Whether the account's image model takes a picture to edit. */
   editImages: boolean;
+  /** The sizes the account renders at, the first one being the default. */
+  imageSizes: string[];
 }
 
 /**
@@ -51,7 +54,7 @@ type ToolFactory = (
 ) => ToolDefinition[] | ToolDefinition;
 
 /** Every tool available, for the catalog and the tools that only need names. */
-const EVERYTHING: ToolBuildContext = { editImages: true };
+const EVERYTHING: ToolBuildContext = { editImages: true, imageSizes: [...DEFAULT_IMAGE_SIZES] };
 
 /**
  * Registry mapping tool category keys to their factory functions.
@@ -71,7 +74,10 @@ const TOOL_FACTORIES: Record<ToolCategoryKey, ToolFactory> = {
   telegram: (userId, sessionId) => createTelegramTools(userId, sessionId),
   web: () => createWebTools(),
   image: (userId, sessionId, context) =>
-    createImageTools(userId, sessionId, { edit: context.editImages }),
+    createImageTools(userId, sessionId, {
+      edit: context.editImages,
+      sizes: context.imageSizes,
+    }),
   memory: (userId) => createMemoryTools(userId),
   tasks: (userId) => createTaskTools(userId),
   watchers: (userId, sessionId) => createAutomationTools(userId, sessionId),
@@ -188,8 +194,11 @@ export async function resolveTools(
 
   // Image generation needs a model to call: nobody picked one, or Pi has no such
   // model for this account, means no tool to offer.
-  const imageCapabilities = await resolveImageCapabilities(userId, options.modelRuntime);
-  const buildContext: ToolBuildContext = { editImages: imageCapabilities.edit };
+  const [imageCapabilities, imageSizes] = await Promise.all([
+    resolveImageCapabilities(userId, options.modelRuntime),
+    resolveImageSizes(userId),
+  ]);
+  const buildContext: ToolBuildContext = { editImages: imageCapabilities.edit, imageSizes };
 
   // Backward compat: map legacy keys to terminal
   const terminalEnabled =
