@@ -9,6 +9,8 @@
  * is left.
  */
 
+import { extractToolMeta } from "@/lib/chat/tool-meta";
+
 /** Roughly four characters per token, the same allowance Pi's own estimator makes. */
 const CHARS_PER_TOKEN = 4;
 
@@ -341,4 +343,21 @@ export function mergeTurnStats(turns: ReadonlyArray<TurnStats | undefined>): Tur
     costFromProvider: present.every((turn) => turn.costFromProvider),
     context: last.context,
   };
+}
+
+/**
+ * What a turn's image renders cost, read off their result metadata.
+ *
+ * A render is billed by its own provider, outside the assistant message Pi
+ * reports usage on, so the tool writes the price into the result and the turn
+ * adds it to what the chat models charged. A provider that states no price
+ * contributes nothing.
+ */
+export function imageRenderCost(toolCalls: ReadonlyArray<{ result?: string | undefined }>): number {
+  let total = 0;
+  for (const call of toolCalls) {
+    const meta = extractToolMeta<{ type?: string; cost?: unknown }>(call.result);
+    if (typeof meta?.cost === "number" && Number.isFinite(meta.cost)) total += meta.cost;
+  }
+  return total;
 }

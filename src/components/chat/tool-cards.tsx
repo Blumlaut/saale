@@ -6,6 +6,7 @@ import { ToolCard } from "./tool-card";
 import { calendarToolDescriptor } from "./tool-descriptors/calendar";
 import { codemodeDescriptor } from "./tool-descriptors/codemode";
 import { fileToolDescriptor } from "./tool-descriptors/file";
+import { imageToolDescriptor } from "./tool-descriptors/image";
 import { describeGenericToolCall } from "./tool-descriptors/generic";
 import { infraToolDescriptor } from "./tool-descriptors/infra";
 import { mailToolDescriptor } from "./tool-descriptors/mail";
@@ -20,6 +21,9 @@ import type { ToolCallData } from "./types";
  * component. `show_file` is the only bespoke one: it is an attachment. a
  * preview and a download. rather than a report of what a call did, so it has
  * no card model to describe. Everything else is data in `./tool-descriptors`.
+ *
+ * A rendered image is a descriptor like any other and still an attachment: the
+ * picture is what the user asked for, so it belongs outside the collapsed run.
  *
  * The owner's path: `MessageList` renders `ToolCallGroup`, which resolves each
  * call through here. The share viewer renders `RedactedToolCall` directly, so a
@@ -76,6 +80,7 @@ function route(descriptor: ToolDescriptor): ToolCardRoute {
 /** First match wins, so the order below is the routing table. */
 const ROUTES: readonly ToolCardRoute[] = [
   { names: ["show_file"], attachment: true, render: ShowFileCard },
+  { ...route(imageToolDescriptor), attachment: true },
   route(webToolDescriptor),
   route(fileToolDescriptor),
   route(mailToolDescriptor),

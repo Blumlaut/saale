@@ -14,6 +14,7 @@ const TOOL_META_KEYS = [
   "_saaleMailMeta",
   "_saaleCalMeta",
   "_saaleInfraMeta",
+  "_saaleImageMeta",
 ] as const;
 
 export type ToolMetaKey = (typeof TOOL_META_KEYS)[number];
