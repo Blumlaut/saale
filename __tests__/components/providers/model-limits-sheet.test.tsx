@@ -71,7 +71,7 @@ describe("the model sheet's resolutions", () => {
   it("starts from the resolutions the model already has", () => {
     renderSheet({ target: target({ imageSizes: ["2048x2048", "1536x1024"] }) });
 
-    expect(screen.getByText(/uses 2048×2048 by default/)).toBeInTheDocument();
+    expect(screen.getByText(/uses 2048×2048 unless it asks for another/)).toBeInTheDocument();
     openResolutions();
     expect(screen.getByText("2 of 6 picked")).toBeInTheDocument();
   });
@@ -93,6 +93,36 @@ describe("the model sheet's resolutions", () => {
         imageSizes: ["2048x2048", "1536x1024"],
       }),
     );
+  });
+
+  // The first entry is what a render uses, so picking a default is a move to
+  // the front rather than a second thing to keep in sync.
+  it("moves the chosen default to the front of the list", async () => {
+    renderSheet();
+
+    openResolutions();
+    toggleOption("1024x1024");
+    toggleOption("2048x2048");
+    // Close the dropdown first: its entries and the select's are both options.
+    fireEvent.click(screen.getByLabelText("Pick resolutions"));
+    fireEvent.click(screen.getByLabelText("Default"));
+    const option = await screen.findByRole("option", { name: "2048 × 2048" });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(patchJson).toHaveBeenCalled());
+    expect(patchJson).toHaveBeenCalledWith(
+      "/api/admin/providers/capabilities",
+      expect.objectContaining({ imageSizes: ["2048x2048", "1024x1024"] }),
+    );
+  });
+
+  it("offers no default until there is more than one size to choose between", () => {
+    renderSheet({ target: target({ imageSizes: ["1024x1024"] }) });
+
+    expect(screen.queryByText("Default")).toBeNull();
   });
 
   it("puts the model back on the default list", async () => {
