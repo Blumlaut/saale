@@ -102,8 +102,11 @@ vi.mock("@/lib/permissions/feature-access", () => ({
 
 // The image tools need a model to call; these cases are about the categories.
 vi.mock("@/lib/pi/image-model", () => ({
-  resolveImageCapabilities: vi.fn(async () => ({ generate: false, edit: false })),
-  resolveImageSizes: vi.fn(async () => ["1024x1024"]),
+  resolveImageCapabilities: vi.fn(async () => ({
+    generate: false,
+    edit: false,
+    sizes: ["1024x1024"],
+  })),
 }));
 vi.mock("@/lib/pi/tools/image-tools", () => ({
   createImageTools: vi.fn((userId: string, _sessionId: string, options: { edit: boolean }) =>
@@ -184,7 +187,11 @@ describe("resolveTools", () => {
   });
 
   it("includes the image tool once an image model is picked", async () => {
-    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({ generate: true, edit: false });
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({
+      generate: true,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
 
     const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
 
@@ -194,7 +201,11 @@ describe("resolveTools", () => {
   // Editing needs a picture to send, which a prompt-only model cannot take, so
   // the model is never offered the call it would have to refuse.
   it("adds the edit tool only for a model that takes a picture", async () => {
-    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({ generate: true, edit: true });
+    vi.mocked(resolveImageCapabilities).mockResolvedValueOnce({
+      generate: true,
+      edit: true,
+      sizes: ["1024x1024"],
+    });
 
     const tools = await resolveTools(userId, sessionId, { ...ALL_OFF, image: true }, options);
 
@@ -205,6 +216,7 @@ describe("resolveTools", () => {
     vi.mocked(resolveImageCapabilities).mockResolvedValue({
       generate: true,
       edit: true,
+      sizes: ["1024x1024"],
     });
     vi.mocked(loadUserFeatures).mockResolvedValueOnce({ ...ALL_FEATURES_ON, image: false });
 

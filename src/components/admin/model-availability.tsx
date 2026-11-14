@@ -160,6 +160,8 @@ export function ModelAvailability() {
       maxOutputTokens: model.maxOutputTokens,
       overrides: model.overrides,
       endpointLimits: endpointLimits[providerId] ?? null,
+      image: model.image === true,
+      imageSizes: model.imageSizes,
     });
   };
 
@@ -510,6 +512,7 @@ export function ModelAvailability() {
           if (!open) setLimitsTarget(null);
         }}
         capabilitiesEndpoint="/api/admin/providers/capabilities"
+        allowImageSizes
         onSaved={() => {
           void loadModels();
         }}

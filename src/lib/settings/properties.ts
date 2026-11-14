@@ -56,7 +56,6 @@ import {
   type SidebarNavEntry,
 } from "@/lib/navigation/sidebar-nav";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
-import { normalizeImageSizes } from "@/lib/providers/images/sizes";
 import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/branding/workspace-name";
 import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
 import {
@@ -579,21 +578,6 @@ const IMAGE_MODEL_PROPERTY: UserProperty = {
   schema: modelReferenceSchema,
   read: (row) => row.imageModel,
   write: (_row, value) => ({ imageModel: normalizeModelReference(value) }),
-};
-
-/** `models.imageSizes`. the resolutions this account's image renders use. */
-const IMAGE_SIZES_PROPERTY: UserProperty = {
-  key: "models.imageSizes",
-  group: GROUP.models,
-  label: "Image resolutions",
-  description:
-    'Sizes an image render may use, as "WxH". The first one is what a render uses; the agent picks another when the request needs a different shape. Without a list, a render is 1024x1024.',
-  columns: ["imageSizes"],
-  apply: "sessions",
-  scope: "user",
-  schema: z.array(z.string()),
-  read: (row) => normalizeImageSizes(row.imageSizes),
-  write: (_row, value) => ({ imageSizes: normalizeImageSizes(value) }),
 };
 
 /**
@@ -1210,7 +1194,6 @@ export const USER_PROPERTIES: readonly UserProperty[] = [
   ...toolPolicyProperties(),
   APPROVAL_DECISION_MODEL_PROPERTY,
   IMAGE_MODEL_PROPERTY,
-  IMAGE_SIZES_PROPERTY,
   ...coderCategoryProperties(),
   ...sidebarProperties(),
   ...notificationProperties(),
