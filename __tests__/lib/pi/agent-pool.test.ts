@@ -14,6 +14,7 @@ import {
   markRebuildPending,
   shutdown,
 } from "@/lib/pi/agent-pool";
+import { restoreEnv } from "../../helpers/env";
 
 // Mock Redis (used by SseDispatcher via sse-buffer)
 const mockRedisIncr = vi.fn().mockResolvedValue(1);
@@ -85,9 +86,7 @@ describe("agent-pool", () => {
       delete process.env.UPLOADS_DIR;
       const dir = getSessionDir("user-1", "session-abc");
       expect(dir).toMatch(/pi_sessions\/user-1\/session-abc$/);
-      if (original !== undefined) {
-        process.env.UPLOADS_DIR = original;
-      }
+      restoreEnv("UPLOADS_DIR", original);
     });
 
     it("uses UPLOADS_DIR env var when set", () => {
@@ -95,9 +94,7 @@ describe("agent-pool", () => {
       process.env.UPLOADS_DIR = "/app/uploads";
       const dir = getSessionDir("user-1", "session-abc");
       expect(dir).toBe("/app/uploads/pi_sessions/user-1/session-abc");
-      if (original !== undefined) {
-        process.env.UPLOADS_DIR = original;
-      }
+      restoreEnv("UPLOADS_DIR", original);
     });
   });
 

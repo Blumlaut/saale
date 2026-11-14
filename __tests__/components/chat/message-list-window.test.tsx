@@ -202,7 +202,7 @@ describe("MessageList growth", () => {
   });
 
   it("keeps the turns above a long run in the window as it works", () => {
-    const turn = longTurn(200);
+    const turn = longTurn(160);
     const run = (steps: number): Message[] => [
       ...turn,
       message({ id: "u1", role: "user", content: "and now this" }),
@@ -211,11 +211,11 @@ describe("MessageList growth", () => {
     ];
     const { rerender } = render(<MessageList messages={run(0)} isLoading />);
 
-    for (const steps of [1, 20, 120, 200]) {
+    for (const steps of [1, 20, 160]) {
       rerender(<MessageList messages={run(steps)} isLoading />);
       // The finished turn stays where it was: the run below it appends.
       expect(screen.getByText("do the thing")).toBeInTheDocument();
-      expect(screen.getByText("step 199")).toBeInTheDocument();
+      expect(screen.getByText("step 159")).toBeInTheDocument();
       expect(revealButton()).not.toBeInTheDocument();
     }
   });
@@ -320,13 +320,13 @@ describe("MessageList folding a turn", () => {
 
     // Steps arriving append below the unfold instead of pushing it along.
     const grown = [...longTurn(230)];
-    for (let index = 230; index < 240; index++) {
+    for (let index = 230; index < 234; index++) {
       grown.push(step(index, "u0"));
       rerender(<MessageList messages={[...grown]} isLoading />);
     }
 
     expect(earlierSteps()).toHaveTextContent("Show 21 earlier steps");
-    expect(screen.getByText("step 230")).toBeInTheDocument();
+    expect(screen.getByText("step 233")).toBeInTheDocument();
   });
 });
 

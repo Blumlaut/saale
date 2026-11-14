@@ -60,6 +60,7 @@ vi.mock("@/lib/coder/gitconfig", async (importOriginal) => ({
 import { createProjectSettingsTools, createProjectTools } from "@/lib/coder/tools";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { createSettingsTools } from "@/lib/settings/tools";
+import { restoreEnv } from "../../helpers/env";
 
 const USER = "user-1";
 const IDENTITY = userIdentity(USER);
@@ -142,7 +143,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
+  restoreEnv("SANDBOX_WORKSPACES_DIR", originalWorkspacesDir);
   await fs.rm(workspaceDir, { recursive: true, force: true });
 });
 

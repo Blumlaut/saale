@@ -45,6 +45,7 @@ import {
 } from "@/lib/coder/git";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { sandboxConfig } from "@/lib/sandbox/config";
+import { restoreEnv } from "../../helpers/env";
 
 const USER = "user-1";
 const IDENTITY = userIdentity(USER);
@@ -279,7 +280,7 @@ describe("ensureGitconfig", () => {
   });
 
   afterEach(async () => {
-    process.env.SANDBOX_WORKSPACES_DIR = originalDir;
+    restoreEnv("SANDBOX_WORKSPACES_DIR", originalDir);
     await fs.rm(dir, { recursive: true, force: true });
   });
 

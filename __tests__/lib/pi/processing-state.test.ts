@@ -10,6 +10,7 @@ import {
 import { sessionWorkspace } from "@/lib/pi/project-context";
 import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
 import { userIdentity } from "@/lib/sandbox/identity";
+import { restoreEnv } from "../../helpers/env";
 
 describe("buildAgentSystemPrompt", () => {
   it("returns default prompt with no options", () => {
@@ -255,7 +256,7 @@ describe("createAgentResourceLoader: workspace", () => {
   });
 
   afterEach(() => {
-    process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
+    restoreEnv("SANDBOX_WORKSPACES_DIR", originalWorkspacesDir);
     fs.rmSync(volumeDir, { recursive: true, force: true });
   });
 
