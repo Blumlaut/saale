@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { generateICS, generateICSBulk, type ICSExportEvent } from "@/lib/calendar/ics-export";
+import { restoreEnv } from "../helpers/env";
 
 const baseEvent: ICSExportEvent = {
   uid: "test-event-001@saale",
@@ -194,7 +195,7 @@ describe("ics-export", () => {
           "DTSTART;TZID=Europe/Athens:20260115T090000",
         ]);
       } finally {
-        process.env.TZ = originalTimeZone;
+        restoreEnv("TZ", originalTimeZone);
       }
     });
   });

@@ -1,10 +1,11 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { parseICS } from "@/lib/calendar/ics-import";
+import { restoreEnv } from "../../helpers/env";
 
 const originalTimeZone = process.env.TZ;
 
 afterEach(() => {
-  process.env.TZ = originalTimeZone;
+  restoreEnv("TZ", originalTimeZone);
   vi.restoreAllMocks();
 });
 

@@ -29,6 +29,7 @@ import {
   storedEnvFiles,
   writeEnvFiles,
 } from "@/lib/coder/project-config";
+import { restoreEnv } from "../../helpers/env";
 
 const USER = "user-1";
 const IDENTITY = userIdentity(USER);
@@ -53,7 +54,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
+  restoreEnv("SANDBOX_WORKSPACES_DIR", originalWorkspacesDir);
   await fs.rm(workspaceDir, { recursive: true, force: true });
 });
 

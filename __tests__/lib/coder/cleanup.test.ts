@@ -83,6 +83,7 @@ import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { removeProject } from "@/lib/coder/cleanup";
 import { CoderCleanupError, removeChatWorktree } from "@/lib/coder/worktree-removal";
 import { userIdentity } from "@/lib/sandbox/identity";
+import { restoreEnv } from "../../helpers/env";
 
 const USER = "user-1";
 const IDENTITY = userIdentity(USER);
@@ -127,7 +128,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
+  restoreEnv("SANDBOX_WORKSPACES_DIR", originalWorkspacesDir);
   await fs.rm(workspaceDir, { recursive: true, force: true });
 });
 

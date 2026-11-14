@@ -19,6 +19,7 @@ import {
   localExecAllowed,
   writeInputLocally,
 } from "@/lib/sandbox/local";
+import { restoreEnv } from "../../helpers/env";
 
 const IDENTITY = "user-testdev";
 const ENV_LEAK = "SAALE_LOCAL_EXEC_LEAK";
@@ -74,9 +75,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (originalWorkspacesDir === undefined) delete process.env.SANDBOX_WORKSPACES_DIR;
-  else process.env.SANDBOX_WORKSPACES_DIR = originalWorkspacesDir;
-  if (originalSandboxUrl !== undefined) process.env.SANDBOX_URL = originalSandboxUrl;
+  restoreEnv("SANDBOX_WORKSPACES_DIR", originalWorkspacesDir);
+  restoreEnv("SANDBOX_URL", originalSandboxUrl);
   await rm(volume, { recursive: true, force: true });
 });
 
