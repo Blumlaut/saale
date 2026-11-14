@@ -109,15 +109,20 @@ sign-out, and before a command that talks to a remote:
 - **CLI source.** Those three are removed; `gh`'s own login, which Saale never
   touches, is what commands use.
 
-In a **coder chat** the token is narrower still: Saale mints an installation
-token for that chat's repository alone (`contents`, `pull_requests`, `workflows`
-write, `checks` read) and puts it in the command's `GH_TOKEN`. Both the git
-helper and the shim prefer a token from the environment, so `git push` and
-`gh pr create` in that chat cannot reach another repository. Nothing is minted
-for a repository the installation does not cover: the command then carries **no**
-credential — the helper list is reset, git is told not to prompt, and the `gh`
-shim exits — so both `git` and `gh` fail instead of quietly reaching for
-something wider.
+In a **coder chat** Saale mints an installation token with the chat's
+permissions (`contents`, `pull_requests`, `workflows` write, `checks` read) and
+puts it in the command's `GH_TOKEN`, which both the git helper and the shim
+prefer. The token is the installation's, not one repository's: a change leaves
+the repository it started in — a branch on a fork, a pull request against the
+upstream it was forked from, a second repository read on the way — so the ceiling
+is whatever GitHub approved for this account, and a push anywhere else is refused
+by GitHub.
+
+Nothing is minted when the account has no app, no installation for the
+repository's owner, or a source that is not the app; the workspace's own
+credential answers as before. A repository the installation does not cover is not
+in the token either — GitHub refuses that push, and Saale writes the reason to the
+log next to it.
 
 That boundary holds for the commands Saale starts, and it is worth saying plainly
 where it stops: the workspace keeps a token file (the account's own token) so a

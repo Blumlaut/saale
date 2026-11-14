@@ -1,24 +1,29 @@
 /**
- * The narrowest credential Saale can hand out: one chat, one repository.
+ * The credential a coder chat's commands carry: the installation, at chat
+ * permissions.
  *
- * A coder chat works in a checkout of one project, whose `origin` names the
- * repository. That is the whole point of the GitHub App here — an installation
- * token limited to that repository, minted per command, so a model that tries
- * `git push` somewhere else is refused by GitHub rather than trusted not to.
+ * A chat works in a checkout of one project, but a change rarely stays in one
+ * repository: a branch goes to a fork while the pull request targets the
+ * upstream it was forked from, and the second repository is read on the way. So
+ * the chat gets the installation's token — every repository GitHub approved for
+ * this account — rather than one for the project's repository alone.
+ *
+ * The installation is still the ceiling, and now the only one: a push to a
+ * repository GitHub did not approve for this app is refused by GitHub, not by a
+ * promise in Saale.
  *
  * The token reaches the command three ways, all of which matter:
  *
  * - `GH_TOKEN` in the command's environment, which `gh` and its own credential
  *   helper use.
  * - The `gh` shim in the workspace leaves an existing `GH_TOKEN` alone, so a
- *   command Saale starts keeps the narrow token.
+ *   command Saale starts keeps the chat's token.
  * - The git credential helper prefers `$GH_TOKEN` when it is set, which is what
- *   makes a plain `git push` use the same narrow token instead of the workspace's
- *   wider one.
+ *   makes a plain `git push` use the same token instead of the workspace's own.
  *
  * Anything that does not resolve — no app, no project, a remote on another host,
- * a repository the installation does not cover — returns nothing, and the
- * workspace's own credential answers as before.
+ * no installation for the owner — returns nothing, and the workspace's own
+ * credential answers as before.
  */
 
 import { loadCoderSession } from "@/lib/coder/changes";
@@ -27,7 +32,7 @@ import { GITHUB_HOST } from "./github";
 import { githubInstallationForOwner, mintGithubInstallationToken } from "./github-app";
 import { readStoredGithubSource } from "./github-credentials";
 
-/** What a coder chat may do with its repository. */
+/** What a coder chat may do on the repositories the installation covers. */
 const CHAT_PERMISSIONS = {
   contents: "write",
   pull_requests: "write",
@@ -106,9 +111,9 @@ export async function resolveGithubSessionEnv(
     return { ...NO_CREDENTIAL_ENV };
   }
 
-  // An installation granted "Only select repositories" is the ceiling: a chat
-  // whose repository is not in it gets nothing — not the app's wider token, and
-  // not the workspace's own either.
+  // A repository the installation does not cover is not in the token either, so
+  // the chat still gets a working credential for the rest of the installation:
+  // the warning is what explains the refusal GitHub answers on this one.
   const covered = installation.repositories;
   if (
     installation.repositorySelection === "selected" &&
@@ -116,16 +121,15 @@ export async function resolveGithubSessionEnv(
     !covered.includes(target.repository)
   ) {
     console.warn(
-      `The GitHub installation for ${target.owner} does not cover ${target.repository}, so commands carry no GitHub credential.`,
+      `The GitHub installation for ${target.owner} does not cover ${target.repository}. Commands carry the installation's token, which reaches the rest of it.`,
     );
-    return { ...NO_CREDENTIAL_ENV };
   }
 
   try {
     const minted = await mintGithubInstallationToken({
       userId,
       installationId: installation.rowId,
-      scope: { repositories: [target.repository], permissions: CHAT_PERMISSIONS },
+      scope: { permissions: CHAT_PERMISSIONS },
     });
     return { GH_TOKEN: minted.token };
   } catch (err) {
