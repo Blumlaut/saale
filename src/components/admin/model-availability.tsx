@@ -20,7 +20,7 @@ import {
 } from "@/lib/admin/model-availability";
 import { fetchJson, patchJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { Bot, Brain, Loader2, Save, Search, Eye, SlidersHorizontal } from "lucide-react";
+import { Bot, Brain, Loader2, Save, Search, Eye, SlidersHorizontal, Sparkles } from "lucide-react";
 import {
   ModelLimitsSheet,
   type ModelLimitsTarget,
@@ -57,6 +57,8 @@ export function ModelAvailability() {
   // ─── Capability (vision) status ───
   const [capabilityInfo, setCapabilityInfo] = useState<string | null>(null);
   const [savingVision, setSavingVision] = useState<string | null>(null);
+  /** The model whose image-generation flag is being saved, as `provider:model`. */
+  const [savingImage, setSavingImage] = useState<string | null>(null);
 
   // ─── Per-model limits ───
   const [limitsTarget, setLimitsTarget] = useState<ModelLimitsTarget | null>(null);
@@ -121,6 +123,19 @@ export function ModelAvailability() {
     modelProviders.find((p) => p.id === provider)?.modelsConfigurable === true;
 
   /** Record whether a global provider's model can see images. */
+  /** Mark a global endpoint's model as one that renders pictures instead of answering. */
+  const handleToggleImageModel = async (provider: string, modelId: string, image: boolean) => {
+    const key = `${provider}:${modelId}`;
+    setSavingImage(key);
+    try {
+      await patchJson("/api/admin/providers/capabilities", { provider, modelId, image });
+      await loadModels();
+    } catch (err) {
+      console.error("Failed to save whether the model renders images:", err);
+    }
+    setSavingImage(null);
+  };
+
   const handleToggleVision = async (provider: string, modelId: string, vision: boolean) => {
     const key = `${provider}:${modelId}`;
     setSavingVision(key);
@@ -407,6 +422,36 @@ export function ModelAvailability() {
                                   onClick={() => openLimits(provider.id, provider.name, model)}
                                 >
                                   <SlidersHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              {/* A diffusion model answers with pictures, and Pi keeps
+                                  those off the chat list entirely. */}
+                              {canConfigureModels(provider.id) && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  className={cn(
+                                    "shrink-0",
+                                    model.image
+                                      ? "text-violet-600 dark:text-violet-400"
+                                      : "text-muted-foreground/60 hover:text-foreground",
+                                  )}
+                                  title={
+                                    model.image
+                                      ? "Renders images. click to turn that off"
+                                      : "Mark this model as an image model"
+                                  }
+                                  disabled={savingImage === `${provider.id}:${model.id}`}
+                                  onClick={() =>
+                                    handleToggleImageModel(provider.id, model.id, !model.image)
+                                  }
+                                >
+                                  {savingImage === `${provider.id}:${model.id}` ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                  )}
                                 </Button>
                               )}
 
