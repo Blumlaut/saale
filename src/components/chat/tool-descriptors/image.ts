@@ -1,5 +1,6 @@
 import { Frame, Sparkles } from "lucide-react";
 import { extractToolMeta } from "@/lib/chat/tool-meta";
+import { imageSizeParts } from "@/lib/providers/images/sizes";
 import { truncate } from "@/lib/format";
 import { toolIcon } from "@/lib/pi/tool-infos";
 import { isToolCallInProgress, toolStatus } from "../tool-status";
@@ -47,9 +48,16 @@ export const imageToolDescriptor: ToolDescriptor = {
         title,
         ...(prompt ? { detail: truncate(prompt, MAX_PROMPT) } : {}),
         status: toolStatus(toolCall),
-        // The sweep is the answer to "is anything happening", so it is open.
+        // The shimmer is the answer to "is anything happening", so it is open.
         defaultOpen: true,
-        blocks: [{ kind: "rendering", label: renderingLabel(toolCall) }],
+        blocks: [
+          {
+            kind: "rendering",
+            label: renderingLabel(toolCall),
+            // The size the call asked for is the shape the picture will have.
+            ...imageSizeParts(requestedSize(toolCall)),
+          },
+        ],
       };
     }
 
@@ -62,7 +70,7 @@ export const imageToolDescriptor: ToolDescriptor = {
     ];
 
     const blocks: ToolCardBlock[] = [
-      { kind: "image", path: meta.path },
+      { kind: "image", path: meta.path, width: meta.width, height: meta.height },
       { kind: "facts", items: facts },
     ];
 
@@ -78,7 +86,12 @@ export const imageToolDescriptor: ToolDescriptor = {
   },
 };
 
-/** What the sweeping tile says the call is doing. */
+/** The resolution the call asked for, or empty when it left that to the account. */
+function requestedSize(toolCall: ToolCallData): string {
+  return stringArg(toolCall.args.size);
+}
+
+/** What the shimmering tile says the call is doing. */
 function renderingLabel(toolCall: ToolCallData): string {
   return toolCall.name === "edit_image" ? "Editing the picture…" : "Rendering the picture…";
 }
