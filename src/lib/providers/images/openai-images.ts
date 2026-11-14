@@ -8,8 +8,9 @@
  * "openai-images": { generateImages } } })`.
  *
  * A reference image goes to `/v1/images/edits`, which the same servers implement
- * for img2img work. Which of the two endpoints a call lands on is decided by the
- * context, not by the model: an input image is an edit.
+ * for img2img work and for combining several pictures. Which of the two
+ * endpoints a call lands on is decided by the context, not by the model: an
+ * input image is an edit.
  */
 
 import type {
@@ -162,10 +163,15 @@ function editPayload(
   form.set("n", "1");
   const size = requestedSize(options);
   if (size) form.set("size", size);
+  // One reference goes in the field every server reads. Several need the array
+  // field, which is how both OpenAI and stable-diffusion.cpp's server take a
+  // batch: they read `image[]` first and treat `image` as the single-image
+  // fallback, so a second one in `image` is dropped without a word.
+  const field = input.images.length > 1 ? "image[]" : "image";
   input.images.forEach((image, index) => {
     const bytes = Buffer.from(image.data, "base64");
     form.append(
-      "image",
+      field,
       new Blob([new Uint8Array(bytes)], { type: image.mimeType }),
       `reference-${index}.${image.mimeType.split("/")[1] ?? "png"}`,
     );
