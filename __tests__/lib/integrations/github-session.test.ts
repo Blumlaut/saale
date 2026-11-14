@@ -14,6 +14,9 @@ vi.mock("@/lib/integrations/github-app", () => app);
 
 import { repositoryFromRemote, resolveGithubSessionEnv } from "@/lib/integrations/github-session";
 
+/** The warning that explains a push GitHub will refuse. */
+const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 const USER = "user-1";
@@ -101,14 +104,17 @@ describe("repositoryFromRemote", () => {
 // ─── The token a chat's commands carry ──────────────────────────────────────
 
 describe("resolveGithubSessionEnv", () => {
-  it("mints an installation token narrowed to the chat's repository", async () => {
+  it("mints the installation's token, not one for the chat's repository alone", async () => {
+    // A change leaves one repository: a branch on a fork, a pull request against
+    // the upstream, a second repository read on the way. So the token is the
+    // installation's, and GitHub's installation is the ceiling instead of Saale
+    // naming a single repository.
     const env = await resolveGithubSessionEnv(USER, SESSION);
 
     expect(app.mintGithubInstallationToken).toHaveBeenCalledWith({
       userId: USER,
       installationId: "row-1",
       scope: {
-        repositories: ["saale"],
         permissions: {
           contents: "write",
           pull_requests: "write",
@@ -143,34 +149,16 @@ describe("resolveGithubSessionEnv", () => {
     expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
   });
 
-  it("refuses the credential when the installation does not cover the repository", async () => {
+  it("still hands the installation's token for a repository it does not cover", async () => {
     coder.loadCoderSession.mockResolvedValue(coderSession("https://github.com/acme/other.git"));
 
     const env = await resolveGithubSessionEnv(USER, SESSION);
 
-    // The installation is the ceiling. Falling back to the workspace credential
-    // would be *more* access, not less, so the helper is switched off instead.
-    expect(env.GH_TOKEN).toBeUndefined();
-    expect(env).toEqual(expect.objectContaining({ GIT_TERMINAL_PROMPT: "0" }));
-    // The shim reads the same token file, so it is switched off with the helper.
-    expect(env).toEqual(expect.objectContaining({ SAALE_NO_GITHUB_CREDENTIAL: "1" }));
-    expect(env).toEqual(
-      expect.objectContaining({ GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "" }),
-    );
-    expect(app.mintGithubInstallationToken).not.toHaveBeenCalled();
-  });
-
-  it("mints for any repository when the installation covers them all", async () => {
-    coder.loadCoderSession.mockResolvedValue(coderSession("https://github.com/acme/other.git"));
-    app.githubInstallationForOwner.mockResolvedValue(
-      installation({ repositorySelection: "all", repositories: null }),
-    );
-
-    await resolveGithubSessionEnv(USER, SESSION);
-
-    expect(app.mintGithubInstallationToken).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: expect.objectContaining({ repositories: ["other"] }) }),
-    );
+    // The chat works in `acme/other`, which is not approved: GitHub refuses a
+    // push there, while the rest of the installation stays reachable — that is
+    // the multi-repository case this token exists for.
+    expect(env).toEqual({ GH_TOKEN: "ghs_one_repo" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("does not cover other"));
   });
 
   it("carries no credential when the account has no installation for that owner", async () => {
