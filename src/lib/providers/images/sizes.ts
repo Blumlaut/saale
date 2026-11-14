@@ -39,7 +39,7 @@ export const IMAGE_SIZE_PRESETS: readonly ImageSizePreset[] = [
 export const DEFAULT_IMAGE_SIZES: readonly string[] = ["1024x1024"];
 
 /** Sizes one account may offer: enough for the shapes, short enough to choose from. */
-const MAX_IMAGE_SIZES = 6;
+export const MAX_IMAGE_SIZES = 6;
 
 /** `1024x1024`: two sides, no units, no sign. */
 const SIZE_PATTERN = /^(\d{1,5})x(\d{1,5})$/;
