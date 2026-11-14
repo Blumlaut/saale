@@ -1,7 +1,6 @@
 import { classify } from "@earendil-works/pi-ai/api/typesafe-system-one";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-import { prisma } from "@/lib/db";
 import {
   parseEndpointListing,
   parseModelCapabilityMap,
@@ -19,12 +18,9 @@ import {
 } from "@/lib/providers/credential-store";
 import { endpointApiKey, endpointName, readEndpointRows } from "@/lib/providers/endpoint";
 import { resolveModelLimits, type ProviderModelLimits } from "@/lib/providers/limits";
+import { isModelAllowed, readGlobalModelConfig } from "@/lib/providers/model-availability";
 import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
-
-interface ProviderModelConfig {
-  enabled: boolean;
-  models?: string[];
-}
+import { listSlotModels, MODEL_SLOTS, type SlotModelSummary } from "./model-slots";
 
 /**
  * A model offered to the UI. `reasoning`, `contextWindow` and `maxOutputTokens`
@@ -48,56 +44,6 @@ type ProviderModelDefinition = Parameters<ModelRuntime["registerProvider"]>[1]["
   (infer T)[] | undefined
   ? T
   : never;
-
-/**
- * Fetch global admin model config.
- */
-async function getGlobalModelConfig() {
-  const settings = await prisma.adminSettings.findUnique({
-    where: { id: "global" },
-    select: { globalProviderModels: true },
-  });
-
-  return (settings?.globalProviderModels as unknown as Record<string, ProviderModelConfig>) ?? null;
-}
-
-/**
- * Whether the admin's global configuration allows a model.
- *
- * The admin stores one entry per provider they have configured:
- *
- * - `enabled: false` is the provider switch. every model of that provider is
- *   off.
- * - a non-empty `models` list is an allowlist.
- * - anything else (no entry, or an entry without a model list) means "no
- *   restriction".
- *
- * An *empty* list deliberately means the same as no list. It used to mean "all
- * disabled", but the admin UI cannot tell an empty selection from a provider it
- * simply saved without touching, so a single Save silently switched off every
- * model of every provider the admin had not toggled. including a local
- * endpoint's, which then also disappeared from the very list used to switch it
- * back on. Turning a provider off is what the provider switch (`enabled`) is
- * for.
- */
-function isModelAllowed(
-  globalConfig: Record<string, ProviderModelConfig> | null,
-  provider: string,
-  modelId: string,
-): boolean {
-  if (!globalConfig) return true;
-
-  const providerConfig = globalConfig[provider];
-  if (!providerConfig) return true; // not in config = allowed
-
-  if (providerConfig.enabled === false) return false;
-
-  if (providerConfig.models && providerConfig.models.length > 0) {
-    return providerConfig.models.includes(modelId);
-  }
-
-  return true;
-}
 
 /**
  * An OpenAI-compatible endpoint's `/models` listing.
@@ -336,7 +282,7 @@ interface BuildRuntimeOptions {
  * sessions are the caller's business. this is only the model world.
  */
 async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions = {}) {
-  const globalConfig = await getGlobalModelConfig();
+  const globalConfig = await readGlobalModelConfig();
 
   const modelRuntime = await ModelRuntime.create({
     // Credentials come from the database. `ModelRuntime.create()` would
@@ -395,10 +341,7 @@ async function buildRuntime(scope: ProviderScope, options: BuildRuntimeOptions =
 }
 
 /** A classifier model the UI can offer: an id, and what to call it. */
-export interface ClassifierModelSummary {
-  id: string;
-  name: string;
-}
+export type ClassifierModelSummary = SlotModelSummary;
 
 /**
  * The decision models a runtime can call, grouped by provider.
@@ -407,20 +350,10 @@ export interface ClassifierModelSummary {
  * questions instead of chatting, so it is never offered where a chat model is
  * picked and never reached through `getModel`.
  */
-export async function listClassifierModels(
+export function listClassifierModels(
   runtime: ModelRuntime,
 ): Promise<Record<string, ClassifierModelSummary[]>> {
-  try {
-    const available = await runtime.getAvailableOfType("classifier");
-    const byProvider: Record<string, ClassifierModelSummary[]> = {};
-    for (const model of available) {
-      (byProvider[model.provider] ??= []).push({ id: model.id, name: model.name });
-    }
-    return byProvider;
-  } catch (err) {
-    console.error("Failed to list the classifier models:", err);
-    return {};
-  }
+  return listSlotModels(runtime, MODEL_SLOTS.decision);
 }
 
 /** Build the model runtime for one user, with every provider they can reach. */
