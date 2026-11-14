@@ -5,6 +5,7 @@ import {
   parseEndpointListing,
   parseModelCapabilityMap,
   resolveModelInput,
+  configuredImage,
   configuredLimits,
   configuredVision,
   type EndpointListing,
@@ -18,6 +19,10 @@ import {
 } from "@/lib/providers/credential-store";
 import { endpointApiKey, endpointName, readEndpointRows } from "@/lib/providers/endpoint";
 import { resolveModelLimits, type ProviderModelLimits } from "@/lib/providers/limits";
+import {
+  generateImages as generateOpenAIImages,
+  OPENAI_IMAGES_API,
+} from "@/lib/providers/images/openai-images";
 import { isModelAllowed, readGlobalModelConfig } from "@/lib/providers/model-availability";
 import { createModelsStore, refreshModelCatalogInBackground } from "@/lib/providers/models-store";
 import { listSlotModels, MODEL_SLOTS, type SlotModelSummary } from "./model-slots";
@@ -164,6 +169,26 @@ function defineDecisionModel(
 }
 
 /**
+ * An image model from an endpoint's listing, or one the user marked as such.
+ *
+ * It produces images instead of answering, so Pi lists it apart from the chat
+ * models. `openai-images` is the adapter this module registers for the
+ * provider, and the endpoint decides whether it serves `/v1/images/edits` for
+ * the reference images it is offered.
+ */
+function defineImageModel(id: string): ProviderModelDefinition {
+  return {
+    id,
+    name: id,
+    type: "image",
+    api: OPENAI_IMAGES_API,
+    input: ["text", "image"],
+    output: ["image"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+}
+
+/**
  * Register a provider from its `/models` listing.
  *
  * Used for Saale's own OpenAI-compatible endpoints, whose models Pi cannot know.
@@ -190,7 +215,9 @@ export async function registerDiscoveredModels(
   const listing = await fetchEndpointListing(baseUrl, options.apiKey);
   const capabilities = options.capabilities ?? {};
   const reported = new Map(listing.models.map((model) => [model.id, model.capabilities]));
-  const chatModels = listing.models.filter((model) => !model.decisionModel);
+  const isImage = (model: { id: string; imageModel?: true }): boolean =>
+    model.imageModel === true || configuredImage(capabilities, model.id) === true;
+  const chatModels = listing.models.filter((model) => !model.decisionModel && !isImage(model));
 
   runtime.registerProvider(options.provider, {
     name: options.name?.trim() || CUSTOM_PROVIDER_LABEL,
@@ -199,16 +226,22 @@ export async function registerDiscoveredModels(
     api: "openai-completions",
     ...(listing.models.length > 0
       ? {
-          models: listing.models.map((model) =>
-            model.decisionModel
-              ? defineDecisionModel(model.id, { limits: options.limits, capabilities })
-              : defineDiscoveredModel(runtime, options.provider, model.id, {
-                  limits: options.limits,
-                  capabilities,
-                  reported: reported.get(model.id),
-                }),
-          ),
+          models: listing.models.map((model) => {
+            if (model.decisionModel) {
+              return defineDecisionModel(model.id, { limits: options.limits, capabilities });
+            }
+            if (isImage(model)) return defineImageModel(model.id);
+            return defineDiscoveredModel(runtime, options.provider, model.id, {
+              limits: options.limits,
+              capabilities,
+              reported: reported.get(model.id),
+            });
+          }),
         }
+      : {}),
+    // The provider serves the OpenAI images API for the image models it lists.
+    ...(listing.models.some(isImage)
+      ? { images: { [OPENAI_IMAGES_API]: { generateImages: generateOpenAIImages } } }
       : {}),
     // `/v1/systemone` is TypeSafe's protocol, so Pi's own implementation calls
     // the decision models the endpoint serves.

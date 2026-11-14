@@ -7,10 +7,13 @@ import {
   parseVisionEdit,
   resolveModelInput,
   serializeModelCapabilityMap,
+  configuredImage,
   configuredLimits,
   configuredVision,
+  withModelImage,
   withModelLimits,
   withModelVision,
+  withoutModelImage,
   withoutModelVision,
 } from "@/lib/providers/capabilities";
 
@@ -203,6 +206,43 @@ describe("parseEndpointListing", () => {
   it("treats a payload with no data array as an empty listing", () => {
     expect(parseEndpointListing({ error: "nope" })).toEqual({ models: [], loadOnDemand: false });
     expect(parseEndpointListing(null)).toEqual({ models: [], loadOnDemand: false });
+  });
+
+  // A diffusion server states that it produces images rather than text. One
+  // that says nothing (stable-diffusion.cpp) is marked by hand, see
+  // `configuredImage`.
+  it("marks a model that produces images", () => {
+    expect(
+      parseEndpointListing({
+        data: [
+          { id: "flux", architecture: { output_modalities: ["image"] } },
+          { id: "sd", capabilities: { image: true } },
+          { id: "qwen3", architecture: { output_modalities: ["text"] } },
+        ],
+      }).models,
+    ).toEqual([
+      { id: "flux", capabilities: {}, imageModel: true },
+      { id: "sd", capabilities: {}, imageModel: true },
+      { id: "qwen3", capabilities: {} },
+    ]);
+  });
+});
+
+describe("withModelImage / withoutModelImage", () => {
+  it("sets one model without touching the others", () => {
+    expect(withModelImage({ other: { vision: true } }, "flux", true)).toEqual({
+      other: { vision: true },
+      flux: { image: true },
+    });
+    expect(configuredImage({ flux: { image: false } }, "flux")).toBe(false);
+    expect(configuredImage({}, "flux")).toBeUndefined();
+  });
+
+  it("keeps the other capabilities of the model it resets", () => {
+    expect(withoutModelImage({ flux: { image: true, vision: false } }, "flux")).toEqual({
+      flux: { vision: false },
+    });
+    expect(withoutModelImage({ flux: { image: true } }, "flux")).toEqual({});
   });
 });
 
