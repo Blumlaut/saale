@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import {
   IMAGE_SIZE_PRESETS,
+  MAX_IMAGE_SIZES,
   normalizeImageSizes,
   pickImageSize,
 } from "@/lib/providers/images/sizes";
@@ -436,12 +437,15 @@ export function ModelsSection() {
                 <div className="flex flex-wrap gap-1.5 sm:max-w-[60%] sm:justify-end">
                   {IMAGE_SIZE_PRESETS.map((preset) => {
                     const on = imageSizes.includes(preset.value);
+                    const full = !on && imageSizes.length >= MAX_IMAGE_SIZES;
                     return (
                       <Button
                         key={preset.value}
                         variant={on ? "secondary" : "ghost"}
                         size="xs"
                         aria-pressed={on}
+                        disabled={full}
+                        title={full ? `Turn one of the ${MAX_IMAGE_SIZES} off first` : undefined}
                         className={cn("font-mono text-[11px]", !on && "text-muted-foreground")}
                         onClick={() =>
                           update({ imageSizes: toggleImageSize(imageSizes, preset.value) })
