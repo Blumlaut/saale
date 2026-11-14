@@ -28,7 +28,6 @@ export function userSettingsRow(overrides: Partial<AppSettings> = {}): AppSettin
     toolPolicies: null,
     toolExposure: null,
     approvalDecisionModel: null,
-    imageSizes: [],
     imageModel: null,
     githubSource: "",
     sidebarItems: null,

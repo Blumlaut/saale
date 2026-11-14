@@ -5,6 +5,7 @@ import { buildAdminModelList } from "@/lib/pi/models";
 import { listSlotModels, MODEL_SLOTS } from "@/lib/pi/model-slots";
 import {
   configuredImage,
+  configuredImageSizes,
   configuredLimits,
   parseModelCapabilityMap,
   type ModelCapabilityMap,
@@ -54,6 +55,7 @@ export async function GET() {
       contextWindow: number | undefined;
       maxOutputTokens: number | undefined;
       overrides?: { contextWindow?: number; maxOutputTokens?: number };
+      imageSizes?: string[];
     }>
   > = {};
 
@@ -68,6 +70,9 @@ export async function GET() {
       vision: m.vision,
       ...(m.image === true || configuredImage(stored, m.id) === true
         ? { image: true as const }
+        : {}),
+      ...(configuredImageSizes(stored, m.id)
+        ? { imageSizes: configuredImageSizes(stored, m.id)! }
         : {}),
       contextWindow: m.contextWindow,
       maxOutputTokens: m.maxOutputTokens,

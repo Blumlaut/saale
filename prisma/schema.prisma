@@ -731,9 +731,6 @@ model AppSettings {
   /// Image model that renders the agent's generate_image calls, as
   /// "provider:model". Null leaves the tool out for accounts that picked none.
   imageModel              String?
-  /// Sizes this account's renders may use, as "WxH". The first one is the
-  /// default and the agent may pick any other for the request at hand.
-  imageSizes              String[] @default([])
   /// The active GitHub source, one at a time: "" (nothing linked), "cli" (the
   /// GitHub CLI's own login) or "app" (this instance's GitHub App).
   githubSource            String  @default("")

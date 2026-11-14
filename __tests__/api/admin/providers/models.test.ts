@@ -207,6 +207,37 @@ describe("GET /api/admin/providers/models", () => {
     expect(piModels.buildAdminModelList).toHaveBeenCalled();
   });
 
+  // The resolutions belong to the model, so the admin's per-model editor reads
+  // them from here and the sheet starts on what was picked.
+  it("reports the resolutions recorded for an image model", async () => {
+    stubRuntime([model({ provider: "custom", id: "qwen-image", reasoning: false, image: true })], {
+      custom: "OpenAI-compatible",
+    });
+    vi.mocked(endpoint.readEndpointRows).mockResolvedValue([
+      {
+        id: "key-1",
+        userId: null,
+        provider: "custom",
+        label: "",
+        baseUrl: "http://localhost:11434/v1",
+        encryptedKey: "enc()",
+        contextWindow: null,
+        maxOutputTokens: null,
+        modelCapabilities: {
+          "qwen-image": { image: true, imageSizes: ["2048x2048", "1536x1024"] },
+        },
+      },
+    ]);
+
+    const body = await (await GET()).json();
+
+    expect(body.models.custom[0]).toMatchObject({
+      id: "qwen-image",
+      image: true,
+      imageSizes: ["2048x2048", "1536x1024"],
+    });
+  });
+
   it("reports a per-model limit override and the endpoint defaults behind it", async () => {
     stubRuntime(
       [

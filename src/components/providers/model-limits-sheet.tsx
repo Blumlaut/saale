@@ -16,6 +16,12 @@ import {
 } from "@/components/ui/sheet";
 import { patchJson } from "@/lib/http";
 import { PI_DEFAULT_CONTEXT_WINDOW, PI_DEFAULT_MAX_OUTPUT_TOKENS } from "@/lib/providers/limits";
+import {
+  DEFAULT_IMAGE_SIZES,
+  IMAGE_SIZE_PRESETS,
+  MAX_IMAGE_SIZES,
+  isImageSize,
+} from "@/lib/providers/images/sizes";
 
 /**
  * One discovered model's token limits.
@@ -44,6 +50,13 @@ export interface ModelLimitsTarget {
   imageInput?: boolean | undefined;
   /** The endpoint-wide default the model falls back to. */
   endpointLimits: { contextWindow: number | null; maxOutputTokens: number | null } | null;
+  /** Whether this model renders pictures, which is what resolutions are for. */
+  image?: boolean | undefined;
+  /**
+   * The resolutions recorded for this image model; absent means the default
+   * list applies.
+   */
+  imageSizes?: string[] | undefined;
 }
 
 export interface ModelLimitsSheetProps {
@@ -53,6 +66,11 @@ export interface ModelLimitsSheetProps {
   capabilitiesEndpoint: string;
   /** Called after a save so the caller can reload what it shows. */
   onSaved: () => void;
+  /**
+   * Whether this editor may set the model's resolutions. The admin owns them:
+   * the list describes what the endpoint renders, and the agent picks from it.
+   */
+  allowImageSizes?: boolean;
 }
 
 /** What the endpoint falls back to per field, for the placeholders. */
@@ -63,6 +81,17 @@ function inherited(
   const endpointValue = target.endpointLimits?.[field];
   if (typeof endpointValue === "number") return endpointValue;
   return field === "contextWindow" ? PI_DEFAULT_CONTEXT_WINDOW : PI_DEFAULT_MAX_OUTPUT_TOKENS;
+}
+
+/** The list after turning one resolution on or off, in the order they were picked. */
+function toggleSize(sizes: readonly string[], value: string): string[] {
+  const next = sizes.includes(value) ? sizes.filter((size) => size !== value) : [...sizes, value];
+  return next.filter(isImageSize).slice(0, MAX_IMAGE_SIZES);
+}
+
+/** The size a render uses when the agent names none. */
+function firstSize(sizes: readonly string[]): string {
+  return (sizes[0] ?? DEFAULT_IMAGE_SIZES[0]!).replace("x", "×");
 }
 
 /** A limit the user typed: `undefined` when empty, null when unusable. */
@@ -77,10 +106,12 @@ export function ModelLimitsSheet({
   onOpenChange,
   capabilitiesEndpoint,
   onSaved,
+  allowImageSizes = false,
 }: ModelLimitsSheetProps) {
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState("");
   const [imageInput, setImageInput] = useState(true);
+  const [imageSizes, setImageSizes] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,6 +124,7 @@ export function ModelLimitsSheet({
       target.overrides?.maxOutputTokens ? String(target.overrides.maxOutputTokens) : "",
     );
     setImageInput(target.imageInput !== false);
+    setImageSizes(target.imageSizes ?? []);
     setError(null);
   }, [target]);
 
@@ -116,6 +148,7 @@ export function ModelLimitsSheet({
         contextWindow: context ?? null,
         maxOutputTokens: output ?? null,
         imageInput,
+        ...(allowImageSizes && target.image ? { imageSizes } : {}),
       });
       onSaved();
       onOpenChange(false);
@@ -195,6 +228,56 @@ export function ModelLimitsSheet({
                 aria-label="This model takes a picture to edit"
               />
             </div>
+
+            {/* What the model may render at. The agent picks one of these per
+                request; the first is what it uses when it picks none. */}
+            {allowImageSizes && target.image ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-xs">Resolutions</Label>
+                  <span className="text-muted-foreground text-[11px]">
+                    {imageSizes.length}/{MAX_IMAGE_SIZES}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {IMAGE_SIZE_PRESETS.map((preset) => {
+                    const on = imageSizes.includes(preset.value);
+                    const full = !on && imageSizes.length >= MAX_IMAGE_SIZES;
+                    return (
+                      <Button
+                        key={preset.value}
+                        type="button"
+                        size="xs"
+                        variant={on ? "secondary" : "ghost"}
+                        aria-pressed={on}
+                        disabled={full}
+                        title={full ? `Pick at most ${MAX_IMAGE_SIZES}` : preset.label}
+                        className="font-mono text-[11px]"
+                        onClick={() => setImageSizes(toggleSize(imageSizes, preset.value))}
+                      >
+                        {preset.value.replace("x", "×")}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <p className="text-muted-foreground text-[11px]">
+                  {imageSizes.length > 0
+                    ? `The agent picks one per request and uses ${firstSize(imageSizes)} by default.`
+                    : `None picked. The agent renders at ${firstSize(DEFAULT_IMAGE_SIZES)}.`}
+                </p>
+                {imageSizes.length > 0 ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="text-muted-foreground h-7 px-2 text-[11px]"
+                    onClick={() => setImageSizes([])}
+                  >
+                    Back to the default
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
 
             <p className="text-muted-foreground text-[11px] tabular-nums">
               Now sending {target.contextWindow?.toLocaleString() ?? ""} context /{" "}
