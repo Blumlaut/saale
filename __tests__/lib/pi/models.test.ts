@@ -351,6 +351,25 @@ describe("buildModelRuntime", () => {
     );
   });
 
+  // The one thing a diffusion server may not implement: taking a picture back.
+  it("says an image model takes no reference picture when the user turned that off", async () => {
+    stubEndpointRow({
+      encryptedKey: "enc()",
+      modelCapabilities: { sd: { image: true, imageInput: false } },
+    });
+    stubModelListing(["sd"]);
+    const runtime = stubRuntime();
+
+    await buildModelRuntime("user-1");
+
+    expect(runtime.registerProvider).toHaveBeenCalledWith(
+      "custom",
+      expect.objectContaining({
+        models: [expect.objectContaining({ id: "sd", type: "image", input: ["text"] })],
+      }),
+    );
+  });
+
   it("prefers the user's own endpoint over the global one", async () => {
     stubEndpointRows(
       [{ baseUrl: "http://user-host:8080/v1" }],

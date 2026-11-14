@@ -566,6 +566,7 @@ export function ModelsSection() {
                                                 contextWindow: model.contextWindow,
                                                 maxOutputTokens: model.maxOutputTokens,
                                                 overrides: model.overrides,
+                                                imageInput: model.imageInput,
                                                 endpointLimits: endpointLimits[providerKey] ?? null,
                                               })
                                             }

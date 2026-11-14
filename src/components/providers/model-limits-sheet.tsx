@@ -6,6 +6,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -36,6 +37,11 @@ export interface ModelLimitsTarget {
   maxOutputTokens?: number | undefined;
   /** What the user recorded for this model. empty fields inherit. */
   overrides?: { contextWindow?: number; maxOutputTokens?: number } | undefined;
+  /**
+   * Whether the endpoint takes a picture to edit, when the user said it does
+   * not. Absent means it does, which is what the images API assumes.
+   */
+  imageInput?: boolean | undefined;
   /** The endpoint-wide default the model falls back to. */
   endpointLimits: { contextWindow: number | null; maxOutputTokens: number | null } | null;
 }
@@ -74,6 +80,7 @@ export function ModelLimitsSheet({
 }: ModelLimitsSheetProps) {
   const [contextWindow, setContextWindow] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState("");
+  const [imageInput, setImageInput] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +92,7 @@ export function ModelLimitsSheet({
     setMaxOutputTokens(
       target.overrides?.maxOutputTokens ? String(target.overrides.maxOutputTokens) : "",
     );
+    setImageInput(target.imageInput !== false);
     setError(null);
   }, [target]);
 
@@ -107,6 +115,7 @@ export function ModelLimitsSheet({
         modelId: target.modelId,
         contextWindow: context ?? null,
         maxOutputTokens: output ?? null,
+        imageInput,
       });
       onSaved();
       onOpenChange(false);
@@ -167,6 +176,25 @@ export function ModelLimitsSheet({
               request&apos;s token budget, so they have to describe this model on this endpoint. An
               empty field inherits the endpoint&apos;s default.
             </p>
+
+            {/* A diffusion model is offered a reference picture only when the
+                endpoint serves /v1/images/edits for it. */}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <div className="min-w-0">
+                <Label className="text-xs" htmlFor="model-image-input">
+                  Takes a picture to edit
+                </Label>
+                <p className="text-muted-foreground text-[11px]">
+                  Off turns image editing off for this model: the agent is only offered a prompt.
+                </p>
+              </div>
+              <Switch
+                id="model-image-input"
+                checked={imageInput}
+                onCheckedChange={setImageInput}
+                aria-label="This model takes a picture to edit"
+              />
+            </div>
 
             <p className="text-muted-foreground text-[11px] tabular-nums">
               Now sending {target.contextWindow?.toLocaleString() ?? ""} context /{" "}

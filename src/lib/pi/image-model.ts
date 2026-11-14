@@ -31,6 +31,41 @@ export async function resolveImageModel(userId: string): Promise<SlotModelPick |
   return parseSlotModelPick(settings?.imageModel) ?? (await readInstanceImageModel());
 }
 
+/**
+ * What this account can do with images.
+ *
+ * `edit` comes from the model definition's `input`, which the endpoint's own
+ * settings decide for a custom model: a diffusion server that serves no
+ * `/v1/images/edits` is marked as taking a prompt alone.
+ */
+export interface ImageCapabilities {
+  generate: boolean;
+  edit: boolean;
+}
+
+/**
+ * Resolve what the account's image model can do.
+ *
+ * Takes the runtime a caller already has, since a session build has one; a
+ * caller without one builds it here, and only when a model is picked.
+ */
+export async function resolveImageCapabilities(
+  userId: string,
+  runtime?: ModelRuntime,
+): Promise<ImageCapabilities> {
+  const pick = await resolveImageModel(userId);
+  if (!pick) return { generate: false, edit: false };
+
+  const modelRuntime = runtime ?? (await buildModelRuntime(userId)).modelRuntime;
+  const model = slotModel(modelRuntime, MODEL_SLOTS.image, pick);
+  if (!model || model.type !== "image") {
+    console.error(`The configured image model is not in the catalog: ${pick.provider}/${pick.id}`);
+    return { generate: false, edit: false };
+  }
+
+  return { generate: true, edit: model.input.includes("image") };
+}
+
 /** The model to call, with the runtime whose credentials it needs. */
 export interface ResolvedImageModel {
   runtime: ModelRuntime;
