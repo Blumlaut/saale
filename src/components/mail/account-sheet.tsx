@@ -56,6 +56,64 @@ function emailDomain(address: string): string | null {
   return at > 0 && at < address.length - 1 ? address.slice(at + 1) : null;
 }
 
+/** Host, port and TLS for one mail server. */
+function ServerFields({
+  title,
+  id,
+  host,
+  port,
+  secure,
+  onHostChange,
+  onPortChange,
+  onSecureChange,
+}: {
+  title: string;
+  id: string;
+  host: string;
+  port: string;
+  secure: boolean;
+  onHostChange: (value: string) => void;
+  onPortChange: (value: string) => void;
+  onSecureChange: (value: boolean) => void;
+}) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-medium">{title}</h3>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <Label htmlFor={`${id}-secure`} className="text-sm">
+          SSL/TLS
+        </Label>
+        <Switch id={`${id}-secure`} checked={secure} onCheckedChange={onSecureChange} />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,6rem)]">
+        <div className="space-y-2">
+          <Label htmlFor={`${id}-host`} className="text-xs">
+            Host
+          </Label>
+          <Input
+            id={`${id}-host`}
+            value={host}
+            onChange={(event) => onHostChange(event.target.value)}
+            placeholder={`${id}.example.com`}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={`${id}-port`} className="text-xs">
+            Port
+          </Label>
+          <Input
+            id={`${id}-port`}
+            type="number"
+            inputMode="numeric"
+            value={port}
+            onChange={(event) => onPortChange(event.target.value)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AccountSheet({ open, onOpenChange, onSuccess, account }: AccountSheetProps) {
   const isEdit = !!account;
   const [email, setEmail] = useState("");
@@ -371,96 +429,36 @@ export function AccountSheet({ open, onOpenChange, onSuccess, account }: Account
                   <Separator className="border-border/30" />
 
                   {/* IMAP Settings */}
-                  <div>
-                    <h3 className="mb-2 text-sm font-medium">IMAP Settings</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,6rem)_auto]">
-                      <div className="space-y-2">
-                        <Label htmlFor="imap-host" className="text-xs">
-                          Host
-                        </Label>
-                        <Input
-                          id="imap-host"
-                          value={imapHost}
-                          onChange={(e) => {
-                            editedRef.current.imap = true;
-                            setImapHost(e.target.value);
-                          }}
-                          placeholder="imap.example.com"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="imap-port" className="text-xs">
-                          Port
-                        </Label>
-                        <Input
-                          id="imap-port"
-                          type="number"
-                          inputMode="numeric"
-                          value={imapPort}
-                          onChange={(e) => setImapPort(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex items-end gap-2 pb-1">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={imapSecure}
-                            onCheckedChange={setImapSecure}
-                            id="imap-secure"
-                          />
-                          <Label htmlFor="imap-secure" className="text-sm">
-                            SSL/TLS
-                          </Label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <ServerFields
+                    title="IMAP Settings"
+                    id="imap"
+                    host={imapHost}
+                    port={imapPort}
+                    secure={imapSecure}
+                    onHostChange={(value) => {
+                      editedRef.current.imap = true;
+                      setImapHost(value);
+                    }}
+                    onPortChange={setImapPort}
+                    onSecureChange={setImapSecure}
+                  />
 
                   <Separator className="border-border/30" />
 
                   {/* SMTP Settings */}
-                  <div>
-                    <h3 className="mb-2 text-sm font-medium">SMTP Settings</h3>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,6rem)_auto]">
-                      <div className="space-y-2">
-                        <Label htmlFor="smtp-host" className="text-xs">
-                          Host
-                        </Label>
-                        <Input
-                          id="smtp-host"
-                          value={smtpHost}
-                          onChange={(e) => {
-                            editedRef.current.smtp = true;
-                            setSmtpHost(e.target.value);
-                          }}
-                          placeholder="smtp.example.com"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="smtp-port" className="text-xs">
-                          Port
-                        </Label>
-                        <Input
-                          id="smtp-port"
-                          type="number"
-                          inputMode="numeric"
-                          value={smtpPort}
-                          onChange={(e) => setSmtpPort(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex items-end gap-2 pb-1">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={smtpSecure}
-                            onCheckedChange={setSmtpSecure}
-                            id="smtp-secure"
-                          />
-                          <Label htmlFor="smtp-secure" className="text-sm">
-                            SSL/TLS
-                          </Label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <ServerFields
+                    title="SMTP Settings"
+                    id="smtp"
+                    host={smtpHost}
+                    port={smtpPort}
+                    secure={smtpSecure}
+                    onHostChange={(value) => {
+                      editedRef.current.smtp = true;
+                      setSmtpHost(value);
+                    }}
+                    onPortChange={setSmtpPort}
+                    onSecureChange={setSmtpSecure}
+                  />
                 </>
               )}
 

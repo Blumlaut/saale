@@ -218,6 +218,12 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          {/* Enabled */}
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="job-enabled">Enabled</Label>
+            <Switch checked={enabled} onCheckedChange={setEnabled} id="job-enabled" />
+          </div>
+
           {/* Template selection */}
           {loadingSchemas ? (
             <div className="flex items-center justify-center py-6">
@@ -332,12 +338,6 @@ export function JobDialog({ open, onOpenChange, onSuccess, job }: JobDialogProps
               onChange={handleConfigChange}
             />
           )}
-
-          {/* Enabled */}
-          <div className="flex items-center gap-2">
-            <Switch checked={enabled} onCheckedChange={setEnabled} id="job-enabled" />
-            <Label htmlFor="job-enabled">Enabled</Label>
-          </div>
 
           {/* Error */}
           {error && (

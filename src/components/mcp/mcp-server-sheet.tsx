@@ -546,6 +546,49 @@ export function McpServerSheet({
           </SheetHeader>
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label className="text-sm">Enabled</Label>
+                <p className="text-muted-foreground text-xs">
+                  Connect this server to your conversations.
+                </p>
+              </div>
+              <Switch checked={enabled} onCheckedChange={setEnabled} />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Connects in</Label>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm">Chat</p>
+                  <p className="text-muted-foreground text-xs">
+                    Conversations, Telegram and agent jobs.
+                  </p>
+                </div>
+                <Switch
+                  checked={chatEnabled}
+                  onCheckedChange={setChatEnabled}
+                  aria-label="Connect in chat"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="text-sm">Coder</p>
+                  <p className="text-muted-foreground text-xs">Coding chats, in a worktree.</p>
+                </div>
+                <Switch
+                  checked={coderEnabled}
+                  onCheckedChange={setCoderEnabled}
+                  aria-label="Connect in coder chats"
+                />
+              </div>
+              {!chatEnabled && !coderEnabled && (
+                <p className="text-muted-foreground text-xs">
+                  This server connects nowhere. Turn on Chat or Coder.
+                </p>
+              )}
+            </div>
+
             {!isEditing && (
               <div className="space-y-2">
                 <Label className="text-sm">Start from a preset</Label>
@@ -569,28 +612,6 @@ export function McpServerSheet({
                 </p>
               </div>
             )}
-
-            <div className="space-y-2">
-              <Label className="text-sm">Name</Label>
-              <Input
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  clearFieldError("name");
-                }}
-                onBlur={() => setName(foldedName)}
-                placeholder="homeassistant"
-                autoComplete="off"
-              />
-              {fieldError?.field === "name" ? (
-                <p className="text-destructive text-xs">{fieldError.message}</p>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Names this server&apos;s tools. Spaces and punctuation become underscores, e.g.{" "}
-                  <span className="break-all">{`mcp__${foldedName || "homeassistant"}__HassTurnOn`}</span>
-                </p>
-              )}
-            </div>
 
             {allowStdio && (
               <div className="space-y-2">
@@ -625,6 +646,68 @@ export function McpServerSheet({
                 </p>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label className="text-sm">Tool approval</Label>
+              <Select
+                value={toolPolicy}
+                onValueChange={(value) => {
+                  if (value) setToolPolicy(value as McpToolPolicy);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(value) =>
+                      POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {POLICY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                {POLICY_OPTIONS.find((option) => option.value === toolPolicy)?.hint}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Name</Label>
+              <Input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearFieldError("name");
+                }}
+                onBlur={() => setName(foldedName)}
+                placeholder="homeassistant"
+                autoComplete="off"
+              />
+              {fieldError?.field === "name" ? (
+                <p className="text-destructive text-xs">{fieldError.message}</p>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  Names this server&apos;s tools. Spaces and punctuation become underscores, e.g.{" "}
+                  <span className="break-all">{`mcp__${foldedName || "homeassistant"}__HassTurnOn`}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Description</Label>
+              <Input
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Control the smart home"
+              />
+              <p className="text-muted-foreground text-xs">
+                One line telling the assistant what this server is for.
+              </p>
+            </div>
 
             {transport === "stdio" ? (
               <>
@@ -910,89 +993,6 @@ export function McpServerSheet({
                 )}
               </>
             )}
-
-            <div className="space-y-2">
-              <Label className="text-sm">Description</Label>
-              <Input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Control the smart home"
-              />
-              <p className="text-muted-foreground text-xs">
-                One line telling the assistant what this server is for.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">Tool approval</Label>
-              <Select
-                value={toolPolicy}
-                onValueChange={(value) => {
-                  if (value) setToolPolicy(value as McpToolPolicy);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(value) =>
-                      POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {POLICY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">
-                {POLICY_OPTIONS.find((option) => option.value === toolPolicy)?.hint}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 space-y-0.5">
-                <Label className="text-sm">Enabled</Label>
-                <p className="text-muted-foreground text-xs">
-                  Connect this server to your conversations.
-                </p>
-              </div>
-              <Switch checked={enabled} onCheckedChange={setEnabled} />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">Connects in</Label>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm">Chat</p>
-                  <p className="text-muted-foreground text-xs">
-                    Conversations, Telegram and agent jobs.
-                  </p>
-                </div>
-                <Switch
-                  checked={chatEnabled}
-                  onCheckedChange={setChatEnabled}
-                  aria-label="Connect in chat"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm">Coder</p>
-                  <p className="text-muted-foreground text-xs">Coding chats, in a worktree.</p>
-                </div>
-                <Switch
-                  checked={coderEnabled}
-                  onCheckedChange={setCoderEnabled}
-                  aria-label="Connect in coder chats"
-                />
-              </div>
-              {!chatEnabled && !coderEnabled && (
-                <p className="text-muted-foreground text-xs">
-                  This server connects nowhere. Turn on Chat or Coder.
-                </p>
-              )}
-            </div>
 
             {error && (
               <div className="text-destructive bg-destructive/10 flex items-start gap-2 rounded-xl px-4 py-2.5 text-sm">

@@ -401,6 +401,14 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
             </Section>
 
             <Section title="Schedule">
+              <SwitchRow
+                id="watcher-enabled"
+                label="Enabled"
+                hint={enabled ? "Runs on this schedule." : "Paused until you turn it back on."}
+                checked={enabled}
+                onCheckedChange={setEnabled}
+              />
+
               <Field
                 label="Run every"
                 htmlFor="watcher-cron"
@@ -420,14 +428,6 @@ export function WatcherDialog({ open, onOpenChange, onSuccess, watcher }: Watche
                   className="font-mono"
                 />
               </Field>
-
-              <SwitchRow
-                id="watcher-enabled"
-                label="Enabled"
-                hint={enabled ? "Runs on this schedule." : "Paused until you turn it back on."}
-                checked={enabled}
-                onCheckedChange={setEnabled}
-              />
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field
