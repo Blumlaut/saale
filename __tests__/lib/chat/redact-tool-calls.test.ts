@@ -155,6 +155,38 @@ describe("redactToolCallForShare", () => {
     expect(redacted.error).toBeUndefined();
   });
 
+  // The picture itself is served back through the share token; what crosses the
+  // boundary is the call id and the shape, never where the file lives.
+  it("marks a rendered image with its size and no path", () => {
+    const render: RedactableToolCall = {
+      id: "tc-render",
+      name: "generate_image",
+      args: { prompt: "A red fox in the snow", size: "1536x1024" },
+      result: withMeta("Rendered it", {
+        _saaleImageMeta: {
+          path: "generated/9b1c.png",
+          model: "qwen-image-2.1-turbo",
+          provider: "custom",
+          prompt: "A red fox in the snow",
+          width: 1536,
+          height: 1024,
+        },
+      }),
+      isError: false,
+    };
+
+    const redacted = redactToolCallForShare(render);
+
+    expect(redacted.redacted).toBe("Rendered an image");
+    expect(redacted.image).toEqual({ width: 1536, height: 1024 });
+    expect(JSON.stringify(redacted)).not.toContain("generated/9b1c.png");
+    expect(JSON.stringify(redacted)).not.toContain("A red fox in the snow");
+  });
+
+  it("marks a chat tool call as no picture at all", () => {
+    expect(redactToolCallForShare(infraExec).image).toBeUndefined();
+  });
+
   it("does not mutate the persisted call it was given", () => {
     const original = structuredClone(mailRead);
     redactToolCallForShare(mailRead);

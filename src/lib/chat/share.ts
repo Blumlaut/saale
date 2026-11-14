@@ -65,6 +65,6 @@ export async function loadSharedChat(token: string, viewerId: string | null): Pr
   return {
     state: "ok",
     session: { id: session.id, title: session.title, createdAt: session.createdAt },
-    messages: messages.map(serializeSharedChatMessage),
+    messages: messages.map((message) => serializeSharedChatMessage(message, token)),
   };
 }

@@ -236,8 +236,7 @@ function ShareAssistantGroup({ messages }: { messages: Message[] }) {
               markOf={shareToolMark}
             />
           ) : block.kind === "attachments" ? (
-            // Unreachable with `shareToolCalls`, but a shared call must never
-            // vanish if the split policy ever changes.
+            // A rendered picture is the answer, so it stands outside the run.
             <CollapsedToolCalls
               key={block.key}
               toolCalls={block.toolCalls}
@@ -286,11 +285,14 @@ function ShareMessageBody({ message }: { message: Message }) {
 }
 
 /**
- * Every shared call is inert, so none stands apart from the work the way a
- * `show_file` attachment does for the owner. the whole run folds into one row.
+ * Every shared call is inert, so only a rendered picture stands apart: it is
+ * what the user asked for, and the run that produced it is what folds away.
  */
 function shareToolCalls(toolCalls: readonly ToolCallData[]): CompactSplit {
-  return { work: [...toolCalls], attachments: [] };
+  return {
+    work: toolCalls.filter((call) => !call.image),
+    attachments: toolCalls.filter((call) => call.image),
+  };
 }
 
 /**

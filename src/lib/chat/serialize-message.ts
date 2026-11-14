@@ -1,6 +1,7 @@
 import type { ChatAttachment, ChatMessage } from "@prisma/client";
 import type { AttachmentData, Message } from "@/components/chat/types";
 import { parseStoredToolCalls, redactToolCallsForShare } from "@/lib/chat/redact-tool-calls";
+import { shareImageUrl } from "@/lib/chat/share-image-url";
 import { parseTurnStats } from "@/lib/pi/turn-stats-schema";
 
 /**
@@ -48,7 +49,7 @@ export type ShareableChatMessage = Pick<
  * to remember it. Attachments and thinking are dropped for the same reason
  * they belong to the owner (compaction messages keep only their token count).
  */
-export function serializeSharedChatMessage(message: ShareableChatMessage): Message {
+export function serializeSharedChatMessage(message: ShareableChatMessage, token: string): Message {
   return {
     id: message.id,
     role: message.role as Message["role"],
@@ -56,10 +57,15 @@ export function serializeSharedChatMessage(message: ShareableChatMessage): Messa
     thinking: undefined,
     errorMessage: message.errorMessage || undefined,
     toolCalls: message.toolCalls
-      ? redactToolCallsForShare(parseStoredToolCalls(message.toolCalls)).map((tc) => ({
-          ...tc,
-          status: tc.isError ? ("error" as const) : ("completed" as const),
-        }))
+      ? redactToolCallsForShare(parseStoredToolCalls(message.toolCalls)).map((tc) => {
+          const { image, ...call } = tc;
+          return {
+            ...call,
+            status: tc.isError ? ("error" as const) : ("completed" as const),
+            // A rendered picture is fetched through this chat's own token.
+            ...(image ? { image: { ...image, src: shareImageUrl(token, tc.id) } } : {}),
+          };
+        })
       : undefined,
     parentMessageId: message.parentMessageId || undefined,
     createdAt: message.createdAt.toISOString(),
