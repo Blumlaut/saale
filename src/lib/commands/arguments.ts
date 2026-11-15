@@ -9,7 +9,12 @@
  * Pure data in, pure data out. the composer and the server share these.
  */
 
-import { BOOLEAN_VALUES, type CommandArgument, type CommandMeta } from "./types";
+import {
+  BOOLEAN_VALUES,
+  type CommandArgument,
+  type CommandChoiceOption,
+  type CommandMeta,
+} from "./types";
 
 export interface ParsedCommandArguments {
   /** Values keyed by the argument name, in the order they were written. */
@@ -134,7 +139,9 @@ export function validateArguments(
     const normalized = normalizeArgument(declared, value);
     if (normalized === undefined) {
       const allowed =
-        declared.kind === "boolean" ? "true or false" : (declared.choices ?? []).join(", ");
+        declared.kind === "boolean"
+          ? "true or false"
+          : (declared.choices ?? []).map(choiceValue).join(", ");
       return {
         values: checked,
         error: allowed
@@ -148,6 +155,16 @@ export function validateArguments(
   return { values: checked };
 }
 
+/** The value an option stands for. */
+export function choiceValue(option: CommandChoiceOption): string {
+  return typeof option === "string" ? option : option.value;
+}
+
+/** What a surface calls an option, when it says more than the value does. */
+export function choiceLabel(option: CommandChoiceOption): string {
+  return typeof option === "string" ? option : option.label;
+}
+
 /** The value as the argument reads it, or undefined when it is not one. */
 function normalizeArgument(arg: CommandArgument, value: string): string | undefined {
   const wanted = value.trim().toLowerCase();
@@ -155,7 +172,8 @@ function normalizeArgument(arg: CommandArgument, value: string): string | undefi
     return (BOOLEAN_VALUES as readonly string[]).includes(wanted) ? wanted : undefined;
   }
   if (arg.kind === "choice" && arg.choices) {
-    return arg.choices.find((choice) => choice.toLowerCase() === wanted);
+    const option = arg.choices.find((choice) => choiceValue(choice).toLowerCase() === wanted);
+    return option === undefined ? undefined : choiceValue(option);
   }
   return value;
 }
@@ -175,7 +193,7 @@ export function commandUsage(meta: CommandMeta): string {
         : arg.kind === "boolean"
           ? "<true|false>"
           : arg.kind === "choice"
-            ? `<${arg.choices?.[0] ?? "one"}|…>`
+            ? `<${arg.choices?.[0] ? choiceValue(arg.choices[0]) : "one"}|…>`
             : "<text>";
     return `${arg.name}:${value}`;
   };
