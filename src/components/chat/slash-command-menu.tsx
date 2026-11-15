@@ -1,6 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /** One row of the composer's `/` menu: a command, a prompt, or an argument to fill. */
@@ -39,8 +40,11 @@ export function SlashCommandMenu({
   return (
     <div
       role="listbox"
-      aria-label="Slash commands"
-      className="bg-popover border-border absolute inset-x-3 bottom-full z-20 mb-2 overflow-hidden rounded-xl border p-1 shadow-lg"
+      aria-label="Command suggestions"
+      className={cn(
+        "bg-popover border-border absolute inset-x-3 bottom-full z-20 mb-2 overflow-hidden rounded-lg border p-1.5 shadow-2xl",
+        "animate-in fade-in slide-in-from-bottom-2 duration-150",
+      )}
     >
       {items.map((item, index) => {
         const Icon = item.icon;
@@ -57,8 +61,8 @@ export function SlashCommandMenu({
             onMouseEnter={() => onHighlight(index)}
             onClick={() => onSelect(item)}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors",
-              active ? "bg-accent/60" : "hover:bg-accent/60",
+              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+              active ? "bg-accent/70" : "hover:bg-accent/60",
             )}
           >
             <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -67,17 +71,17 @@ export function SlashCommandMenu({
               {item.kind === "argument" && item.name !== "files" ? ":" : ""}
             </span>
             {item.note ? (
-              <span className="border-border/60 text-muted-foreground shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tracking-wide uppercase">
+              <Badge variant="outline" className="console-label h-4 shrink-0 px-1.5">
                 {item.note}
-              </span>
+              </Badge>
             ) : null}
             {item.attached !== undefined ? (
-              <span className="text-muted-foreground shrink-0 text-[11px]">
+              <span className="text-muted-foreground shrink-0 text-xs">
                 {item.attached > 0 ? `${item.attached} attached` : "paperclip"}
               </span>
             ) : null}
             {item.hint ? (
-              <span className="text-muted-foreground shrink-0 text-xs">{item.hint}</span>
+              <span className="text-muted-foreground shrink-0 font-mono text-xs">{item.hint}</span>
             ) : null}
             <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
               {item.description}

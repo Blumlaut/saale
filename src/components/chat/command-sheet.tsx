@@ -9,7 +9,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { Check, Loader2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CommandPrompt } from "@/lib/commands/types";
 
@@ -84,17 +85,19 @@ export function CommandSheet({
                 {options.length === 0 ? "Nothing is available yet." : "Nothing matches."}
               </p>
             ) : (
-              <ul className="grid grid-cols-1 gap-1">
+              <ul className="grid grid-cols-1 gap-1" role="listbox" aria-label={prompt?.title}>
                 {visible.map((option) => (
                   <li key={option.value}>
                     <button
                       type="button"
+                      role="option"
+                      aria-selected={option.current === true}
                       disabled={busy}
                       onClick={() => onSelect(option.value)}
                       className={cn(
-                        "hover:bg-accent/60 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                        "hover:bg-accent/60 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors duration-150",
                         "disabled:pointer-events-none disabled:opacity-50",
-                        option.current && "bg-accent/40",
+                        option.current && "bg-accent/70",
                       )}
                     >
                       <span className="min-w-0 flex-1">
@@ -115,7 +118,7 @@ export function CommandSheet({
 
           {busy && (
             <div className="bg-background/40 absolute inset-0 flex items-center justify-center">
-              <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+              <Spinner className="text-muted-foreground h-5 w-5" label="Running the command" />
             </div>
           )}
         </div>
