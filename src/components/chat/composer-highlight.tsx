@@ -3,11 +3,15 @@
 import { cn } from "@/lib/utils";
 import type { CommandToken } from "@/lib/commands/highlight";
 
-/** How each run is painted behind the composer's text. */
+/**
+ * How each run is painted behind the composer's text: the command and its
+ * argument names in the accent tint the console marks a selection with, the
+ * values on the muted fill a nested card wears.
+ */
 const TOKEN_CLASSES: Record<CommandToken["kind"], string> = {
-  command: "rounded bg-primary/15 text-transparent",
-  label: "rounded bg-primary/20 font-medium text-transparent",
-  value: "rounded bg-muted-foreground/20 text-transparent",
+  command: "rounded-sm bg-primary/15 text-transparent",
+  label: "rounded-sm bg-primary/15 font-medium text-transparent",
+  value: "rounded-sm bg-muted text-transparent",
   plain: "text-transparent",
 };
 
