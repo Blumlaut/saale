@@ -57,6 +57,15 @@ and setup keeps that database instead of creating one.
 
 `pnpm run docker:dev` runs the whole stack with hot reload instead.
 
+## Tests
+
+The unit suite runs in worker threads, which is the fastest pool for it: a thread starts in
+a fraction of the time a forked process does, and every test file pays that startup. A
+thread shares its process with its siblings, so a test that calls a process-wide API
+(`process.umask`) is listed in `PROCESS_POOL_FILES` in `vitest.config.ts` and runs in the
+`process` project instead. A test that puts an env var back uses `restoreEnv` from
+`__tests__/helpers/env.ts`: assigning `undefined` stores the string `"undefined"`.
+
 ## Demo data
 
 `pnpm run db:seed` fills the dev account with something to look at: a chat with a written
