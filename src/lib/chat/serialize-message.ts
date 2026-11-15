@@ -84,9 +84,15 @@ export function serializeChatMessage(message: ChatMessageWithAttachments): Messa
     thinking: message.thinking || undefined,
     errorMessage: message.errorMessage || undefined,
     toolCalls: message.toolCalls
-      ? JSON.parse(message.toolCalls).map((tc: { isError?: boolean }) => ({
+      ? JSON.parse(message.toolCalls).map((tc: { isError?: boolean; status?: string }) => ({
           ...tc,
-          status: tc.isError ? ("error" as const) : ("completed" as const),
+          // A command's render writes its card before it runs, so the row can
+          // say it is in progress; every other row was executed when saved.
+          status: tc.isError
+            ? ("error" as const)
+            : tc.status === "running"
+              ? ("running" as const)
+              : ("completed" as const),
         }))
       : undefined,
     parentMessageId: message.parentMessageId || undefined,

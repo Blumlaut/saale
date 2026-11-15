@@ -4,6 +4,7 @@ const hoisted = vi.hoisted(() => ({
   renderImage: vi.fn(),
   resolveImageCapabilities: vi.fn(),
   saveAssistantMessage: vi.fn(),
+  publishSessionEvent: vi.fn(),
   bumpSession: vi.fn(),
 }));
 
@@ -16,6 +17,9 @@ vi.mock("@/lib/pi/image-model", () => ({
 }));
 vi.mock("@/lib/pi/stream-helpers", () => ({
   saveAssistantMessage: hoisted.saveAssistantMessage,
+}));
+vi.mock("@/lib/pi/session-events", () => ({
+  publishSessionEvent: hoisted.publishSessionEvent,
 }));
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: { update: (...args: unknown[]) => hoisted.bumpSession(...args) } },
@@ -48,18 +52,23 @@ function renders(prompt = "make it night") {
   });
 }
 
-/** The call the handler wrote into the chat, as the transcript reads it back. */
+/** The card's finished state, as the transcript reads it back. */
 function savedCall() {
-  const input = hoisted.saveAssistantMessage.mock.calls[0]![0] as {
-    toolCalls: Array<{ name: string; args: Record<string, unknown>; result: string }>;
-  };
-  const call = input.toolCalls[0]!;
+  const writes = hoisted.saveAssistantMessage.mock.calls.map(
+    (call) =>
+      call[0] as {
+        toolCalls: Array<{ name: string; args: Record<string, unknown>; result: string }>;
+      },
+  );
+  const call = writes.at(-1)!.toolCalls[0]!;
   return { call, meta: JSON.parse(call.result.split("\n")[1]!) as Record<string, unknown> };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.bumpSession.mockResolvedValue({});
+  hoisted.publishSessionEvent.mockResolvedValue(1);
+  hoisted.saveAssistantMessage.mockResolvedValue({ id: "message-1" });
 });
 
 describe("/edit", () => {
@@ -174,13 +183,41 @@ describe("/edit", () => {
     expect(hoisted.renderImage).not.toHaveBeenCalled();
   });
 
-  it("reports what the endpoint said when the edit fails", async () => {
+  it("shows the edit as a running call before the endpoint answers", async () => {
+    editableModel();
+    renders();
+
+    await editHandler.run(webContext("edit", "prompt:make it night", [commandImage()]));
+
+    const start = hoisted.saveAssistantMessage.mock.calls[0]![0] as {
+      toolCalls: Array<{ name: string; status?: string }>;
+    };
+    expect(start.toolCalls[0]).toMatchObject({ name: "edit_image", status: "running" });
+  });
+
+  it("reports what the endpoint said when the edit fails, on the card", async () => {
     editableModel();
     hoisted.renderImage.mockRejectedValue(new Error("The image model returned no image."));
 
     await expect(
       editHandler.run(webContext("edit", "prompt:make it night", [commandImage()])),
     ).rejects.toThrow("returned no image");
-    expect(hoisted.saveAssistantMessage).not.toHaveBeenCalled();
+
+    const writes = hoisted.saveAssistantMessage.mock.calls.map(
+      (call) => call[0] as { messageId?: string; toolCalls: Array<{ isError?: boolean }> },
+    );
+    expect(writes.at(-1)).toMatchObject({ messageId: "message-1" });
+    expect(writes.at(-1)!.toolCalls[0]).toMatchObject({ isError: true });
+  });
+
+  it("keeps quiet on success, because the card is the answer", async () => {
+    editableModel();
+    renders();
+
+    const outcome = await editHandler.run(
+      webContext("edit", "prompt:make it night", [commandImage()]),
+    );
+
+    expect(outcome.quiet).toBe(true);
   });
 });
