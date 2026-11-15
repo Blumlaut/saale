@@ -81,7 +81,15 @@ export type ToolCardBlock =
   | { kind: "rendering"; label: string; width?: number; height?: number }
   | { kind: "diff"; lines: readonly string[]; max?: number }
   | { kind: "code"; text: string; label?: string; tone?: "muted" | "danger"; max?: number }
-  | { kind: "text"; text: string; mono?: boolean; clamp?: boolean; tone?: "muted" | "danger" }
+  | {
+      kind: "text";
+      text: string;
+      mono?: boolean;
+      clamp?: boolean;
+      tone?: "muted" | "danger";
+      /** Accessible label for a copy button beside the text, e.g. "Copy prompt". */
+      copy?: string;
+    }
   | { kind: "badges"; items: readonly string[] };
 
 /** Everything one tool call renders. */

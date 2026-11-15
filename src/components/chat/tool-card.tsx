@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, ExternalLink, Sparkles, Star } from "lucide-react";
 import { plural } from "@/lib/format";
 import { FaviconMark } from "./favicon-mark";
+import { CopyButton } from "@/components/shared/copy-button";
 import { ToolStatusBadge } from "./tool-status-badge";
 import { ImageFrame } from "./image-tile";
 import { WorkspaceImage } from "./workspace-image";
@@ -507,7 +508,7 @@ function ToolCode({ block }: { block: Extract<ToolCardBlock, { kind: "code" }> }
 }
 
 function ToolTextBlock({ block }: { block: Extract<ToolCardBlock, { kind: "text" }> }) {
-  return (
+  const text = (
     <p
       className={cn(
         "text-muted-foreground text-xs leading-relaxed",
@@ -518,6 +519,19 @@ function ToolTextBlock({ block }: { block: Extract<ToolCardBlock, { kind: "text"
     >
       {block.text}
     </p>
+  );
+
+  if (!block.copy) return text;
+
+  return (
+    <div className="flex items-start gap-1.5">
+      <div className="min-w-0 flex-1">{text}</div>
+      <CopyButton
+        text={block.text}
+        label={block.copy}
+        className="text-muted-foreground hover:text-foreground mt-px shrink-0 rounded p-0.5"
+      />
+    </div>
   );
 }
 
