@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { renderImage, type RenderedImage } from "@/lib/image-render";
 import { resolveImageCapabilities } from "@/lib/pi/image-model";
+import { appendRenderNote } from "@/lib/pi/render-notes";
 import { publishSessionEvent } from "@/lib/pi/session-events";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
 import { imageSizeShape, normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
@@ -127,6 +128,17 @@ export async function renderWithCard(input: {
     });
     await publishMessagesChanged(input.sessionId);
     await bumpActivity(input.sessionId);
+
+    // The card is for the user; the note is what the agent's next turn reads.
+    await appendRenderNote({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      command: input.toolName === "edit_image" ? "edit" : "image",
+      sentence,
+      ...(input.references?.length ? { sources: input.references } : {}),
+    }).catch((err) => {
+      console.error(`Failed to note the render in ${input.sessionId}:`, err);
+    });
 
     return { image, sentence };
   } catch (err) {

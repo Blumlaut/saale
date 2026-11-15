@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   renderImage: vi.fn(),
+  appendRenderNote: vi.fn(),
   resolveImageCapabilities: vi.fn(),
   saveAssistantMessage: vi.fn(),
   publishSessionEvent: vi.fn(),
@@ -17,6 +18,9 @@ vi.mock("@/lib/pi/stream-helpers", () => ({
 }));
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: hoisted.publishSessionEvent,
+}));
+vi.mock("@/lib/pi/render-notes", () => ({
+  appendRenderNote: hoisted.appendRenderNote,
 }));
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: { update: (...args: unknown[]) => hoisted.bumpSession(...args) } },
@@ -81,6 +85,7 @@ beforeEach(() => {
   hoisted.bumpSession.mockResolvedValue({});
   hoisted.publishSessionEvent.mockResolvedValue(1);
   hoisted.saveAssistantMessage.mockResolvedValue({ id: "message-1" });
+  hoisted.appendRenderNote.mockResolvedValue(undefined);
 });
 
 describe("/image", () => {
@@ -102,6 +107,22 @@ describe("/image", () => {
       _saaleImageMeta: expect.objectContaining({ path: "generated/9b1c.webp", width: 1024 }),
     });
     expect(hoisted.bumpSession).toHaveBeenCalled();
+  });
+
+  // The agent reads its own transcript, so a render made without a model turn
+  // has to be noted there or the next message knows nothing about it.
+  it("notes the render in the chat's transcript for the next turn", async () => {
+    availableModel();
+    renders();
+
+    await imageHandler.run(ctx("a red fox in the snow"));
+
+    expect(hoisted.appendRenderNote).toHaveBeenCalledWith({
+      userId: "user-1",
+      sessionId: "session-1",
+      command: "image",
+      sentence: 'Rendered "a red fox in the snow" with Flux (1024×768).',
+    });
   });
 
   it("shows the call as running before it renders, then fills in the picture", async () => {
