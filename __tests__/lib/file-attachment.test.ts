@@ -98,7 +98,9 @@ describe("adoptChatUpload", () => {
     expect(result.stored.storagePath).toMatch(/^files\/[0-9a-f-]{36}-report\.pdf$/);
     expect(result.stored.safeName).toBe("report.pdf");
     expect(result.stored.width).toBeUndefined();
-    expect(result.agentPath).toBe(path.join(userRoot, "uploads", "report.pdf"));
+    expect(result.agentPath).toBe(
+      path.join(userRoot, "uploads", `report-${uploadId.replace(/-/g, "").slice(0, 8)}.pdf`),
+    );
 
     // The bytes the user sent are the bytes both copies hold.
     expect(await fs.readFile(path.join(userRoot, result.stored.storagePath))).toEqual(content);
@@ -106,6 +108,36 @@ describe("adoptChatUpload", () => {
 
     // The staged copy is gone: the file was moved, not duplicated.
     await expect(fs.access(path.join(userRoot, ".tmp", `upload-${uploadId}`))).rejects.toThrow();
+  });
+
+  // Every screenshot a browser pastes is called "image.png", and one path holds
+  // one file, so the second picture used to land on the first.
+  it("gives two uploads of the same name a workspace copy each", async () => {
+    const first = Buffer.from("%PDF-1.4 first");
+    const second = Buffer.from("%PDF-1.4 second");
+    const firstId = await stage(first);
+    const secondId = await stage(second);
+
+    const adopted = [];
+    for (const [uploadId, content] of [
+      [firstId, first],
+      [secondId, second],
+    ] as const) {
+      adopted.push(
+        await attachmentsModule.adoptChatUpload(
+          "user-1",
+          ref(uploadId, "image.png", "application/pdf", content.length),
+        ),
+      );
+    }
+
+    const [a, b] = adopted as [
+      import("@/lib/file-attachment").AdoptedChatFile,
+      import("@/lib/file-attachment").AdoptedChatFile,
+    ];
+    expect(a.agentPath).not.toBe(b.agentPath);
+    expect(await fs.readFile(a.agentPath)).toEqual(first);
+    expect(await fs.readFile(b.agentPath)).toEqual(second);
   });
 
   it("re-encodes an image and keeps the original bytes for the agent", async () => {
