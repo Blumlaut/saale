@@ -8,8 +8,8 @@ import { listCommands } from "@/lib/commands/catalog";
 
 /**
  * The `/` picker: a command name opens the menu, keys move the highlight, and
- * selecting runs the command instead of sending the text. Anything else stays
- * an ordinary message.
+ * picking a command with arguments leaves it in the composer ready to fill in.
+ * Anything else stays an ordinary message.
  */
 
 function Harness({
@@ -82,11 +82,10 @@ describe("slash command picker", () => {
   it("picks the highlighted command on Enter and clears the composer", () => {
     const { textarea, onCommand, onSend } = renderComposer();
 
-    type(textarea, "/");
-    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    type(textarea, "/sto");
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    expect(onCommand).toHaveBeenCalledWith("model");
+    expect(onCommand).toHaveBeenCalledWith("stop");
     expect(onSend).not.toHaveBeenCalled();
     expect(textarea).toHaveValue("");
   });
@@ -124,19 +123,6 @@ describe("slash command picker", () => {
     expect(onCommand).not.toHaveBeenCalled();
   });
 
-  it("closes the menu once an argument is being typed", () => {
-    const { textarea, onCommand, onSend, queryByRole } = renderComposer();
-
-    type(textarea, "/stfu ");
-    expect(queryByRole("listbox")).toBeNull();
-
-    fireEvent.keyDown(textarea, { key: "Enter" });
-
-    // `/stfu stop` is parsed by the chat interface, not by the picker.
-    expect(onSend).toHaveBeenCalledWith("/stfu", undefined);
-    expect(onCommand).not.toHaveBeenCalled();
-  });
-
   it("still sends a slash-prefixed message that is not a command", () => {
     const { textarea, onSend, queryByRole } = renderComposer();
 
@@ -147,5 +133,117 @@ describe("slash command picker", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     expect(onSend).toHaveBeenCalledWith("/not-a-command", undefined);
+  });
+});
+
+describe("command arguments", () => {
+  /** The highlighted row of the argument menu, by its visible name. */
+  function argumentRow(utils: ReturnType<typeof renderComposer>, name: string) {
+    return utils.getAllByRole("option").find((row) => row.textContent?.includes(name));
+  }
+
+  it("offers the arguments of a picked command instead of running it", () => {
+    const { textarea, onCommand, getAllByRole } = renderComposer();
+
+    type(textarea, "/image");
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue("/image ");
+    expect(getAllByRole("option").map((row) => row.textContent)).toEqual([
+      expect.stringContaining("prompt:"),
+      expect.stringContaining("size:"),
+    ]);
+  });
+
+  it("completes the highlighted argument into the composer", () => {
+    const { textarea } = renderComposer("/image ");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/image prompt:");
+  });
+
+  it("says nothing while a free-text value is being typed", () => {
+    renderComposer("/image prompt:a red fox");
+
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it("offers what is left once the value is done", () => {
+    const { textarea } = renderComposer("/image prompt:a red fox ");
+
+    const rows = document.querySelectorAll('[role="option"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("size:");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/image prompt:a red fox size:");
+  });
+
+  it("filters the arguments as a name is typed", () => {
+    const { textarea } = renderComposer("/image s");
+
+    const rows = document.querySelectorAll('[role="option"]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("size:");
+
+    fireEvent.keyDown(textarea, { key: "Tab" });
+
+    expect(textarea).toHaveValue("/image size:");
+  });
+
+  it("offers a choice's values and fills one in", () => {
+    const { textarea } = renderComposer("/stfu time:p");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/stfu time:permanent");
+  });
+
+  it("closes the menu once a choice is written out, so Enter sends", () => {
+    const { textarea, onSend } = renderComposer("/stfu time:permanent");
+
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledWith("/stfu time:permanent", undefined);
+  });
+
+  it("sends a filled-in command verbatim", () => {
+    const { textarea, onSend, onCommand } = renderComposer(
+      "/image prompt:a red fox size:1536x1024",
+    );
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledWith("/image prompt:a red fox size:1536x1024", undefined);
+    expect(onCommand).not.toHaveBeenCalled();
+  });
+
+  it("opens the file picker from the files row", () => {
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    const utils = renderComposer("/edit ");
+
+    const row = argumentRow(utils, "files");
+    expect(row).toBeTruthy();
+    fireEvent.click(row!);
+
+    expect(click).toHaveBeenCalled();
+    // The picker does not eat the composer's text.
+    expect(utils.textarea).toHaveValue("/edit ");
+    click.mockRestore();
+  });
+
+  it("says how many pictures are attached", () => {
+    const utils = renderComposer("/edit ");
+
+    fireEvent.change(utils.container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(["x"], "photo.png", { type: "image/png" })] },
+    });
+
+    expect(argumentRow(utils, "files")).toHaveTextContent("1 attached");
   });
 });

@@ -14,13 +14,16 @@ import {
   Send,
   Loader2,
   ListPlus,
+  ListFilter,
+  Type,
   X,
   FileText,
   File as FileIcon,
   FolderGit2,
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
-import { searchCommands } from "@/lib/commands/catalog";
+import { getCommandMeta, searchCommands } from "@/lib/commands/catalog";
+import { argumentHints, readCommandDraft } from "@/lib/commands/composer";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
 import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
@@ -70,6 +73,9 @@ interface InputBarProps {
 /** The composer's value while it is still just a command name: `/`, `/mo`, … */
 const COMMAND_QUERY_PATTERN = /^\/([a-z0-9_-]*)$/i;
 
+/** The icon an argument row wears, by what it takes. */
+const ARGUMENT_ICONS = { text: Type, choice: ListFilter, files: Paperclip } as const;
+
 export function InputBar({
   ref,
   onSend,
@@ -96,7 +102,24 @@ export function InputBar({
   // once the user types a space the menu closes and the text is just a message
   // (or `/name args`, which the chat interface parses on send).
   const commandQuery = COMMAND_QUERY_PATTERN.exec(value)?.[1] ?? null;
+  // A command the composer holds with its arguments: `/image prompt:a fox`.
+  const draft = useMemo(() => readCommandDraft(value.trimStart()), [value]);
+  const draftMeta = draft ? getCommandMeta(draft.name) : undefined;
+  const completion =
+    draft && commandQuery === null
+      ? argumentHints(draftMeta, draft.args, pendingFiles.length)
+      : null;
   const menuItems = useMemo<SlashMenuItem[]>(() => {
+    if (completion) {
+      return completion.hints.map<SlashMenuItem>((hint) => ({
+        kind: hint.kind === "choice" && hint.insert !== "" ? "value" : "argument",
+        name: hint.label,
+        description: hint.description,
+        icon: ARGUMENT_ICONS[hint.kind],
+        note: hint.note ?? null,
+        ...(hint.kind === "files" ? { attached: hint.attached ?? 0 } : {}),
+      }));
+    }
     if (commandQuery === null) return [];
     const commands = searchCommands("web", commandQuery).map<SlashMenuItem>((meta) => ({
       kind: "command",
@@ -112,16 +135,22 @@ export function InputBar({
       hint: prompt.argumentHint,
     }));
     return [...commands, ...promptItems];
-  }, [commandQuery, prompts]);
+  }, [commandQuery, completion, prompts]);
   const [commandIndex, setCommandIndex] = useState(0);
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
-  const commandMenuOpen = commandQuery !== null && !commandMenuDismissed && menuItems.length > 0;
+  const commandMenuOpen =
+    (commandQuery !== null || completion !== null) && !commandMenuDismissed && menuItems.length > 0;
 
   // A new query starts a fresh highlight, and re-arms a dismissed menu.
   useEffect(() => {
     setCommandIndex(0);
     setCommandMenuDismissed(false);
-  }, [commandQuery]);
+  }, [commandQuery, draft?.name]);
+
+  // The rows change under the highlight as arguments are filled in.
+  useEffect(() => {
+    if (commandIndex >= menuItems.length) setCommandIndex(0);
+  }, [commandIndex, menuItems.length]);
 
   // Typing a slash re-reads the prompts, whose sources change while the chat is
   // open: a project template the agent committed, a prompt saved in another
@@ -199,12 +228,16 @@ export function InputBar({
     [onCommand, onValueChange],
   );
 
-  /** Drop a prompt's `/name ` in the composer, ready for its arguments. */
-  const selectPrompt = useCallback(
-    (name: string) => {
-      const next = `/${name} `;
+  /**
+   * Put a value in the composer with the caret at its end.
+   *
+   * `keepMenu` leaves the argument menu open, which is what filling one
+   * argument in means: the next one is the next thing to offer.
+   */
+  const putComposer = useCallback(
+    (next: string, keepMenu = false) => {
       onValueChange(next);
-      setCommandMenuDismissed(true);
+      setCommandMenuDismissed(!keepMenu);
       const el = textareaRef.current;
       if (el) {
         el.focus();
@@ -215,12 +248,37 @@ export function InputBar({
     [onValueChange, autoResize],
   );
 
+  /** Drop a command's `/name ` in the composer, ready for its arguments. */
+  const selectCommandOrArguments = useCallback(
+    (name: string) => {
+      if ((getCommandMeta(name)?.arguments?.length ?? 0) > 0) putComposer(`/${name} `, true);
+      else selectCommand(name);
+    },
+    [putComposer, selectCommand],
+  );
+
+  /** Fill the argument or value the highlighted row stands for. */
+  const fillArgument = useCallback(
+    (insert: string) => {
+      if (!draft || !completion) return;
+      const { start, end } = completion.replace;
+      const args = `${draft.args.slice(0, start)}${insert}${draft.args.slice(end)}`;
+      putComposer(`/${draft.name} ${args}`, true);
+    },
+    [draft, completion, putComposer],
+  );
+
   const selectMenuItem = useCallback(
     (item: SlashMenuItem) => {
-      if (item.kind === "prompt") selectPrompt(item.name);
-      else selectCommand(item.name);
+      if (item.kind === "prompt") putComposer(`/${item.name} `);
+      else if (item.kind === "command") selectCommandOrArguments(item.name);
+      else if (item.kind === "argument" && item.name === "files") fileInputRef.current?.click();
+      else {
+        const hint = completion?.hints.find((candidate) => candidate.label === item.name);
+        if (hint) fillArgument(hint.insert);
+      }
     },
-    [selectPrompt, selectCommand],
+    [putComposer, selectCommandOrArguments, completion, fillArgument],
   );
 
   const handleSubmit = useCallback(() => {
