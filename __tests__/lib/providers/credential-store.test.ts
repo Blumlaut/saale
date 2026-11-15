@@ -164,7 +164,8 @@ describe("createProviderCredentialStore", () => {
     await Promise.all([
       store.modify("groq", async () => {
         order.push("first:start");
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        // Yield: the second write would interleave here if it were not queued.
+        await Promise.resolve();
         order.push("first:end");
         return { type: "api_key", key: "first" };
       }),

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { withChatLock, pendingChatLocks } from "@/lib/telegram/chat-lock";
 
 /**
@@ -8,14 +8,15 @@ import { withChatLock, pendingChatLocks } from "@/lib/telegram/chat-lock";
  * create the chat's `ChatSession` row.
  */
 
-const tick = (ms = 5) => new Promise((r) => setTimeout(r, ms));
+/** Yield, so another queued run would get its turn if the lock let it. */
+const yieldOnce = () => Promise.resolve();
 
 describe("withChatLock", () => {
   it("runs work for one chat strictly one at a time", async () => {
     const events: string[] = [];
     const work = (id: string) => async () => {
       events.push(`start:${id}`);
-      await tick(20);
+      await yieldOnce();
       events.push(`end:${id}`);
     };
 
@@ -33,7 +34,7 @@ describe("withChatLock", () => {
     const events: string[] = [];
     const work = (id: string) => async () => {
       events.push(`start:${id}`);
-      await tick(20);
+      await yieldOnce();
       events.push(`end:${id}`);
     };
 
@@ -67,8 +68,6 @@ describe("withChatLock", () => {
     await withChatLock("user:2", async () => {
       throw new Error("boom");
     }).catch(() => undefined);
-    await tick();
-
-    expect(pendingChatLocks()).toBe(0);
+    await vi.waitFor(() => expect(pendingChatLocks()).toBe(0));
   });
 });

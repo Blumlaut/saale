@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
 import { wireStreamListeners } from "@/components/chat/use-chat-stream";
 import type { ApprovalData, Message, PluginDialogData } from "@/components/chat/types";
@@ -162,10 +162,18 @@ describe("wireStreamListeners tool_pending", () => {
  */
 describe("wireStreamListeners coalescing", () => {
   /**
-   * Resolve once the queued update has been applied. The runner has no
-   * animation frames, so the batch flushes on its fallback timer.
+   * Let the queued update apply. The runner has no animation frames, so the
+   * batch flushes on its fallback timer.
    */
-  const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 50));
+  const nextFrame = () => vi.advanceTimersByTimeAsync(16);
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   interface Row {
     id: string;

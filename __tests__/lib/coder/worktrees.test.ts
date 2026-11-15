@@ -520,7 +520,8 @@ describe("ensureWorktree", () => {
     mocks.addWorktree.mockImplementation(async (user: string, options: { dir: string }) => {
       running += 1;
       peak = Math.max(peak, running);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      // Yield: a second creation would interleave here if the lock let it.
+      await Promise.resolve();
       running -= 1;
       await createsCheckout(user, options);
     });

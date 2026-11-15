@@ -44,6 +44,20 @@ describe("tool-approval-gate", () => {
   beforeEach(() => {
     resetMockRedis();
   });
+
+  /**
+   * Wait for the request to reach Redis.
+   *
+   * `waitForApproval` persists it without blocking the wait, and a resolve reads
+   * the key, so a resolve that lands first finds nothing and returns false.
+   */
+  async function stored(request: ApprovalRequest): Promise<void> {
+    await vi.waitFor(async () => {
+      expect(await getPendingApprovals(request.sessionId)).toContainEqual(
+        expect.objectContaining({ toolCallId: request.toolCallId }),
+      );
+    });
+  }
   const makeRequest = (): ApprovalRequest => {
     const { toolCallId, sessionId } = makeUniqueIds("tc");
     return {
@@ -64,7 +78,7 @@ describe("tool-approval-gate", () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
-      await new Promise((r) => setTimeout(r, 10));
+      await stored(request);
       await resolveApproval(request.sessionId, request.toolCallId, true);
 
       const result = await promise;
@@ -75,7 +89,7 @@ describe("tool-approval-gate", () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
-      await new Promise((r) => setTimeout(r, 10));
+      await stored(request);
       await resolveApproval(request.sessionId, request.toolCallId, false);
 
       const result = await promise;
@@ -97,16 +111,19 @@ describe("tool-approval-gate", () => {
         createdAt: Date.now(),
         expiresAt: Date.now() + 50,
       };
+      vi.useFakeTimers();
       const promise = waitForApproval(request);
-      const result = await promise;
-      expect(result).toBe("denied");
+      await vi.advanceTimersByTimeAsync(50);
+      vi.useRealTimers();
+
+      expect(await promise).toBe("denied");
     });
 
     it("stores and retrieves pending approvals in Redis", async () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
-      await new Promise((r) => setTimeout(r, 50));
+      await stored(request);
 
       const pending = await getPendingApprovals(request.sessionId);
       expect(pending).toHaveLength(1);
@@ -120,7 +137,7 @@ describe("tool-approval-gate", () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
-      await new Promise((r) => setTimeout(r, 10));
+      await stored(request);
       await resolveApproval(request.sessionId, request.toolCallId, true);
       await promise;
 
@@ -135,19 +152,24 @@ describe("tool-approval-gate", () => {
       const request = { ...makeRequest(), toolCallId: "tc-bus", sessionId: "session-bus" };
       const promise = waitForApproval(request);
 
-      // Let the bus subscription settle before publishing.
-      await new Promise((r) => setTimeout(r, 100));
-
-      await publishSessionEvent(request.sessionId, "tool_approval_resolved", {
-        sessionId: request.sessionId,
-        toolCallId: request.toolCallId,
-        toolName: request.toolName,
-        approved: true,
-        expiresAt: new Date(request.expiresAt).toISOString(),
+      // The subscription is installed asynchronously, so announce the decision
+      // until the wait picks it up. an announcement that lands first is lost.
+      let outcome: string | undefined;
+      void promise.then((value) => {
+        outcome = value;
+      });
+      await vi.waitFor(async () => {
+        await publishSessionEvent(request.sessionId, "tool_approval_resolved", {
+          sessionId: request.sessionId,
+          toolCallId: request.toolCallId,
+          toolName: request.toolName,
+          approved: true,
+          expiresAt: new Date(request.expiresAt).toISOString(),
+        });
+        expect(outcome).toBe("approved");
       });
 
-      const result = await promise;
-      expect(result).toBe("approved");
+      expect(await promise).toBe("approved");
     });
 
     it("resolves false and cleans up when the agent is aborted", async () => {
@@ -155,7 +177,7 @@ describe("tool-approval-gate", () => {
       const controller = new AbortController();
       const promise = waitForApproval(request, controller.signal);
 
-      await new Promise((r) => setTimeout(r, 20));
+      await stored(request);
       controller.abort();
 
       const result = await promise;
@@ -170,7 +192,7 @@ describe("tool-approval-gate", () => {
       const controller = new AbortController();
       const promise = waitForApproval(request, controller.signal);
 
-      await new Promise((r) => setTimeout(r, 20));
+      await stored(request);
       controller.abort();
       expect(await promise).toBe("aborted");
 
@@ -188,7 +210,7 @@ describe("tool-approval-gate", () => {
       const controller = new AbortController();
       const promise = waitForApproval(request, controller.signal);
 
-      await new Promise((r) => setTimeout(r, 20));
+      await stored(request);
       // The user approved in another process, the run is stopped immediately
       // after: the recorded decision is the truth, not the abort.
       await resolveApproval(request.sessionId, request.toolCallId, true);
@@ -243,7 +265,7 @@ describe("tool-approval-gate", () => {
       const request = makeRequest();
       const promise = waitForApproval(request);
 
-      await new Promise((r) => setTimeout(r, 10));
+      await stored(request);
       await resolveApproval(request.sessionId, request.toolCallId, true);
       const result = await promise;
       expect(result).toBe("approved");

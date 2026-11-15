@@ -16,6 +16,10 @@ import {
 } from "@/lib/pi/agent-pool";
 import { restoreEnv } from "../../helpers/env";
 
+/** The clock the pool stamps entries with. tests move it forward themselves. */
+const NOW = 1_000_000;
+let now: ReturnType<typeof vi.spyOn>;
+
 // Mock Redis (used by SseDispatcher via sse-buffer)
 const mockRedisIncr = vi.fn().mockResolvedValue(1);
 const mockRedisExpire = vi.fn().mockResolvedValue(1);
@@ -63,10 +67,12 @@ const asAgentSession = (mock: MockAgentSession) => mock as any;
 describe("agent-pool", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    now = vi.spyOn(Date, "now").mockReturnValue(NOW);
     await shutdown();
   });
 
   afterEach(async () => {
+    now.mockRestore();
     await shutdown();
   });
 
@@ -144,7 +150,8 @@ describe("agent-pool", () => {
       expect(first).toBeDefined();
       const firstActive = first!.lastActive;
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The pool stamps each touch, so a later read must be a later clock.
+      now.mockReturnValue(NOW + 1_000);
 
       const second = await createAndPool("test-key", async () => ({
         session: asAgentSession(createMockAgentSession()),
@@ -250,7 +257,8 @@ describe("agent-pool", () => {
       const first = get("test-key")!;
       const firstActive = first.lastActive;
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // The pool stamps each touch, so a later read must be a later clock.
+      now.mockReturnValue(NOW + 1_000);
 
       const second = get("test-key")!;
       expect(second.lastActive).toBeGreaterThan(firstActive);

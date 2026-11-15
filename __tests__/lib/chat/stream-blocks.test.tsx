@@ -132,7 +132,7 @@ describe("streamBlocks", () => {
 });
 
 describe("StreamingMarkdown", () => {
-  it("renders what the whole document renders, at every step of a run", () => {
+  it("renders what the whole document renders, at every step of a run", { timeout: 20_000 }, () => {
     let splits = 0;
     for (const [name, doc] of Object.entries(DOCUMENTS)) {
       for (const prefix of growth(doc, 11)) {

@@ -633,30 +633,35 @@ describe("createSessionEventTracker", () => {
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    session.emit({ type: "agent_start" });
-    const before = Date.now();
-    session.emit({ type: "turn_start" });
-    const after = Date.now();
-    session.emit({
-      type: "message_update",
-      message: { role: "assistant", content: [{ type: "text", text: "Working" }] },
-    });
-    // The row is only written when the turn ends  long after it began.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    session.emit({
-      type: "turn_end",
-      message: { role: "assistant", content: [{ type: "text", text: "Working" }] },
-      toolResults: [],
-    });
+    vi.useFakeTimers();
+    try {
+      session.emit({ type: "agent_start" });
+      const before = Date.now();
+      session.emit({ type: "turn_start" });
+      const after = Date.now();
+      session.emit({
+        type: "message_update",
+        message: { role: "assistant", content: [{ type: "text", text: "Working" }] },
+      });
+      // The row is only written when the turn ends  long after it began.
+      vi.setSystemTime(new Date(after + 1_000));
+      session.emit({
+        type: "turn_end",
+        message: { role: "assistant", content: [{ type: "text", text: "Working" }] },
+        toolResults: [],
+      });
 
-    const announced = published.find((p) => p.event === "turn_start")!;
-    const startedAt = announced.data.startedAt as string;
-    expect(Date.parse(startedAt)).toBeGreaterThanOrEqual(before);
-    expect(Date.parse(startedAt)).toBeLessThanOrEqual(after);
+      const announced = published.find((p) => p.event === "turn_start")!;
+      const startedAt = announced.data.startedAt as string;
+      expect(Date.parse(startedAt)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(startedAt)).toBeLessThanOrEqual(after);
 
-    const saved = mockSaveAssistantMessage.mock.calls[0]![0] as { createdAt: Date };
-    expect(saved.createdAt.toISOString()).toBe(startedAt);
-    expect(saved.createdAt.getTime()).toBeLessThan(Date.now());
+      const saved = mockSaveAssistantMessage.mock.calls[0]![0] as { createdAt: Date };
+      expect(saved.createdAt.toISOString()).toBe(startedAt);
+      expect(saved.createdAt.getTime()).toBeLessThan(Date.now());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("orders the turns of a run by when each one began", async () => {
@@ -667,28 +672,33 @@ describe("createSessionEventTracker", () => {
     const session = createFakeSession();
     createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-    for (const text of ["First", "Second"]) {
-      session.emit({ type: "turn_start" });
-      session.emit({
-        type: "message_update",
-        message: { role: "assistant", content: [{ type: "text", text }] },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      session.emit({
-        type: "turn_end",
-        message: { role: "assistant", content: [{ type: "text", text }] },
-        toolResults: [],
-      });
+    vi.useFakeTimers();
+    try {
+      for (const text of ["First", "Second"]) {
+        session.emit({ type: "turn_start" });
+        session.emit({
+          type: "message_update",
+          message: { role: "assistant", content: [{ type: "text", text }] },
+        });
+        vi.setSystemTime(Date.now() + 1_000);
+        session.emit({
+          type: "turn_end",
+          message: { role: "assistant", content: [{ type: "text", text }] },
+          toolResults: [],
+        });
+      }
+
+      const [first, second] = mockSaveAssistantMessage.mock.calls.map(
+        (call) => (call[0] as { createdAt: Date }).createdAt,
+      );
+      expect(first!.getTime()).toBeLessThan(second!.getTime());
+
+      const declared = published.filter((p) => p.event === "turn_start");
+      expect(Date.parse(declared[0]!.data.startedAt as string)).toBe(first!.getTime());
+      expect(Date.parse(declared[1]!.data.startedAt as string)).toBe(second!.getTime());
+    } finally {
+      vi.useRealTimers();
     }
-
-    const [first, second] = mockSaveAssistantMessage.mock.calls.map(
-      (call) => (call[0] as { createdAt: Date }).createdAt,
-    );
-    expect(first!.getTime()).toBeLessThan(second!.getTime());
-
-    const declared = published.filter((p) => p.event === "turn_start");
-    expect(Date.parse(declared[0]!.data.startedAt as string)).toBe(first!.getTime());
-    expect(Date.parse(declared[1]!.data.startedAt as string)).toBe(second!.getTime());
   });
 
   it("finalizes the last message at agent_end (updates existing turn message)", async () => {
