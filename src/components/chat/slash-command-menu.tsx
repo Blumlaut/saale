@@ -3,14 +3,18 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** One row of the composer's `/` menu: a built-in command or a prompt. */
+/** One row of the composer's `/` menu: a command, a prompt, or an argument to fill. */
 export interface SlashMenuItem {
-  kind: "command" | "prompt";
+  kind: "command" | "prompt" | "argument" | "value";
   name: string;
   description: string;
   icon: LucideIcon;
   /** Prompts: the arguments the template expects, e.g. `<path> [focus]`. */
   hint?: string | null;
+  /** Arguments: `required` or `optional`. */
+  note?: string | null;
+  /** The files row: how many the composer is holding. */
+  attached?: number;
 }
 
 /**
@@ -41,6 +45,7 @@ export function SlashCommandMenu({
       {items.map((item, index) => {
         const Icon = item.icon;
         const active = index === activeIndex;
+        const argument = item.kind === "argument" || item.kind === "value";
         return (
           <button
             key={`${item.kind}:${item.name}`}
@@ -57,11 +62,24 @@ export function SlashCommandMenu({
             )}
           >
             <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-            <span className="shrink-0 font-mono text-sm font-medium">/{item.name}</span>
+            <span className="shrink-0 font-mono text-sm font-medium">
+              {argument ? item.name : `/${item.name}`}
+              {item.kind === "argument" && item.name !== "files" ? ":" : ""}
+            </span>
+            {item.note ? (
+              <span className="border-border/60 text-muted-foreground shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tracking-wide uppercase">
+                {item.note}
+              </span>
+            ) : null}
+            {item.attached !== undefined ? (
+              <span className="text-muted-foreground shrink-0 text-[11px]">
+                {item.attached > 0 ? `${item.attached} attached` : "paperclip"}
+              </span>
+            ) : null}
             {item.hint ? (
               <span className="text-muted-foreground shrink-0 text-xs">{item.hint}</span>
             ) : null}
-            <span className="text-muted-foreground min-w-0 truncate text-xs">
+            <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
               {item.description}
             </span>
           </button>
