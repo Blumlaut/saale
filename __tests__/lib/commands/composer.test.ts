@@ -83,10 +83,14 @@ describe("argumentHints", () => {
     expect(completion?.replace).toEqual({ start: 13, end: 13 });
   });
 
-  it("offers a choice's values, replacing what is typed after the colon", () => {
+  it("offers a choice's values with what each one does", () => {
     const completion = argumentHints(stfu, "time:");
 
     expect(completion?.hints.map((hint) => hint.insert)).toEqual(["on", "permanent", "stop"]);
+    expect(completion?.hints[0]).toMatchObject({
+      description: "Auto-accept for 2 hours",
+      note: "time",
+    });
     expect(completion?.replace).toEqual({ start: 5, end: 5 });
   });
 

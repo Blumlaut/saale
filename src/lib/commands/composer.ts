@@ -7,11 +7,12 @@
  * stays a component and this stays testable.
  */
 
-import { missingArgument, parseCommandArguments } from "./arguments";
+import { choiceLabel, choiceValue, missingArgument, parseCommandArguments } from "./arguments";
 import {
   BOOLEAN_VALUES,
   type CommandArgument,
   type CommandArgumentKind,
+  type CommandChoiceOption,
   type CommandMeta,
 } from "./types";
 
@@ -96,19 +97,27 @@ export function argumentHints(
     );
     const value = token.slice(colon + 1).toLowerCase();
     // A value typed out in full is done; offering it again would swallow Enter.
-    const values = (typed ? argumentValues(typed) : []).filter(
-      (candidate) => candidate.toLowerCase() !== value && candidate.toLowerCase().startsWith(value),
-    );
-    return values.length === 0 || !typed
+    const options = (typed ? argumentChoices(typed) : []).filter((option) => {
+      const candidate = choiceValue(option).toLowerCase();
+      return candidate !== value && candidate.startsWith(value);
+    });
+    return options.length === 0 || !typed
       ? null
       : {
-          hints: values.map((candidate) => ({
-            insert: candidate,
-            label: candidate,
-            description: typed.description,
-            kind: typed.kind,
-            target: "value" as const,
-          })),
+          hints: options.map((option) => {
+            const candidate = choiceValue(option);
+            const label = choiceLabel(option);
+            return {
+              insert: candidate,
+              label: candidate,
+              // The argument's name is the note; the description is what the
+              // value means, when the catalog says more than the word itself.
+              description: label === candidate ? "" : label,
+              kind: typed.kind,
+              note: typed.name,
+              target: "value" as const,
+            };
+          }),
           replace: { start: start + colon + 1, end: args.length },
         };
   }
@@ -127,15 +136,15 @@ export function argumentHints(
       };
 }
 
-/** The values an argument accepts, when a surface can list them itself. */
-function argumentValues(arg: CommandArgument): readonly string[] {
+/** The options an argument accepts, when a surface can list them itself. */
+function argumentChoices(arg: CommandArgument): readonly CommandChoiceOption[] {
   if (arg.kind === "boolean") return BOOLEAN_VALUES;
   if (arg.kind === "choice") return arg.choices ?? [];
   return [];
 }
 
 function hint(arg: CommandArgument, attached: number): ArgumentHint {
-  const values = argumentValues(arg);
+  const values = argumentChoices(arg).map(choiceValue);
   return {
     insert: arg.kind === "files" ? "" : `${arg.name}:`,
     target: "argument" as const,

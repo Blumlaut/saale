@@ -44,6 +44,16 @@ export type CommandArgumentKind = "text" | "boolean" | "choice" | "files";
 /** What a boolean argument reads as. */
 export const BOOLEAN_VALUES = ["true", "false"] as const;
 
+/** One option a choice argument accepts. */
+export interface CommandChoice {
+  value: string;
+  /** How a surface describes the option. Falls back to the value. */
+  label: string;
+}
+
+/** A choice's option: the value alone, or the value with what it means. */
+export type CommandChoiceOption = string | CommandChoice;
+
 /** One argument a command accepts, as the composer offers and the parser reads it. */
 export interface CommandArgument {
   /** Written before the colon: `/image prompt:a red fox`. */
@@ -52,7 +62,7 @@ export interface CommandArgument {
   description: string;
   required?: boolean;
   /** Static options, for a choice the surfaces can offer without asking the server. */
-  choices?: readonly string[];
+  choices?: readonly CommandChoiceOption[];
 }
 
 /** A file the composer attached to a command, adopted into the workspace. */

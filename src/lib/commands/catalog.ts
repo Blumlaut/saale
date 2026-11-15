@@ -89,7 +89,11 @@ export const COMMAND_CATALOG = [
         name: "time",
         kind: "choice",
         description: "On for 2 hours, permanent, or off",
-        choices: ["on", "permanent", "stop"],
+        choices: [
+          { value: "on", label: "Auto-accept for 2 hours" },
+          { value: "permanent", label: "Stay on until I turn it off" },
+          { value: "stop", label: "Turn it off" },
+        ],
       },
     ],
   },

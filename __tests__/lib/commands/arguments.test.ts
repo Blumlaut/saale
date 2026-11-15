@@ -151,6 +151,25 @@ describe("validateArguments", () => {
     expect(validateArguments(meta, { prompt: "42 foxes" }).values).toEqual({ prompt: "42 foxes" });
   });
 
+  it("matches an option written with its own label's value, not the label", () => {
+    const meta = fixture("stfu", [
+      {
+        name: "time",
+        kind: "choice",
+        description: "When it applies",
+        choices: [
+          { value: "on", label: "Auto-accept for 2 hours" },
+          { value: "stop", label: "Turn it off" },
+        ],
+      },
+    ]);
+
+    expect(validateArguments(meta, { time: "STOP" }).values).toEqual({ time: "stop" });
+    expect(validateArguments(meta, { time: "Turn it off" }).error).toBe(
+      '/stfu time takes on, stop, not "Turn it off".',
+    );
+  });
+
   it("passes through a choice only the server can list", () => {
     const dynamic = fixture("model", [{ name: "name", kind: "choice", description: "A model" }]);
     expect(validateArguments(dynamic, { name: "anthropic:claude" }).values).toEqual({
