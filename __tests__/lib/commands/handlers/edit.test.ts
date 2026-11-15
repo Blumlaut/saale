@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const hoisted = vi.hoisted(() => ({
   renderImage: vi.fn(),
+  appendRenderNote: vi.fn(),
   resolveImageCapabilities: vi.fn(),
   saveAssistantMessage: vi.fn(),
   publishSessionEvent: vi.fn(),
@@ -20,6 +21,9 @@ vi.mock("@/lib/pi/stream-helpers", () => ({
 }));
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: hoisted.publishSessionEvent,
+}));
+vi.mock("@/lib/pi/render-notes", () => ({
+  appendRenderNote: hoisted.appendRenderNote,
 }));
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: { update: (...args: unknown[]) => hoisted.bumpSession(...args) } },
@@ -69,6 +73,7 @@ beforeEach(() => {
   hoisted.bumpSession.mockResolvedValue({});
   hoisted.publishSessionEvent.mockResolvedValue(1);
   hoisted.saveAssistantMessage.mockResolvedValue({ id: "message-1" });
+  hoisted.appendRenderNote.mockResolvedValue(undefined);
 });
 
 describe("/edit", () => {
@@ -216,6 +221,39 @@ describe("/edit", () => {
     const options = await editHandler.options!(webContext("edit"));
 
     expect(options.size?.map((option) => option.value)).toEqual(["1024x1024", "1536x1024"]);
+  });
+
+  // The card is a DB row, which the agent never reads: without this note the
+  // next message reads as if the picture had never been made.
+  it("notes the edit in the chat's transcript for the next turn", async () => {
+    editableModel();
+    renders();
+
+    await editHandler.run(
+      webContext("edit", "prompt:put the cat in the garden", [
+        commandImage("cat.png", "/home/user/uploads/cat.png"),
+        commandImage("garden.png", "/home/user/uploads/garden.png"),
+      ]),
+    );
+
+    expect(hoisted.appendRenderNote).toHaveBeenCalledWith({
+      userId: "user-1",
+      sessionId: "session-1",
+      command: "edit",
+      sentence: 'Edited "make it night" with Qwen (1024×1024).',
+      sources: ["/home/user/uploads/cat.png", "/home/user/uploads/garden.png"],
+    });
+  });
+
+  it("notes nothing when the render failed", async () => {
+    editableModel();
+    hoisted.renderImage.mockRejectedValue(new Error("The image model returned no image."));
+
+    await expect(
+      editHandler.run(webContext("edit", "prompt:make it night", [commandImage()])),
+    ).rejects.toThrow("returned no image");
+
+    expect(hoisted.appendRenderNote).not.toHaveBeenCalled();
   });
 
   it("keeps quiet on success, because the card is the answer", async () => {

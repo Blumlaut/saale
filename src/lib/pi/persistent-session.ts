@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createAgentResourceLoader, startSessionExtensions } from "./processing-state";
 import { readPluginConfig } from "./plugins";
+import { seedRenderNotes } from "./render-notes";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { createExtensionUiContext } from "@/lib/plugin-ui/ui-context";
 import { createSaaleAgentSession, resolveAgentCwd } from "./agent-session";
@@ -114,6 +115,12 @@ export async function createPersistentSession(options: {
     options.sessionDir, // cwd. stored in session header
     options.sessionDir, // sessionDir. where JSONL files are written
   );
+
+  // A chat whose only content is renders has no transcript yet, and the notes
+  // appended then were dropped. Start this one with what the chat rendered.
+  await seedRenderNotes({ sessionId: options.sessionId, sessionManager }).catch((err) => {
+    console.error(`Failed to seed the render notes of ${options.sessionId}:`, err);
+  });
 
   const result = await createSaaleAgentSession(options.userId, {
     sessionManager, // File-based. entries persist to JSONL
