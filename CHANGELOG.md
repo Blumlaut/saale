@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.14 - 2026-11-15
+
+- cover the chat window's growth in e2e (91725d8d)
+- keep a chat window's turns while a run works (28228637)
+- give existing instances the web search category (affd3af6)
+- search the general and web categories by default (dac4b03f)
+- Bump hono from 4.13.13 to 4.13.18 (71c01d23)
+- Bump @hono/node-server from 2.1.5 to 2.1.8 (06eb6af6)
+
 ## 2026.11.13 - 2026-11-14
 
 - put the switches first in the remaining settings sheets (389ed9fa)
