@@ -58,6 +58,7 @@ describe("tool-approval-gate", () => {
       );
     });
   }
+
   const makeRequest = (): ApprovalRequest => {
     const { toolCallId, sessionId } = makeUniqueIds("tc");
     return {
@@ -112,11 +113,13 @@ describe("tool-approval-gate", () => {
         expiresAt: Date.now() + 50,
       };
       vi.useFakeTimers();
-      const promise = waitForApproval(request);
-      await vi.advanceTimersByTimeAsync(50);
-      vi.useRealTimers();
-
-      expect(await promise).toBe("denied");
+      try {
+        const promise = waitForApproval(request);
+        await vi.advanceTimersByTimeAsync(50);
+        expect(await promise).toBe("denied");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("stores and retrieves pending approvals in Redis", async () => {
