@@ -160,11 +160,22 @@ function components(): string[] {
     .sort();
 }
 
+/**
+ * Every component that can be an offender, parsed once for both checks below.
+ *
+ * A row action needs the `ROW_ACTION` class and a hover reveal needs a `group-`
+ * token, so a file with neither cannot match, and reading it is enough.
+ */
+const ANALYSES = components()
+  .map((path) => ({ path, source: read(path) }))
+  .filter(({ source }) => source.includes(ROW_ACTION) || source.includes("group-"))
+  .map(({ path, source }) => ({ path, classes: hoverClasses(path, source) }));
+
 describe("row controls stay visible", () => {
   it("keeps the hover-quiet class for inline hints only", () => {
-    const offenders = components()
-      .map((path) => ({ path, classes: hoverClasses(path, read(path)) }))
-      .filter(({ path, classes }) => classes.usesRowAction && !(path in QUIET_HINTS));
+    const offenders = ANALYSES.filter(
+      ({ path, classes }) => classes.usesRowAction && !(path in QUIET_HINTS),
+    );
 
     expect(
       offenders.map(
@@ -176,9 +187,7 @@ describe("row controls stay visible", () => {
   });
 
   it("reveals a quiet hint from a group in the same file", () => {
-    const offenders = components()
-      .map((path) => ({ path, classes: hoverClasses(path, read(path)) }))
-      .filter(({ classes }) => classes.reveals && !classes.declares);
+    const offenders = ANALYSES.filter(({ classes }) => classes.reveals && !classes.declares);
 
     expect(
       offenders.map(
