@@ -7,13 +7,14 @@
  * stays a component and this stays testable.
  */
 
-import { choiceLabel, choiceValue, missingArgument, parseCommandArguments } from "./arguments";
+import { choiceValue, missingArgument, parseCommandArguments } from "./arguments";
 import {
   BOOLEAN_VALUES,
   type CommandArgument,
   type CommandArgumentKind,
-  type CommandChoiceOption,
   type CommandMeta,
+  type CommandOption,
+  type CommandOptions,
 } from "./types";
 
 /** A composer value split into the command and what follows it. */
@@ -81,10 +82,16 @@ export function commandReady(meta: CommandMeta | undefined, args: string, attach
 export function argumentHints(
   meta: CommandMeta | undefined,
   args: string,
-  attached = 0,
+  context: {
+    /** Files the composer is holding, which fill a `files` argument. */
+    attached?: number;
+    /** Values the server listed for a dynamic argument, keyed by its name. */
+    options?: CommandOptions | undefined;
+  } = {},
 ): ArgumentCompletion | null {
   const declared = meta?.arguments ?? [];
   if (declared.length === 0) return null;
+  const attached = context.attached ?? 0;
 
   const start = Math.max(args.lastIndexOf(" "), args.lastIndexOf("\n")) + 1;
   const token = args.slice(start);
@@ -97,27 +104,23 @@ export function argumentHints(
     );
     const value = token.slice(colon + 1).toLowerCase();
     // A value typed out in full is done; offering it again would swallow Enter.
-    const options = (typed ? argumentChoices(typed) : []).filter((option) => {
-      const candidate = choiceValue(option).toLowerCase();
-      return candidate !== value && candidate.startsWith(value);
-    });
-    return options.length === 0 || !typed
+    const choices = (typed ? candidates(typed, context.options) : []).filter(
+      (candidate) =>
+        candidate.value.toLowerCase() !== value && candidate.value.toLowerCase().startsWith(value),
+    );
+    return choices.length === 0 || !typed
       ? null
       : {
-          hints: options.map((option) => {
-            const candidate = choiceValue(option);
-            const label = choiceLabel(option);
-            return {
-              insert: candidate,
-              label: candidate,
-              // The argument's name is the note; the description is what the
-              // value means, when the catalog says more than the word itself.
-              description: label === candidate ? "" : label,
-              kind: typed.kind,
-              note: typed.name,
-              target: "value" as const,
-            };
-          }),
+          hints: choices.map((candidate) => ({
+            insert: candidate.value,
+            label: candidate.value,
+            // The argument's name is the note; the description is what the
+            // value means, which for a listed option is its own label.
+            description: candidate.description,
+            kind: typed.kind,
+            note: typed.name,
+            target: "value" as const,
+          })),
           replace: { start: start + colon + 1, end: args.length },
         };
   }
@@ -131,20 +134,52 @@ export function argumentHints(
   return wanted.length === 0
     ? null
     : {
-        hints: wanted.map((arg) => hint(arg, attached)),
+        hints: wanted.map((arg) => hint(arg, attached, context.options)),
         replace: { start, end: args.length },
       };
 }
 
-/** The options an argument accepts, when a surface can list them itself. */
-function argumentChoices(arg: CommandArgument): readonly CommandChoiceOption[] {
-  if (arg.kind === "boolean") return BOOLEAN_VALUES;
-  if (arg.kind === "choice") return arg.choices ?? [];
-  return [];
+/** One value an argument accepts, and what to say about it. */
+interface Candidate {
+  value: string;
+  description: string;
 }
 
-function hint(arg: CommandArgument, attached: number): ArgumentHint {
-  const values = argumentChoices(arg).map(choiceValue);
+/**
+ * Every value an argument accepts.
+ *
+ * The catalog lists a fixed choice itself; a choice without one comes from the
+ * server, which is the only side that knows a model's resolutions.
+ */
+function candidates(arg: CommandArgument, options: CommandOptions | undefined): Candidate[] {
+  if (arg.kind === "boolean") return BOOLEAN_VALUES.map((value) => ({ value, description: "" }));
+  if (arg.kind !== "choice") return [];
+
+  const listed: CommandOption[] =
+    arg.choices === undefined
+      ? (options?.[arg.name] ?? [])
+      : arg.choices.map((choice) => {
+          const value = choiceValue(choice);
+          const label = typeof choice === "string" ? "" : choice.label;
+          return { value, label };
+        });
+
+  return listed.map((option) => ({
+    value: option.value,
+    // Nothing to add when the label already appears in the value
+    // (`provider:model` beside `model`), or when it is the value itself.
+    description:
+      option.description ??
+      (option.label && !option.value.endsWith(option.label) ? option.label : ""),
+  }));
+}
+
+function hint(
+  arg: CommandArgument,
+  attached: number,
+  options: CommandOptions | undefined,
+): ArgumentHint {
+  const values = candidates(arg, options).map((candidate) => candidate.value);
   return {
     insert: arg.kind === "files" ? "" : `${arg.name}:`,
     target: "argument" as const,

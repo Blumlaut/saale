@@ -193,7 +193,9 @@ export function commandUsage(meta: CommandMeta): string {
         : arg.kind === "boolean"
           ? "<true|false>"
           : arg.kind === "choice"
-            ? `<${arg.choices?.[0] ? choiceValue(arg.choices[0]) : "one"}|…>`
+            ? arg.choices?.[0]
+              ? `<${choiceValue(arg.choices[0])}|…>`
+              : "<value>"
             : "<text>";
     return `${arg.name}:${value}`;
   };

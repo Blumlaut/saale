@@ -210,6 +210,14 @@ describe("/edit", () => {
     expect(writes.at(-1)!.toolCalls[0]).toMatchObject({ isError: true });
   });
 
+  it("lists the resolutions an edit renders at, for the composer", async () => {
+    editableModel();
+
+    const options = await editHandler.options!(webContext("edit"));
+
+    expect(options.size?.map((option) => option.value)).toEqual(["1024x1024", "1536x1024"]);
+  });
+
   it("keeps quiet on success, because the card is the answer", async () => {
     editableModel();
     renders();

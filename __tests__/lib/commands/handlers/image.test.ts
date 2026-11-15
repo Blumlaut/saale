@@ -199,6 +199,27 @@ describe("/image", () => {
     expect(hoisted.renderImage).not.toHaveBeenCalled();
   });
 
+  it("lists the resolutions the model renders at, for the composer", async () => {
+    availableModel(["1024x1024", "1024x1536"]);
+
+    const options = await imageHandler.options!(ctx(""));
+
+    expect(options.size).toEqual([
+      { value: "1024x1024", label: "square", description: "The model's default" },
+      { value: "1024x1536", label: "portrait" },
+    ]);
+  });
+
+  it("offers no resolution when the account has no image model", async () => {
+    hoisted.resolveImageCapabilities.mockResolvedValue({
+      generate: false,
+      edit: false,
+      sizes: ["1024x1024"],
+    });
+
+    expect(await imageHandler.options!(ctx(""))).toEqual({ size: [] });
+  });
+
   it("marks the card failed when the endpoint does", async () => {
     availableModel();
     hoisted.renderImage.mockRejectedValue(new Error("The image model returned no image."));

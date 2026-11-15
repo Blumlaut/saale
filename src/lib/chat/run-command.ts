@@ -7,7 +7,7 @@
  * passing through this request.
  */
 
-import type { CommandOutcome, CommandPrompt } from "@/lib/commands/types";
+import type { CommandOptions, CommandOutcome, CommandPrompt } from "@/lib/commands/types";
 import type { UploadProgress, StagedFile } from "@/lib/files/upload-client";
 import { discardStaged, stageAttachments } from "./stage-attachments";
 
@@ -18,6 +18,27 @@ export type CommandApiResponse =
 
 export type RunCommandResult =
   { kind: "ok"; response: CommandApiResponse } | { kind: "error"; message: string };
+
+/**
+ * The values a command's arguments accept, for the arguments only the server
+ * can list (a model's resolutions, say).
+ */
+export async function fetchCommandOptions(
+  sessionId: string,
+  name: string,
+  signal?: AbortSignal,
+): Promise<CommandOptions> {
+  const res = await fetch(
+    `/api/chat/sessions/${sessionId}/command/options?name=${encodeURIComponent(name)}`,
+    { signal: signal ?? null },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || res.statusText);
+  }
+  const body = (await res.json()) as { options?: CommandOptions };
+  return body.options ?? {};
+}
 
 export interface RunCommandInput {
   sessionId: string;

@@ -1,6 +1,6 @@
 import { MAX_REFERENCES } from "@/lib/image-render";
 import type { CommandHandler, CommandOutcome } from "../types";
-import { imageModelFor, renderSize, renderWithCard } from "./image-shared";
+import { imageModelFor, renderSize, renderWithCard, sizeOptions } from "./image-shared";
 
 /**
  * `/edit prompt:make it night`, with the pictures attached in the composer.
@@ -11,6 +11,8 @@ import { imageModelFor, renderSize, renderWithCard } from "./image-shared";
  * files in is the order the endpoint sees them.
  */
 export const editHandler: CommandHandler = {
+  options: async (ctx) => ({ size: await sizeOptions(ctx.userId, "edit") }),
+
   run: async (ctx): Promise<CommandOutcome> => {
     if (!ctx.sessionId) {
       return { message: "This message doesn't belong to a chat yet.", tone: "info" };

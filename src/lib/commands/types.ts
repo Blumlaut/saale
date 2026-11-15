@@ -21,6 +21,9 @@ export interface CommandOption {
   current?: boolean;
 }
 
+/** The values each of a command's dynamic arguments accepts, keyed by name. */
+export type CommandOptions = Readonly<Record<string, CommandOption[]>>;
+
 /** What an interactive command asks the user before it can run. */
 export interface CommandPrompt {
   title: string;
@@ -150,5 +153,11 @@ export type CommandContext = CommandRequest & {
  */
 export interface CommandHandler {
   prepare?: (ctx: CommandContext) => Promise<CommandPrompt>;
+  /**
+   * The values of an argument whose options only the server can list: a
+   * model's resolutions, say. The composer offers them, and `run` refuses
+   * anything outside them.
+   */
+  options?: (ctx: CommandContext) => Promise<CommandOptions>;
   run: (ctx: CommandContext, value?: string) => Promise<CommandOutcome>;
 }

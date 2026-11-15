@@ -25,6 +25,7 @@ import {
 import { cn, formatFileSize } from "@/lib/utils";
 import { getCommandMeta, searchCommands } from "@/lib/commands/catalog";
 import { argumentHints, commandReady, readCommandDraft } from "@/lib/commands/composer";
+import type { CommandOptions } from "@/lib/commands/types";
 import { commandTokens } from "@/lib/commands/highlight";
 import { ComposerHighlight } from "./composer-highlight";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
@@ -59,6 +60,10 @@ interface InputBarProps {
   prompts?: readonly PromptPickerItem[];
   /** Called when the `/` menu opens, so the prompts can be read again. */
   onPromptsRequested?: () => void;
+  /** Values the server listed for the command being filled in, by argument name. */
+  commandOptions?: { name: string; values: CommandOptions } | null | undefined;
+  /** Called when a command's arguments need the values only the server can list. */
+  onCommandOptionsRequested?: ((name: string) => void) | undefined;
   /** Current composer text. owned by the parent so drafts survive navigation. */
   value: string;
   onValueChange: (value: string) => void;
@@ -90,6 +95,8 @@ export function InputBar({
   onCommand,
   prompts,
   onPromptsRequested,
+  commandOptions,
+  onCommandOptionsRequested,
   value,
   onValueChange,
   isLoading,
@@ -113,11 +120,16 @@ export function InputBar({
   // A command the composer holds with its arguments: `/image prompt:a fox`.
   const draft = useMemo(() => readCommandDraft(value.trimStart()), [value]);
   const draftMeta = draft ? getCommandMeta(draft.name) : undefined;
-  const completion =
-    draft && commandQuery === null
-      ? argumentHints(draftMeta, draft.args, pendingFiles.length)
-      : null;
+  const listedOptions =
+    commandOptions && commandOptions.name === draftMeta?.name ? commandOptions.values : undefined;
   const menuItems = useMemo<SlashMenuItem[]>(() => {
+    const completion =
+      draft && commandQuery === null
+        ? argumentHints(draftMeta, draft.args, {
+            attached: pendingFiles.length,
+            options: listedOptions,
+          })
+        : null;
     if (completion) {
       return completion.hints.map<SlashMenuItem>((hint) => ({
         kind: hint.target === "value" ? "value" : "argument",
@@ -126,6 +138,9 @@ export function InputBar({
         icon: ARGUMENT_ICONS[hint.kind],
         note: hint.note ?? null,
         hint: hint.values?.length ? hint.values.join(" | ") : null,
+        // What picking the row writes, and the span of the line it replaces.
+        insert: hint.insert,
+        span: completion.replace,
         ...(hint.kind === "files" ? { attached: hint.attached ?? 0 } : {}),
       }));
     }
@@ -146,11 +161,16 @@ export function InputBar({
       hint: prompt.argumentHint,
     }));
     return [...commands, ...promptItems];
-  }, [commandQuery, completion, prompts]);
+  }, [commandQuery, draft, draftMeta, listedOptions, pendingFiles.length, prompts]);
   const [commandIndex, setCommandIndex] = useState(0);
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
+  // An argument row can only come from a completion, so the rows say which
+  // menu is open.
+  const offersArguments = menuItems.some(
+    (item) => item.kind === "argument" || item.kind === "value",
+  );
   const commandMenuOpen =
-    (commandQuery !== null || completion !== null) && !commandMenuDismissed && menuItems.length > 0;
+    (commandQuery !== null || offersArguments) && !commandMenuDismissed && menuItems.length > 0;
   // The line under the textarea: chips behind the names and values being typed.
   const tokens = useMemo(() => commandTokens(value), [value]);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -174,6 +194,16 @@ export function InputBar({
   useEffect(() => {
     if (commandTyped) onPromptsRequested?.();
   }, [commandTyped, onPromptsRequested]);
+
+  // A choice only the server can list (a model's resolutions) is fetched once
+  // the command is being filled in, the same way the prompts are re-read.
+  const wantsListedOptions = (draftMeta?.arguments ?? []).some(
+    (arg) => arg.kind === "choice" && arg.choices === undefined,
+  );
+  const draftName = draftMeta?.name;
+  useEffect(() => {
+    if (wantsListedOptions && draftName) onCommandOptionsRequested?.(draftName);
+  }, [wantsListedOptions, draftName, onCommandOptionsRequested]);
 
   const autoResize = useCallback(() => {
     if (textareaRef.current) {
@@ -273,13 +303,13 @@ export function InputBar({
 
   /** Fill the argument or value the highlighted row stands for. */
   const fillArgument = useCallback(
-    (insert: string) => {
-      if (!draft || !completion) return;
-      const { start, end } = completion.replace;
-      const args = `${draft.args.slice(0, start)}${insert}${draft.args.slice(end)}`;
+    (item: SlashMenuItem) => {
+      if (!draft || !item.insert || !item.span) return;
+      const { start, end } = item.span;
+      const args = `${draft.args.slice(0, start)}${item.insert}${draft.args.slice(end)}`;
       putComposer(`/${draft.name} ${args}`, true);
     },
-    [draft, completion, putComposer],
+    [draft, putComposer],
   );
 
   const selectMenuItem = useCallback(
@@ -287,12 +317,9 @@ export function InputBar({
       if (item.kind === "prompt") putComposer(`/${item.name} `);
       else if (item.kind === "command") selectCommandOrArguments(item.name);
       else if (item.kind === "argument" && item.name === "files") fileInputRef.current?.click();
-      else {
-        const hint = completion?.hints.find((candidate) => candidate.label === item.name);
-        if (hint) fillArgument(hint.insert);
-      }
+      else fillArgument(item);
     },
-    [putComposer, selectCommandOrArguments, completion, fillArgument],
+    [putComposer, selectCommandOrArguments, fillArgument],
   );
 
   // The word being completed: empty once a space has been typed after the

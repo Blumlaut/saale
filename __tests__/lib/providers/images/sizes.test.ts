@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_IMAGE_SIZES,
   imageSizeParts,
+  imageSizeShape,
   isImageSize,
   normalizeImageSizes,
   pickImageSize,
@@ -56,5 +57,16 @@ describe("image sizes", () => {
   it("reads the two numbers a card needs to hold the shape", () => {
     expect(imageSizeParts("1536x2752")).toEqual({ width: 1536, height: 2752 });
     expect(imageSizeParts("big")).toBeUndefined();
+  });
+});
+
+describe("imageSizeShape", () => {
+  it("names the shape without repeating the numbers", () => {
+    expect(imageSizeShape("1024x1536")).toBe("portrait");
+    expect(imageSizeShape("512x512")).toBe("square, fast");
+  });
+
+  it("falls back to the size when no preset names it", () => {
+    expect(imageSizeShape("640x640")).toBe("640x640");
   });
 });

@@ -92,6 +92,17 @@ export function pickImageSize(sizes: readonly string[], requested?: unknown): st
   return list.find((size) => size === wanted) ?? list[0]!;
 }
 
+/**
+ * The shape a size names, without the numbers: "portrait", "square, fast".
+ *
+ * A picker already shows the size itself, so repeating it beside the word is
+ * noise. An unpresetted size falls back to the value.
+ */
+export function imageSizeShape(size: string): string {
+  const preset = IMAGE_SIZE_PRESETS.find((entry) => entry.value === size);
+  return preset?.label.split("·")[1]?.trim() ?? size;
+}
+
 /** `1024x1024` as the two numbers a card needs to hold the right shape. */
 export function imageSizeParts(size: string): { width: number; height: number } | undefined {
   const match = SIZE_PATTERN.exec(size);

@@ -16,10 +16,14 @@ function Harness({
   initial = "",
   onCommand,
   onSend,
+  commandOptions,
+  onCommandOptionsRequested,
 }: {
   initial?: string;
   onCommand: () => void;
   onSend: () => void;
+  commandOptions?: { name: string; values: Record<string, { value: string; label: string }[]> };
+  onCommandOptionsRequested?: (name: string) => void;
 }) {
   const [value, setValue] = React.useState(initial);
   return (
@@ -30,14 +34,24 @@ function Harness({
       onCommand={onCommand}
       isLoading={false}
       onStop={vi.fn()}
+      commandOptions={commandOptions ?? null}
+      onCommandOptionsRequested={onCommandOptionsRequested}
     />
   );
 }
 
-function renderComposer(initial = "") {
+function renderComposer(
+  initial = "",
+  options: {
+    commandOptions?: { name: string; values: Record<string, { value: string; label: string }[]> };
+    onCommandOptionsRequested?: (name: string) => void;
+  } = {},
+) {
   const onCommand = vi.fn();
   const onSend = vi.fn();
-  const utils = render(<Harness initial={initial} onCommand={onCommand} onSend={onSend} />);
+  const utils = render(
+    <Harness initial={initial} onCommand={onCommand} onSend={onSend} {...options} />,
+  );
   const textarea = utils.container.querySelector("textarea")!;
   return { ...utils, textarea, onCommand, onSend };
 }
@@ -306,6 +320,72 @@ describe("command arguments", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     expect(onSend).toHaveBeenCalledWith("/stfu time:permanent", undefined);
+  });
+
+  it("offers the resolutions the server listed for size:", () => {
+    const sizes = {
+      size: [
+        { value: "1024x1024", label: "1024 × 1024 · square" },
+        { value: "1024x1536", label: "1024 × 1536 · portrait" },
+      ],
+    };
+    const { textarea } = renderComposer("/image size:", {
+      commandOptions: { name: "image", values: sizes },
+    });
+
+    const rows = document.querySelectorAll('[role="option"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toHaveTextContent("1024x1536");
+    expect(rows[1]).toHaveTextContent("1024 × 1536 · portrait");
+
+    fireEvent.keyDown(textarea, { key: "ArrowDown" });
+    fireEvent.keyDown(textarea, { key: "Tab" });
+
+    expect(textarea).toHaveValue("/image size:1024x1536");
+  });
+
+  it("narrows the listed resolutions to what was typed", () => {
+    const { textarea } = renderComposer("/image size:1024x1", {
+      commandOptions: {
+        name: "image",
+        values: {
+          size: [
+            { value: "1024x1024", label: "1024 × 1024 · square" },
+            { value: "1024x1536", label: "1024 × 1536 · portrait" },
+          ],
+        },
+      },
+    });
+
+    expect(document.querySelectorAll('[role="option"]')).toHaveLength(2);
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/image size:1024x1024");
+  });
+
+  it("asks the server for a list only it has", () => {
+    const requested = vi.fn();
+    renderComposer("/image ", { onCommandOptionsRequested: requested });
+
+    expect(requested).toHaveBeenCalledWith("image");
+  });
+
+  it("does not ask for a list the catalog already carries", () => {
+    const requested = vi.fn();
+    renderComposer("/stfu ", { onCommandOptionsRequested: requested });
+
+    expect(requested).not.toHaveBeenCalled();
+  });
+
+  it("lets a size be typed when the server has not answered", () => {
+    const { textarea, onSend } = renderComposer("/image size:1024");
+
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledWith("/image size:1024", undefined);
   });
 
   it("sends a filled-in command verbatim", () => {
