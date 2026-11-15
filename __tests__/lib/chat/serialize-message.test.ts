@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  serializeChatMessage,
   serializeSharedChatMessage,
+  type ChatMessageWithAttachments,
   type ShareableChatMessage,
 } from "@/lib/chat/serialize-message";
 
@@ -122,5 +124,53 @@ describe("serializeSharedChatMessage", () => {
   it("omits tool calls when the row has none", () => {
     expect(serializeSharedChatMessage(row(), "tok").toolCalls).toBeUndefined();
     expect(serializeSharedChatMessage(row({ toolCalls: "[]" }), "tok").toolCalls).toEqual([]);
+  });
+});
+
+/**
+ * A command's own render writes its card before the endpoint answers, so the
+ * row says `running` until the result lands in it. Every other row was
+ * executed when it was saved.
+ */
+describe("serializeChatMessage", () => {
+  function messageRow(toolCalls: string): ChatMessageWithAttachments {
+    return {
+      id: "m1",
+      role: "assistant",
+      content: "",
+      thinking: null,
+      errorMessage: null,
+      toolCalls,
+      parentMessageId: null,
+      createdAt: new Date("2025-06-01T10:00:00.000Z"),
+      stats: null,
+      queuedAt: null,
+      attachments: [],
+    } as unknown as ChatMessageWithAttachments;
+  }
+
+  it("keeps a render that is still running marked as running", () => {
+    const message = serializeChatMessage(
+      messageRow(
+        JSON.stringify([
+          { id: "tc-1", name: "generate_image", args: { prompt: "a fox" }, status: "running" },
+        ]),
+      ),
+    );
+
+    expect(message.toolCalls?.[0]).toMatchObject({ name: "generate_image", status: "running" });
+  });
+
+  it("reports a finished call as completed, and a failed one as an error", () => {
+    const message = serializeChatMessage(
+      messageRow(
+        JSON.stringify([
+          { id: "tc-1", name: "generate_image", args: {}, result: "done", isError: false },
+          { id: "tc-2", name: "edit_image", args: {}, result: "nope", isError: true },
+        ]),
+      ),
+    );
+
+    expect(message.toolCalls?.map((call) => call.status)).toEqual(["completed", "error"]);
   });
 });

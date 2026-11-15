@@ -10,6 +10,12 @@ export interface SavedToolCall {
   args: Record<string, unknown>;
   result: string | undefined;
   isError: boolean | undefined;
+  /**
+   * Set only while a command's own render is running: the row exists so the
+   * card can shimmer, and the same id is rewritten with the result. A turn's
+   * calls are always written finished.
+   */
+  status?: "running" | undefined;
 }
 
 export interface SaveAssistantMessageInput {

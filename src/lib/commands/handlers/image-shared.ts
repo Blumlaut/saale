@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/db";
-import type { RenderedImage } from "@/lib/image-render";
+import { renderImage, type RenderedImage } from "@/lib/image-render";
 import { resolveImageCapabilities } from "@/lib/pi/image-model";
+import { publishSessionEvent } from "@/lib/pi/session-events";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
 import { normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
 
 /**
  * The parts `/image` and `/edit` share: both reach the same image model, and
- * both put the picture in the transcript as the card the matching tool draws.
+ * both show their work as the card the matching tool draws.
  */
 
 /** The account's image model, or the reason a render cannot happen. */
@@ -43,36 +44,101 @@ export function renderSize(
 }
 
 /**
- * Write the render into the conversation.
+ * Render one picture, showing it in the transcript the way the agent's tool
+ * does: the call's card appears first and shimmers, then holds the picture.
  *
- * The row carries the same call the matching tool would have made, so the
- * transcript draws it with the card it already knows and a reload puts it back.
+ * The row is written before the endpoint is called, so a render that takes
+ * minutes looks like work in progress rather than a command that did nothing,
+ * and every connected client is told to reload so the card shows up at once.
  */
-export async function saveRenderedMessage(input: {
+export async function renderWithCard(input: {
+  userId: string;
   sessionId: string;
+  prompt: string;
+  references?: readonly string[] | undefined;
+  size: string;
+  verb: "Rendered" | "Edited";
   toolName: "generate_image" | "edit_image";
   args: Record<string, unknown>;
-  image: RenderedImage;
-  sentence: string;
-}): Promise<void> {
-  const { sessionId, toolName, args, image, sentence } = input;
-  const result = `${sentence}\n${JSON.stringify({ _saaleImageMeta: image })}`;
-
-  await saveAssistantMessage({
-    sessionId,
+}): Promise<{ image: RenderedImage; sentence: string }> {
+  const callId = crypto.randomUUID();
+  const { id: messageId } = await saveAssistantMessage({
+    sessionId: input.sessionId,
     content: "",
     toolCalls: [
       {
-        id: crypto.randomUUID(),
-        name: toolName,
-        args,
-        result,
-        isError: false,
+        id: callId,
+        name: input.toolName,
+        args: input.args,
+        result: undefined,
+        isError: undefined,
+        status: "running",
       },
     ],
   });
+  await publishMessagesChanged(input.sessionId);
 
-  // A rendered picture is new content, so the chat moves up in the session list.
+  try {
+    const { image, sentence } = await renderImage({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      prompt: input.prompt,
+      references: input.references,
+      size: input.size,
+      verb: input.verb,
+    });
+
+    await saveAssistantMessage({
+      sessionId: input.sessionId,
+      messageId,
+      content: "",
+      toolCalls: [
+        {
+          id: callId,
+          name: input.toolName,
+          args: input.args,
+          result: `${sentence}\n${JSON.stringify({ _saaleImageMeta: image })}`,
+          isError: false,
+        },
+      ],
+    });
+    await publishMessagesChanged(input.sessionId);
+    await bumpActivity(input.sessionId);
+
+    return { image, sentence };
+  } catch (err) {
+    // The card must not shimmer forever, so the same row says what went wrong.
+    await saveAssistantMessage({
+      sessionId: input.sessionId,
+      messageId,
+      content: "",
+      errorMessage: err instanceof Error ? err.message : "The render failed.",
+      toolCalls: [
+        {
+          id: callId,
+          name: input.toolName,
+          args: input.args,
+          result: err instanceof Error ? err.message : "The render failed.",
+          isError: true,
+        },
+      ],
+    }).catch((saveErr) => {
+      console.error(`Failed to record the failed render in ${input.sessionId}:`, saveErr);
+    });
+    await publishMessagesChanged(input.sessionId);
+    throw err;
+  }
+}
+
+/** Tell every client watching the chat that its transcript moved. */
+async function publishMessagesChanged(sessionId: string): Promise<void> {
+  await publishSessionEvent(sessionId, "messages_changed", {}).catch((err) => {
+    console.error(`Failed to publish the render change for ${sessionId}:`, err);
+  });
+}
+
+/** A rendered picture is new content, so the chat moves up in the session list. */
+async function bumpActivity(sessionId: string): Promise<void> {
   await prisma.chatSession
     .update({ where: { id: sessionId }, data: { lastActivityAt: new Date() } })
     .catch((err) => {

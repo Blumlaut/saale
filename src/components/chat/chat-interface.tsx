@@ -514,10 +514,11 @@ export function ChatInterface({
       if (result.kind !== "done") return;
 
       setCommandPrompt(null);
-      const { message, tone, refresh } = result.outcome;
+      const { message, tone, refresh, quiet } = result.outcome;
       if (tone === "error") toast.error(message);
       else if (tone === "info") toast.info(message);
-      else toast.success(message);
+      // A command whose result is already in the transcript has nothing to say.
+      else if (!quiet) toast.success(message);
 
       if (refresh === "messages") void loadMessages();
       if (refresh === "generation") {

@@ -4,6 +4,7 @@ const hoisted = vi.hoisted(() => ({
   renderImage: vi.fn(),
   resolveImageCapabilities: vi.fn(),
   saveAssistantMessage: vi.fn(),
+  publishSessionEvent: vi.fn(),
   bumpSession: vi.fn(),
 }));
 
@@ -13,6 +14,9 @@ vi.mock("@/lib/pi/image-model", () => ({
 }));
 vi.mock("@/lib/pi/stream-helpers", () => ({
   saveAssistantMessage: hoisted.saveAssistantMessage,
+}));
+vi.mock("@/lib/pi/session-events", () => ({
+  publishSessionEvent: hoisted.publishSessionEvent,
 }));
 vi.mock("@/lib/db", () => ({
   prisma: { chatSession: { update: (...args: unknown[]) => hoisted.bumpSession(...args) } },
@@ -48,21 +52,35 @@ function renders(overrides: Record<string, unknown> = {}) {
   });
 }
 
-/** The call the handler wrote into the chat, as the transcript reads it back. */
-function savedCall() {
-  const input = hoisted.saveAssistantMessage.mock.calls[0]![0] as {
-    sessionId: string;
-    content: string;
-    toolCalls: Array<{ name: string; args: Record<string, unknown>; result: string }>;
-  };
-  const call = input.toolCalls[0]!;
-  const [sentence, meta] = call.result.split("\n");
-  return { input, call, sentence, meta: JSON.parse(meta!) as Record<string, unknown> };
+interface SavedCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  result?: string;
+  status?: string;
+  isError?: boolean;
+}
+
+/** The writes the handler made into the chat, in order. */
+function savedMessages() {
+  return hoisted.saveAssistantMessage.mock.calls.map(
+    (call) => call[0] as { sessionId: string; messageId?: string; toolCalls: SavedCall[] },
+  );
+}
+
+/** The card's final state: the sentence, then the metadata the card reads. */
+function finishedCard() {
+  const writes = savedMessages();
+  const call = writes.at(-1)!.toolCalls[0]!;
+  const [sentence, meta] = call.result!.split("\n");
+  return { writes, call, sentence, meta: JSON.parse(meta!) as Record<string, unknown> };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   hoisted.bumpSession.mockResolvedValue({});
+  hoisted.publishSessionEvent.mockResolvedValue(1);
+  hoisted.saveAssistantMessage.mockResolvedValue({ id: "message-1" });
 });
 
 describe("/image", () => {
@@ -72,20 +90,53 @@ describe("/image", () => {
 
     const outcome = await imageHandler.run(ctx("a red fox in the snow"));
 
-    expect(outcome.tone).toBe("success");
-    expect(outcome.refresh).toBe("messages");
+    expect(outcome).toMatchObject({ tone: "success", refresh: "messages" });
     expect(hoisted.renderImage).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: "a red fox in the snow", size: "1024x1024" }),
     );
 
-    const { input, call, meta } = savedCall();
-    expect(input.sessionId).toBe("session-1");
+    const { call, meta } = finishedCard();
     // The card reads the render out of the tool call, so it has to look like one.
     expect(call.name).toBe("generate_image");
     expect(meta).toEqual({
       _saaleImageMeta: expect.objectContaining({ path: "generated/9b1c.webp", width: 1024 }),
     });
     expect(hoisted.bumpSession).toHaveBeenCalled();
+  });
+
+  it("shows the call as running before it renders, then fills in the picture", async () => {
+    availableModel();
+    renders();
+
+    await imageHandler.run(ctx("a red fox in the snow"));
+
+    const [start, finish] = savedMessages();
+    expect(start!.toolCalls[0]).toMatchObject({
+      name: "generate_image",
+      status: "running",
+      result: undefined,
+      args: { prompt: "a red fox in the snow" },
+    });
+    expect(finish!.messageId).toBe("message-1");
+    expect(finish!.toolCalls[0]!.status).toBeUndefined();
+    expect(finish!.toolCalls[0]!.result).toContain("_saaleImageMeta");
+    // The row exists before the endpoint is called, so it needs no second row.
+    expect(hoisted.saveAssistantMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells every client watching the chat to reload, before and after", async () => {
+    availableModel();
+    renders();
+
+    await imageHandler.run(ctx("a red fox in the snow"));
+
+    expect(hoisted.publishSessionEvent).toHaveBeenNthCalledWith(
+      1,
+      "session-1",
+      "messages_changed",
+      {},
+    );
+    expect(hoisted.publishSessionEvent).toHaveBeenCalledTimes(2);
   });
 
   it("renders at the size the user asked for", async () => {
@@ -108,8 +159,8 @@ describe("/image", () => {
     expect(hoisted.renderImage).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: "a red fox in the snow", size: "1536x1024" }),
     );
-    // The card is asked for the size the picture actually has.
-    expect(savedCall().call.args).toMatchObject({ size: "1536x1024" });
+    // The card is asked for the size the picture is rendered at.
+    expect(finishedCard().call.args).toMatchObject({ size: "1536x1024" });
   });
 
   it("refuses a size the model does not render at", async () => {
@@ -148,11 +199,15 @@ describe("/image", () => {
     expect(hoisted.renderImage).not.toHaveBeenCalled();
   });
 
-  it("reports what the endpoint said when the render fails", async () => {
+  it("marks the card failed when the endpoint does", async () => {
     availableModel();
     hoisted.renderImage.mockRejectedValue(new Error("The image model returned no image."));
 
     await expect(imageHandler.run(ctx("a red fox"))).rejects.toThrow("returned no image");
-    expect(hoisted.saveAssistantMessage).not.toHaveBeenCalled();
+
+    const writes = savedMessages();
+    expect(writes.at(-1)!.messageId).toBe("message-1");
+    expect(writes.at(-1)!.toolCalls[0]).toMatchObject({ isError: true });
+    expect(hoisted.publishSessionEvent).toHaveBeenCalledTimes(2);
   });
 });

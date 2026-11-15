@@ -1,6 +1,5 @@
-import { renderImage } from "@/lib/image-render";
 import type { CommandHandler, CommandOutcome } from "../types";
-import { imageModelFor, renderSize, saveRenderedMessage } from "./image-shared";
+import { imageModelFor, renderSize, renderWithCard } from "./image-shared";
 
 /** `1024x1024 a red fox`, the positional form the command started as. */
 const SIZE_ARGUMENT = /^(\d{1,5}x\d{1,5})\s+([\s\S]+)$/;
@@ -32,22 +31,18 @@ export const imageHandler: CommandHandler = {
     const chosen = renderSize(model.sizes, size);
     if ("error" in chosen) return { message: chosen.error, tone: "error" };
 
-    const { image, sentence } = await renderImage({
+    const { sentence } = await renderWithCard({
       userId: ctx.userId,
       sessionId: ctx.sessionId,
       prompt,
       size: chosen.size,
       verb: "Rendered",
-    });
-
-    await saveRenderedMessage({
-      sessionId: ctx.sessionId,
       toolName: "generate_image",
       args: { prompt, size: chosen.size },
-      image,
-      sentence,
     });
-    return { message: sentence, tone: "success", refresh: "messages" };
+
+    // The card is the result, so nothing is toasted over it.
+    return { message: sentence, tone: "success", refresh: "messages", quiet: true };
   },
 };
 

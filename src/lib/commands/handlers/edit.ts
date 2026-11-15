@@ -1,6 +1,6 @@
-import { MAX_REFERENCES, renderImage } from "@/lib/image-render";
+import { MAX_REFERENCES } from "@/lib/image-render";
 import type { CommandHandler, CommandOutcome } from "../types";
-import { imageModelFor, renderSize, saveRenderedMessage } from "./image-shared";
+import { imageModelFor, renderSize, renderWithCard } from "./image-shared";
 
 /**
  * `/edit prompt:make it night`, with the pictures attached in the composer.
@@ -38,22 +38,18 @@ export const editHandler: CommandHandler = {
     if ("error" in chosen) return { message: chosen.error, tone: "error" };
 
     const paths = references.map((file) => file.path);
-    const { image, sentence } = await renderImage({
+    const { sentence } = await renderWithCard({
       userId: ctx.userId,
       sessionId: ctx.sessionId,
       prompt,
       references: paths,
       size: chosen.size,
       verb: "Edited",
-    });
-
-    await saveRenderedMessage({
-      sessionId: ctx.sessionId,
       toolName: "edit_image",
       args: { prompt, images: paths, size: chosen.size },
-      image,
-      sentence,
     });
-    return { message: sentence, tone: "success", refresh: "messages" };
+
+    // The card is the result, so nothing is toasted over it.
+    return { message: sentence, tone: "success", refresh: "messages", quiet: true };
   },
 };
