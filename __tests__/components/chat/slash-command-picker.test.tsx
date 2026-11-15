@@ -65,6 +65,16 @@ describe("slash command picker", () => {
     expect(getAllByRole("option")).toHaveLength(listCommands("web").length);
   });
 
+  it("says what each command takes, so a file-taking one reads that way", () => {
+    const { textarea, getAllByRole } = renderComposer();
+
+    type(textarea, "/ed");
+
+    const row = getAllByRole("option")[0]!;
+    expect(row).toHaveTextContent("/edit");
+    expect(row).toHaveTextContent("prompt: files: size:");
+  });
+
   it("narrows the list to the typed prefix", () => {
     const { textarea, getAllByRole, queryByRole } = renderComposer();
 
