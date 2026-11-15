@@ -57,6 +57,7 @@ export const imageToolDescriptor: ToolDescriptor = {
             // The size the call asked for is the shape the picture will have.
             ...imageSizeParts(requestedSize(toolCall)),
           },
+          ...promptBlock(prompt),
         ],
       };
     }
@@ -71,6 +72,7 @@ export const imageToolDescriptor: ToolDescriptor = {
 
     const blocks: ToolCardBlock[] = [
       { kind: "image", path: meta.path, width: meta.width, height: meta.height },
+      ...promptBlock(meta.prompt),
       { kind: "facts", items: facts },
     ];
 
@@ -89,6 +91,16 @@ export const imageToolDescriptor: ToolDescriptor = {
 /** The resolution the call asked for, or empty when it left that to the account. */
 function requestedSize(toolCall: ToolCallData): string {
   return stringArg(toolCall.args.size);
+}
+
+/**
+ * The prompt in full, under the picture.
+ *
+ * The header can only show a truncated line, and the prompt is the one thing
+ * worth taking away from a render, so the card carries it whole and copies it.
+ */
+function promptBlock(prompt: string): ToolCardBlock[] {
+  return prompt ? [{ kind: "text", text: prompt, copy: "Copy prompt" }] : [];
 }
 
 /** What the shimmering tile says the call is doing. */

@@ -833,6 +833,19 @@ describe("image descriptor", () => {
     expect(facts[0]?.note).toBe("openrouter");
   });
 
+  // The header can only hold a truncated line, and the prompt is the one thing
+  // a user takes away from a render.
+  it("carries the prompt whole, under the picture, with a copy of it", () => {
+    const model = imageToolDescriptor.describe(call("generate_image", result));
+
+    expect(blocksOf(model).map((block) => block.kind)).toEqual(["image", "text", "facts"]);
+    expect(firstBlock(model, "text")).toEqual({
+      kind: "text",
+      text: "A red fox in the snow",
+      copy: "Copy prompt",
+    });
+  });
+
   // A render takes minutes and the endpoint reports no progress, so a running
   // call gets a shimmer rather than the same badge every other tool has.
   it("shimmers while the picture is being rendered", () => {
@@ -851,6 +864,12 @@ describe("image descriptor", () => {
       // The shape the picture lands in, so the card does not jump when it does.
       width: 1536,
       height: 1024,
+    });
+    // Readable while the render runs, which can take minutes.
+    expect(firstBlock(running, "text")).toEqual({
+      kind: "text",
+      text: "A red fox in the snow",
+      copy: "Copy prompt",
     });
   });
 
