@@ -36,6 +36,7 @@ import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import type { ToolConfig } from "@/lib/pi/tool-config";
 import { useChatSessionState } from "./use-chat-session-state";
 import { useSessionPrompts } from "./use-session-prompts";
+import { useCommandOptions } from "./use-command-options";
 import { useStreamingSessions } from "@/hooks/use-streaming-sessions";
 import type {
   Message,
@@ -232,6 +233,7 @@ export function ChatInterface({
   } = useChatSessionState(sessionId);
 
   const { prompts, refresh: refreshPrompts } = useSessionPrompts(sessionId);
+  const { listed: commandOptions, request: requestCommandOptions } = useCommandOptions(sessionId);
 
   // Abort the in-flight send POST when the component unmounts.
   const abortRef = useRef<AbortController | null>(null);
@@ -1183,6 +1185,8 @@ export function ChatInterface({
             onCommand={handleCommandPick}
             prompts={prompts}
             onPromptsRequested={refreshPrompts}
+            commandOptions={commandOptions}
+            onCommandOptionsRequested={requestCommandOptions}
             value={draft}
             onValueChange={setDraft}
             isLoading={isLoading}

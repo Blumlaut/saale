@@ -1,5 +1,5 @@
 import type { CommandHandler, CommandOutcome } from "../types";
-import { imageModelFor, renderSize, renderWithCard } from "./image-shared";
+import { imageModelFor, renderSize, renderWithCard, sizeOptions } from "./image-shared";
 
 /** `1024x1024 a red fox`, the positional form the command started as. */
 const SIZE_ARGUMENT = /^(\d{1,5}x\d{1,5})\s+([\s\S]+)$/;
@@ -12,6 +12,8 @@ const SIZE_ARGUMENT = /^(\d{1,5}x\d{1,5})\s+([\s\S]+)$/;
  * time. The picture lands in the transcript as the card the tool produces.
  */
 export const imageHandler: CommandHandler = {
+  options: async (ctx) => ({ size: await sizeOptions(ctx.userId, "generate") }),
+
   run: async (ctx): Promise<CommandOutcome> => {
     if (!ctx.sessionId) {
       return { message: "This message doesn't belong to a chat yet.", tone: "info" };

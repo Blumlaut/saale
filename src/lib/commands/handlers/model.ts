@@ -12,6 +12,10 @@ import type { CommandHandler, CommandOption } from "../types";
  * browser change the same setting.
  */
 export const modelHandler: CommandHandler = {
+  // `/model name:anthropic:claude`. the same list the sheet offers, so the
+  // name completes in the composer and lands validated either way.
+  options: async (ctx) => ({ name: await listModelOptions(ctx.userId, null) }),
+
   prepare: async (ctx) => {
     const session = ctx.sessionId
       ? await prisma.chatSession.findFirst({

@@ -16,6 +16,10 @@ export interface SlashMenuItem {
   note?: string | null;
   /** The files row: how many the composer is holding. */
   attached?: number;
+  /** Arguments and values: what picking the row writes into the composer. */
+  insert?: string;
+  /** Arguments and values: the span of the argument line it replaces. */
+  span?: { start: number; end: number };
 }
 
 /**
@@ -42,7 +46,10 @@ export function SlashCommandMenu({
       role="listbox"
       aria-label="Command suggestions"
       className={cn(
-        "bg-popover border-border absolute inset-x-3 bottom-full z-20 mb-2 overflow-hidden rounded-lg border p-1.5 shadow-2xl",
+        "bg-popover border-border absolute inset-x-3 bottom-full z-20 mb-2 overflow-x-hidden overflow-y-auto rounded-lg border p-1.5 shadow-2xl",
+        // A command can offer more rows than fit (every model the account
+        // reaches), so the list scrolls instead of growing past the panel.
+        "max-h-[min(50vh,18rem)]",
         "animate-in fade-in slide-in-from-bottom-2 duration-150",
       )}
     >
@@ -66,7 +73,7 @@ export function SlashCommandMenu({
             )}
           >
             <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
-            <span className="shrink-0 font-mono text-sm font-medium">
+            <span className="min-w-0 shrink truncate font-mono text-sm font-medium">
               {argument ? item.name : `/${item.name}`}
               {item.kind === "argument" && item.name !== "files" ? ":" : ""}
             </span>

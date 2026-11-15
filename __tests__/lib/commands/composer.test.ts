@@ -70,7 +70,7 @@ describe("argumentHints", () => {
   });
 
   it("offers the files argument the picker fills in", () => {
-    const completion = argumentHints(edit, "", 2);
+    const completion = argumentHints(edit, "", { attached: 2 });
     const files = completion?.hints.find((hint) => hint.kind === "files");
 
     expect(files).toMatchObject({ insert: "", attached: 2 });
@@ -81,6 +81,44 @@ describe("argumentHints", () => {
 
     expect(completion?.hints.map((hint) => hint.insert)).toEqual(["size:"]);
     expect(completion?.replace).toEqual({ start: 13, end: 13 });
+  });
+
+  it("offers the values the server listed for a dynamic choice", () => {
+    const completion = argumentHints(image, "size:", {
+      options: {
+        size: [
+          { value: "1024x1024", label: "1024 × 1024 · square", description: "The model's default" },
+          { value: "1024x1536", label: "1024 × 1536 · portrait" },
+        ],
+      },
+    });
+
+    expect(completion?.hints.map((hint) => hint.insert)).toEqual(["1024x1024", "1024x1536"]);
+    expect(completion?.hints[0]).toMatchObject({
+      description: "The model's default",
+      note: "size",
+      target: "value",
+    });
+    expect(completion?.hints[1]).toMatchObject({ description: "1024 × 1536 · portrait" });
+  });
+
+  it("narrows the listed values to the typed prefix", () => {
+    const completion = argumentHints(image, "size:1024x1", {
+      options: {
+        size: [
+          { value: "1024x1024", label: "square" },
+          { value: "1024x1536", label: "portrait" },
+        ],
+      },
+    });
+
+    expect(completion?.hints.map((hint) => hint.insert)).toEqual(["1024x1024", "1024x1536"]);
+    expect(completion?.replace).toEqual({ start: 5, end: 11 });
+  });
+
+  it("says nothing for a dynamic choice the server has not answered for yet", () => {
+    expect(argumentHints(image, "size:")).toBeNull();
+    expect(argumentHints(image, "size:1024", { options: { size: [] } })).toBeNull();
   });
 
   it("offers a choice's values with what each one does", () => {

@@ -48,8 +48,8 @@ export const COMMAND_CATALOG = [
       { name: "prompt", kind: "text", required: true, description: "What to render" },
       {
         name: "size",
-        kind: "text",
-        description: "Resolution as WxH",
+        kind: "choice",
+        description: "Resolution, out of the ones the model renders at",
       },
     ],
   },
@@ -73,8 +73,8 @@ export const COMMAND_CATALOG = [
       },
       {
         name: "size",
-        kind: "text",
-        description: "Resolution as WxH",
+        kind: "choice",
+        description: "Resolution, out of the ones the model renders at",
       },
     ],
   },

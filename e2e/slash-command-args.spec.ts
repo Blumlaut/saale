@@ -119,6 +119,45 @@ test("offers a boolean's two values and takes one with Enter", async ({ browser 
   await context.close();
 });
 
+test("offers the resolutions the server lists for size:", async ({ browser }) => {
+  const { context, page, composer } = await openComposer(browser);
+
+  // The composer cannot know a model's resolutions from the catalog, so the
+  // page asks the server. Stubbed here so the run does not depend on which
+  // image model the instance has configured.
+  await page.route("**/command/options?name=image", (route) =>
+    route.fulfill({
+      json: {
+        options: {
+          size: [
+            {
+              value: "1024x1024",
+              label: "1024 × 1024 · square",
+              description: "The model's default",
+            },
+            { value: "1024x1536", label: "1024 × 1536 · portrait" },
+          ],
+        },
+      },
+    }),
+  );
+
+  await composer.pressSequentially("/image size:");
+  await expect(page.locator(`${LISTBOX} [role="option"]`)).toHaveCount(2);
+
+  const portrait = page
+    .locator(`${LISTBOX} [role="option"]`)
+    .filter({ hasText: "portrait" })
+    .first();
+  await expect(portrait).toContainText("1024x1536");
+
+  await composer.press("ArrowDown");
+  await composer.press("Tab");
+
+  await expect(composer).toHaveValue("/image size:1024x1536");
+  await context.close();
+});
+
 test("offers a choice's options and takes one with Tab", async ({ browser }) => {
   const { context, page, composer } = await openComposer(browser);
 
@@ -134,15 +173,18 @@ test("offers a choice's options and takes one with Tab", async ({ browser }) => 
 
 test("runs a command whose arguments are optional when Enter is pressed", async ({ browser }) => {
   const { context, page, composer } = await openComposer(browser);
+  const posted = page.waitForRequest(
+    (request) => request.url().endsWith("/command") && request.method() === "POST",
+  );
 
   await composer.pressSequentially("/stop ");
   await expect(page.locator(LISTBOX)).toBeVisible();
 
   await composer.press("Enter");
 
-  // The command ran: the composer is handed back and the queue was not needed.
+  // The command ran with no argument line, and the composer was handed back.
+  expect((await posted).postDataJSON()).toMatchObject({ name: "stop" });
   await expect(composer).toHaveValue("");
-  await expect(page.getByText("Nothing is running.")).toBeVisible();
 
   await context.close();
 });

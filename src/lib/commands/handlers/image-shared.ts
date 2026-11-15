@@ -3,7 +3,8 @@ import { renderImage, type RenderedImage } from "@/lib/image-render";
 import { resolveImageCapabilities } from "@/lib/pi/image-model";
 import { publishSessionEvent } from "@/lib/pi/session-events";
 import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
-import { normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
+import { imageSizeShape, normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
+import type { CommandOption } from "../types";
 
 /**
  * The parts `/image` and `/edit` share: both reach the same image model, and
@@ -29,6 +30,28 @@ export async function imageModelFor(
     };
   }
   return { ok: true, sizes: normalizeImageSizes(capabilities.sizes) };
+}
+
+/**
+ * The resolutions the account's image model renders at, as choices.
+ *
+ * The list belongs to the model, so only the server has it: the composer asks
+ * for it while a size is being picked. The first entry is the model's default,
+ * and each one is named by its shape, so a row reads "portrait" next to the
+ * size rather than repeating the numbers.
+ */
+export async function sizeOptions(
+  userId: string,
+  mode: "generate" | "edit",
+): Promise<CommandOption[]> {
+  const model = await imageModelFor(userId, mode);
+  if (!model.ok) return [];
+
+  return model.sizes.map((size, index) => ({
+    value: size,
+    label: imageSizeShape(size),
+    ...(index === 0 ? { description: "The model's default" } : {}),
+  }));
 }
 
 /** The size to render at, or the list the user may choose from instead. */
