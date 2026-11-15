@@ -1,6 +1,13 @@
+import { commandUsage, missingArgument, parseCommandArguments } from "./arguments";
 import { getCommandMeta, type CommandName } from "./catalog";
 import { COMMAND_HANDLERS } from "./handlers";
-import type { CommandContext, CommandOption, CommandOutcome, CommandPrompt } from "./types";
+import type {
+  CommandContext,
+  CommandOption,
+  CommandOutcome,
+  CommandPrompt,
+  CommandRequest,
+} from "./types";
 
 /**
  * The result of running a command:
@@ -19,15 +26,20 @@ export type ExecuteCommandResult =
 /**
  * Run a slash command for a surface.
  *
+ * The argument line is read against what the command declares, so `prompt:a red
+ * fox` reaches the handler as a named value whatever the surface. Required
+ * arguments are checked here rather than in each handler, so the message a user
+ * gets for a missing one reads the same everywhere.
+ *
  * Interactive commands resolve their choices through `prepare`; when the user
- * already supplied an argument naming one of those options (`/stfu stop`), the
- * command runs straight away instead of asking.
+ * already named one (`/stfu time:stop`, or the older `/stfu stop`), the command
+ * runs straight away instead of asking.
  *
  * Server-only: the handlers reach the database, Redis and the Telegram API.
  */
 export async function executeCommand(
   name: string,
-  ctx: CommandContext,
+  request: CommandRequest,
   value?: string,
 ): Promise<ExecuteCommandResult> {
   const normalized = name.toLowerCase();
@@ -35,8 +47,20 @@ export async function executeCommand(
   if (!meta) {
     return { kind: "error", name: normalized, error: `Unknown command: /${normalized}` };
   }
-  if (!meta.surfaces.includes(ctx.surface)) {
+  if (!meta.surfaces.includes(request.surface)) {
     return { kind: "error", name: normalized, error: `/${normalized} is not available here.` };
+  }
+
+  const parsed = parseCommandArguments(request.args, meta.arguments);
+  const ctx: CommandContext = { ...request, arguments: parsed.values };
+
+  const missing = missingArgument(meta, parsed.values, request.files);
+  if (missing) {
+    return {
+      kind: "error",
+      name: normalized,
+      error: `/${normalized} needs a ${missing.name}: ${missing.description}. Usage: ${commandUsage(meta)}`,
+    };
   }
 
   const handler = COMMAND_HANDLERS[meta.name as CommandName];
@@ -47,12 +71,21 @@ export async function executeCommand(
     }
 
     const prompt = await handler.prepare(ctx);
-    const chosen = await resolveChoice(name, ctx, prompt, value);
+    const chosen = await resolveChoice(
+      name,
+      prompt,
+      value,
+      [...Object.values(parsed.values), parsed.rest].filter((candidate) => candidate.length > 0),
+    );
     if (chosen.error) {
       return { kind: "error", name: normalized, error: chosen.error };
     }
     if (chosen.value !== undefined) {
-      return { kind: "done", name: normalized, outcome: await handler.run(ctx, chosen.value) };
+      return {
+        kind: "done",
+        name: normalized,
+        outcome: await handler.run(ctx, chosen.value),
+      };
     }
     return { kind: "prompt", name: normalized, prompt };
   } catch (err) {
@@ -76,26 +109,27 @@ export async function executeCommand(
  */
 function resolveChoice(
   name: string,
-  ctx: CommandContext,
   prompt: CommandPrompt,
   value: string | undefined,
+  candidates: readonly string[],
 ): { value?: string; error?: string } {
   if (value !== undefined) {
     const allowed = prompt.options.some((option) => option.value === value);
     return allowed ? { value } : { error: `Unknown option for /${name}: ${value}` };
   }
 
-  if (!ctx.args) return {};
+  if (candidates.length === 0) return {};
 
-  const match = matchOption(prompt.options, ctx.args);
-  if (!match) {
-    if (prompt.options.length === 0) {
-      return { error: `/${name} has nothing to offer right now.` };
-    }
-    const options = prompt.options.map((option) => option.value).join(", ");
-    return { error: `Unknown option for /${name}: ${ctx.args}. Options: ${options}` };
+  for (const candidate of candidates) {
+    const match = matchOption(prompt.options, candidate);
+    if (match !== undefined) return { value: match };
   }
-  return { value: match };
+
+  if (prompt.options.length === 0) {
+    return { error: `/${name} has nothing to offer right now.` };
+  }
+  const options = prompt.options.map((option) => option.value).join(", ");
+  return { error: `Unknown option for /${name}: ${candidates[0]}. Options: ${options}` };
 }
 
 /** Match an argument against an option's value or label (case-insensitive). */

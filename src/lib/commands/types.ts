@@ -28,6 +28,36 @@ export interface CommandPrompt {
   options: CommandOption[];
 }
 
+/**
+ * How a command takes a value.
+ *
+ * - `text`  . free text, written `name:value` and running to the end of the line.
+ * - `choice`. one of the options its prompt offers, or one of `choices`.
+ * - `files` . pictures the composer attached, which a command cannot parse out
+ *             of the line at all.
+ */
+export type CommandArgumentKind = "text" | "choice" | "files";
+
+/** One argument a command accepts, as the composer offers and the parser reads it. */
+export interface CommandArgument {
+  /** Written before the colon: `/image prompt:a red fox`. */
+  name: string;
+  kind: CommandArgumentKind;
+  description: string;
+  required?: boolean;
+  /** Static options, for a choice the surfaces can offer without asking the server. */
+  choices?: readonly string[];
+}
+
+/** A file the composer attached to a command, adopted into the workspace. */
+export interface CommandFile {
+  /** Absolute path in the agent workspace. */
+  path: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
 /** Toast flavour on web, reply flavour on Telegram. */
 export type CommandTone = "success" | "info" | "error";
 
@@ -54,21 +84,25 @@ export interface CommandMeta {
   progress?: string;
   surfaces: readonly CommandSurface[];
   icon: LucideIcon;
+  /** What the command accepts after its name. Absent when it takes nothing. */
+  arguments?: readonly CommandArgument[];
 }
 
 interface CommandBaseContext {
   userId: string;
   /** Text after the command name, trimmed. "" when the user gave none. */
   args: string;
+  /** Files the composer pointed at the command. Empty when it took none. */
+  files: readonly CommandFile[];
 }
 
-export interface WebCommandContext extends CommandBaseContext {
+export interface WebCommandRequest extends CommandBaseContext {
   surface: "web";
   /** The chat session the command acts on (ownership already checked). */
   sessionId: string;
 }
 
-export interface TelegramCommandContext extends CommandBaseContext {
+export interface TelegramCommandRequest extends CommandBaseContext {
   surface: "telegram";
   /** The chat this command acts on. Absent when there is no conversation yet. */
   sessionId?: string | undefined;
@@ -78,7 +112,13 @@ export interface TelegramCommandContext extends CommandBaseContext {
   replyToMessageId?: number | undefined;
 }
 
-export type CommandContext = WebCommandContext | TelegramCommandContext;
+/** What a surface hands `executeCommand`. the line, and the files it attached. */
+export type CommandRequest = WebCommandRequest | TelegramCommandRequest;
+
+/** What a handler gets: the request, plus the arguments parsed out of its line. */
+export type CommandContext = CommandRequest & {
+  arguments: Readonly<Record<string, string>>;
+};
 
 /**
  * Server-side implementation of a command.

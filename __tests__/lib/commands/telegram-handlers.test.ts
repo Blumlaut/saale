@@ -37,8 +37,10 @@ const telegramContext = {
   surface: "telegram" as const,
   userId,
   args: "",
+  files: [],
   telegramChatId: BigInt("119075844"),
   encryptedToken: "enc",
+  arguments: {},
 };
 
 beforeEach(() => {
@@ -68,7 +70,9 @@ describe("/new", () => {
       surface: "web",
       userId,
       args: "",
+      files: [],
       sessionId: "sess-web",
+      arguments: {},
     });
 
     expect(mockCreateChatSessionRow).not.toHaveBeenCalled();

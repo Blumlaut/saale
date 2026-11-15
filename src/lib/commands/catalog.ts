@@ -1,4 +1,4 @@
-import { Bot, Image, MessageSquarePlus, ShieldCheck, Sparkles, Square } from "lucide-react";
+import { Bot, Image, MessageSquarePlus, ShieldCheck, Sparkles, Square, Wand2 } from "lucide-react";
 import type { CommandMeta, CommandSurface } from "./types";
 
 /**
@@ -31,6 +31,13 @@ export const COMMAND_CATALOG = [
     description: "Choose the model this chat answers with",
     surfaces: ["web", "telegram"],
     icon: Bot,
+    arguments: [
+      {
+        name: "name",
+        kind: "choice",
+        description: "The model to switch to, as provider:model",
+      },
+    ],
   },
   {
     name: "image",
@@ -38,6 +45,40 @@ export const COMMAND_CATALOG = [
     progress: "Rendering the picture…",
     surfaces: ["web"],
     icon: Image,
+    arguments: [
+      { name: "prompt", kind: "text", required: true, description: "What to render" },
+      {
+        name: "size",
+        kind: "text",
+        description: "Resolution as WxH, out of the ones the model offers",
+      },
+    ],
+  },
+  {
+    name: "edit",
+    description: "Change a picture you attach, or combine several, without the agent",
+    progress: "Editing the picture…",
+    surfaces: ["web"],
+    icon: Wand2,
+    arguments: [
+      {
+        name: "prompt",
+        kind: "text",
+        required: true,
+        description: "What to change. The model keeps what you do not name",
+      },
+      {
+        name: "files",
+        kind: "files",
+        required: true,
+        description: "Up to four pictures, attached with the paperclip",
+      },
+      {
+        name: "size",
+        kind: "text",
+        description: "Resolution as WxH, out of the ones the model offers",
+      },
+    ],
   },
   {
     name: "stfu",
@@ -45,6 +86,14 @@ export const COMMAND_CATALOG = [
     description: "Auto-accept tool approvals for 2 hours or permanently",
     surfaces: ["web", "telegram"],
     icon: ShieldCheck,
+    arguments: [
+      {
+        name: "time",
+        kind: "choice",
+        description: "On for 2 hours, permanent, or off",
+        choices: ["on", "permanent", "stop"],
+      },
+    ],
   },
   {
     name: "stop",

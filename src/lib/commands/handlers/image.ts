@@ -1,15 +1,12 @@
-import { prisma } from "@/lib/db";
-import { renderImage, type RenderedImage } from "@/lib/image-render";
-import { resolveImageCapabilities } from "@/lib/pi/image-model";
-import { saveAssistantMessage } from "@/lib/pi/stream-helpers";
-import { normalizeImageSizes, pickImageSize } from "@/lib/providers/images/sizes";
+import { renderImage } from "@/lib/image-render";
 import type { CommandHandler, CommandOutcome } from "../types";
+import { imageModelFor, renderSize, saveRenderedMessage } from "./image-shared";
 
-/** `1024x1024 a red fox`, the size being optional. */
+/** `1024x1024 a red fox`, the positional form the command started as. */
 const SIZE_ARGUMENT = /^(\d{1,5}x\d{1,5})\s+([\s\S]+)$/;
 
 /**
- * `/image`. render a picture from a prompt.
+ * `/image prompt:a red fox size:1536x1024`. render a picture from a prompt.
  *
  * The agent's `generate_image` tool does the same render, so this is the way to
  * get one without a model turn: no provider request, no tokens, no thinking
@@ -21,83 +18,49 @@ export const imageHandler: CommandHandler = {
       return { message: "This message doesn't belong to a chat yet.", tone: "info" };
     }
 
-    const { size, prompt } = parseArguments(ctx.args);
+    const { size, prompt } = readArguments(ctx);
     if (!prompt) {
       return {
-        message: "Describe the picture: /image a red fox in the snow",
+        message: "Describe the picture: /image prompt:a red fox in the snow",
         tone: "error",
       };
     }
 
-    const capabilities = await resolveImageCapabilities(ctx.userId);
-    if (!capabilities.generate) {
-      return {
-        message: "No image model is configured. Pick one under Settings → Models.",
-        tone: "error",
-      };
-    }
+    const model = await imageModelFor(ctx.userId, "generate");
+    if (!model.ok) return { message: model.message, tone: "error" };
 
-    const sizes = normalizeImageSizes(capabilities.sizes);
-    if (size && !sizes.includes(size)) {
-      return {
-        message: `This model renders at ${sizes.join(", ")}.`,
-        tone: "error",
-      };
-    }
+    const chosen = renderSize(model.sizes, size);
+    if ("error" in chosen) return { message: chosen.error, tone: "error" };
 
     const { image, sentence } = await renderImage({
       userId: ctx.userId,
       sessionId: ctx.sessionId,
       prompt,
-      size: pickImageSize(sizes, size),
+      size: chosen.size,
       verb: "Rendered",
     });
 
-    await saveRenderedMessage(ctx.sessionId, prompt, image, sentence);
+    await saveRenderedMessage({
+      sessionId: ctx.sessionId,
+      toolName: "generate_image",
+      args: { prompt, size: chosen.size },
+      image,
+      sentence,
+    });
     return { message: sentence, tone: "success", refresh: "messages" };
   },
 };
 
-/** The size a user typed in front of the prompt, and the prompt itself. */
-function parseArguments(args: string): { size?: string; prompt: string } {
-  const match = SIZE_ARGUMENT.exec(args.trim());
-  if (!match) return { prompt: args.trim() };
-  return { size: match[1]!.toLowerCase(), prompt: match[2]!.trim() };
-}
+/** The prompt and size, from named arguments or the older `size prompt` form. */
+function readArguments(ctx: { args: string; arguments: Readonly<Record<string, string>> }): {
+  size?: string | undefined;
+  prompt: string;
+} {
+  if (ctx.arguments.prompt) {
+    return { size: ctx.arguments.size?.toLowerCase(), prompt: ctx.arguments.prompt };
+  }
 
-/**
- * Write the render into the conversation.
- *
- * The row carries the same `generate_image` call the tool would have made, so
- * the transcript draws it with the card it already knows and a reload puts it
- * back.
- */
-async function saveRenderedMessage(
-  sessionId: string,
-  prompt: string,
-  image: RenderedImage,
-  sentence: string,
-): Promise<void> {
-  const result = `${sentence}\n${JSON.stringify({ _saaleImageMeta: image })}`;
-
-  await saveAssistantMessage({
-    sessionId,
-    content: "",
-    toolCalls: [
-      {
-        id: crypto.randomUUID(),
-        name: "generate_image",
-        args: { prompt, size: `${image.width}x${image.height}` },
-        result,
-        isError: false,
-      },
-    ],
-  });
-
-  // A rendered picture is new content, so the chat moves up in the session list.
-  await prisma.chatSession
-    .update({ where: { id: sessionId }, data: { lastActivityAt: new Date() } })
-    .catch((err) => {
-      console.error(`Failed to bump lastActivityAt after a render in ${sessionId}:`, err);
-    });
+  const args = ctx.args.trim();
+  const match = SIZE_ARGUMENT.exec(args);
+  return match ? { size: match[1]!.toLowerCase(), prompt: match[2]!.trim() } : { prompt: args };
 }

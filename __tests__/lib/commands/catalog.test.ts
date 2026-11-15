@@ -5,7 +5,7 @@ import {
   listCommands,
   searchCommands,
 } from "@/lib/commands/catalog";
-import type { CommandSurface } from "@/lib/commands/types";
+import type { CommandMeta, CommandSurface } from "@/lib/commands/types";
 
 /**
  * The catalog is what every surface renders from. Telegram imposes its own
@@ -56,6 +56,35 @@ describe("command catalog", () => {
     expect(aliases.filter((alias) => names.includes(alias))).toEqual([]);
   });
 
+  it("declares arguments the composer can offer and the parser can read", () => {
+    for (const meta of COMMAND_CATALOG as readonly CommandMeta[]) {
+      const declared = meta.arguments ?? [];
+      const names = declared.map((arg) => arg.name);
+
+      expect(new Set(names).size, `/${meta.name} declares a name twice`).toBe(names.length);
+      for (const arg of declared) {
+        expect(arg.name, `/${meta.name} has an unreadable argument name`).toMatch(
+          /^[a-z][a-z0-9_]*$/,
+        );
+        expect(
+          arg.description.length,
+          `/${meta.name}'s ${arg.name} has no description`,
+        ).toBeGreaterThan(0);
+        // A name that is a prefix of another would make `prompt:` and `prompt_x:` ambiguous.
+        expect(names.filter((name) => name !== arg.name && name.startsWith(arg.name))).toEqual([]);
+      }
+    }
+  });
+
+  it("keeps the file picker on the web, where there is one", () => {
+    const withFiles = (COMMAND_CATALOG as readonly CommandMeta[]).filter((meta) =>
+      (meta.arguments ?? []).some((arg) => arg.kind === "files"),
+    );
+
+    expect(withFiles.map((meta) => meta.name)).toEqual(["edit"]);
+    expect(withFiles[0]!.surfaces).toEqual(["web"]);
+  });
+
   it("looks commands up case-insensitively", () => {
     expect(getCommandMeta("MODEL")?.name).toBe("model");
     expect(getCommandMeta("nope")).toBeUndefined();
@@ -91,7 +120,8 @@ describe("command catalog", () => {
     expect(searchCommands("web", "").map((meta) => meta.name)).toEqual(
       listCommands("web").map((meta) => meta.name),
     );
-    expect(searchCommands("web", "com").map((meta) => meta.name)).toEqual(["compact"]);
+    // "com" names one command and describes another ("combine" in /edit).
+    expect(searchCommands("web", "com").map((meta) => meta.name)).toEqual(["compact", "edit"]);
 
     // No command name contains "approvals"  this only matches the stfu
     // description, which is how the menu stays findable by intent.

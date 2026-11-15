@@ -2,20 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 /**
- * The command route is the web surface's only entrypoint. Authentication and
- * the context it builds are the route's own responsibility  the command
- * itself (and every guardrail) lives behind `executeCommand`.
+ * The command route is the web surface's only entrypoint. Authentication, the
+ * context it builds and the files it adopts are the route's own responsibility
+ * the command itself (and every guardrail) lives behind `executeCommand`.
  */
 
-const { mockRequireChatSessionOwner, mockExecuteCommand } = vi.hoisted(() => ({
+const { mockRequireChatSessionOwner, mockExecuteCommand, mockAdoptChatUpload } = vi.hoisted(() => ({
   mockRequireChatSessionOwner: vi.fn(),
   mockExecuteCommand: vi.fn(),
+  mockAdoptChatUpload: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireChatSessionOwner: mockRequireChatSessionOwner }));
 vi.mock("@/lib/commands/execute", () => ({ executeCommand: mockExecuteCommand }));
+vi.mock("@/lib/file-attachment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/file-attachment")>()),
+  adoptChatUpload: mockAdoptChatUpload,
+}));
 
 import { POST } from "@/app/api/chat/sessions/[sessionId]/command/route";
+import { FileUploadError } from "@/lib/files/errors";
 
 const USER_ID = "command-user";
 const SESSION_ID = "command-session";
@@ -53,7 +59,7 @@ describe("POST /api/chat/sessions/[sessionId]/command", () => {
     const res = await post(null, "not json");
 
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("Invalid JSON");
+    expect((await res.json()).error).toBe("Expected a JSON body");
   });
 
   it("requires a command name", async () => {
@@ -82,7 +88,7 @@ describe("POST /api/chat/sessions/[sessionId]/command", () => {
     expect(await res.json()).toEqual({ kind: "done", name: "stfu", outcome: { message: "ok" } });
     expect(mockExecuteCommand).toHaveBeenCalledWith(
       "stfu",
-      { surface: "web", userId: USER_ID, sessionId: SESSION_ID, args: "stop" },
+      { surface: "web", userId: USER_ID, sessionId: SESSION_ID, args: "stop", files: [] },
       undefined,
     );
   });
@@ -108,7 +114,7 @@ describe("POST /api/chat/sessions/[sessionId]/command", () => {
 
     expect(mockExecuteCommand).toHaveBeenCalledWith(
       "model",
-      { surface: "web", userId: USER_ID, sessionId: SESSION_ID, args: "" },
+      { surface: "web", userId: USER_ID, sessionId: SESSION_ID, args: "", files: [] },
       "anthropic:claude",
     );
   });
@@ -116,13 +122,88 @@ describe("POST /api/chat/sessions/[sessionId]/command", () => {
   it("reports a command-level failure as 400 with its message", async () => {
     mockExecuteCommand.mockResolvedValue({
       kind: "error",
-      name: "nope",
-      error: "Unknown command: /nope",
+      name: "stfu",
+      error: "/stfu has nothing to offer right now.",
     });
 
+    const res = await post({ name: "stfu" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("/stfu has nothing to offer right now.");
+  });
+
+  it("refuses a name the catalog does not know, without running anything", async () => {
     const res = await post({ name: "nope" });
 
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("Unknown command: /nope");
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
+  });
+
+  it("adopts the staged files a command takes, and hands over their paths", async () => {
+    mockAdoptChatUpload.mockResolvedValue({
+      stored: { storageId: "id", storagePath: "files/id-photo.png", safeName: "photo.png" },
+      agentPath: "/home/user/uploads/photo.png",
+    });
+    mockExecuteCommand.mockResolvedValue({
+      kind: "done",
+      name: "edit",
+      outcome: { message: "ok" },
+    });
+
+    const res = await post({
+      name: "edit",
+      args: "prompt:make it night",
+      attachments: [{ uploadId: "up-1", fileName: "photo.png", mimeType: "image/png", size: 2048 }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      "edit",
+      {
+        surface: "web",
+        userId: USER_ID,
+        sessionId: SESSION_ID,
+        args: "prompt:make it night",
+        files: [
+          {
+            path: "/home/user/uploads/photo.png",
+            fileName: "photo.png",
+            mimeType: "image/png",
+            size: 2048,
+          },
+        ],
+      },
+      undefined,
+    );
+  });
+
+  it("turns down files on a command that takes none", async () => {
+    const res = await post({
+      name: "image",
+      args: "prompt:a fox",
+      attachments: [{ uploadId: "up-1", fileName: "a.png", mimeType: "image/png", size: 10 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("/image does not take files");
+    expect(mockAdoptChatUpload).not.toHaveBeenCalled();
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
+  });
+
+  it("says which upload was incomplete", async () => {
+    mockAdoptChatUpload.mockRejectedValue(
+      new FileUploadError("Upload incomplete: 10 of 2048 bytes"),
+    );
+
+    const res = await post({
+      name: "edit",
+      args: "prompt:make it night",
+      attachments: [{ uploadId: "up-1", fileName: "photo.png", mimeType: "image/png", size: 2048 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("photo.png: Upload incomplete: 10 of 2048 bytes");
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
   });
 });

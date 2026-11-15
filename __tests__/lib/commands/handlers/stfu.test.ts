@@ -10,14 +10,9 @@ vi.mock("@/lib/redis", () => import("../../../helpers/in-memory-redis"));
 import { resetMockRedis, getRedis } from "../../../helpers/in-memory-redis";
 import { stfuHandler } from "@/lib/commands/handlers/stfu";
 import { STFU_DURATION_MS } from "@/lib/pi/auto-approve";
-import type { WebCommandContext } from "@/lib/commands/types";
+import { webContext } from "../../../helpers/command-context";
 
-const ctx = (userId: string): WebCommandContext => ({
-  surface: "web",
-  userId,
-  sessionId: "session-1",
-  args: "",
-});
+const ctx = (userId: string) => ({ ...webContext("stfu"), userId });
 
 describe("/stfu", () => {
   beforeEach(() => {
