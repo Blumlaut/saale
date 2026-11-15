@@ -19,14 +19,9 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { imageHandler } from "@/lib/commands/handlers/image";
-import type { WebCommandContext } from "@/lib/commands/types";
+import { webContext } from "../../../helpers/command-context";
 
-const ctx = (args: string): WebCommandContext => ({
-  surface: "web",
-  userId: "user-1",
-  sessionId: "session-1",
-  args,
-});
+const ctx = (args: string) => webContext("image", args);
 
 /** A model that renders, at the sizes the admin gave it. */
 function availableModel(sizes: string[] = ["1024x1024", "1536x1024"]) {
@@ -102,6 +97,19 @@ describe("/image", () => {
     expect(hoisted.renderImage).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: "a red fox in the snow", size: "1536x1024" }),
     );
+  });
+
+  it("reads the named form of the prompt and size", async () => {
+    availableModel();
+    renders();
+
+    await imageHandler.run(ctx("prompt:a red fox in the snow size:1536x1024"));
+
+    expect(hoisted.renderImage).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "a red fox in the snow", size: "1536x1024" }),
+    );
+    // The card is asked for the size the picture actually has.
+    expect(savedCall().call.args).toMatchObject({ size: "1536x1024" });
   });
 
   it("refuses a size the model does not render at", async () => {

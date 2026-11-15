@@ -1,17 +1,6 @@
 import type { Message } from "@/components/chat/types";
-import {
-  MAX_CHAT_ATTACHMENTS,
-  MAX_CHAT_FILE_BYTES,
-  MAX_CHAT_IMAGE_BYTES,
-  isImageMime,
-} from "@/lib/chat/attachment-limits";
-import {
-  discardStagedUpload,
-  stageFile,
-  type StagedFile,
-  type UploadProgress,
-} from "@/lib/files/upload-client";
-import { formatFileSize } from "@/lib/utils";
+import type { StagedFile, UploadProgress } from "@/lib/files/upload-client";
+import { discardStaged, stageAttachments } from "./stage-attachments";
 
 /**
  * POST a chat message to the session, returning a discriminated union instead
@@ -42,57 +31,6 @@ export interface SendMessageOptions {
   onProgress?: (progress: UploadProgress | null) => void;
 }
 
-/** The ceiling for one attachment: images are re-encoded, everything else moves. */
-function tooLarge(file: File): string | null {
-  const ceiling = isImageMime(file.type) ? MAX_CHAT_IMAGE_BYTES : MAX_CHAT_FILE_BYTES;
-  if (file.size === 0) return `${file.name} is empty`;
-  if (file.size > ceiling) {
-    return `${file.name} is ${formatFileSize(file.size)}. Max: ${formatFileSize(ceiling)}`;
-  }
-  return null;
-}
-
-/** Drop staged bytes the message will not use. */
-async function discardStaged(staged: StagedFile[]): Promise<void> {
-  for (const file of staged) await discardStagedUpload("user", file.uploadId);
-}
-
-/** Stage every file in the user's workspace, reporting bytes as they land. */
-async function stageAttachments(
-  files: File[],
-  options: SendMessageOptions,
-): Promise<{ ok: true; staged: StagedFile[] } | { ok: false; message: string }> {
-  const staged: StagedFile[] = [];
-
-  try {
-    for (const [position, file] of files.entries()) {
-      const refusal = tooLarge(file);
-      if (refusal) {
-        await discardStaged(staged);
-        return { ok: false, message: refusal };
-      }
-
-      const result = await stageFile(file, {
-        target: "user",
-        // The id is all a message needs; there is no destination folder.
-        dir: "",
-        batch: { index: position + 1, count: files.length },
-        onProgress: options.onProgress ?? undefined,
-        signal: options.signal,
-      });
-      if (!result.ok) {
-        await discardStaged(staged);
-        return { ok: false, message: result.message };
-      }
-      staged.push(result.staged);
-    }
-  } finally {
-    options.onProgress?.(null);
-  }
-
-  return { ok: true, staged };
-}
-
 export async function sendChatMessage(
   sessionId: string,
   content: string,
@@ -103,12 +41,6 @@ export async function sendChatMessage(
 
   let attachments: StagedFile[] = [];
   if (files && files.length > 0) {
-    if (files.length > MAX_CHAT_ATTACHMENTS) {
-      return {
-        kind: "error",
-        message: `Attach at most ${MAX_CHAT_ATTACHMENTS} files at a time`,
-      };
-    }
     const staging = await stageAttachments(files, options);
     if (!staging.ok) return { kind: "error", message: staging.message };
     attachments = staging.staged;

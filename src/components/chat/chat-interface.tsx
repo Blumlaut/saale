@@ -57,13 +57,10 @@ import { SESSION_RAIL_WIDTH } from "@/components/session/session-panel";
 import { latestShownFile, type ShownFile } from "@/lib/chat/shown-file";
 import { CommandSheet } from "./command-sheet";
 import { getCommandMeta } from "@/lib/commands/catalog";
+import { takesFiles } from "@/lib/commands/arguments";
 import { parseCommand } from "@/lib/commands/parse";
-import type { CommandOutcome, CommandPrompt } from "@/lib/commands/types";
-
-/** Response of `POST /api/chat/sessions/:id/command`. */
-type CommandApiResponse =
-  | { kind: "prompt"; name: string; prompt: CommandPrompt }
-  | { kind: "done"; name: string; outcome: CommandOutcome };
+import type { CommandPrompt } from "@/lib/commands/types";
+import { runChatCommand, type CommandApiResponse } from "@/lib/chat/run-command";
 
 /**
  * The grip between the panel and the transcript: its own width and the margins
@@ -211,6 +208,7 @@ export function ChatInterface({
   // Slash command waiting for a choice (an interactive command's prompt).
   const [commandPrompt, setCommandPrompt] = useState<{
     name: string;
+    args: string;
     prompt: CommandPrompt;
   } | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
@@ -508,9 +506,9 @@ export function ChatInterface({
   // which the Telegram bot reads too. there is no web-only command list.
 
   const applyCommandResult = useCallback(
-    (result: CommandApiResponse) => {
+    (result: CommandApiResponse, commandArgs: string) => {
       if (result.kind === "prompt") {
-        setCommandPrompt({ name: result.name, prompt: result.prompt });
+        setCommandPrompt({ name: result.name, args: commandArgs, prompt: result.prompt });
         return;
       }
       if (result.kind !== "done") return;
@@ -533,18 +531,27 @@ export function ChatInterface({
   );
 
   const runCommand = useCallback(
-    async (name: string, args = "", value?: string) => {
+    async (name: string, args = "", value?: string, files?: readonly File[]) => {
       setCommandBusy(true);
       // A command that renders or summarises answers only when it is done, so
       // the composer would otherwise sit silent for a minute or more.
       const progress = getCommandMeta(name)?.progress;
       const progressToast = progress ? toast.loading(progress) : undefined;
       try {
-        const result = await postJson<CommandApiResponse>(
-          `/api/chat/sessions/${sessionId}/command`,
-          { name, args, value },
-        );
-        applyCommandResult(result);
+        const result = await runChatCommand({
+          sessionId,
+          name,
+          args,
+          value,
+          files,
+          onProgress: setUploadProgress,
+        });
+        if (result.kind === "error") {
+          setCommandPrompt(null);
+          toast.error("Command failed", { description: result.message });
+          return;
+        }
+        applyCommandResult(result.response, args);
       } catch (err) {
         console.error(`Slash command /${name} failed:`, err);
         setCommandPrompt(null);
@@ -569,7 +576,7 @@ export function ChatInterface({
   const handleCommandChoice = useCallback(
     (value: string) => {
       if (!commandPrompt) return;
-      void runCommand(commandPrompt.name, "", value);
+      void runCommand(commandPrompt.name, commandPrompt.args, value);
     },
     [commandPrompt, runCommand],
   );
@@ -579,11 +586,13 @@ export function ChatInterface({
   const handleSend = useCallback(
     async (content: string, files?: File[]) => {
       // A leading `/name` the registry knows is a command, not a message. run
-      // it instead of sending it to the model. Unknown `/foo` falls through and
+      // it instead of sending it to the model; files the composer attached go
+      // with it when the command takes any. Unknown `/foo` falls through and
       // reaches the agent like any other text.
       const parsed = parseCommand(content);
-      if (!files?.length && parsed && getCommandMeta(parsed.name)) {
-        void runCommand(parsed.name, parsed.args);
+      const meta = parsed ? getCommandMeta(parsed.name) : undefined;
+      if (meta && (!files?.length || takesFiles(meta))) {
+        void runCommand(meta.name, parsed!.args, undefined, files);
         return;
       }
 

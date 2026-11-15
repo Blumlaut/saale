@@ -1,6 +1,7 @@
 import type { CommandName } from "../catalog";
 import type { CommandHandler } from "../types";
 import { compactHandler } from "./compact";
+import { editHandler } from "./edit";
 import { imageHandler } from "./image";
 import { modelHandler } from "./model";
 import { newHandler } from "./new";
@@ -16,6 +17,7 @@ import { stopHandler } from "./stop";
  */
 export const COMMAND_HANDLERS: Record<CommandName, CommandHandler> = {
   compact: compactHandler,
+  edit: editHandler,
   image: imageHandler,
   model: modelHandler,
   new: newHandler,

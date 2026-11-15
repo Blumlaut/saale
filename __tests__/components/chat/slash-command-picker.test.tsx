@@ -70,9 +70,10 @@ describe("slash command picker", () => {
 
     type(textarea, "/com");
 
+    // "compact" by name, "edit" by its description ("combine").
     const options = getAllByRole("option");
-    expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent("/compact");
+    expect(options).toHaveLength(2);
     // A prefix that matches nothing closes the menu again.
     type(textarea, "/zzz");
     expect(queryByRole("listbox")).toBeNull();
