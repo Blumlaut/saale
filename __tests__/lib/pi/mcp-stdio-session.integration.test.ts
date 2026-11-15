@@ -50,13 +50,15 @@ let previousDir: string | undefined;
 let previousUrl: string | undefined;
 let command: string;
 
-/** Poll until the MCP extension has registered the server's tools. */
+/** The callable tools, once the MCP extension has registered the server's. */
 async function waitForMcpTools(session: { getCallableToolNames(): string[] }) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const callable = session.getCallableToolNames();
-    if (callable.some((name) => name.startsWith("mcp__fakefiles__"))) return callable;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  await vi.waitFor(
+    () =>
+      expect(
+        session.getCallableToolNames().some((name) => name.startsWith("mcp__fakefiles__")),
+      ).toBe(true),
+    { interval: 10, timeout: TIMEOUT_MS },
+  );
   return session.getCallableToolNames();
 }
 

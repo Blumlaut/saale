@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import http from "node:http";
 import {
   ModelRuntime,
@@ -208,9 +208,9 @@ describe("manual compaction vs. an incoming prompt (real SDK)", () => {
         session.prompt("sent during compaction"),
       );
 
-      // Give the deferral time to attempt the prompt: it has to be waiting, not
-      // submitting into a compacting session.
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // The deferral has to be waiting, not submitting into a compacting
+      // session: the model only sees the second call once it is released.
+      await vi.waitFor(() => expect(requestBodies).toHaveLength(2));
       expect(session.isCompacting).toBe(true);
       expect(requestBodies).toHaveLength(2);
 

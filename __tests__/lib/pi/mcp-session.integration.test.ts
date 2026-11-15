@@ -44,13 +44,15 @@ const TIMEOUT_MS = 60_000;
 
 let fake: FakeMcpServer;
 
-/** Poll until the MCP extension has registered the server's tools. */
+/** The callable tools, once the MCP extension has registered the server's. */
 async function waitForMcpTools(session: { getCallableToolNames(): string[] }) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const callable = session.getCallableToolNames();
-    if (callable.some((name) => name.startsWith("mcp__fakehome__"))) return callable;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
+  await vi.waitFor(
+    () =>
+      expect(
+        session.getCallableToolNames().some((name) => name.startsWith("mcp__fakehome__")),
+      ).toBe(true),
+    { interval: 10, timeout: TIMEOUT_MS },
+  );
   return session.getCallableToolNames();
 }
 
@@ -216,10 +218,10 @@ describe("MCP servers in an agent session", () => {
 
         try {
           await startSessionExtensions(session);
-          for (let attempt = 0; attempt < 40; attempt++) {
-            if (hostServer.requests.length > 0) break;
-            await new Promise((resolve) => setTimeout(resolve, 100));
-          }
+          await vi.waitFor(() => expect(hostServer.requests.length).toBeGreaterThan(0), {
+            interval: 10,
+            timeout: TIMEOUT_MS,
+          });
           const sent = hostServer.requests.map((request) => request.authorization);
           expect(sent.length).toBeGreaterThan(0);
           expect(sent).not.toContain("Bearer operator-token");

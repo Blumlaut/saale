@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { ProvisioningNotice } from "@/components/coder/provisioning-notice";
 
 /**
@@ -55,12 +55,25 @@ describe("ProvisioningNotice", () => {
   });
 
   it("disappears once the build is over", async () => {
-    stubProvisioning({ step: "setup", startedAt }, null);
+    vi.useFakeTimers();
+    try {
+      stubProvisioning({ step: "setup", startedAt }, null);
 
-    const { container } = render(<ProvisioningNotice sessionId="s-1" waiting />);
+      const { container } = render(<ProvisioningNotice sessionId="s-1" waiting />);
 
-    expect(await screen.findByText("Running setup script")).toBeTruthy();
-    // The poll that answers null is the next one after the interval.
-    await waitFor(() => expect(container.childElementCount).toBe(0), { timeout: 3_000 });
+      // The first answer arrives with the first tick.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Running setup script")).toBeTruthy();
+
+      // The poll after the interval answers null, and the card goes.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(container.childElementCount).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

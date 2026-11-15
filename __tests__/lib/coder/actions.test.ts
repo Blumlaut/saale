@@ -299,7 +299,8 @@ describe("one writer at a time", () => {
     const order: string[] = [];
     mocks.runGit.mockImplementation(async () => {
       order.push("start");
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      // Yield: a second action would interleave here if the queue let it.
+      await Promise.resolve();
       order.push("end");
       return OK;
     });

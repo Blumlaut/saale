@@ -9,6 +9,9 @@ function compactionError(): Error {
   );
 }
 
+/** Let every task the deferral has queued run, and no more. */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 function fakeSession() {
   const waitForIdle = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   return {
@@ -45,7 +48,7 @@ describe("submitDeferringToCompaction", () => {
     const deferred = submitDeferringToCompaction(session, submit);
 
     // Still waiting: the compaction has not released the session yet.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await flush();
     expect(submit).toHaveBeenCalledTimes(1);
     expect(waitForIdle).toHaveBeenCalledTimes(1);
 

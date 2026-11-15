@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -87,7 +87,7 @@ import {
 
 type LoginState = NonNullable<Awaited<ReturnType<typeof readProviderLogin>>>;
 
-/** Wait for the state to satisfy `predicate`, or fail the test. */
+/** The state once it satisfies `predicate`. */
 async function waitFor(
   id: string,
   predicate: (state: LoginState) => boolean,
@@ -96,18 +96,28 @@ async function waitFor(
     userId: "user-1",
   },
 ): Promise<LoginState> {
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const state = await readProviderLogin(scope, id);
-    if (state && predicate(state)) return state;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error("timed out waiting for the sign-in state");
+  let found: LoginState | undefined;
+  await vi.waitFor(
+    async () => {
+      const state = await readProviderLogin(scope, id);
+      if (state && predicate(state)) found = state;
+      // The flow looks for an answer once per poll, so step that timer rather
+      // than waiting out the interval.
+      else await vi.advanceTimersByTimeAsync(250);
+      expect(found).toBeDefined();
+    },
+    { interval: 1, timeout: 2000 },
+  );
+  return found!;
 }
 
 const userScope = { kind: "user" as const, userId: "user-1" };
 
 describe("provider sign-in transport", () => {
+  // The flow polls for an answer every 250ms; fake timers step through the
+  // wait instead of sitting in it.
   beforeEach(() => {
+    vi.useFakeTimers();
     redis.values.clear();
     redis.lists.clear();
     createRuntime.mockReset();
@@ -116,6 +126,10 @@ describe("provider sign-in transport", () => {
       const credential = await fn(undefined);
       return credential;
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("drives Pi's prompt, stores what it answered, and reports success", async () => {

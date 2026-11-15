@@ -100,6 +100,7 @@ describe("dispatchAiJob", () => {
   /** Wait until the job's session exists and is subscribed. */
   async function waitForSession(): Promise<void> {
     await vi.waitFor(() => expect(mockCreateAgentSession).toHaveBeenCalled());
+    // A turn: the subscription is registered once the session promise settles.
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
@@ -148,7 +149,8 @@ describe("dispatchAiJob", () => {
       willRetry: true,
       messages: [assistantMessage([], { stopReason: "error", errorMessage: "overloaded" })],
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Let a settle that should not happen try to happen.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // The retry succeeded.
     fake.emit({

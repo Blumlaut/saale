@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ResetPasswordForm } from "@/app/auth/reset-password/reset-password-form";
 import { authClient } from "@/lib/auth-client";
 
@@ -86,12 +86,27 @@ describe("reset password form", () => {
   });
 
   it("sends the reader to sign in once the password is changed", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    render(<ResetPasswordForm minPasswordLength={8} />);
+    vi.useFakeTimers();
+    try {
+      render(<ResetPasswordForm minPasswordLength={8} />);
 
-    fill("correct horse", "correct horse");
+      await act(async () => {
+        fill("correct horse", "correct horse");
+      });
 
-    expect(await screen.findByText(/your password is changed/i)).toBeInTheDocument();
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/auth/login"), { timeout: 3000 });
+      // The answer comes back on the next tick, well before the redirect.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText(/your password is changed/i)).toBeInTheDocument();
+
+      // The reader gets 1.5s to read the confirmation before the redirect.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(router.push).toHaveBeenCalledWith("/auth/login");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

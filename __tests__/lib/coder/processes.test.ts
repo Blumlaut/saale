@@ -50,12 +50,19 @@ async function environ(pid: number, vars: Record<string, string>): Promise<void>
 }
 
 /**
- * The sweep's `kill` is delivered by the kernel as it runs, so by the time it
- * returns every kill has landed; this only lets libuv reap the children before
- * their exit state is read.
+ * Wait for libuv to reap the children the sweep just killed.
+ *
+ * The sweep's `kill` has landed by the time it returns, so the only thing left
+ * is the exit event, which arrives within a tick of the signal.
  */
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 250));
+async function settled(...pids: number[]): Promise<void> {
+  await Promise.all(
+    pids.map((pid) => {
+      const child = children.find((candidate) => candidate.pid === pid);
+      if (!child || child.signalCode !== null || child.exitCode !== null) return;
+      return new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    }),
+  );
 }
 
 /** The signal that took the process down, or null while it is still running. */
@@ -119,7 +126,7 @@ describe("the worktree sweep", () => {
     await observe(inAnotherWorktree, path.join(root, "worktrees", "saale", "c-1"));
 
     await runSweep();
-    await settle();
+    await settled(inRoot, inSubdirectory);
 
     expect(exitSignal(inRoot)).toBe("SIGKILL");
     expect(exitSignal(inSubdirectory)).toBe("SIGKILL");
@@ -135,7 +142,6 @@ describe("the worktree sweep", () => {
 
     const result = await runSweep();
 
-    await settle();
     expect(result.code).toBe(0);
     expect(await fs.readFile(log, "utf8")).toContain(`pkill -f ${worktree}`);
     expect(exitSignal(unreadable)).toBeNull();
@@ -161,7 +167,7 @@ describe("the chat sweep", () => {
 
     // A checkout shared by several chats is swept by chat id alone.
     await runSweep({ ownCheckout: null });
-    await settle();
+    await settled(moved);
 
     expect(exitSignal(moved)).toBe("SIGKILL");
     expect(exitSignal(otherChat)).toBeNull();
@@ -176,7 +182,7 @@ describe("the chat sweep", () => {
     await environ(shorterId, { SAALE_CHAT_ID: CHAT_ID });
 
     await runSweep({ ownCheckout: null });
-    await settle();
+    await settled(shorterId);
 
     expect(exitSignal(longerId)).toBeNull();
     expect(exitSignal(shorterId)).toBe("SIGKILL");

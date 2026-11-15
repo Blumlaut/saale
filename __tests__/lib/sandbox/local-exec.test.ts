@@ -159,7 +159,7 @@ describe("execLocally", () => {
 
   it("kills a command when its caller aborts", async () => {
     const abort = new AbortController();
-    setTimeout(() => abort.abort(), 200);
+    setTimeout(() => abort.abort(), 50);
 
     const result = await run("sleep 5", { signal: abort.signal });
 
@@ -170,7 +170,9 @@ describe("execLocally", () => {
   it("answers a stop, taking what the shell started with it", async () => {
     await mkdir(path.join(volume, IDENTITY, "run"), { recursive: true });
     const marker = path.join(volume, IDENTITY, "run", "child");
-    const command = `(sleep 5; touch ${marker}) & sleep 5`;
+    // The background job would reach the marker on its own, from the group the
+    // stop has to take with it.
+    const command = `(sleep 0.2; touch ${marker}) & sleep 5`;
 
     const events = execLocally({ identity: IDENTITY, command });
     const started = await events.next();
@@ -186,8 +188,8 @@ describe("execLocally", () => {
       if (next.done) break;
     }
 
-    // The background sleep went with the group, so it never reaches the marker.
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // The background job went with the group, so it never reaches the marker.
+    await new Promise((resolve) => setTimeout(resolve, 400));
     await expect(readFile(marker, "utf8")).rejects.toThrow();
   });
 

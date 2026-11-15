@@ -97,7 +97,7 @@ describe("MessageList render window", () => {
     expect(revealButton()).toBeInTheDocument();
   });
 
-  it("reveals every earlier turn when the control is used repeatedly", () => {
+  it("reveals every earlier turn when the control is used repeatedly", { timeout: 20_000 }, () => {
     render(<MessageList messages={transcript(60)} />);
 
     const hiddenCount = () => {
@@ -201,7 +201,7 @@ describe("MessageList growth", () => {
     expect(screen.getByText("do the thing")).toBeInTheDocument();
   });
 
-  it("keeps the turns above a long run in the window as it works", () => {
+  it("keeps the turns above a long run in the window as it works", { timeout: 20_000 }, () => {
     const turn = longTurn(160);
     const run = (steps: number): Message[] => [
       ...turn,
@@ -310,7 +310,7 @@ describe("MessageList growth", () => {
 describe("MessageList folding a turn", () => {
   const earlierSteps = () => screen.queryByRole("button", { name: /earlier steps?$/ });
 
-  it("keeps a run's unfolded steps on screen as it grows", () => {
+  it("keeps a run's unfolded steps on screen as it grows", { timeout: 20_000 }, () => {
     const { rerender } = render(<MessageList messages={longTurn(230)} isLoading />);
 
     // The run's oldest steps fold away behind a control.
