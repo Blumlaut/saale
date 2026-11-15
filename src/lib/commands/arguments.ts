@@ -9,7 +9,7 @@
  * Pure data in, pure data out. the composer and the server share these.
  */
 
-import type { CommandArgument, CommandMeta } from "./types";
+import { BOOLEAN_VALUES, type CommandArgument, type CommandMeta } from "./types";
 
 export interface ParsedCommandArguments {
   /** Values keyed by the argument name, in the order they were written. */
@@ -48,7 +48,7 @@ export function parseCommandArguments(
   const names = declared.filter((arg) => arg.kind !== "files").map((arg) => arg.name);
   if (!text || names.length === 0) return { values: {}, rest: text };
 
-  const pattern = labelPattern(names);
+  const pattern = argumentLabelPattern(names);
   const matches = [...text.matchAll(pattern)];
   if (matches.length === 0) return { values: {}, rest: text };
 
@@ -74,8 +74,12 @@ export function parseCommandArguments(
   return { values, rest: rest.replace(/\s+/g, " ").trim() };
 }
 
-/** `(^| )name:` for every declared name, longest first so a name can be a prefix of another. */
-function labelPattern(names: readonly string[]): RegExp {
+/**
+ * `(^| )name:` for every declared name, longest first so a name can be a prefix
+ * of another. Shared with the composer's highlight, which cuts the line at the
+ * same places the parser does.
+ */
+export function argumentLabelPattern(names: readonly string[]): RegExp {
   const alternation = [...names]
     .sort((a, b) => b.length - a.length)
     .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
@@ -106,6 +110,57 @@ export function missingArgument(
 }
 
 /**
+ * Check the values against what their arguments accept, and return them in the
+ * form the command reads: `TRUE` becomes `true`, a choice keeps the spelling
+ * the catalog gave it.
+ *
+ * Unknown values are refused here rather than in each handler, so a boolean
+ * argument cannot arrive as "yes" and a choice cannot arrive as something the
+ * command never offered.
+ */
+export function validateArguments(
+  meta: CommandMeta,
+  values: Readonly<Record<string, string>>,
+): { values: Record<string, string>; error?: string } {
+  const checked: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(values)) {
+    const declared = (meta.arguments ?? []).find((arg) => arg.name === name);
+    if (!declared) {
+      checked[name] = value;
+      continue;
+    }
+
+    const normalized = normalizeArgument(declared, value);
+    if (normalized === undefined) {
+      const allowed =
+        declared.kind === "boolean" ? "true or false" : (declared.choices ?? []).join(", ");
+      return {
+        values: checked,
+        error: allowed
+          ? `/${meta.name} ${declared.name} takes ${allowed}, not "${value}".`
+          : `/${meta.name} ${declared.name} takes a different value than "${value}".`,
+      };
+    }
+    checked[name] = normalized;
+  }
+
+  return { values: checked };
+}
+
+/** The value as the argument reads it, or undefined when it is not one. */
+function normalizeArgument(arg: CommandArgument, value: string): string | undefined {
+  const wanted = value.trim().toLowerCase();
+  if (arg.kind === "boolean") {
+    return (BOOLEAN_VALUES as readonly string[]).includes(wanted) ? wanted : undefined;
+  }
+  if (arg.kind === "choice" && arg.choices) {
+    return arg.choices.find((choice) => choice.toLowerCase() === wanted);
+  }
+  return value;
+}
+
+/**
  * How the command is written out, for a hint or an error: `prompt:<text>
  * [size:<WxH>]`. Required arguments first, then the optional ones.
  */
@@ -114,7 +169,14 @@ export function commandUsage(meta: CommandMeta): string {
   if (declared.length === 0) return `/${meta.name}`;
 
   const part = (arg: CommandArgument) => {
-    const value = arg.kind === "files" ? "<files>" : `<${arg.kind === "choice" ? "one" : "text"}>`;
+    const value =
+      arg.kind === "files"
+        ? "<files>"
+        : arg.kind === "boolean"
+          ? "<true|false>"
+          : arg.kind === "choice"
+            ? `<${arg.choices?.[0] ?? "one"}|…>`
+            : "<text>";
     return `${arg.name}:${value}`;
   };
   const required = declared.filter((arg) => arg.required).map(part);

@@ -1,4 +1,9 @@
-import { commandUsage, missingArgument, parseCommandArguments } from "./arguments";
+import {
+  commandUsage,
+  missingArgument,
+  parseCommandArguments,
+  validateArguments,
+} from "./arguments";
 import { getCommandMeta, type CommandName } from "./catalog";
 import { COMMAND_HANDLERS } from "./handlers";
 import type {
@@ -52,9 +57,13 @@ export async function executeCommand(
   }
 
   const parsed = parseCommandArguments(request.args, meta.arguments);
-  const ctx: CommandContext = { ...request, arguments: parsed.values };
+  const checked = validateArguments(meta, parsed.values);
+  if (checked.error) {
+    return { kind: "error", name: normalized, error: checked.error };
+  }
+  const ctx: CommandContext = { ...request, arguments: checked.values };
 
-  const missing = missingArgument(meta, parsed.values, request.files);
+  const missing = missingArgument(meta, checked.values, request.files);
   if (missing) {
     return {
       kind: "error",
@@ -75,7 +84,7 @@ export async function executeCommand(
       name,
       prompt,
       value,
-      [...Object.values(parsed.values), parsed.rest].filter((candidate) => candidate.length > 0),
+      [...Object.values(checked.values), parsed.rest].filter((candidate) => candidate.length > 0),
     );
     if (chosen.error) {
       return { kind: "error", name: normalized, error: chosen.error };

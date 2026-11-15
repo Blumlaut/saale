@@ -4,6 +4,7 @@ import {
   missingArgument,
   parseCommandArguments,
   takesFiles,
+  validateArguments,
 } from "@/lib/commands/arguments";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import { Frame } from "lucide-react";
@@ -117,6 +118,47 @@ describe("parseCommandArguments", () => {
   });
 });
 
+describe("validateArguments", () => {
+  const meta = fixture("flags", [
+    { name: "clear", kind: "boolean", description: "Drop the queue" },
+    { name: "time", kind: "choice", description: "When", choices: ["on", "permanent"] },
+    { name: "prompt", kind: "text", description: "What to draw" },
+  ]);
+
+  it("reads a boolean in either case, and stores the lowercase form", () => {
+    expect(validateArguments(meta, { clear: "TRUE" })).toEqual({ values: { clear: "true" } });
+    expect(validateArguments(meta, { clear: "false" })).toEqual({ values: { clear: "false" } });
+  });
+
+  it("refuses anything else for a boolean", () => {
+    expect(validateArguments(meta, { clear: "yes" })).toEqual({
+      values: {},
+      error: '/flags clear takes true or false, not "yes".',
+    });
+  });
+
+  it("stores a choice under the spelling the catalog gave it", () => {
+    expect(validateArguments(meta, { time: "PERMANENT" }).values).toEqual({ time: "permanent" });
+  });
+
+  it("refuses a value the choice does not offer", () => {
+    expect(validateArguments(meta, { time: "later" }).error).toBe(
+      '/flags time takes on, permanent, not "later".',
+    );
+  });
+
+  it("leaves text alone, numbers included", () => {
+    expect(validateArguments(meta, { prompt: "42 foxes" }).values).toEqual({ prompt: "42 foxes" });
+  });
+
+  it("passes through a choice only the server can list", () => {
+    const dynamic = fixture("model", [{ name: "name", kind: "choice", description: "A model" }]);
+    expect(validateArguments(dynamic, { name: "anthropic:claude" }).values).toEqual({
+      name: "anthropic:claude",
+    });
+  });
+});
+
 describe("missingArgument", () => {
   const meta = fixture("draw", DECLARED);
 
@@ -137,7 +179,7 @@ describe("missingArgument", () => {
 describe("commandUsage", () => {
   it("shows required arguments before the optional ones", () => {
     expect(commandUsage(fixture("draw", DECLARED))).toBe(
-      "/draw prompt:<text> files:<files> [size:<text>] [time:<one>]",
+      "/draw prompt:<text> files:<files> [size:<text>] [time:<on|…>]",
     );
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { argumentHints, readCommandDraft } from "@/lib/commands/composer";
+import { argumentHints, commandReady, readCommandDraft } from "@/lib/commands/composer";
 import { getCommandMeta } from "@/lib/commands/catalog";
 
 /**
@@ -30,7 +30,26 @@ describe("readCommandDraft", () => {
   it("ignores anything that is not a command", () => {
     expect(readCommandDraft("hello")).toBeNull();
     expect(readCommandDraft("/")).toBeNull();
-    expect(readCommandDraft(" /image")).toBeNull();
+    // A leading space still reaches the command: `parseCommand` trims too.
+    expect(readCommandDraft(" /image")).toEqual({ name: "image", args: "" });
+  });
+});
+
+describe("commandReady", () => {
+  it("is true once the required arguments are filled in", () => {
+    expect(commandReady(getCommandMeta("image"), "prompt:a fox")).toBe(true);
+    expect(commandReady(getCommandMeta("image"), "")).toBe(false);
+    expect(commandReady(getCommandMeta("image"), "size:1024x1024")).toBe(false);
+  });
+
+  it("counts an attached picture as the required files argument", () => {
+    expect(commandReady(getCommandMeta("edit"), "prompt:make it night", 0)).toBe(false);
+    expect(commandReady(getCommandMeta("edit"), "prompt:make it night", 1)).toBe(true);
+  });
+
+  it("is true for a command with nothing required", () => {
+    expect(commandReady(getCommandMeta("stop"), "")).toBe(true);
+    expect(commandReady(getCommandMeta("compact"), "")).toBe(true);
   });
 });
 
@@ -82,6 +101,20 @@ describe("argumentHints", () => {
 
   it("says nothing when every argument is filled in", () => {
     expect(argumentHints(image, "prompt:a fox size:1024x1024 ")).toBeNull();
+  });
+
+  it("offers both values of a boolean", () => {
+    const completion = argumentHints(getCommandMeta("stop"), "clear:");
+
+    expect(completion?.hints.map((hint) => hint.insert)).toEqual(["true", "false"]);
+    expect(completion?.replace).toEqual({ start: 6, end: 6 });
+  });
+
+  it("narrows a boolean to the typed prefix, and stops once it is written", () => {
+    expect(argumentHints(getCommandMeta("stop"), "clear:f")?.hints.map((h) => h.insert)).toEqual([
+      "false",
+    ]);
+    expect(argumentHints(getCommandMeta("stop"), "clear:false")).toBeNull();
   });
 
   it("says nothing for a command that declares no arguments", () => {

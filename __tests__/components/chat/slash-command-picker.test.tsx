@@ -92,22 +92,23 @@ describe("slash command picker", () => {
   it("picks the highlighted command on Enter and clears the composer", () => {
     const { textarea, onCommand, onSend } = renderComposer();
 
-    type(textarea, "/sto");
+    type(textarea, "/com");
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    expect(onCommand).toHaveBeenCalledWith("stop");
+    expect(onCommand).toHaveBeenCalledWith("compact");
     expect(onSend).not.toHaveBeenCalled();
     expect(textarea).toHaveValue("");
   });
 
-  it("wraps the highlight back to the top", () => {
+  it("wraps the highlight to the last command, which waits for its arguments", () => {
     const { textarea, onCommand } = renderComposer();
 
     type(textarea, "/");
     fireEvent.keyDown(textarea, { key: "ArrowUp" });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
-    expect(onCommand).toHaveBeenCalledWith(listCommands("web").at(-1)!.name);
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue(`/${listCommands("web").at(-1)!.name} `);
   });
 
   it("runs the exact command when the whole name is typed", () => {
@@ -143,6 +144,50 @@ describe("slash command picker", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     expect(onSend).toHaveBeenCalledWith("/not-a-command", undefined);
+  });
+});
+
+describe("composer highlight", () => {
+  /** The runs the mirror painted, as `kind:text`. */
+  function runs(container: HTMLElement) {
+    return [...container.querySelectorAll("[data-slot='composer-highlight'] [data-kind]")].map(
+      (span) => `${span.getAttribute("data-kind")}:${span.textContent}`,
+    );
+  }
+
+  it("paints the command name and the arguments being filled in", () => {
+    const { container } = renderComposer("/edit prompt:make it night size:");
+
+    expect(runs(container)).toEqual([
+      "command:/edit",
+      "plain: ",
+      "label:prompt:",
+      "value:make it night",
+      "plain: ",
+      "label:size:",
+    ]);
+  });
+
+  it("keeps the mirror on exactly the text that was typed", () => {
+    const { container, textarea } = renderComposer("/image prompt:a red fox size:1024x1024");
+
+    const painted = [...container.querySelectorAll("[data-slot='composer-highlight'] [data-kind]")]
+      .map((span) => span.textContent)
+      .join("");
+    expect(painted).toBe("/image prompt:a red fox size:1024x1024");
+    expect(textarea).toHaveValue(painted);
+  });
+
+  it("paints nothing for an ordinary message", () => {
+    const { container } = renderComposer("what does /image do?");
+
+    expect(container.querySelector("[data-slot='composer-highlight']")).toBeNull();
+  });
+
+  it("paints nothing for a command the catalog does not know", () => {
+    const { container } = renderComposer("/notacommand prompt:x");
+
+    expect(container.querySelector("[data-slot='composer-highlight']")).toBeNull();
   });
 });
 
@@ -187,7 +232,8 @@ describe("command arguments", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent("size:");
 
-    fireEvent.keyDown(textarea, { key: "Enter" });
+    // Tab takes the optional argument; Enter would run the command.
+    fireEvent.keyDown(textarea, { key: "Tab" });
 
     expect(textarea).toHaveValue("/image prompt:a red fox size:");
   });
@@ -210,6 +256,46 @@ describe("command arguments", () => {
     fireEvent.keyDown(textarea, { key: "Enter" });
 
     expect(textarea).toHaveValue("/stfu time:permanent");
+  });
+
+  it("offers both values of a boolean argument", () => {
+    const { textarea } = renderComposer("/stop clear:");
+
+    const rows = document.querySelectorAll('[role="option"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("true");
+    expect(rows[1]).toHaveTextContent("false");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/stop clear:true");
+  });
+
+  it("runs a command whose arguments are optional when Enter is pressed", () => {
+    const { textarea, onSend } = renderComposer("/stop ");
+
+    expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).toHaveBeenCalledWith("/stop", undefined);
+  });
+
+  it("fills the argument a command cannot run without", () => {
+    const { textarea, onSend } = renderComposer("/image ");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue("/image prompt:");
+  });
+
+  it("takes a typed argument name on Enter", () => {
+    const { textarea } = renderComposer("/stop cl");
+
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea).toHaveValue("/stop clear:");
   });
 
   it("closes the menu once a choice is written out, so Enter sends", () => {

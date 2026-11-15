@@ -15,6 +15,7 @@ import {
   Loader2,
   ListPlus,
   ListFilter,
+  ToggleLeft,
   Type,
   X,
   FileText,
@@ -23,7 +24,9 @@ import {
 } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { getCommandMeta, searchCommands } from "@/lib/commands/catalog";
-import { argumentHints, readCommandDraft } from "@/lib/commands/composer";
+import { argumentHints, commandReady, readCommandDraft } from "@/lib/commands/composer";
+import { commandTokens } from "@/lib/commands/highlight";
+import { ComposerHighlight } from "./composer-highlight";
 import { searchPrompts, type PromptPickerItem } from "@/lib/prompts/resolve";
 import type { UploadProgress } from "@/lib/files/upload-client";
 import { SlashCommandMenu, type SlashMenuItem } from "./slash-command-menu";
@@ -74,7 +77,12 @@ interface InputBarProps {
 const COMMAND_QUERY_PATTERN = /^\/([a-z0-9_-]*)$/i;
 
 /** The icon an argument row wears, by what it takes. */
-const ARGUMENT_ICONS = { text: Type, choice: ListFilter, files: Paperclip } as const;
+const ARGUMENT_ICONS = {
+  text: Type,
+  boolean: ToggleLeft,
+  choice: ListFilter,
+  files: Paperclip,
+} as const;
 
 export function InputBar({
   ref,
@@ -112,11 +120,12 @@ export function InputBar({
   const menuItems = useMemo<SlashMenuItem[]>(() => {
     if (completion) {
       return completion.hints.map<SlashMenuItem>((hint) => ({
-        kind: hint.kind === "choice" && hint.insert !== "" ? "value" : "argument",
+        kind: hint.target === "value" ? "value" : "argument",
         name: hint.label,
         description: hint.description,
         icon: ARGUMENT_ICONS[hint.kind],
         note: hint.note ?? null,
+        hint: hint.values?.length ? hint.values.join(" | ") : null,
         ...(hint.kind === "files" ? { attached: hint.attached ?? 0 } : {}),
       }));
     }
@@ -142,6 +151,9 @@ export function InputBar({
   const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
   const commandMenuOpen =
     (commandQuery !== null || completion !== null) && !commandMenuDismissed && menuItems.length > 0;
+  // The line under the textarea: chips behind the names and values being typed.
+  const tokens = useMemo(() => commandTokens(value), [value]);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   // A new query starts a fresh highlight, and re-arms a dismissed menu.
   useEffect(() => {
@@ -283,12 +295,28 @@ export function InputBar({
     [putComposer, selectCommandOrArguments, completion, fillArgument],
   );
 
+  // The word being completed: empty once a space has been typed after the
+  // command name, which is when Enter should run the command instead.
+  const typingWord = draft ? /\S$/.test(draft.args) : false;
+
   const handleSubmit = useCallback(() => {
     if (commandMenuOpen) {
       const highlighted = menuItems[commandIndex];
       if (highlighted) {
-        selectMenuItem(highlighted);
-        return;
+        // Commands and prompts are what the menu is for. An argument is
+        // completed when the user started typing its name, or when the command
+        // cannot run without it; otherwise Enter runs what is written.
+        const completes =
+          highlighted.kind === "command" ||
+          highlighted.kind === "prompt" ||
+          highlighted.kind === "value" ||
+          (highlighted.kind === "argument" &&
+            highlighted.name !== "files" &&
+            (typingWord || !commandReady(draftMeta, draft?.args ?? "", pendingFiles.length)));
+        if (completes) {
+          selectMenuItem(highlighted);
+          return;
+        }
       }
     }
     if (!canSend) return;
@@ -304,6 +332,9 @@ export function InputBar({
     menuItems,
     commandIndex,
     selectMenuItem,
+    typingWord,
+    draftMeta,
+    draft,
     value,
     pendingFiles,
     canSend,
@@ -328,7 +359,15 @@ export function InputBar({
         setCommandMenuDismissed(true);
         return;
       }
-      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+      // Tab always takes the row under the highlight, which is how an optional
+      // argument gets filled in without Enter running the command instead.
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const highlighted = menuItems[commandIndex];
+        if (highlighted) selectMenuItem(highlighted);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
         return;
@@ -524,20 +563,26 @@ export function InputBar({
         {voiceEnabled && <VoiceInputButton onText={insertSpokenText} />}
 
         {/* Textarea. stays editable while Pi works so messages can be queued */}
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            onValueChange(e.target.value);
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Message Saale..."
-          className={cn(
-            "max-h-[200px] min-h-[40px] flex-1 resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0",
-            "placeholder:text-muted-foreground",
-          )}
-          rows={1}
-        />
+        <div className="relative min-w-0 flex-1">
+          <ComposerHighlight ref={highlightRef} tokens={tokens} className="p-2" />
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              onValueChange(e.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            onScroll={(e) => {
+              if (highlightRef.current) highlightRef.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            placeholder="Message Saale..."
+            className={cn(
+              "relative max-h-[200px] min-h-[40px] w-full resize-none border-0 bg-transparent p-2 leading-6 shadow-none focus-visible:ring-0",
+              "placeholder:text-muted-foreground",
+            )}
+            rows={1}
+          />
+        </div>
 
         {/* Context usage indicator */}
         <ContextCircle
