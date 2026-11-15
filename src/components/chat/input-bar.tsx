@@ -126,6 +126,8 @@ export function InputBar({
       name: meta.name,
       description: meta.description,
       icon: meta.icon,
+      // What the command takes, so `/edit` reads as one that wants a picture.
+      hint: (meta.arguments ?? []).map((arg) => `${arg.name}:`).join(" ") || null,
     }));
     const promptItems = searchPrompts(prompts ?? [], commandQuery).map<SlashMenuItem>((prompt) => ({
       kind: "prompt",
