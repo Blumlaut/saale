@@ -1,10 +1,10 @@
-import { parseCommandArguments } from "@/lib/commands/arguments";
+import { parseCommandArguments, validateArguments } from "@/lib/commands/arguments";
 import { getCommandMeta } from "@/lib/commands/catalog";
 import type { CommandContext, CommandFile } from "@/lib/commands/types";
 
 /**
- * The context `executeCommand` hands a handler: the command's line, read
- * against what the catalog declares, plus whatever files came with it.
+ * The context `executeCommand` hands a handler: the command's line, read and
+ * checked against what the catalog declares, plus whatever files came with it.
  */
 export function webContext(
   command: string,
@@ -12,12 +12,13 @@ export function webContext(
   files: readonly CommandFile[] = [],
 ): CommandContext {
   const meta = getCommandMeta(command);
+  const parsed = parseCommandArguments(args, meta?.arguments);
   return {
     surface: "web",
     userId: "user-1",
     sessionId: "session-1",
     args,
-    arguments: parseCommandArguments(args, meta?.arguments).values,
+    arguments: validateArguments(meta!, parsed.values).values,
     files,
   };
 }

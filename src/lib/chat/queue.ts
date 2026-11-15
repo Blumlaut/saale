@@ -176,6 +176,22 @@ export async function updateQueuedMessageContent(
 }
 
 /**
+ * Drop every message waiting in a session's queue.
+ *
+ * What `/stop clear:true` means: the run is cancelled *and* whatever was
+ * waiting behind it goes too. Returns how many messages were dropped.
+ */
+export async function clearQueuedMessages(userId: string, sessionId: string): Promise<number> {
+  const queued = await listQueuedMessages(sessionId);
+  let cleared = 0;
+  for (const message of queued) {
+    if (await removeQueuedMessage(userId, sessionId, message.id)) cleared += 1;
+  }
+  if (cleared > 0) await publishQueueUpdate(sessionId);
+  return cleared;
+}
+
+/**
  * Drop a queued message and its attachments. Returns false when the message
  * is not queued (a delivered message must not be deleted through this path
  * the conversation may depend on it).

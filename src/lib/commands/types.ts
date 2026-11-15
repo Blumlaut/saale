@@ -31,12 +31,18 @@ export interface CommandPrompt {
 /**
  * How a command takes a value.
  *
- * - `text`  . free text, written `name:value` and running to the end of the line.
- * - `choice`. one of the options its prompt offers, or one of `choices`.
- * - `files` . pictures the composer attached, which a command cannot parse out
- *             of the line at all.
+ * - `text`   . free text, written `name:value` and running to the end of the line.
+ *              Words, numbers, paths and prompts are all just text.
+ * - `boolean`. `true` or `false`, which the composer offers both of.
+ * - `choice` . one of the options its prompt offers, or one of `choices`.
+ *              A choice without `choices` is one only the server can list.
+ * - `files`  . pictures the composer attached, which a command cannot parse out
+ *              of the line at all.
  */
-export type CommandArgumentKind = "text" | "choice" | "files";
+export type CommandArgumentKind = "text" | "boolean" | "choice" | "files";
+
+/** What a boolean argument reads as. */
+export const BOOLEAN_VALUES = ["true", "false"] as const;
 
 /** One argument a command accepts, as the composer offers and the parser reads it. */
 export interface CommandArgument {
@@ -69,6 +75,11 @@ export interface CommandOutcome {
   message: string;
   tone?: CommandTone;
   refresh?: CommandRefresh;
+  /**
+   * The transcript already shows the result (a rendered picture, say), so the
+   * web surface does not toast on success. A failure still says so.
+   */
+  quiet?: boolean;
 }
 
 /** Command metadata. everything a surface needs to list or offer a command. */

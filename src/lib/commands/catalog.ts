@@ -42,7 +42,6 @@ export const COMMAND_CATALOG = [
   {
     name: "image",
     description: "Render a picture from a prompt, without the agent",
-    progress: "Rendering the picture…",
     surfaces: ["web"],
     icon: Image,
     arguments: [
@@ -57,7 +56,6 @@ export const COMMAND_CATALOG = [
   {
     name: "edit",
     description: "Change a picture you attach, or combine several, without the agent",
-    progress: "Editing the picture…",
     surfaces: ["web"],
     icon: Wand2,
     arguments: [
@@ -100,6 +98,13 @@ export const COMMAND_CATALOG = [
     description: "Stop the response that is running now",
     surfaces: ["web", "telegram"],
     icon: Square,
+    arguments: [
+      {
+        name: "clear",
+        kind: "boolean",
+        description: "Drop the messages waiting in the queue too",
+      },
+    ],
   },
 ] as const satisfies readonly CommandMeta[];
 
