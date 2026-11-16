@@ -56,6 +56,13 @@ Integrations for private repositories, pushes and pull requests.
 Saale supports MCP in full, with remote servers over Streamable HTTP and local ones over
 stdio. Add one in Settings, or paste a config from another client.
 
+## Skills
+
+A skill is a `SKILL.md` in the Agent Skills format: a name and a description on top, then the
+instructions for a kind of work. Install one in Settings → Integrations from an address or by
+pasting the file, and every chat of yours reads it. Coder chats also read each project's own
+`.pi/skills`.
+
 ## Multi-User?
 
 Yes, with permission groups. Providers come in two kinds: global ones an admin configures,

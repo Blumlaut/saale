@@ -21,6 +21,7 @@ import { TelegramBox, TelegramLinkDialog } from "@/components/integrations/teleg
 import { GithubCard } from "@/components/integrations/github-card";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
 import { McpPanel } from "../components/mcp-panel";
+import { SkillsPanel } from "@/components/skills/skills-panel";
 import { useUserSettings } from "../components/user-settings-provider";
 
 /** Delete confirmation descriptions per integration */
@@ -107,6 +108,8 @@ export function IntegrationsSection() {
       </GlassPanel>
 
       <McpPanel />
+
+      <SkillsPanel />
 
       {/* Link / relink. same dialog, the panel adapts to the current state */}
       <TelegramLinkDialog

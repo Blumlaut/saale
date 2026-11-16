@@ -150,6 +150,8 @@ const PROMPTS_TAB = "src/app/dashboard/settings/sections/prompts-section.tsx";
 const PROMPT_DIALOG = "src/components/prompts/prompt-dialog.tsx";
 const MCP_TAB = "src/app/dashboard/settings/components/mcp-panel.tsx";
 const MCP_SHEET = "src/components/mcp/mcp-server-sheet.tsx";
+const SKILLS_PANEL = "src/components/skills/skills-panel.tsx";
+const SKILL_ADD_DIALOG = "src/components/skills/skill-add-dialog.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
@@ -478,6 +480,29 @@ async function mockProviderSignIn(page: Page) {
           error: null,
           updatedAt: NOW,
         },
+      },
+    });
+  });
+}
+
+/** Installed skills, as Settings → Skills lists them. */
+async function mockSkills(page: Page) {
+  await page.route(/\/api\/skills(\?|$)/, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({
+      json: {
+        skills: [
+          {
+            name: "sofa",
+            description: "Ask, answer and vote on Stack Overflow for Agents.",
+            path: "/w/e2e/.agents/skills/sofa/SKILL.md",
+          },
+          {
+            name: "release-notes",
+            description: "Write a changelog entry from the commits since the last tag.",
+            path: "/w/e2e/.agents/skills/release-notes/SKILL.md",
+          },
+        ],
       },
     });
   });
@@ -1508,6 +1533,27 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await openSettingsSection(page, "integrations");
       await click(page, '[aria-label="Import config"]');
+    },
+  },
+  {
+    name: "settings · add skill",
+    path: SETTINGS,
+    sources: [SKILL_ADD_DIALOG],
+    mock: mockSkills,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Add skill"]');
+    },
+  },
+  {
+    name: "settings · remove skill confirmation",
+    path: SETTINGS,
+    sources: [SKILLS_PANEL],
+    mock: mockSkills,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Actions for sofa"]');
+      await clickText(page, "Remove");
     },
   },
   {
