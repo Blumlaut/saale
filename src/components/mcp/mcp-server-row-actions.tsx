@@ -33,7 +33,7 @@ export function McpServerRowActions({
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
-  /** Omitted for a server that has nothing to sign in to. */
+  /** Omitted for a server that has nothing to sign in to, or is signed in already. */
   onSignIn?: () => void;
 }) {
   return (
@@ -46,18 +46,6 @@ export function McpServerRowActions({
           onCheckedChange={onToggle}
           aria-label={`Enable ${server.name}`}
         />
-      )}
-      {onSignIn && (
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-8 shrink-0 px-2 text-xs font-medium"
-          onClick={onSignIn}
-          aria-label={`Sign in to ${server.name}`}
-        >
-          <LogIn className="h-3.5 w-3.5 sm:mr-1.5" />
-          <span className="hidden sm:inline">Sign in</span>
-        </Button>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -74,6 +62,12 @@ export function McpServerRowActions({
           )}
         />
         <DropdownMenuContent align="end" className="min-w-40">
+          {onSignIn && (
+            <DropdownMenuItem onClick={onSignIn}>
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign in
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={onEdit}>
             <Pencil className="mr-2 h-4 w-4" />
             Edit
