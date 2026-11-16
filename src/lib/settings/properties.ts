@@ -200,13 +200,13 @@ function orDbNull(value: Record<string, unknown>): JsonColumnValue {
  * Canonical `defaultToolConfig`: known categories only, and only entries that
  * differ from the category default (the row stays sparse).
  */
-function normalizeToolConfig(value: unknown): Record<string, boolean> {
+function normalizeToolConfig(value: unknown, defaults: Record<string, boolean> = Object.fromEntries(TOOL_CATEGORIES.map((c) => [c.key, c.defaultEnabled]))): Record<string, boolean> {
   const stored = asRecord(value);
   const result: Record<string, boolean> = {};
   for (const category of TOOL_CATEGORIES) {
     const entry = stored[category.key];
     if (typeof entry !== "boolean") continue;
-    if (entry === category.defaultEnabled) continue;
+    if (entry === (defaults[category.key] ?? category.defaultEnabled)) continue;
     result[category.key] = entry;
   }
   return result;
@@ -615,15 +615,7 @@ function coderCategoryProperties(): UserProperty[] {
 
 /** Canonical `coderToolConfig`: known categories only, defaults dropped. */
 function normalizeCoderToolConfig(value: unknown): Record<string, boolean> {
-  const stored = asRecord(value);
-  const result: Record<string, boolean> = {};
-  for (const category of TOOL_CATEGORIES) {
-    const entry = stored[category.key];
-    if (typeof entry !== "boolean") continue;
-    if (entry === CODER_TOOL_DEFAULTS[category.key]) continue;
-    result[category.key] = entry;
-  }
-  return result;
+  return normalizeToolConfig(value, CODER_TOOL_DEFAULTS);
 }
 
 /** `sidebar.<item>.hidden`. whether a navigation item is hidden.
