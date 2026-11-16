@@ -14,6 +14,7 @@ import { CONFIG_DIR_NAME, loadProjectContextFiles } from "@earendil-works/pi-cod
 import { isNotFoundError } from "@/lib/files/errors";
 import { isWithinRoot } from "@/lib/files/paths";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
+import { GLOBAL_SKILLS_DIR } from "@/lib/skills/shared";
 
 export interface SessionWorkspace {
   /** Absolute directory the session works in: a worktree, or the workspace root. */
@@ -59,7 +60,25 @@ export function projectContextFiles(workspace: SessionWorkspace): ProjectContext
  */
 export async function projectSkillPaths(workspace: SessionWorkspace): Promise<string[]> {
   const dir = path.join(workspace.cwd, CONFIG_DIR_NAME, "skills");
-  const isDirectory = await fs.stat(dir).then(
+  return (await isDirectory(dir)) ? [dir] : [];
+}
+
+/**
+ * Every skill directory a session reads: the project's own, then the ones the
+ * user installed for all of their chats.
+ *
+ * The user's skills sit in the workspace root, which a coder chat does not work
+ * in, so Pi would not find them by walking up from the worktree. Naming both
+ * directories keeps a chat and every project of it on the same list.
+ */
+export async function sessionSkillPaths(workspace: SessionWorkspace): Promise<string[]> {
+  const project = await projectSkillPaths(workspace);
+  const installed = path.join(workspace.root, GLOBAL_SKILLS_DIR);
+  return (await isDirectory(installed)) ? [...project, installed] : project;
+}
+
+async function isDirectory(dir: string): Promise<boolean> {
+  return fs.stat(dir).then(
     (stat) => stat.isDirectory(),
     (err: unknown) => {
       if (isNotFoundError(err)) return false;
@@ -67,5 +86,4 @@ export async function projectSkillPaths(workspace: SessionWorkspace): Promise<st
       return false;
     },
   );
-  return isDirectory ? [dir] : [];
 }

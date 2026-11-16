@@ -23,7 +23,7 @@ import { createSessionSettings } from "./settings";
 import {
   isInWorkspace,
   projectContextFiles,
-  projectSkillPaths,
+  sessionSkillPaths,
   type SessionWorkspace,
 } from "./project-context";
 import { SESSION_ENV_NAMES } from "@/lib/sandbox/env-vars";
@@ -263,7 +263,7 @@ export interface AgentResourceOptions {
   cwd: string;
   /**
    * The workspace the session works in. Given, the session reads the project's
-   * AGENTS.md files and `.pi/skills`; without it, no file is discovered.
+   * AGENTS.md files, its `.pi/skills`, and the skills the user installed.
    */
   workspace?: SessionWorkspace | undefined;
   /**
@@ -362,7 +362,7 @@ export async function createAgentResourceLoader(
     // A session outside a workspace has no directory of its own to read.
     noContextFiles: !workspace,
     noSkills: !workspace,
-    additionalSkillPaths: workspace ? await projectSkillPaths(workspace) : [],
+    additionalSkillPaths: workspace ? await sessionSkillPaths(workspace) : [],
     // An empty list, not an omitted option: Pi otherwise *discovers*
     // `<agentDir>/APPEND_SYSTEM.md`, which is `getAgentDir()`. the host's Pi
     // directory. Its owner's text would be appended to every tenant's prompt.

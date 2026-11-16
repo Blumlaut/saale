@@ -2,7 +2,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { projectContextFiles, projectSkillPaths, sessionWorkspace } from "@/lib/pi/project-context";
+import {
+  projectContextFiles,
+  projectSkillPaths,
+  sessionSkillPaths,
+  sessionWorkspace,
+} from "@/lib/pi/project-context";
 import { userIdentity } from "@/lib/sandbox/identity";
 import { restoreEnv } from "../../helpers/env";
 
@@ -115,5 +120,29 @@ describe("projectSkillPaths", () => {
     const paths = await projectSkillPaths(sessionWorkspace(USER, path.join(root, "projects/x")));
 
     expect(paths).toEqual([]);
+  });
+});
+
+describe("sessionSkillPaths", () => {
+  const SKILL = ["---", "name: release", "description: Cut a release", "---", "", "Steps."].join(
+    "\n",
+  );
+
+  it("reads the user's installed skills beside the project's own", async () => {
+    const worktree = path.join(root, "worktrees/saale/c-1");
+    await write(path.join(worktree, ".pi/skills/release/SKILL.md"), SKILL);
+    await write(path.join(root, ".agents/skills/sofa/SKILL.md"), SKILL);
+
+    const paths = await sessionSkillPaths(sessionWorkspace(USER, worktree));
+
+    expect(paths).toEqual([path.join(worktree, ".pi/skills"), path.join(root, ".agents/skills")]);
+  });
+
+  it("gives an installed skill to a project that has none of its own", async () => {
+    await write(path.join(root, ".agents/skills/sofa/SKILL.md"), SKILL);
+
+    const paths = await sessionSkillPaths(sessionWorkspace(USER, path.join(root, "projects/x")));
+
+    expect(paths).toEqual([path.join(root, ".agents/skills")]);
   });
 });

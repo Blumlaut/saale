@@ -282,6 +282,27 @@ describe("createAgentResourceLoader: workspace", () => {
     expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["release"]);
   });
 
+  it("offers an installed skill to a coder chat, which works outside the root", async () => {
+    const root = path.join(volumeDir, userIdentity("user-1"));
+    const worktree = path.join(root, "worktrees/saale/c-1");
+    fs.mkdirSync(worktree, { recursive: true });
+    fs.mkdirSync(path.join(root, ".agents/skills/sofa"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".agents/skills/sofa/SKILL.md"),
+      ["---", "name: sofa", "description: Ask and answer on SOFA", "---", "", "Steps."].join(
+        "\n",
+      ),
+    );
+
+    const loader = await createAgentResourceLoader({
+      prompt: "test prompt",
+      cwd: "/tmp/saale-loader-session",
+      workspace: sessionWorkspace("user-1", worktree),
+    });
+
+    expect(loader.getSkills().skills.map((skill) => skill.name)).toEqual(["sofa"]);
+  });
+
   it("reads no file from above the workspace root", async () => {
     const root = path.join(volumeDir, userIdentity("user-1"));
     const worktree = path.join(root, "worktrees/saale/c-1");
