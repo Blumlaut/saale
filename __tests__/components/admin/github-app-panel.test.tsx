@@ -45,18 +45,18 @@ afterEach(() => {
 
 describe("GithubAppPanel", () => {
   it("warns about the permissions the app was registered without", async () => {
-    // The app asked for what an older Saale needed: everything but the
-    // permission the repository picker takes, which is exactly the gap this
-    // panel exists to name.
+    // The app asked for what an older Saale needed: everything but one of the
+    // permissions it works with now, which is exactly the gap this panel exists
+    // to name.
     mockApp({
       ...SAVED_APP,
       permissions: { contents: "write", pull_requests: "write" },
       missingPermissions: [
         {
-          name: "installation_repositories",
-          label: "GitHub App installation repository access",
+          name: "workflows",
+          label: "Workflows",
           level: "write",
-          why: "the repository picker adds and removes repositories",
+          why: "push a branch that touches .github/workflows",
         },
       ],
     });
@@ -65,7 +65,7 @@ describe("GithubAppPanel", () => {
     expect(
       await screen.findByText("One permission Saale works with is missing."),
     ).toBeInTheDocument();
-    expect(screen.getByText(/GitHub App installation repository access/)).toBeInTheDocument();
+    expect(screen.getByText(/Workflows/)).toBeInTheDocument();
     expect(screen.getByText(/Read & write/)).toBeInTheDocument();
     expect(
       screen.queryByText(/Every permission Saale works with is granted/),
@@ -81,7 +81,6 @@ describe("GithubAppPanel", () => {
         workflows: "write",
         checks: "read",
         metadata: "read",
-        installation_repositories: "write",
       },
       missingPermissions: [],
     });
