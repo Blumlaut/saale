@@ -66,10 +66,24 @@ describe("probeMcpServer", () => {
     fake = await startFakeMcpServer({ requireToken: "some-token" });
 
     const message = await probeMcpServer({ url: fake.url, token: "wrong" }).catch((err) =>
-      describeProbeError(err),
+      describeProbeError(err, { tokenSent: true }),
     );
     expect(message).toContain("401");
     expect(message).not.toContain("OAuth");
+  });
+
+  it("says the token was rejected when the server offers OAuth too", async () => {
+    fake = await startFakeMcpServer({
+      requireToken: "some-token",
+      challenge:
+        'Bearer realm="mcp", resource_metadata="http://127.0.0.1:1/.well-known/oauth-protected-resource"',
+    });
+
+    const message = await probeMcpServer({ url: fake.url, token: "wrong" }).catch((err) =>
+      describeProbeError(err, { tokenSent: true }),
+    );
+    expect(message).toContain("rejected this token");
+    expect(message).not.toContain("Sign in");
   });
 
   it("fails when nothing is listening", async () => {
@@ -86,5 +100,21 @@ describe("describeProbeError", () => {
   it("falls back to the message, and to a string for non-errors", () => {
     expect(describeProbeError(new Error("connect ECONNREFUSED"))).toBe("connect ECONNREFUSED");
     expect(describeProbeError("boom")).toBe("boom");
+  });
+
+  it("points at the path when the URL is not an MCP endpoint", () => {
+    const error = Object.assign(new Error("MCP HTTP request failed with status 405"), {
+      status: 405,
+      body: '{"detail":"Method Not Allowed"}',
+    });
+    expect(describeProbeError(error)).toContain("/mcp");
+  });
+
+  it("names a web page where an MCP answer was expected", () => {
+    const error = Object.assign(new Error("MCP HTTP request failed with status 403"), {
+      status: 403,
+      body: "<!DOCTYPE html><html><title>Just a moment...</title></html>",
+    });
+    expect(describeProbeError(error)).toContain("web page");
   });
 });

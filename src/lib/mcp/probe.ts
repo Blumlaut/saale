@@ -32,16 +32,30 @@ export function isMcpOAuthRequired(err: unknown): boolean {
   return err instanceof McpOAuthAuthorizationRequiredError || isOAuthChallenge(err);
 }
 
-/** One-line, printable message for a failed probe (invalid URL, auth, transport). */
-export function describeProbeError(err: unknown): string {
+/**
+ * One-line, printable message for a failed probe (invalid URL, auth, transport),
+ * in words that point at what to change.
+ */
+export function describeProbeError(err: unknown, options: { tokenSent?: boolean } = {}): string {
   if (err instanceof Error) {
     if (isMcpOAuthRequired(err)) {
-      return "This server asks clients to sign in with OAuth. Use Sign in to connect it.";
+      // A token this server still refuses is the user's own credential, not a
+      // missing sign-in: offering OAuth here would send them in circles.
+      return options.tokenSent
+        ? "The server rejected this token (HTTP 401). Check that it is the credential this endpoint wants, and that it has not expired."
+        : "This server asks clients to sign in with OAuth. Use Sign in to connect it.";
     }
 
     // The MCP client wraps HTTP failures; the status is the actionable part.
     const status = (err as { status?: unknown }).status;
+    const body = (err as { body?: unknown }).body;
     if (typeof status === "number") {
+      if (status === 404 || status === 405) {
+        return `This address is not an MCP endpoint (HTTP ${status}). Check the URL: it usually ends in /mcp.`;
+      }
+      if (typeof body === "string" && body.trimStart().startsWith("<")) {
+        return `The address answered with a web page instead of an MCP response (HTTP ${status}).`;
+      }
       return `${err.message} (HTTP ${status})`;
     }
     return err.message;

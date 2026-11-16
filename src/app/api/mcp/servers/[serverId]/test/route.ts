@@ -111,7 +111,7 @@ export async function POST(
     const needsAuth = isMcpOAuthRequired(err);
     if (needsAuth && stored) await cacheMcpOAuthChallenge(stored.id, err);
     return NextResponse.json(
-      { success: false, error: describeProbeError(err), needsAuth },
+      { success: false, error: describeProbeError(err, { tokenSent: Boolean(token) }), needsAuth },
       { status: 502 },
     );
   }
