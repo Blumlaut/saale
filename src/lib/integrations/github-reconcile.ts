@@ -88,7 +88,7 @@ export async function reconcileGithubSource(
   const decision = decideGithubSource({ method, source, facts });
 
   try {
-    await applyGithubSource(userId, decision.target);
+    await applyGithubSource(userId, decision.target, { cliLogin });
   } catch (err) {
     console.error(`Failed to apply the GitHub source "${decision.target}" for ${userId}:`, err);
     return {

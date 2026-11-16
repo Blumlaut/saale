@@ -21,12 +21,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { GITCONFIG_FILE, coderWorkspaceRoot } from "@/lib/coder/paths";
-import { ensureGitconfig, gitIdentityFor, withCredentialHelper } from "@/lib/coder/gitconfig";
+import {
+  ensureGitconfig,
+  gitIdentityFor,
+  withCredentialHelper,
+  withoutCredentialHelper,
+} from "@/lib/coder/gitconfig";
 import { prisma } from "@/lib/db";
 import { GITHUB_HOST_URL } from "./github";
 import { isNotFoundError } from "@/lib/files/errors";
 import { writeWorkspaceFile } from "@/lib/sandbox/workspace";
-import { signOutGithub } from "@/lib/coder/github";
+import { signOutGithub, pointGitAtGh } from "@/lib/coder/github";
 import { ensureAdminSettings, ensureUserSettings } from "@/lib/settings/update";
 import { GithubAppError, readGithubUserAccess } from "./github-app";
 import {
@@ -138,6 +143,11 @@ export function githubHelperCommand(userId: string): string {
   return `!${path.join(coderWorkspaceRoot(userId), GITHUB_HELPER_FILE)}`;
 }
 
+/** Whether a `.gitconfig` helper entry is the one Saale wrote. */
+function isSaaleHelper(helper: string): boolean {
+  return helper.endsWith(`/${GITHUB_HELPER_FILE}`);
+}
+
 /**
  * Give the workspace the helper of the active source, and no other.
  *
@@ -145,6 +155,11 @@ export function githubHelperCommand(userId: string): string {
  * that is already the only one and matches leaves the file untouched. A `.gitconfig`
  * that does not exist yet is created with just this subsection — the commit
  * identity is `ensureGitconfig`'s job, not this one's.
+ *
+ * Leaving the app source takes Saale's own entry away and nothing else: the
+ * helper `gh auth setup-git` wrote is the credential git falls back on while the
+ * CLI owns the login, and emptying the subsection instead leaves a plain
+ * `git push` with no username to try.
  */
 export async function applyGithubHelper(userId: string, source: GithubSource | ""): Promise<void> {
   const target = path.join(coderWorkspaceRoot(userId), GITCONFIG_FILE);
@@ -154,8 +169,10 @@ export async function applyGithubHelper(userId: string, source: GithubSource | "
     throw err;
   });
 
-  const command = source === "app" ? githubHelperCommand(userId) : null;
-  const body = withCredentialHelper(existing, GITHUB_HOST_URL, command);
+  const body =
+    source === "app"
+      ? withCredentialHelper(existing, GITHUB_HOST_URL, githubHelperCommand(userId))
+      : withoutCredentialHelper(existing, GITHUB_HOST_URL, isSaaleHelper);
   if (body === existing) return;
 
   await writeWorkspaceFile(userId, GITCONFIG_FILE, Buffer.from(body, "utf8"));
@@ -304,15 +321,21 @@ async function removeCredential(userId: string): Promise<void> {
  *
  * `app`: the helper and a token file, and `gh` is signed out of the workspace so
  * its own token cannot answer a command beside ours.
- * `cli` or nothing: our helper and file go away, and gh's own login — untouched
- * by Saale — is what commands use.
+ * `cli` or nothing: our helper and file go away, and gh's own login is what
+ * commands use — so a workspace that carried the app's helper gets gh's entry
+ * back, since ours took the place of it.
  */
-export async function applyGithubSource(userId: string, source: GithubSource | ""): Promise<void> {
+export async function applyGithubSource(
+  userId: string,
+  source: GithubSource | "",
+  options: { cliLogin?: string | null } = {},
+): Promise<void> {
   if (source !== "app") {
     await applyGithubHelper(userId, source);
     await removeCredential(userId);
     await removeGhShim(userId);
     await applyGitIdentity(userId, null);
+    if (options.cliLogin) await pointGitAtGh(userId);
     return;
   }
 

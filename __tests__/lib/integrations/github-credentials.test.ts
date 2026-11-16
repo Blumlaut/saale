@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { withCredentialHelper } from "@/lib/coder/gitconfig";
+import { withCredentialHelper, withoutCredentialHelper } from "@/lib/coder/gitconfig";
 import {
   GITHUB_CREDENTIAL_FILE,
   GITHUB_HELPER_FILE,
@@ -51,14 +51,30 @@ describe("withCredentialHelper", () => {
     expect(body).toContain("name = Ada");
   });
 
-  it("removes every helper in the subsection when nothing should be active", () => {
-    const existing = [HEADER, GH_HELPER, "\thelper = !/w/.local/bin/helper", ""].join("\n");
+  it("removes the helpers it is asked for and keeps the rest", () => {
+    const existing = [HEADER, "\thelper = ", GH_HELPER, "\thelper = !/w/h", ""].join("\n");
 
-    const body = withCredentialHelper(existing, SUBSECTION, null);
+    const body = withoutCredentialHelper(existing, SUBSECTION, (helper) => helper === "!/w/h");
+
+    expect(body).toBe([HEADER, "\thelper = ", GH_HELPER, ""].join("\n"));
+  });
+
+  it("keeps the subsection header when every helper in it goes", () => {
+    const existing = [HEADER, "\thelper = ", GH_HELPER, ""].join("\n");
+
+    const body = withoutCredentialHelper(existing, SUBSECTION, () => true);
 
     expect(body).not.toContain("helper =");
     // The subsection itself stays: another entry may be added to it later.
     expect(body).toContain(HEADER);
+  });
+
+  it("is idempotent", () => {
+    const strip = (body: string) =>
+      withoutCredentialHelper(body, SUBSECTION, (helper) => helper === "!/w/h");
+    const once = strip([HEADER, "\thelper = !/w/h", GH_HELPER, ""].join("\n"));
+
+    expect(strip(once)).toBe(once);
   });
 
   it("leaves another host and a bare credential section alone", () => {
@@ -126,6 +142,32 @@ describe("applyGithubHelper", () => {
     const body = await fs.readFile(configPath(), "utf8");
     expect(body).not.toContain(githubHelperCommand(USER));
     expect(body).not.toContain("helper =");
+  });
+
+  it("keeps a helper the app did not write when the source is not the app", async () => {
+    await fs.mkdir(path.dirname(configPath()), { recursive: true });
+    await fs.writeFile(configPath(), [HEADER, GH_HELPER, ""].join("\n"));
+
+    // With the app the entry is replaced; without it the CLI's helper is the
+    // only credential a plain `git push` has, so it stays as gh wrote it.
+    await applyGithubHelper(USER, "app");
+    const withApp = await fs.readFile(configPath(), "utf8");
+    expect(withApp).not.toContain("gh auth git-credential");
+
+    await applyGithubHelper(USER, "");
+
+    const body = await fs.readFile(configPath(), "utf8");
+    expect(body).not.toContain(githubHelperCommand(USER));
+  });
+
+  it("leaves a helper gh wrote in place when the source is not the app", async () => {
+    await fs.mkdir(path.dirname(configPath()), { recursive: true });
+    await fs.writeFile(configPath(), [HEADER, GH_HELPER, ""].join("\n"));
+
+    await applyGithubHelper(USER, "");
+    await applyGithubHelper(USER, "cli");
+
+    expect(await fs.readFile(configPath(), "utf8")).toBe([HEADER, GH_HELPER, ""].join("\n"));
   });
 
   it("writes nothing when the source is not the app and there is no config", async () => {

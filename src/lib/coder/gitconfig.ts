@@ -223,7 +223,7 @@ export function mergeGitconfig(existing: string, settings: readonly ManagedSetti
  * `[credential "https://github.com"]`, and git tries every helper in the list
  * until one answers with a username and a password — so "exactly one active
  * source" is only true when exactly one entry is there. This replaces the list
- * with `command`, or empties it when `command` is null.
+ * with `command`.
  *
  * Nothing else is touched: a bare `[credential]` section, another host's
  * subsection (`gist.github.com`, an enterprise instance) and every unrelated
@@ -233,7 +233,7 @@ export function mergeGitconfig(existing: string, settings: readonly ManagedSetti
 export function withCredentialHelper(
   existing: string,
   subsection: string,
-  command: string | null,
+  command: string,
 ): string {
   const out: string[] = [];
   let section: string | null = null;
@@ -265,15 +265,52 @@ export function withCredentialHelper(
     if (inTarget && line.trim()) contentIndex = out.length - 1;
   }
 
-  if (command !== null) {
-    const wanted = `\thelper = ${command}`;
-    if (headerIndex !== null) {
-      out.splice((contentIndex ?? headerIndex) + 1, 0, wanted);
-    } else {
-      // A fresh subsection, at the end, without doubling a blank line.
-      while (out.length > 0 && (out.at(-1) ?? "").trim() === "") out.pop();
-      out.push(`[credential "${subsection}"]`, wanted, "");
+  const wanted = `\thelper = ${command}`;
+  if (headerIndex !== null) {
+    out.splice((contentIndex ?? headerIndex) + 1, 0, wanted);
+  } else {
+    // A fresh subsection, at the end, without doubling a blank line.
+    while (out.length > 0 && (out.at(-1) ?? "").trim() === "") out.pop();
+    out.push(`[credential "${subsection}"]`, wanted, "");
+  }
+
+  return out.join("\n");
+}
+
+/**
+ * `existing` with the helpers `shouldRemove` names taken out of one subsection.
+ *
+ * Only the entries asked for go. A helper gh wrote with `gh auth setup-git`, or
+ * one somebody added by hand, is the credential a workspace falls back on while
+ * the app is not the source, so removing it would leave git with none at all —
+ * and a push then fails with "could not read Username".
+ */
+export function withoutCredentialHelper(
+  existing: string,
+  subsection: string,
+  shouldRemove: (helper: string) => boolean,
+): string {
+  const out: string[] = [];
+  let section: string | null = null;
+  let current: string | null = null;
+
+  for (const line of existing.split("\n")) {
+    const header = SECTION_PATTERN.exec(line);
+    if (header) {
+      section = (header[1] ?? "").toLowerCase();
+      current = header[2] ?? null;
+      out.push(line);
+      continue;
     }
+
+    if (section === "credential" && current === subsection && !COMMENT_PATTERN.test(line)) {
+      const entry = ENTRY_PATTERN.exec(line);
+      if (entry && (entry[1] ?? "").toLowerCase() === "helper") {
+        if (shouldRemove((entry[2] ?? "").trim())) continue;
+      }
+    }
+
+    out.push(line);
   }
 
   return out.join("\n");

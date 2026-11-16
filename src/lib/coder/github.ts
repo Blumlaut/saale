@@ -237,9 +237,10 @@ function launchLogin(userId: string): LoginAttempt {
  * Point git at gh's credential helper.
  *
  * gh does this itself at the end of a login; the explicit call keeps the
- * guarantee here rather than in the CLI's own defaults.
+ * guarantee here rather than in the CLI's own defaults, and puts the entry back
+ * after the app's helper took its place.
  */
-async function pointGitAtGh(userId: string): Promise<void> {
+export async function pointGitAtGh(userId: string): Promise<void> {
   try {
     const result = await runInWorkspace(userId, {
       cwd: ".",
