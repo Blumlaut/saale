@@ -137,6 +137,32 @@ function normalizeContentType(raw: string): string | undefined {
   return match && match[1] ? match[1].trim().toLowerCase() : undefined;
 }
 
+
+function rawFetchResult(
+  url: string,
+  finalUrl: string,
+  statusCode: number,
+  contentType: string,
+  rawBody: string,
+  maxChars: number,
+  format: FetchFormat,
+): FetchResult {
+  return {
+    url,
+    finalUrl,
+    statusCode,
+    mimeType: normalizeContentType(contentType),
+    contentLength: rawBody.length,
+    title: undefined,
+    author: undefined,
+    description: undefined,
+    siteName: undefined,
+    publishedDate: undefined,
+    content: truncateContent(rawBody, maxChars),
+    format,
+  };
+}
+
 function isTextualContentType(contentType: string): boolean {
   const normalized = contentType.toLowerCase();
   return (
@@ -438,20 +464,7 @@ async function fetchWithRedirects(
 
   // Handle raw format
   if (format === "raw") {
-    return {
-      url,
-      finalUrl,
-      statusCode,
-      mimeType: normalizeContentType(contentType),
-      contentLength: rawBody.length,
-      title: undefined,
-      author: undefined,
-      description: undefined,
-      siteName: undefined,
-      publishedDate: undefined,
-      content: truncateContent(rawBody, maxChars),
-      format: "raw",
-    };
+    return rawFetchResult(url, finalUrl, statusCode, contentType, rawBody, maxChars, "raw");
   }
 
   // Handle JSON responses
@@ -531,36 +544,10 @@ async function fetchWithRedirects(
       };
     } catch {
       // Fallback: return raw body as text
-      return {
-        url,
-        finalUrl,
-        statusCode,
-        mimeType: normalizeContentType(contentType),
-        contentLength: rawBody.length,
-        title: undefined,
-        author: undefined,
-        description: undefined,
-        siteName: undefined,
-        publishedDate: undefined,
-        content: truncateContent(rawBody, maxChars),
-        format: "text",
-      };
+      return rawFetchResult(url, finalUrl, statusCode, contentType, rawBody, maxChars, "text");
     }
   }
 
   // Fallback for unknown content types
-  return {
-    url,
-    finalUrl,
-    statusCode,
-    mimeType: normalizeContentType(contentType),
-    contentLength: rawBody.length,
-    title: undefined,
-    author: undefined,
-    description: undefined,
-    siteName: undefined,
-    publishedDate: undefined,
-    content: truncateContent(rawBody, maxChars),
-    format: "text",
-  };
+  return rawFetchResult(url, finalUrl, statusCode, contentType, rawBody, maxChars, "text");
 }
