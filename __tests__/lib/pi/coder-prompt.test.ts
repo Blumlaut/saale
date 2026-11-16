@@ -189,16 +189,15 @@ describe("buildCoderSystemPrompt custom instructions", () => {
 describe("buildCoderSystemPrompt with the GitHub app", () => {
   const prompt = buildCoderSystemPrompt({ toolConfig: { terminal: true }, githubApp: true });
 
-  it("names the installation, not the chat, as the boundary", () => {
-    expect(prompt).toContain("Saale mints a `GH_TOKEN` for each command");
-    expect(prompt).toContain("carries every repository GitHub approved for the app");
-    expect(prompt).toContain("The installation is the ceiling, not this chat");
-    expect(prompt).toContain("that is the boundary, not a bug");
+  it("says the commands are authenticated, and that a refusal is the boundary", () => {
+    expect(prompt).toContain("`GH_TOKEN` is set for every command you run");
+    expect(prompt).toContain("`git` and `gh` are authenticated");
+    expect(prompt).toContain("A refusal from GitHub is a boundary");
   });
 
   it("warns off signing the CLI in and off printing the token", () => {
-    expect(prompt).toContain("Do not run `gh auth login`");
-    expect(prompt).toContain("Never print the token");
+    expect(prompt).toContain("do not run `gh auth login`");
+    expect(prompt).toContain("never print the token");
   });
 
   it("replaces the sentence about the user's own variable", () => {
@@ -208,7 +207,7 @@ describe("buildCoderSystemPrompt with the GitHub app", () => {
       githubApp: true,
     });
     expect(withVariable).not.toContain("`GH_TOKEN` is set in your environment");
-    expect(withVariable).toContain("Saale mints a `GH_TOKEN`");
+    expect(withVariable).toContain("`GH_TOKEN` is set for every command");
   });
 
   it("stays out of the prompt without the app", () => {
@@ -217,6 +216,6 @@ describe("buildCoderSystemPrompt with the GitHub app", () => {
       sandboxEnvNames: ["GH_TOKEN"],
     });
     expect(without).not.toContain("not signed in");
-    expect(without).not.toContain("that is the boundary");
+    expect(without).not.toContain("A refusal from GitHub is a boundary");
   });
 });

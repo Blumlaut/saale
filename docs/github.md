@@ -55,9 +55,9 @@ secret**. The app id and the client id are on the same page.
 **Save and verify**. Saale signs a JWT with the key and reads `GET /app`, so a
 wrong id or key is refused at the form instead of failing in the first chat. That
 answer also carries the app's permissions, and the form says which of the ones
-above it was registered without — the picker's permission included, with what it
-costs. The panel keeps checking: it re-reads `GET /app` whenever it opens, warns
-about anything missing, and says so plainly when nothing is. The secret and the
+above it was registered without, with what each costs. The panel keeps checking:
+it re-reads `GET /app` whenever it opens, warns about anything missing, and says
+so plainly when nothing is. The secret and the
 key are stored encrypted and never shown again.
 
 The app can be switched off there without deleting it. Removing it deletes the
@@ -124,15 +124,21 @@ credential answers as before. A repository the installation does not cover is no
 in the token either — GitHub refuses that push, and Saale writes the reason to the
 log next to it.
 
+What that reach costs is worth naming: a chat that reads hostile text — an issue
+body, a pull request comment, a fetched page — can be steered into pushing to any
+repository the installation was granted, not only the one it works in. The
+installation's set is the boundary that holds; nothing inside Saale is narrower.
+
 That boundary holds for the commands Saale starts, and it is worth saying plainly
 where it stops: the workspace keeps a token file (the account's own token) so a
 terminal and `gh` work outside a chat, and that file is readable from inside the
 workspace. An agent that goes looking for a second credential will find one. The
-per-chat token is therefore least privilege by default, not a sandbox.
+chat's token is therefore a permission boundary, not a sandbox.
 
-Tokens live one hour and are cached until a minute before they expire; a token
-already minted for a repository that was removed keeps working until then,
-because GitHub does not revoke installation tokens when an installation shrinks.
+Tokens live one hour and are cached until a minute before they expire; an
+installation token keeps working until then, even after a repository is removed
+from the installation, because GitHub does not revoke installation tokens when an
+installation shrinks.
 
 ### Instance-wide setting
 
@@ -144,14 +150,13 @@ is read on every reconcile, so changing it takes effect at the next read.
 
 ## When something does not work
 
-| What you see                                     | Why                                                                    | Fix                                                                     |
-| ------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `GitHub refused these credentials` when saving   | app id and key do not belong together, or the key was truncated        | paste the whole `.pem`, including the BEGIN/END lines                   |
-| `The private key could not be read`              | the pasted key is not a PEM file (both PKCS#1 and PKCS#8 are accepted) | download it again from the app's settings                               |
-| The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                             |
-| `The app may not change its own installations`   | the app was registered without `installation_repositories: write`      | add the permission on GitHub, then approve it once for the installation |
-| A push fails with `403` in a chat                | the installation does not cover that repository                        | add it on GitHub, under the installation's repository access            |
-| Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                                   |
+| What you see                                     | Why                                                                    | Fix                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `GitHub refused these credentials` when saving   | app id and key do not belong together, or the key was truncated        | paste the whole `.pem`, including the BEGIN/END lines        |
+| `The private key could not be read`              | the pasted key is not a PEM file (both PKCS#1 and PKCS#8 are accepted) | download it again from the app's settings                    |
+| The card says `Not installed on any account yet` | authorization succeeded, installation did not                          | open the install page and pick repositories                  |
+| A push fails with `403` in a chat                | the installation does not cover that repository                        | add it on GitHub, under the installation's repository access |
+| Commands use the old login after switching       | the reconcile is throttled to a minute                                 | read the card again, or wait a minute                        |
 
 ## Several accounts on one instance
 
@@ -178,8 +183,8 @@ Two things decide what a stranger gets:
 - **Who installs it, sets the ceiling.** The installer picks the repositories
   (or grants all), and that set is what every chat of theirs may reach: Saale
   narrows to the chat's permissions, not to its repository. Changing the set
-  later needs admin access on the repository, which is why a plain member sees an
-  empty picker.
+  later needs admin access on the repository, which is why a plain member cannot
+  change it — the card only points at GitHub's page.
 
 Signing one account out removes only its own token and access rows; the
 installation stays, because another account may still use it. Deleting the app
