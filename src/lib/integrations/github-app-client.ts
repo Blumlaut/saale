@@ -351,18 +351,17 @@ export async function listInstallationRepositories(
   return repositories.map((entry) => entry.name);
 }
 
-/** A repository, as the repository picker lists it. */
+/** A repository, as the installation's repository list shows it. */
 export interface GithubRepositoryRef {
-  /** GitHub's numeric id — what adding to an installation takes. */
+  /** GitHub's numeric id, unique per repository. */
   id: string;
   name: string;
   /** `owner/name`. */
   fullName: string;
 }
 
-/** A repository the account could hand to an installation, and may it. */
 /**
- * The repositories one installation covers, with the ids needed to change them.
+ * The repositories one installation covers.
  *
  * Read with the user's token: GitHub answers with the repositories that user may
  * use through that installation, which is exactly the set Saale should show as
