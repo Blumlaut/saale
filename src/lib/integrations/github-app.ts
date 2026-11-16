@@ -253,7 +253,7 @@ export async function readGithubAppSummary(): Promise<GithubAppSummary | null> {
 export async function readGithubAppSummaryFresh(): Promise<GithubAppSummary | null> {
   const summary = await readGithubAppSummary();
   if (!summary) return null;
-  const permissions = await refreshGithubAppPermissions();
+  const permissions = await refreshGithubAppPermissions(summary);
   return {
     ...summary,
     permissions,
@@ -796,13 +796,19 @@ async function requireInstallationAccess(userId: string, installationId: string)
  *
  * The stored copy is only as fresh as the last save in the admin panel, and a
  * permission added on GitHub is exactly the change that happens without Saale
- * knowing: the card would keep saying the picker cannot work, or offer a save
- * GitHub refuses. One `GET /app` beside a picker read is cheaper than being
- * wrong, and a read GitHub refuses leaves the stored set alone.
+ * knowing: the panel would keep reporting what the app was registered with, and
+ * an admin who just granted the missing one would see the old verdict. One
+ * `GET /app` when the panel opens is cheaper than being wrong, and a read GitHub
+ * refuses leaves the stored set alone.
+ *
+ * `stored` is the row the caller already read. The comparison is entry by entry
+ * rather than over serialised text: the column is `jsonb`, which hands its keys
+ * back in its own order, so two equal sets would differ on every read and write
+ * on every panel open.
  */
-async function refreshGithubAppPermissions(): Promise<Record<string, string> | null> {
-  const stored = await readGithubAppSummary();
-  if (!stored) return null;
+async function refreshGithubAppPermissions(
+  stored: GithubAppSummary,
+): Promise<Record<string, string> | null> {
   const credentials = await readGithubAppCredentials();
   if (!credentials) return stored.permissions;
 
@@ -813,10 +819,12 @@ async function refreshGithubAppPermissions(): Promise<Record<string, string> | n
     });
     const identity = await readAppIdentity(jwt);
     const fresh = identity.permissions ?? null;
-    if (JSON.stringify(fresh) !== JSON.stringify(stored.permissions)) {
+    // No set to store: an update with empty data would still bump `updatedAt`.
+    if (!fresh) return null;
+    if (!samePermissions(fresh, stored.permissions)) {
       await prisma.githubApp.update({
         where: { id: GITHUB_APP_ID },
-        data: fresh ? { permissions: fresh as Prisma.InputJsonValue } : {},
+        data: { permissions: fresh as Prisma.InputJsonValue },
       });
     }
     return fresh;
@@ -824,6 +832,19 @@ async function refreshGithubAppPermissions(): Promise<Record<string, string> | n
     console.error("Failed to re-read the GitHub App's permissions:", err);
     return stored.permissions;
   }
+}
+
+/** Whether two permission sets say the same thing, in whatever order they arrive. */
+function samePermissions(
+  fresh: Record<string, string>,
+  stored: Record<string, string> | null | undefined,
+): boolean {
+  if (!stored) return false;
+  const names = Object.keys(fresh);
+  return (
+    names.length === Object.keys(stored).length &&
+    names.every((name) => fresh[name] === stored[name])
+  );
 }
 
 /**
@@ -861,12 +882,12 @@ export async function readGithubInstallationRepositories(
 // ─── Minting ────────────────────────────────────────────────────────────────
 
 /**
- * An installation token for one repository (or the whole installation).
+ * An installation token, for the whole installation unless a scope narrows it.
  *
  * Only an account with an access row may mint: the check is here rather than in
  * the caller, because an installation id is a guessable number. The token is
  * cached in Redis until a minute before it expires, keyed by installation and by
- * the scope, so two chats on different repositories do not share one.
+ * the scope, so two chats that ask for the same one share it.
  */
 export async function mintGithubInstallationToken(options: {
   userId: string;
