@@ -46,6 +46,7 @@ function renderBox(overrides: Partial<Parameters<typeof TelegramBox>[0]> = {}) {
       link={link}
       bot={bot}
       chats={[]}
+      loading={false}
       unlinking={false}
       removingChatId={null}
       onUnlink={onUnlink}
@@ -103,6 +104,14 @@ describe("TelegramBox", () => {
 
     // The id is the identity; the name is only a cache of what Telegram told us.
     expect(screen.getByText("ID 119075844")).toBeInTheDocument();
+  });
+
+  it("claims nothing while the integration is still being read", () => {
+    renderBox({ loading: true });
+
+    expect(screen.getByText("Checking…")).toBeInTheDocument();
+    expect(screen.queryByText("@saale_bot")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Link Telegram/ })).not.toBeInTheDocument();
   });
 
   it("offers a link button instead of a status when nothing is linked", () => {

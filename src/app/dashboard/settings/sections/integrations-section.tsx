@@ -33,8 +33,6 @@ export function IntegrationsSection() {
   const telegram = useTelegramIntegration();
   const { settings, update, saveState } = useUserSettings();
 
-  const initialLoading = telegram.loading;
-
   // Link dialog
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
 
@@ -66,15 +64,7 @@ export function IntegrationsSection() {
     }
   }, [deleteIntegrationId, telegram]);
 
-  // ─── Render ───────────────────────────────────────────────────────
-
-  if (initialLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="text-muted-foreground h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -96,6 +86,7 @@ export function IntegrationsSection() {
               link={telegram.link}
               bot={telegram.bot}
               chats={telegram.chats}
+              loading={telegram.loading}
               unlinking={telegram.unlinking}
               removingChatId={telegram.removingChatId}
               onRemoveChat={telegram.removeChat}

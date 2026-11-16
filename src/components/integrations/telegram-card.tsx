@@ -52,6 +52,7 @@ export function TelegramBox({
   link,
   bot,
   chats,
+  loading,
   unlinking,
   removingChatId,
   onUnlink,
@@ -66,6 +67,8 @@ export function TelegramBox({
   bot: TelegramBotStatus;
   /** Groups the bot may post into. */
   chats: TelegramChat[];
+  /** The integration is still being read, so the box claims nothing yet. */
+  loading: boolean;
   unlinking: boolean;
   /** Chat id currently being removed, so its row shows the spinner. */
   removingChatId: string | null;
@@ -86,14 +89,19 @@ export function TelegramBox({
       manifest={INTEGRATION_MAP.get("telegram")!}
       connected={!!link}
       badges={
-        bot.username ? (
+        !loading && bot.username ? (
           <Badge variant="secondary" className="rounded-full">
             @{bot.username}
           </Badge>
         ) : null
       }
     >
-      {link ? (
+      {loading ? (
+        <div className="flex items-center gap-2 py-2">
+          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+          <span className="text-muted-foreground text-xs">Checking…</span>
+        </div>
+      ) : link ? (
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs break-all">
@@ -134,7 +142,7 @@ export function TelegramBox({
         </Button>
       )}
 
-      {link && (
+      {!loading && link && (
         <div className="mt-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <Label htmlFor="telegram-tool-notices">Tool call notices</Label>
@@ -154,7 +162,7 @@ export function TelegramBox({
         </div>
       )}
 
-      {chats.length > 0 && (
+      {!loading && chats.length > 0 && (
         <div className="mt-4 space-y-2">
           <p className="console-label">Groups</p>
           <ul className="space-y-1">

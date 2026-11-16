@@ -11,6 +11,12 @@ const WEBHOOK_PATH = "/api/integrations/telegram/webhook";
 /** Telegram answers in seconds or not at all; a hung call must not hold a page. */
 const TELEGRAM_REQUEST_TIMEOUT_MS = 10_000;
 
+/** An abort signal for one call, so nothing waits on a Telegram that went quiet. */
+function requestTimeout() {
+  // grammy types the signal against Node's polyfill; it takes a plain AbortSignal at runtime.
+  return AbortSignal.timeout(TELEGRAM_REQUEST_TIMEOUT_MS) as never;
+}
+
 /** Telegram's caption ceiling; a longer one is rejected along with the file. */
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 
@@ -71,9 +77,7 @@ export function createBot(encryptedToken: string): Bot<Context> {
  */
 export async function validateBotToken(botToken: string) {
   const bot = new Bot(botToken);
-  // grammy types the signal against Node's polyfill; it takes a plain AbortSignal at runtime.
-  const signal = AbortSignal.timeout(TELEGRAM_REQUEST_TIMEOUT_MS) as never;
-  const me = await bot.api.getMe(signal);
+  const me = await bot.api.getMe(requestTimeout());
 
   if (!me.is_bot) {
     throw new Error("Invalid bot token. this is not a bot account");
@@ -308,25 +312,27 @@ export async function getTelegramChatInfo(
   chatId: bigint,
 ): Promise<TelegramChatInfo> {
   const bot = createBot(encryptedToken);
-  const chat = await bot.api.getChat(Number(chatId));
-
-  const memberCount = await bot.api.getChatMemberCount(Number(chatId)).catch((err: unknown) => {
-    console.warn(`Telegram refused the member count for chat ${chatId}:`, err);
-    return null;
-  });
+  // Both calls go out together: either one on its own is enough to hold a page.
+  const memberCount = bot.api
+    .getChatMemberCount(Number(chatId), requestTimeout())
+    .catch((err: unknown) => {
+      console.warn(`Telegram refused the member count for chat ${chatId}:`, err);
+      return null;
+    });
+  const chat = await bot.api.getChat(Number(chatId), requestTimeout());
 
   return {
     chatId,
     title: "title" in chat ? (chat.title ?? null) : null,
     kind: chat.type,
-    memberCount,
+    memberCount: await memberCount,
   };
 }
 
 /** Leave a group, so a refused add does not leave the bot sitting in it. */
 export async function leaveTelegramChat(encryptedToken: string, chatId: bigint): Promise<void> {
   const bot = createBot(encryptedToken);
-  await bot.api.leaveChat(Number(chatId));
+  await bot.api.leaveChat(Number(chatId), requestTimeout());
 }
 
 /** Escape text for a Telegram HTML message. A group title is not ours to trust. */

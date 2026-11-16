@@ -54,13 +54,13 @@ async function refreshStaleChats(chats: TelegramChat[]): Promise<TelegramChat[]>
   const bot = await getTelegramBot();
   if (!bot?.enabled) return chats;
 
+  // Asked at once, so the wait is one deadline rather than one per group.
   const refreshed = new Map<string, TelegramChat>();
-  for (const chat of stale) {
-    try {
-      const info = await getTelegramChatInfo(bot.encryptedToken, chat.chatId);
-      refreshed.set(
-        chat.id,
-        await prisma.telegramChat.update({
+  await Promise.all(
+    stale.map(async (chat) => {
+      try {
+        const info = await getTelegramChatInfo(bot.encryptedToken, chat.chatId);
+        const row = await prisma.telegramChat.update({
           where: { id: chat.id },
           data: {
             title: info.title,
@@ -68,14 +68,15 @@ async function refreshStaleChats(chats: TelegramChat[]): Promise<TelegramChat[]>
             memberCount: info.memberCount,
             syncedAt: new Date(),
           },
-        }),
-      );
-    } catch (err) {
-      // The cached title is better than none, and the bot may simply have been
-      // removed from the group.
-      console.warn(`[telegram] Failed to refresh group ${chat.chatId}:`, err);
-    }
-  }
+        });
+        refreshed.set(chat.id, row);
+      } catch (err) {
+        // The cached title is better than none, and the bot may simply have been
+        // removed from the group.
+        console.warn(`[telegram] Failed to refresh group ${chat.chatId}:`, err);
+      }
+    }),
+  );
 
   return chats.map((chat) => refreshed.get(chat.id) ?? chat);
 }
