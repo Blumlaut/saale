@@ -37,7 +37,7 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 export async function startFakeOAuthServer(
-  options: { accessToken?: string } = {},
+  options: { accessToken?: string; clientMetadataDocument?: boolean } = {},
 ): Promise<FakeOAuthServer> {
   const accessToken = options.accessToken ?? "access-token-1";
   const refreshToken = "refresh-token-1";
@@ -69,6 +69,12 @@ export async function startFakeOAuthServer(
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
             token_endpoint_auth_methods_supported: ["none"],
+            ...(options.clientMetadataDocument
+              ? {
+                  client_id_metadata_document_supported: true,
+                  authorization_response_iss_parameter_supported: true,
+                }
+              : {}),
           });
           return;
 
@@ -92,6 +98,8 @@ export async function startFakeOAuthServer(
           redirect.searchParams.set("code", code);
           const state = requestUrl.searchParams.get("state");
           if (state) redirect.searchParams.set("state", state);
+          // RFC 9207: a server that promises the `iss` parameter sends it.
+          if (options.clientMetadataDocument) redirect.searchParams.set("iss", origin);
 
           res.writeHead(302, { location: redirect.href });
           res.end();

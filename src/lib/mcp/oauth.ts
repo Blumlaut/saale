@@ -29,6 +29,7 @@ import {
   McpOAuthAuthorizationRequiredError,
   McpOAuthProvider,
   parseWwwAuthenticate,
+  type AuthorizationServerMetadata,
   type McpOAuthState,
   type McpOAuthStateStore,
   type OAuthChallenge,
@@ -88,6 +89,50 @@ export function mcpOAuthRedirectUrl(): string {
 }
 
 /**
+ * Where this instance's client metadata document is served. A server that reads
+ * Client ID Metadata Documents takes this URL as the client id, so it can check
+ * who is signing in without a registration step.
+ */
+export function mcpOAuthClientMetadataUrl(): string {
+  return `${getPublicUrl()}/api/mcp/oauth/client-metadata`;
+}
+
+/** The document itself: what this client is called, and where it comes back to. */
+export async function mcpOAuthClientMetadata(): Promise<Record<string, unknown>> {
+  return {
+    client_id: mcpOAuthClientMetadataUrl(),
+    client_name: await getWorkspaceName(),
+    client_uri: getPublicUrl(),
+    redirect_uris: [mcpOAuthRedirectUrl()],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none",
+  };
+}
+
+/**
+ * Whether a sign-in may identify as this instance's document. The document is
+ * one for every server, which is safe only where the server returns the `iss`
+ * parameter it promised (RFC 9207). Without that, a code meant for another
+ * server could arrive here.
+ */
+function acceptsClientMetadataDocument(metadata: AuthorizationServerMetadata | undefined): boolean {
+  return Boolean(
+    metadata?.client_id_metadata_document_supported &&
+    metadata.authorization_response_iss_parameter_supported &&
+    metadata.token_endpoint_auth_methods_supported?.includes("none"),
+  );
+}
+
+/** The document to identify with, or undefined to register instead. */
+function clientMetadataDocumentFor(metadata: AuthorizationServerMetadata | undefined) {
+  const url = mcpOAuthClientMetadataUrl();
+  // A document is read over https; a dev server's http address cannot serve one.
+  if (!url.startsWith("https:") || !acceptsClientMetadataDocument(metadata)) return undefined;
+  return { url, redirectUrl: mcpOAuthRedirectUrl() };
+}
+
+/**
  * Pi's OAuth state for one server, encrypted at rest.
  *
  * Pi calls `save` for every change (discovery, PKCE verifier, tokens), so the
@@ -140,6 +185,9 @@ async function createOAuthClientProvider(
     serverUrl: server.url,
     redirectUrl: mcpOAuthRedirectUrl(),
     clientMetadata: { client_name: await getWorkspaceName() },
+    // Servers that read a metadata document take this instance's own address as
+    // the client, which needs no registration and no loopback callback.
+    clientMetadataDocument: clientMetadataDocumentFor,
     store: createOAuthStateStore(server),
     onRedirect,
   });

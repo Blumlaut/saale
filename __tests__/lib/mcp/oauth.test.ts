@@ -89,6 +89,8 @@ import {
   hasMcpOAuthCredential,
   loadMcpOAuthCredentialIds,
   markMcpOAuthSignInSucceeded,
+  mcpOAuthClientMetadata,
+  mcpOAuthClientMetadataUrl,
   mcpOAuthRedirectUrl,
   readMcpOAuthFlow,
   resolveMcpOAuthState,
@@ -190,6 +192,57 @@ describe("MCP OAuth", () => {
 
     const result = await probeMcpServer({ url: target.url, authProvider: provider });
     expect(result.tools.map((tool) => tool.name)).toEqual(["HassTurnOn"]);
+  });
+
+  it("identifies with this instance's document where the server reads one", async () => {
+    const documented = await startFakeOAuthServer({ clientMetadataDocument: true });
+    const documentedServer = await startFakeMcpServer({
+      requireToken: documented.accessToken,
+      challenge: `Bearer resource_metadata="${documented.url}/.well-known/oauth-protected-resource"`,
+    });
+    documented.setResourceUrl(documentedServer.url);
+    const target = { id: "srv-2", userId: USER_ID, name: "documented", url: documentedServer.url };
+
+    try {
+      // The connection learns where the server wants the sign-in to happen.
+      await probeMcpServer({
+        url: target.url,
+        authProvider: createMcpAuthProvider(target),
+      }).catch((err) => {
+        if (!(err instanceof McpOAuthAuthorizationRequiredError)) throw err;
+      });
+
+      const start = await startMcpOAuthSignIn(target);
+      if (start.status !== "pending" || !start.authorizationUrl) {
+        throw new Error("expected a browser sign-in");
+      }
+      const authorizationUrl = new URL(start.authorizationUrl);
+
+      // The document's address is the client, so nothing is registered.
+      expect(authorizationUrl.searchParams.get("client_id")).toBe(mcpOAuthClientMetadataUrl());
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(mcpOAuthRedirectUrl());
+      expect(documented.registrationRequests).toHaveLength(0);
+
+      const redirect = await fetch(start.authorizationUrl, { redirect: "manual" });
+      const callback = new URL(redirect.headers.get("location")!);
+      await completeMcpOAuthSignIn(target, {
+        code: callback.searchParams.get("code")!,
+        iss: callback.searchParams.get("iss")!,
+      });
+
+      expect(await createMcpAuthProvider(target).token()).toBe(documented.accessToken);
+    } finally {
+      await documentedServer.close();
+      await documented.close();
+    }
+  });
+
+  it("describes this instance in its client metadata document", async () => {
+    const document = await mcpOAuthClientMetadata();
+
+    expect(document.client_id).toBe(mcpOAuthClientMetadataUrl());
+    expect(document.redirect_uris).toEqual([mcpOAuthRedirectUrl()]);
+    expect(document.token_endpoint_auth_method).toBe("none");
   });
 
   it("reports needs-auth before any sign-in is stored", async () => {
