@@ -597,7 +597,6 @@ describe("the app's permissions against Saale's needs", () => {
         workflows: "write",
         checks: "read",
         metadata: "read",
-        installation_repositories: "write",
       },
     });
 
@@ -607,6 +606,27 @@ describe("the app's permissions against Saale's needs", () => {
     expect(db.githubApp.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "global" } }),
     );
+  });
+
+  it("writes nothing when GitHub says what was already stored", async () => {
+    // The column is `jsonb`, so the row hands its keys back in Postgres' own
+    // order rather than GitHub's. Equal sets must therefore not reach the table:
+    // the panel reads this on every open, and an update would bump `updatedAt`.
+    db.githubApp.findUnique.mockResolvedValue({
+      ...APP_ROW,
+      permissions: { metadata: "read", checks: "read", workflows: "write" },
+    });
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+      permissions: { workflows: "write", checks: "read", metadata: "read" },
+    });
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.permissions).toEqual({ workflows: "write", checks: "read", metadata: "read" });
+    expect(db.githubApp.update).not.toHaveBeenCalled();
   });
 
   it("keeps the stored set when GitHub cannot be asked", async () => {
