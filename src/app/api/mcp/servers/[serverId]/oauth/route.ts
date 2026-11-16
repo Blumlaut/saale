@@ -38,6 +38,7 @@ export async function GET(
     status: flow?.status ?? IDLE,
     error: flow?.error ?? null,
     authorizationUrl: flow?.authorizationUrl ?? null,
+    manual: flow?.manual ?? false,
     hasOAuth,
   });
 }

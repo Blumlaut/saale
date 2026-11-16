@@ -42,6 +42,7 @@ export function McpPanel() {
     testServer,
     startOAuth,
     readOAuthStatus,
+    completeOAuth,
     signOutOAuth,
     loadServers,
   } = useMcpServers();
@@ -206,6 +207,7 @@ export function McpPanel() {
         onStartOAuth={startOAuth}
         onOAuthStatus={readOAuthStatus}
         onSignOutOAuth={signOutOAuth}
+        onCompleteOAuth={completeOAuth}
       />
 
       <McpImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={importServers} />

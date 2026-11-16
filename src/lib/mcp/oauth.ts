@@ -29,11 +29,14 @@ import {
   McpOAuthAuthorizationRequiredError,
   McpOAuthProvider,
   parseWwwAuthenticate,
+  responseFromRedirectUrl,
   type AuthorizationServerMetadata,
   type McpOAuthState,
   type McpOAuthStateStore,
   type OAuthChallenge,
 } from "@earendil-works/pi-mcp/oauth";
+import { OAuthError, OAuthRegistrationError } from "@earendil-works/pi-mcp/oauth";
+import { registrationErrorCode } from "./oauth-errors";
 import { getWorkspaceName } from "@/lib/branding/workspace";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
@@ -72,6 +75,8 @@ export interface McpOAuthFlow {
   status: "pending" | "succeeded" | "failed";
   error: string | null;
   authorizationUrl: string | null;
+  /** The browser cannot deliver the answer, so the user pastes the address it ends on. */
+  manual: boolean;
 }
 
 /** The stored flow, which also carries what the callback needs to finish. */
@@ -80,7 +85,29 @@ interface StoredMcpOAuthFlow extends McpOAuthFlow {
   serverId: string;
   scope: string | null;
   resourceMetadataUrl: string | null;
+  /** Where the authorization request asked the browser to come back. */
+  redirectUrl: string;
+  /** The `state` the authorization response must carry. */
+  state: string;
   updatedAt: string;
+}
+
+/**
+ * The redirect URI for a server that will not call back to a public address:
+ * a loopback one, which the browser cannot reach. The user finishes the
+ * sign-in by pasting the address the browser ends on, the same way a terminal
+ * client does. Nothing listens on the port, so it only has to stay the same
+ * between the two halves of one sign-in.
+ */
+const LOOPBACK_REDIRECT_URL = "http://127.0.0.1:33418/callback";
+
+/** How long the check of a consent page may take. */
+const CONSENT_PROBE_TIMEOUT_MS = 10_000;
+
+/** Where a sign-in registered to send the browser, and whether it can answer. */
+interface SignInAttempt {
+  redirectUrl: string;
+  manual: boolean;
 }
 
 /** Redirect URI an authorization server sends the browser back to. */
@@ -172,22 +199,25 @@ function createOAuthStateStore(server: McpOAuthServer): McpOAuthStateStore {
 }
 
 /**
- * Pi's OAuth client for one server, against this instance's public redirect URI.
+ * Pi's OAuth client for one server, against the redirect URI this sign-in
+ * registered.
  *
  * The client name is what the server's consent page shows, so it carries the
- * instance's own name.
+ * instance's own name. A loopback sign-in registers like a native app, which is
+ * why it identifies with a document only where the redirect is our own address.
  */
 async function createOAuthClientProvider(
   server: McpOAuthServer,
   onRedirect: (url: URL) => void,
+  attempt: SignInAttempt,
 ): Promise<McpOAuthProvider> {
   return new McpOAuthProvider({
     serverUrl: server.url,
-    redirectUrl: mcpOAuthRedirectUrl(),
+    redirectUrl: attempt.redirectUrl,
     clientMetadata: { client_name: await getWorkspaceName() },
     // Servers that read a metadata document take this instance's own address as
     // the client, which needs no registration and no loopback callback.
-    clientMetadataDocument: clientMetadataDocumentFor,
+    ...(attempt.manual ? {} : { clientMetadataDocument: clientMetadataDocumentFor }),
     store: createOAuthStateStore(server),
     onRedirect,
   });
@@ -330,7 +360,11 @@ export function createMcpAuthProvider(server: McpOAuthServer): AuthProvider {
       const resourceMetadataUrl = challenge?.resourceMetadataUrl ?? cached?.resourceMetadataUrl;
       const scope = challenge?.scope;
 
-      const provider = await createOAuthClientProvider(server, () => {});
+      const provider = await createOAuthClientProvider(
+        server,
+        () => {},
+        attemptFromFlow(await readStoredFlow(server.id)),
+      );
       const result = await authorizeMcp(provider, {
         serverUrl: server.url,
         ...(resourceMetadataUrl ? { resourceMetadataUrl: new URL(resourceMetadataUrl) } : {}),
@@ -419,6 +453,7 @@ function toPublicFlow(flow: StoredMcpOAuthFlow): McpOAuthFlow {
     status: flow.status,
     error: flow.error,
     authorizationUrl: flow.authorizationUrl,
+    manual: flow.manual,
   };
 }
 
@@ -485,26 +520,68 @@ export interface McpOAuthStartResult {
   /** `succeeded` when the stored refresh token was still good and no browser is needed. */
   status: "pending" | "succeeded";
   authorizationUrl: string | null;
+  /** The browser cannot deliver the answer, so the user pastes the address it ends on. */
+  manual: boolean;
+}
+
+/** Codes that mean this server will not have this client, or its address. */
+const REFUSED_CLIENT_CODES = ["invalid_redirect_uri", "invalid_client_metadata", "invalid_client"];
+
+/** Whether a failed start means the server refused our address rather than failing. */
+function refusesClient(err: unknown): boolean {
+  if (err instanceof OAuthRegistrationError) {
+    const code = registrationErrorCode(err.body);
+    return code !== null && REFUSED_CLIENT_CODES.includes(code);
+  }
+  if (err instanceof OAuthError) return REFUSED_CLIENT_CODES.includes(err.code);
+  return false;
 }
 
 /**
- * Begin a sign-in: discover the authorization server, register a client when
- * needed, and produce the URL the user's browser must open.
- *
- * A server whose grant is still refreshable is completed here instead. the
- * same rule Pi's CLI applies to `/mcp` sign-in.
+ * Whether the consent page itself refuses this client. A server can advertise
+ * client metadata documents and then answer the authorization request with
+ * `invalid_client`, which leaves no callback to wait for.
  */
-export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOAuthStartResult> {
-  const challenge = await readMcpOAuthChallenge(server.id);
+async function refusesAuthorizationUrl(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(CONSENT_PROBE_TIMEOUT_MS),
+    });
+    if (response.status < 400) return false;
+    const parsed = JSON.parse(await response.text()) as { error?: unknown };
+    return typeof parsed.error === "string" && REFUSED_CLIENT_CODES.includes(parsed.error);
+  } catch (err) {
+    // An answer we cannot read says nothing about the client; the browser decides.
+    console.error("Failed to read the MCP authorization page:", err);
+    return false;
+  }
+}
+
+interface StartedSignIn {
+  result: McpOAuthStartResult;
+  /** The one-time `state`, kept so an abandoned attempt can be dropped. */
+  state: string;
+}
+
+/** Ask the server for a sign-in URL over one redirect URI. */
+async function startAttempt(
+  server: McpOAuthServer,
+  attempt: SignInAttempt,
+  challenge: McpOAuthChallengeInfo | null,
+): Promise<StartedSignIn> {
   const scope = challenge?.scope ?? null;
-
   let authorizationUrl: string | null = null;
-  const provider = await createOAuthClientProvider(server, (url) => {
-    authorizationUrl = url.href;
-  });
+  const provider = await createOAuthClientProvider(
+    server,
+    (url) => {
+      authorizationUrl = url.href;
+    },
+    attempt,
+  );
 
-  // Persist the CSRF state before the browser leaves, so the callback can find
-  // this server even after a reload or a different Saale process.
+  // Persist the CSRF state before the browser leaves, so the sign-in can be
+  // finished in another request or after a reload.
   const state = await provider.state();
   await getRedis().set(
     stateKey(state),
@@ -523,40 +600,97 @@ export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOA
     });
 
     if (result === "AUTHORIZED") {
-      const flow: StoredMcpOAuthFlow = {
+      await writeFlow({
         userId: server.userId,
         serverId: server.id,
         status: "succeeded",
         error: null,
         authorizationUrl: null,
+        manual: attempt.manual,
+        redirectUrl: attempt.redirectUrl,
+        state,
         scope,
         resourceMetadataUrl: challenge?.resourceMetadataUrl ?? null,
         updatedAt: new Date().toISOString(),
+      });
+      return {
+        result: { status: "succeeded", authorizationUrl: null, manual: attempt.manual },
+        state,
       };
-      await writeFlow(flow);
-      return { status: "succeeded", authorizationUrl: null };
     }
 
     if (!authorizationUrl) {
       throw new Error("The authorization server did not return a sign-in URL");
     }
 
-    const flow: StoredMcpOAuthFlow = {
+    await writeFlow({
       userId: server.userId,
       serverId: server.id,
       status: "pending",
       error: null,
       authorizationUrl,
+      manual: attempt.manual,
+      redirectUrl: attempt.redirectUrl,
+      state,
       scope,
       resourceMetadataUrl: challenge?.resourceMetadataUrl ?? null,
       updatedAt: new Date().toISOString(),
+    });
+    return {
+      result: { status: "pending", authorizationUrl, manual: attempt.manual },
+      state,
     };
-    await writeFlow(flow);
-    return { status: "pending", authorizationUrl };
   } catch (err) {
     await clearMcpOAuthState(state);
     throw err;
   }
+}
+
+/** The redirect URI and answer path of a stored sign-in, or the public one. */
+function attemptFromFlow(flow: StoredMcpOAuthFlow | null): SignInAttempt {
+  if (!flow) return { redirectUrl: mcpOAuthRedirectUrl(), manual: false };
+  return { redirectUrl: flow.redirectUrl, manual: flow.manual };
+}
+
+/**
+ * Begin a sign-in: discover the authorization server, register a client when
+ * needed, and produce the URL the user's browser must open.
+ *
+ * The public callback is tried first. A server that refuses it, or refuses the
+ * client behind it, gets a loopback redirect instead, which the browser cannot
+ * reach: the user pastes the address it ends on and Saale finishes there.
+ *
+ * A server whose grant is still refreshable is completed here instead, the same
+ * rule Pi's CLI applies to `/mcp` sign-in.
+ */
+export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOAuthStartResult> {
+  const challenge = await readMcpOAuthChallenge(server.id);
+
+  const publicAttempt = await startAttempt(
+    server,
+    { redirectUrl: mcpOAuthRedirectUrl(), manual: false },
+    challenge,
+  ).catch((err) => {
+    if (!refusesClient(err)) throw err;
+    console.error(`MCP server "${server.name}" refused the public callback:`, err);
+    return null;
+  });
+
+  if (publicAttempt) {
+    if (publicAttempt.result.status === "succeeded") return publicAttempt.result;
+    const authorizationUrl = publicAttempt.result.authorizationUrl;
+    if (authorizationUrl && !(await refusesAuthorizationUrl(authorizationUrl))) {
+      return publicAttempt.result;
+    }
+    await clearMcpOAuthState(publicAttempt.state);
+  }
+
+  const loopback = await startAttempt(
+    server,
+    { redirectUrl: LOOPBACK_REDIRECT_URL, manual: true },
+    challenge,
+  );
+  return loopback.result;
 }
 
 /**
@@ -568,10 +702,13 @@ export async function completeMcpOAuthSignIn(
   params: { code: string; iss?: string },
 ): Promise<void> {
   const started = await readStoredFlow(server.id);
-  const provider = await createOAuthClientProvider(server, () => {});
+  const attempt = attemptFromFlow(started);
+  const provider = await createOAuthClientProvider(server, () => {}, attempt);
   const result = await authorizeMcp(provider, {
     serverUrl: server.url,
     authorizationCode: params.code,
+    // The exchange must use the URI the authorization request used.
+    authorizationRedirectUrl: attempt.redirectUrl,
     ...(params.iss ? { iss: params.iss } : {}),
     ...(started?.scope ? { scope: started.scope } : {}),
     ...(started?.resourceMetadataUrl
@@ -584,6 +721,29 @@ export async function completeMcpOAuthSignIn(
   }
 }
 
+/**
+ * Finish a sign-in the browser could not deliver: the user pasted the address
+ * it ended on. The code is exchanged against the URI the request used.
+ */
+export async function completeMcpOAuthSignInFromUrl(
+  server: McpOAuthServer,
+  pasted: string,
+): Promise<void> {
+  const started = await readStoredFlow(server.id);
+  if (!started || started.status !== "pending" || !started.manual) {
+    throw new Error("No sign-in is waiting for a pasted address. Start the sign-in again.");
+  }
+
+  const response = responseFromRedirectUrl(pasted.trim(), {
+    state: started.state,
+    redirectUrl: started.redirectUrl,
+  });
+  await completeMcpOAuthSignIn(server, {
+    code: response.code,
+    ...(response.iss ? { iss: response.iss } : {}),
+  });
+}
+
 /** Record that a sign-in completed, for the polling settings page. */
 export async function markMcpOAuthSignInSucceeded(userId: string, serverId: string): Promise<void> {
   const started = await readStoredFlow(serverId);
@@ -593,6 +753,9 @@ export async function markMcpOAuthSignInSucceeded(userId: string, serverId: stri
     status: "succeeded",
     error: null,
     authorizationUrl: null,
+    manual: started?.manual ?? false,
+    redirectUrl: started?.redirectUrl ?? mcpOAuthRedirectUrl(),
+    state: started?.state ?? "",
     scope: started?.scope ?? null,
     resourceMetadataUrl: started?.resourceMetadataUrl ?? null,
     updatedAt: new Date().toISOString(),
@@ -613,6 +776,9 @@ export async function failMcpOAuthSignIn(
     status: "failed",
     error,
     authorizationUrl: null,
+    manual: existing?.manual ?? false,
+    redirectUrl: existing?.redirectUrl ?? mcpOAuthRedirectUrl(),
+    state: existing?.state ?? "",
     scope: existing?.scope ?? null,
     resourceMetadataUrl: existing?.resourceMetadataUrl ?? null,
     updatedAt: new Date().toISOString(),

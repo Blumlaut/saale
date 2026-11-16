@@ -99,6 +99,8 @@ interface McpServerSheetProps {
   onStartOAuth?: (id: string) => Promise<McpOAuthStart>;
   onOAuthStatus?: (id: string) => Promise<McpOAuthStatus>;
   onSignOutOAuth?: (id: string) => Promise<void>;
+  /** Finish a sign-in the browser could not deliver, from the pasted address. */
+  onCompleteOAuth?: (id: string, url: string) => Promise<void>;
   /**
    * Start the sign-in as soon as the sheet shows a saved server, for the row's
    * Sign in button: the browser is the only thing left for the user to touch.
@@ -116,6 +118,7 @@ export function McpServerSheet({
   onStartOAuth,
   onOAuthStatus,
   onSignOutOAuth,
+  onCompleteOAuth,
   signInOnOpen = false,
 }: McpServerSheetProps) {
   /** The sheet offers a sign-in only where every part of it is available. */
@@ -160,6 +163,11 @@ export function McpServerSheet({
   const [hasOAuth, setHasOAuth] = useState(false);
   const [oauthPhase, setOauthPhase] = useState<"idle" | "pending" | "succeeded" | "failed">("idle");
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
+  /** The browser cannot deliver the answer, so the user pastes where it ended. */
+  const [oauthManual, setOauthManual] = useState(false);
+  const [pastedUrl, setPastedUrl] = useState("");
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState(false);
 
@@ -260,6 +268,9 @@ export function McpServerSheet({
     setHasOAuth(server?.hasOAuth ?? false);
     setOauthPhase("idle");
     setOauthUrl(null);
+    setOauthManual(false);
+    setPastedUrl("");
+    setPasteError(null);
     setOauthError(null);
     setOauthBusy(false);
   }, [open, server]);
@@ -358,6 +369,8 @@ export function McpServerSheet({
         return;
       }
       setOauthUrl(result.authorizationUrl);
+      setOauthManual(result.manual);
+      setPasteError(null);
       setOauthPhase("pending");
       // Best effort: a blocked popup still leaves the link below.
       window.open(result.authorizationUrl, "_blank", "noopener,noreferrer");
@@ -369,6 +382,27 @@ export function McpServerSheet({
       setOauthBusy(false);
     }
   }, [onStartOAuth, server, stillCurrent]);
+
+  /** Exchange the code that sits in the address the browser could not open. */
+  const handleFinishWithPaste = useCallback(async () => {
+    if (!server || !onCompleteOAuth) return;
+    const startedAt = session.current;
+    setPasteBusy(true);
+    setPasteError(null);
+    try {
+      await onCompleteOAuth(server.id, pastedUrl.trim());
+      if (!stillCurrent(startedAt)) return;
+      setHasOAuth(true);
+      setOauthPhase("succeeded");
+      setOauthUrl(null);
+      setPastedUrl("");
+    } catch (err) {
+      if (!stillCurrent(startedAt)) return;
+      setPasteError((err as Error).message || "The pasted address did not finish the sign-in");
+    } finally {
+      setPasteBusy(false);
+    }
+  }, [onCompleteOAuth, pastedUrl, server, stillCurrent]);
 
   const handleSignOut = useCallback(async () => {
     if (!server || !onSignOutOAuth) return;
@@ -855,8 +889,44 @@ export function McpServerSheet({
                       <div className="space-y-2">
                         <p className="text-muted-foreground flex items-center gap-2 text-xs">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Waiting for you to finish signing in…
+                          {oauthManual
+                            ? "Sign in with the page that just opened."
+                            : "Waiting for you to finish signing in…"}
                         </p>
+                        {oauthManual && (
+                          <div className="space-y-2">
+                            <p className="text-muted-foreground text-xs">
+                              The browser ends on a page that cannot load, because nothing answers
+                              at the address it was sent to. Copy that address from the address bar
+                              and paste it here.
+                            </p>
+                            <Input
+                              value={pastedUrl}
+                              onChange={(event) => {
+                                setPastedUrl(event.target.value);
+                                setPasteError(null);
+                              }}
+                              placeholder="http://127.0.0.1:33418/callback?code=…"
+                              className="font-mono text-xs"
+                              autoComplete="off"
+                              spellCheck={false}
+                              aria-label="Address the browser ended on"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 text-xs font-medium"
+                              onClick={handleFinishWithPaste}
+                              disabled={pasteBusy || !pastedUrl.trim()}
+                            >
+                              {pasteBusy ? (
+                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              ) : null}
+                              Finish sign-in
+                            </Button>
+                          </div>
+                        )}
+                        {pasteError && <p className="text-destructive text-xs">{pasteError}</p>}
                         {oauthUrl && (
                           <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
                             <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>

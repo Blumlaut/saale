@@ -30,6 +30,16 @@ function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/** Whether a redirect URI points at the machine the browser runs on. */
+function isLoopback(uri: string): boolean {
+  try {
+    const url = new URL(uri);
+    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
 async function readBody(req: http.IncomingMessage): Promise<string> {
   let body = "";
   for await (const chunk of req) body += chunk;
@@ -37,7 +47,14 @@ async function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 export async function startFakeOAuthServer(
-  options: { accessToken?: string; clientMetadataDocument?: boolean } = {},
+  options: {
+    accessToken?: string;
+    clientMetadataDocument?: boolean;
+    /** Register only loopback redirect URIs, as servers that only admit native apps do. */
+    loopbackOnly?: boolean;
+    /** Answer the authorization request with `invalid_client`, as a broken document server does. */
+    refuseAuthorize?: boolean;
+  } = {},
 ): Promise<FakeOAuthServer> {
   const accessToken = options.accessToken ?? "access-token-1";
   const refreshToken = "refresh-token-1";
@@ -79,17 +96,29 @@ export async function startFakeOAuthServer(
           return;
 
         case "/register": {
-          const registration = JSON.parse((await readBody(req)) || "{}") as Record<string, unknown>;
-          registrationRequests.push(registration);
+          const registration = JSON.parse((await readBody(req)) || "{}") as {
+            redirect_uris?: string[];
+          };
+          registrationRequests.push(registration as Record<string, unknown>);
+          const redirects = registration.redirect_uris ?? [];
+          if (options.loopbackOnly && redirects.some((uri) => !isLoopback(uri))) {
+            json(res, 400, { error: "invalid_redirect_uri" });
+            return;
+          }
           json(res, 200, {
             client_id: "saale-test-client",
-            redirect_uris: registration.redirect_uris,
+            redirect_uris: redirects,
             token_endpoint_auth_method: "none",
           });
           return;
         }
 
         case "/authorize": {
+          if (options.refuseAuthorize) {
+            authorizationRequests.push(requestUrl);
+            json(res, 400, { error: "invalid_client" });
+            return;
+          }
           authorizationRequests.push(requestUrl);
           const code = `code-${++codeCounter}`;
           issuedCodes.add(code);

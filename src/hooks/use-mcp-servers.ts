@@ -75,6 +75,8 @@ export interface McpOAuthStatus {
   status: "idle" | "pending" | "succeeded" | "failed";
   error: string | null;
   authorizationUrl: string | null;
+  /** The browser cannot deliver the answer, so the user pastes the address it ends on. */
+  manual: boolean;
   hasOAuth: boolean;
 }
 
@@ -82,6 +84,8 @@ export interface McpOAuthStatus {
 export interface McpOAuthStart {
   status: "pending" | "succeeded";
   authorizationUrl: string | null;
+  /** The browser cannot deliver the answer, so the user pastes the address it ends on. */
+  manual: boolean;
 }
 
 /**
@@ -186,6 +190,15 @@ export function useMcpServers() {
     [],
   );
 
+  /** Finish a sign-in whose redirect the browser could not deliver. */
+  const completeOAuth = useCallback(
+    async (id: string, url: string): Promise<void> => {
+      await postJson(`/api/mcp/servers/${id}/oauth/complete`, { url });
+      await loadServers();
+    },
+    [loadServers],
+  );
+
   /** Add the servers of a config pasted from another client. */
   const importServers = useCallback(
     async (config: string): Promise<ImportedMcpServerList> => {
@@ -219,6 +232,7 @@ export function useMcpServers() {
     testServer,
     startOAuth,
     readOAuthStatus,
+    completeOAuth,
     signOutOAuth,
   };
 }

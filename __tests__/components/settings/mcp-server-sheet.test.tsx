@@ -16,11 +16,14 @@ function sheetProps(overrides: Partial<Props> = {}): Props {
     server: null,
     onSave: vi.fn().mockResolvedValue(undefined),
     onTest: vi.fn().mockResolvedValue({ success: true, tools: [] }),
-    onStartOAuth: vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null }),
+    onStartOAuth: vi
+      .fn()
+      .mockResolvedValue({ status: "pending", authorizationUrl: null, manual: false }),
     onOAuthStatus: vi.fn().mockResolvedValue({
       status: "pending",
       error: null,
       authorizationUrl: null,
+      manual: false,
       hasOAuth: false,
     }),
     onSignOutOAuth: vi.fn().mockResolvedValue(undefined),
@@ -141,7 +144,9 @@ function savedServer(overrides: Partial<McpServer> = {}): McpServer {
 describe("McpServerSheet OAuth sign-in", () => {
   it("starts a sign-in and opens the authorization URL", async () => {
     const authorizationUrl = "https://auth.linear.app/authorize?client_id=saale&state=abc";
-    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl });
+    const onStartOAuth = vi
+      .fn()
+      .mockResolvedValue({ status: "pending", authorizationUrl, manual: false });
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
     renderSheet({ server: savedServer(), onStartOAuth });
@@ -190,7 +195,7 @@ describe("McpServerSheet OAuth sign-in", () => {
 
     openServer(savedServer({ id: "srv-2", name: "cloudflare", url: "https://cloudflare.com/mcp" }));
     await act(async () => {
-      finish({ status: "succeeded", authorizationUrl: null });
+      finish({ status: "succeeded", authorizationUrl: null, manual: false });
     });
 
     // The answer belongs to the server the user has left behind.
@@ -220,7 +225,9 @@ describe("McpServerSheet OAuth sign-in", () => {
   });
 
   it("waits for a click when the sheet was opened to edit", async () => {
-    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
+    const onStartOAuth = vi
+      .fn()
+      .mockResolvedValue({ status: "pending", authorizationUrl: null, manual: false });
 
     renderSheet({ server: savedServer(), onStartOAuth });
 
@@ -228,11 +235,66 @@ describe("McpServerSheet OAuth sign-in", () => {
   });
 
   it("leaves an already signed-in server alone when opened from the row", () => {
-    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
+    const onStartOAuth = vi
+      .fn()
+      .mockResolvedValue({ status: "pending", authorizationUrl: null, manual: false });
 
     renderSheet({ server: savedServer({ hasOAuth: true }), onStartOAuth, signInOnOpen: true });
 
     expect(onStartOAuth).not.toHaveBeenCalled();
+  });
+
+  it("finishes a loopback sign-in from the address the browser ended on", async () => {
+    const authorizationUrl = "https://auth.example/authorize?state=abc";
+    const onStartOAuth = vi
+      .fn()
+      .mockResolvedValue({ status: "pending", authorizationUrl, manual: true });
+    const onCompleteOAuth = vi.fn().mockResolvedValue(undefined);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+    renderSheet({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    // The browser cannot reach the redirect, so the sheet asks for its address.
+    const field = await screen.findByLabelText(/address the browser ended on/i);
+    fireEvent.change(field, {
+      target: { value: "http://127.0.0.1:33418/callback?code=abc&state=abc" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /finish sign-in/i }));
+
+    await waitFor(() => expect(onCompleteOAuth).toHaveBeenCalledTimes(1));
+    expect(onCompleteOAuth).toHaveBeenCalledWith(
+      "srv-1",
+      "http://127.0.0.1:33418/callback?code=abc&state=abc",
+    );
+    expect(await screen.findByText(/signed in/i)).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it("reports an address that did not finish the sign-in", async () => {
+    const onStartOAuth = vi.fn().mockResolvedValue({
+      status: "pending",
+      authorizationUrl: "https://auth.example/authorize?state=abc",
+      manual: true,
+    });
+    const onCompleteOAuth = vi
+      .fn()
+      .mockRejectedValue(new Error("This address does not carry a sign-in response."));
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+    renderSheet({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    fireEvent.change(await screen.findByLabelText(/address the browser ended on/i), {
+      target: { value: "https://example.com/" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /finish sign-in/i }));
+
+    expect(
+      await screen.findByText("This address does not carry a sign-in response."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/signed in/i)).not.toBeInTheDocument();
+    open.mockRestore();
   });
 });
 

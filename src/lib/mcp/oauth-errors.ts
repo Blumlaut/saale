@@ -22,7 +22,7 @@ export interface McpSignInProblem {
 const REFUSED_REDIRECT_CODES = ["invalid_redirect_uri", "invalid_client_metadata"];
 
 /** The error code out of a registration body, or null for a body without one. */
-function registrationCode(body: string): string | null {
+export function registrationErrorCode(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { error?: unknown };
     return typeof parsed.error === "string" ? parsed.error : null;
@@ -34,7 +34,7 @@ function registrationCode(body: string): string | null {
 /** Why a sign-in could not start or complete, as the settings sheet shows it. */
 export function describeMcpSignInError(err: unknown): McpSignInProblem {
   if (err instanceof OAuthRegistrationError) {
-    const code = registrationCode(err.body);
+    const code = registrationErrorCode(err.body);
     if (code && REFUSED_REDIRECT_CODES.includes(code)) {
       return {
         status: 400,

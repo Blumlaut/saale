@@ -85,6 +85,7 @@ vi.mock("@/lib/redis", () => ({
 import {
   clearMcpOAuthCredential,
   completeMcpOAuthSignIn,
+  completeMcpOAuthSignInFromUrl,
   createMcpAuthProvider,
   hasMcpOAuthCredential,
   loadMcpOAuthCredentialIds,
@@ -243,6 +244,87 @@ describe("MCP OAuth", () => {
     expect(document.client_id).toBe(mcpOAuthClientMetadataUrl());
     expect(document.redirect_uris).toEqual([mcpOAuthRedirectUrl()]);
     expect(document.token_endpoint_auth_method).toBe("none");
+  });
+
+  it("falls back to a loopback sign-in the user finishes by pasting", async () => {
+    const native = await startFakeOAuthServer({ loopbackOnly: true });
+    const nativeServer = await startFakeMcpServer({
+      requireToken: native.accessToken,
+      challenge: `Bearer resource_metadata="${native.url}/.well-known/oauth-protected-resource"`,
+    });
+    native.setResourceUrl(nativeServer.url);
+    const target = { id: "srv-3", userId: USER_ID, name: "native", url: nativeServer.url };
+
+    try {
+      await probeMcpServer({
+        url: target.url,
+        authProvider: createMcpAuthProvider(target),
+      }).catch((err) => {
+        if (!(err instanceof McpOAuthAuthorizationRequiredError)) throw err;
+      });
+
+      const start = await startMcpOAuthSignIn(target);
+      expect(start.status).toBe("pending");
+      expect(start.manual).toBe(true);
+
+      const authorizationUrl = new URL(start.authorizationUrl!);
+      expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+        "http://127.0.0.1:33418/callback",
+      );
+      // The public callback was refused first, so both attempts are on record.
+      expect(native.registrationRequests).toHaveLength(2);
+
+      // The browser follows the redirect and cannot load the page; its address
+      // is all the user has to hand back.
+      const redirect = await fetch(start.authorizationUrl!, { redirect: "manual" });
+      const pasted = redirect.headers.get("location")!;
+      await completeMcpOAuthSignInFromUrl(target, pasted);
+
+      expect(await createMcpAuthProvider(target).token()).toBe(native.accessToken);
+    } finally {
+      await nativeServer.close();
+      await native.close();
+    }
+  });
+
+  it("falls back when the consent page refuses the client", async () => {
+    const broken = await startFakeOAuthServer({
+      clientMetadataDocument: true,
+      // A server that advertises documents and then answers `invalid_client`.
+      refuseAuthorize: true,
+      loopbackOnly: true,
+    });
+    const brokenServer = await startFakeMcpServer({
+      requireToken: broken.accessToken,
+      challenge: `Bearer resource_metadata="${broken.url}/.well-known/oauth-protected-resource"`,
+    });
+    broken.setResourceUrl(brokenServer.url);
+    const target = { id: "srv-4", userId: USER_ID, name: "documented", url: brokenServer.url };
+
+    try {
+      await probeMcpServer({
+        url: target.url,
+        authProvider: createMcpAuthProvider(target),
+      }).catch((err) => {
+        if (!(err instanceof McpOAuthAuthorizationRequiredError)) throw err;
+      });
+
+      const start = await startMcpOAuthSignIn(target);
+
+      expect(start.manual).toBe(true);
+      expect(new URL(start.authorizationUrl!).searchParams.get("client_id")).not.toBe(
+        mcpOAuthClientMetadataUrl(),
+      );
+    } finally {
+      await brokenServer.close();
+      await broken.close();
+    }
+  });
+
+  it("refuses a pasted address that belongs to no sign-in", async () => {
+    await expect(
+      completeMcpOAuthSignInFromUrl(server(), "http://127.0.0.1:33418/callback?code=x&state=y"),
+    ).rejects.toThrow(/no sign-in is waiting/i);
   });
 
   it("reports needs-auth before any sign-in is stored", async () => {
