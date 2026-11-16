@@ -80,12 +80,8 @@ const GH_TOKEN_PROMPT = `\`GH_TOKEN\` is set in your environment, so \`gh\` and 
  * for the account's own wider credential.
  */
 const GITHUB_APP_PROMPT = `GitHub:
-- Saale mints a \`GH_TOKEN\` for each command you run. It belongs to this workspace's GitHub App and carries every repository GitHub approved for the app, at this chat's permissions, so \`git\` and \`gh\` work on all of them without credentials.
-- \`gh\` is not signed in. Do not run \`gh auth login\`; it would put a wider credential beside this one.
-- The installation is the ceiling, not this chat. A repository GitHub did not approve for the app answers a refusal (a private one as "repository not found"), and where your account has no installation for the owner at all the command carries no credential — neither \`git\` nor \`gh\` answers: that is the boundary, not a bug. Say so instead of retrying or looking for a way around it. A pull request into a repository the app is not installed on stays a 403, and no credential of yours changes that.
-- The workspace also keeps a credential of the user's own, for terminals and for \`gh\` outside a chat. Never look for a wider credential than the one a command was given, and never work around a refusal by finding another one.
-- Never print the token or write it into a file.
-- Commits carry the connected GitHub account's own identity, and a pull request Saale opens is authored by that account. Leave \`user.name\` and \`user.email\` alone.`;
+- \`GH_TOKEN\` is set for every command you run, so \`git\` and \`gh\` are authenticated: do not run \`gh auth login\`, and never print the token or write it into a file.
+- A refusal from GitHub is a boundary: stop and tell the user what was refused, instead of retrying or looking for another credential.`;
 
 /**
  * Build a coder chat's system prompt.
