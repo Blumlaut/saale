@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { startMcpOAuthSignIn } from "@/lib/mcp/oauth";
+import { describeMcpSignInError } from "@/lib/mcp/oauth-errors";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 
 /**
@@ -46,7 +47,7 @@ export async function POST(
     return NextResponse.json(result);
   } catch (err) {
     console.error(`Failed to start the MCP OAuth sign-in for server ${serverId}:`, err);
-    const message = err instanceof Error ? err.message : "Failed to start the sign-in";
-    return NextResponse.json({ error: message }, { status: 502 });
+    const problem = describeMcpSignInError(err);
+    return NextResponse.json({ error: problem.message }, { status: problem.status });
   }
 }

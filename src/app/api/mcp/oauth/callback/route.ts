@@ -10,6 +10,7 @@ import {
   resolveMcpOAuthState,
 } from "@/lib/mcp/oauth";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
+import { describeMcpSignInError } from "@/lib/mcp/oauth-errors";
 
 /**
  * GET /api/mcp/oauth/callback. where an authorization server sends the browser
@@ -96,9 +97,9 @@ export async function GET(request: NextRequest) {
     );
   } catch (err) {
     console.error(`MCP OAuth callback failed for server ${link.serverId}:`, err);
-    const message = err instanceof Error ? err.message : "The sign-in could not be completed.";
-    await failMcpOAuthSignIn(link.userId, link.serverId, message);
-    return html(oauthErrorHtml("The sign-in could not be completed.", message), 400);
+    const problem = describeMcpSignInError(err);
+    await failMcpOAuthSignIn(link.userId, link.serverId, problem.message);
+    return html(oauthErrorHtml("The sign-in could not be completed.", problem.message), 400);
   } finally {
     // The state is single-use: a replayed callback must not re-exchange a code.
     await clearMcpOAuthState(state);
