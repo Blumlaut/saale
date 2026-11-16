@@ -16,6 +16,7 @@
 import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { publishSessionEvent } from "@/lib/pi/session-events";
 import { notifyTelegramPluginUi } from "@/lib/telegram/plugin-dialogs";
+import { saaleNotice } from "./notice-text";
 import { PLUGIN_UI_TIMEOUT_MS, requestPluginUi, type PluginUiResponse } from "./requests";
 
 export interface ExtensionUiOptions {
@@ -105,7 +106,10 @@ export function createExtensionUiContext(options: ExtensionUiOptions): Extension
     },
 
     notify(message, type) {
-      announce(options.sessionId, "plugin_notice", { message, type: type ?? "info" });
+      announce(options.sessionId, "plugin_notice", {
+        message: saaleNotice(message),
+        type: type ?? "info",
+      });
     },
 
     setStatus(key, text) {
