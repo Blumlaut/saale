@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Loader2, LogIn, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -25,6 +25,7 @@ export function McpServerRowActions({
   onToggle,
   onEdit,
   onDelete,
+  onSignIn,
 }: {
   server: McpServer;
   /** A write is in flight, so the switch waits. */
@@ -32,6 +33,8 @@ export function McpServerRowActions({
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Omitted for a server that has nothing to sign in to. */
+  onSignIn?: () => void;
 }) {
   return (
     <>
@@ -43,6 +46,18 @@ export function McpServerRowActions({
           onCheckedChange={onToggle}
           aria-label={`Enable ${server.name}`}
         />
+      )}
+      {onSignIn && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-8 shrink-0 px-2 text-xs font-medium"
+          onClick={onSignIn}
+          aria-label={`Sign in to ${server.name}`}
+        >
+          <LogIn className="h-3.5 w-3.5 sm:mr-1.5" />
+          <span className="hidden sm:inline">Sign in</span>
+        </Button>
       )}
       <DropdownMenu>
         <DropdownMenuTrigger

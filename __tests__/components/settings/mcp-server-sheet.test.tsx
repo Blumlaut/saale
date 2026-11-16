@@ -204,6 +204,36 @@ describe("McpServerSheet OAuth sign-in", () => {
     expect(screen.getByText(/save this server first/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sign in$/i })).not.toBeInTheDocument();
   });
+
+  it("signs in as soon as the row's button opens the sheet", async () => {
+    const onStartOAuth = vi.fn().mockResolvedValue({
+      status: "pending",
+      authorizationUrl: "https://auth.linear.app/authorize?state=abc",
+    });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+
+    renderSheet({ server: savedServer(), onStartOAuth, signInOnOpen: true });
+
+    await waitFor(() => expect(onStartOAuth).toHaveBeenCalledTimes(1));
+    expect(onStartOAuth).toHaveBeenCalledWith("srv-1");
+    open.mockRestore();
+  });
+
+  it("waits for a click when the sheet was opened to edit", async () => {
+    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
+
+    renderSheet({ server: savedServer(), onStartOAuth });
+
+    expect(onStartOAuth).not.toHaveBeenCalled();
+  });
+
+  it("leaves an already signed-in server alone when opened from the row", () => {
+    const onStartOAuth = vi.fn().mockResolvedValue({ status: "pending", authorizationUrl: null });
+
+    renderSheet({ server: savedServer({ hasOAuth: true }), onStartOAuth, signInOnOpen: true });
+
+    expect(onStartOAuth).not.toHaveBeenCalled();
+  });
 });
 
 /**

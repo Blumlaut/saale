@@ -49,17 +49,27 @@ export function McpPanel() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<McpServer | null>(null);
+  /** The sheet was opened by a row's Sign in button, so it starts the sign-in. */
+  const [signInOnOpen, setSignInOnOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<McpServer | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const openAdd = () => {
     setEditing(null);
+    setSignInOnOpen(false);
     setSheetOpen(true);
   };
 
   const openEdit = (server: McpServer) => {
     setEditing(server);
+    setSignInOnOpen(false);
+    setSheetOpen(true);
+  };
+
+  const openSignIn = (server: McpServer) => {
+    setEditing(server);
+    setSignInOnOpen(true);
     setSheetOpen(true);
   };
 
@@ -163,6 +173,9 @@ export function McpPanel() {
                           onToggle={(enabled) => void handleToggle(server, enabled)}
                           onEdit={() => openEdit(server)}
                           onDelete={() => setPendingDelete(server)}
+                          {...(server.transport === "http" && !server.hasOAuth
+                            ? { onSignIn: () => openSignIn(server) }
+                            : {})}
                         />
                       )
                     }
@@ -178,13 +191,17 @@ export function McpPanel() {
         open={sheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open);
-          // A sign-in completed in the browser changes `hasOAuth`, which the
-          // open sheet cannot see; refresh once it closes.
-          if (!open) void loadServers();
+          if (!open) {
+            setSignInOnOpen(false);
+            // A sign-in completed in the browser changes `hasOAuth`, which the
+            // open sheet cannot see; refresh once it closes.
+            void loadServers();
+          }
         }}
         server={editing}
         onSave={handleSave}
         allowStdio
+        signInOnOpen={signInOnOpen}
         onTest={testServer}
         onStartOAuth={startOAuth}
         onOAuthStatus={readOAuthStatus}

@@ -99,6 +99,11 @@ interface McpServerSheetProps {
   onStartOAuth?: (id: string) => Promise<McpOAuthStart>;
   onOAuthStatus?: (id: string) => Promise<McpOAuthStatus>;
   onSignOutOAuth?: (id: string) => Promise<void>;
+  /**
+   * Start the sign-in as soon as the sheet shows a saved server, for the row's
+   * Sign in button: the browser is the only thing left for the user to touch.
+   */
+  signInOnOpen?: boolean;
 }
 
 export function McpServerSheet({
@@ -111,6 +116,7 @@ export function McpServerSheet({
   onStartOAuth,
   onOAuthStatus,
   onSignOutOAuth,
+  signInOnOpen = false,
 }: McpServerSheetProps) {
   /** The sheet offers a sign-in only where every part of it is available. */
   const canSignIn = Boolean(onStartOAuth && onOAuthStatus && onSignOutOAuth);
@@ -382,6 +388,22 @@ export function McpServerSheet({
       setOauthBusy(false);
     }
   }, [onSignOutOAuth, server, stillCurrent]);
+
+  /**
+   * Start the sign-in once, when a row's Sign in button opened this sheet. The
+   * guard is per open, so a failed start does not retry on every render.
+   */
+  const autoSignInStarted = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      autoSignInStarted.current = false;
+      return;
+    }
+    if (!signInOnOpen || autoSignInStarted.current) return;
+    if (!server || server.hasOAuth || !canSignIn) return;
+    autoSignInStarted.current = true;
+    void handleSignIn();
+  }, [canSignIn, handleSignIn, open, server, signInOnOpen]);
 
   const handleSave = useCallback(async () => {
     const normalizedName = normalizeMcpServerName(name);
