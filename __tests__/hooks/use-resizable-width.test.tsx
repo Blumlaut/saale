@@ -160,15 +160,21 @@ describe("useResizableWidth", () => {
 });
 
 describe("panelCeiling", () => {
+  const PANEL = { minWidth: 280, maxWidth: 720 };
+
   it("keeps the fixed ceiling until the row has been measured", () => {
-    expect(panelCeiling(null, 440, 720)).toBe(720);
+    expect(panelCeiling(null, 440, PANEL)).toBe(720);
   });
 
   it("gives the panel the room left beside the columns that share the row", () => {
-    expect(panelCeiling(2560, 440, 720)).toBe(2120);
+    expect(panelCeiling(2560, 440, PANEL)).toBe(2120);
   });
 
-  it("never drops under the fixed ceiling in a narrow row", () => {
-    expect(panelCeiling(900, 440, 720)).toBe(720);
+  it("drops with a narrow row, so the column cannot grow past the screen", () => {
+    expect(panelCeiling(900, 440, PANEL)).toBe(460);
+  });
+
+  it("stops at the panel's own minimum when the row has less room than that", () => {
+    expect(panelCeiling(400, 440, PANEL)).toBe(280);
   });
 });

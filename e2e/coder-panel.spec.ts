@@ -560,7 +560,13 @@ test.describe("coder panel", () => {
   test("widens the worktree panel by dragging its edge and remembers the width", async ({
     browser,
   }) => {
-    const { context, page } = await openCoder(browser, `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`);
+    // Room for the panel to grow into: the chat keeps its own width beside it.
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {},
+      { viewport: { width: 1600, height: 900 } },
+    );
     const handle = shown(page, '[role="separator"][aria-label="Resize the worktree panel"]');
     const panel = shownText(page, "Project");
 
@@ -638,6 +644,39 @@ test.describe("coder panel", () => {
     await expect(page.getByRole("button", { name: "Show the worktree panel" })).toBeVisible();
     await expect(handle()).toBeHidden();
 
+    await context.close();
+  });
+
+  test("keeps the panel's hide control on screen when the window loses its room", async ({
+    browser,
+  }) => {
+    const { context, page } = await openCoder(
+      browser,
+      `/dashboard/coder/${PROJECT_ID}/${CHAT_ID}`,
+      {},
+      { viewport: { width: 1600, height: 900 } },
+    );
+    const handle = shown(page, '[role="separator"][aria-label="Resize the worktree panel"]');
+    const before = (await handle.boundingBox())!;
+    await page.mouse.move(before.x + before.width / 2, before.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(before.x - 600, before.y + 200, { steps: 10 });
+    await page.mouse.up();
+
+    // The width is the browser's, so a narrower window arrives with the panel
+    // still asking for it. The column gives way instead of leaving the screen.
+    const hide = page.getByRole("button", { name: "Hide the worktree panel" });
+    for (const width of [1200, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(hide).toBeInViewport();
+    }
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+
+    // Reachable means usable: the control still puts the panel away.
+    await hide.click();
+    await expect(page.locator('[data-slot="session-panel-rail"]:visible')).toBeVisible();
     await context.close();
   });
 

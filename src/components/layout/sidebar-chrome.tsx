@@ -60,17 +60,23 @@ export interface SidebarSectionGroup {
 /** The room the page keeps beside the navigation. */
 const PAGE_MIN_WIDTH = 640;
 
+/** The navigation's width, remembered per browser. */
+const NAVIGATION = {
+  storageKey: "saale:ui:nav:width",
+  label: "Resize navigation",
+  defaultWidth: 192,
+  minWidth: 160,
+  maxWidth: 320,
+  handle: "right",
+} as const;
+
 /** The panel a sidebar lives in, with its drag handle. */
 export function SidebarFrame({ children }: { children: React.ReactNode }) {
   // The shell row spans the viewport, and the page beside it has the rest.
   const windowWidth = useWindowWidth();
   const width = useResizableWidth({
-    storageKey: "saale:ui:nav:width",
-    label: "Resize navigation",
-    defaultWidth: 192,
-    minWidth: 160,
-    maxWidth: panelCeiling(windowWidth, PAGE_MIN_WIDTH, 320),
-    handle: "right",
+    ...NAVIGATION,
+    maxWidth: panelCeiling(windowWidth, PAGE_MIN_WIDTH, NAVIGATION),
   });
 
   return (

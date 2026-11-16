@@ -48,14 +48,19 @@ function clamp(value: number, min: number, max: number): number {
 export const CHAT_MIN_WIDTH = 440;
 
 /**
- * The widest a panel may get in its row: what is left of the row once the
- * columns beside it have theirs, and never less than its own fixed ceiling.
+ * The widest a panel may get in its row: the room left once the columns beside
+ * it have theirs. A row too thin for that gives the panel its own minimum, so
+ * the column cannot grow past the edge of the screen.
  *
- * `rowWidth` is null until the row has been measured, which keeps the fixed
- * ceiling until then.
+ * `rowWidth` is null until the row has been measured, which keeps the panel's
+ * own ceiling until then.
  */
-export function panelCeiling(rowWidth: number | null, reserved: number, base: number): number {
-  return rowWidth === null ? base : Math.max(base, rowWidth - reserved);
+export function panelCeiling(
+  rowWidth: number | null,
+  reserved: number,
+  panel: { minWidth: number; maxWidth: number },
+): number {
+  return rowWidth === null ? panel.maxWidth : Math.max(panel.minWidth, rowWidth - reserved);
 }
 
 function readStoredWidth(key: string, fallback: number): number {

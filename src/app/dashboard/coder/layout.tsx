@@ -131,22 +131,14 @@ export default function CoderLayout() {
   const coderChatSidebar = useResizableWidth({
     ...CHAT_SIDEBAR,
     // The worktree panel keeps its opening width beside the list.
-    maxWidth: panelCeiling(
-      rowWidth,
-      CHAT_MIN_WIDTH + WORKTREE_PANEL.defaultWidth,
-      CHAT_SIDEBAR.maxWidth,
-    ),
+    maxWidth: panelCeiling(rowWidth, CHAT_MIN_WIDTH + WORKTREE_PANEL.defaultWidth, CHAT_SIDEBAR),
   });
 
   // An ultrawide leaves room for a worktree panel past the fixed ceiling, so the
   // ceiling is whatever the row holds beyond a usable chat.
   const panel = useResizableWidth({
     ...WORKTREE_PANEL,
-    maxWidth: panelCeiling(
-      rowWidth,
-      coderChatSidebar.width + CHAT_MIN_WIDTH,
-      WORKTREE_PANEL.maxWidth,
-    ),
+    maxWidth: panelCeiling(rowWidth, coderChatSidebar.width + CHAT_MIN_WIDTH, WORKTREE_PANEL),
   });
 
   const newChat = useCallback(() => {

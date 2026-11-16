@@ -44,7 +44,7 @@ export default function FilesPage() {
   const [measureRow, rowWidth] = useElementWidth();
   const panel = useResizableWidth({
     ...BROWSER_PANEL,
-    maxWidth: panelCeiling(rowWidth, EDITOR_MIN_WIDTH, BROWSER_PANEL.maxWidth),
+    maxWidth: panelCeiling(rowWidth, EDITOR_MIN_WIDTH, BROWSER_PANEL),
   });
 
   const open = (next: FileEntry) => {

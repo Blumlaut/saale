@@ -34,7 +34,7 @@ export default function ChatLayout({ children: _children }: { children: React.Re
   const [measureRow, rowWidth] = useElementWidth();
   const chatSidebar = useResizableWidth({
     ...CHAT_SIDEBAR,
-    maxWidth: panelCeiling(rowWidth, CHAT_MIN_WIDTH, CHAT_SIDEBAR.maxWidth),
+    maxWidth: panelCeiling(rowWidth, CHAT_MIN_WIDTH, CHAT_SIDEBAR),
   });
 
   // `temporaryMode` controls whether new chats are temporary.
