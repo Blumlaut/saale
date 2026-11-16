@@ -54,7 +54,7 @@ Integrations for private repositories, pushes and pull requests.
 ## Model Context Protocol
 
 Saale supports MCP in full, with remote servers over Streamable HTTP and local ones over
-stdio. Add one in Settings, paste a config from another client, or start from a preset.
+stdio. Add one in Settings, or paste a config from another client.
 
 ## Multi-User?
 

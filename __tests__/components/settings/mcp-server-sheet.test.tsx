@@ -384,47 +384,6 @@ describe("McpServerSheet command servers", () => {
     expect(screen.getByText(/Variable names start with a letter/i)).toBeInTheDocument();
   });
 
-  it("fills the sheet from a preset and waits for the key it needs", async () => {
-    const { onSave } = renderSheet({ allowStdio: true });
-
-    chooseOption(screen.getByRole("combobox", { name: /start from a preset/i }), "GitHub");
-
-    expect((screen.getByPlaceholderText(/server-filesystem/) as HTMLInputElement).value).toBe(
-      "npx -y @modelcontextprotocol/server-github",
-    );
-    expect((screen.getByPlaceholderText("homeassistant") as HTMLInputElement).value).toBe("github");
-    // The key it needs is named, and the field says what belongs in it.
-    expect(screen.getByText("GITHUB_PERSONAL_ACCESS_TOKEN")).toBeInTheDocument();
-    const value = screen.getByLabelText("Value of GITHUB_PERSONAL_ACCESS_TOKEN");
-
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
-    expect(await screen.findByText(/give GITHUB_PERSONAL_ACCESS_TOKEN a value/i)).toBeVisible();
-    expect(onSave).not.toHaveBeenCalled();
-
-    fireEvent.change(value, { target: { value: "ghp_secret" } });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
-
-    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(onSave.mock.calls[0]![0]).toMatchObject({
-      name: "github",
-      transport: "stdio",
-      command: "npx -y @modelcontextprotocol/server-github",
-      env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_secret" },
-    });
-  });
-
-  it("fills an endpoint preset without a command", () => {
-    renderSheet({ allowStdio: true });
-
-    chooseOption(screen.getByRole("combobox", { name: /start from a preset/i }), "Linear");
-
-    expect(
-      (screen.getByPlaceholderText("https://homeassistant.local:8123/api/mcp") as HTMLInputElement)
-        .value,
-    ).toBe("https://mcp.linear.app/mcp");
-    expect(screen.queryByPlaceholderText(/server-filesystem/)).not.toBeInTheDocument();
-  });
-
   it("tests the command rather than an endpoint", async () => {
     const { onTest } = renderSheet({ allowStdio: true });
     const test = onTest as unknown as ReturnType<typeof vi.fn>;

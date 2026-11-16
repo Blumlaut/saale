@@ -37,7 +37,6 @@ import {
   type McpTransport,
 } from "@/lib/mcp/shared";
 import { envNameError, envValueBytes } from "@/lib/sandbox/env-rules";
-import { findMcpPreset, MCP_PRESETS } from "@/lib/mcp/presets";
 import type {
   McpOAuthStart,
   McpOAuthStatus,
@@ -135,10 +134,6 @@ export function McpServerSheet({
   const [newEnvName, setNewEnvName] = useState("");
   const [newEnvValue, setNewEnvValue] = useState("");
   const [envError, setEnvError] = useState<string | null>(null);
-  /** Names a preset asked for that have no value yet, with what the value is. */
-  const [wantedEnv, setWantedEnv] = useState<{ name: string; what: string }[]>([]);
-  /** The note a chosen preset leaves under the fields. */
-  const [presetNote, setPresetNote] = useState<string | null>(null);
 
   const [toolPolicy, setToolPolicy] = useState<McpToolPolicy>("ask");
   const [enabled, setEnabled] = useState(true);
@@ -181,33 +176,9 @@ export function McpServerSheet({
   const stillCurrent = useCallback((startedAt: number) => session.current === startedAt, []);
 
   /** The names the command will start with: what is stored, what was added, less what was removed. */
-  const envNames = [
-    ...new Set([...storedEnvNames, ...Object.keys(envValues), ...wantedEnv.map((v) => v.name)]),
-  ]
+  const envNames = [...new Set([...storedEnvNames, ...Object.keys(envValues)])]
     .filter((name) => !removedEnvNames.includes(name))
     .sort();
-
-  /** Fill the sheet from a preset, leaving each variable's value to the user. */
-  const applyPreset = (id: string) => {
-    const preset = findMcpPreset(id);
-    if (!preset) return;
-
-    setName(preset.name);
-    setTransport(preset.transport);
-    setUrl(preset.url ?? "");
-    setCommand(preset.command ?? "");
-    setCwd(preset.cwd ?? "");
-    setDescription(preset.description);
-    setEnvValues({});
-    setRemovedEnvNames([]);
-    setStoredEnvNames([]);
-    setWantedEnv(preset.variables ?? []);
-    setPresetNote(preset.note ?? null);
-    setNewEnvName("");
-    setNewEnvValue("");
-    setEnvError(null);
-    setTestResult(null);
-  };
 
   const addEnvVariable = () => {
     const name = newEnvName.trim();
@@ -234,7 +205,6 @@ export function McpServerSheet({
     }
 
     setEnvValues((current) => ({ ...current, [name]: newEnvValue }));
-    setWantedEnv((current) => current.filter((variable) => variable.name !== name));
     setRemovedEnvNames((current) => current.filter((removed) => removed !== name));
     setNewEnvName("");
     setNewEnvValue("");
@@ -247,7 +217,6 @@ export function McpServerSheet({
       delete next[name];
       return next;
     });
-    setWantedEnv((current) => current.filter((variable) => variable.name !== name));
     setRemovedEnvNames((current) =>
       storedEnvNames.includes(name) && !current.includes(name) ? [...current, name] : current,
     );
@@ -275,8 +244,6 @@ export function McpServerSheet({
     setNewEnvName("");
     setNewEnvValue("");
     setEnvError(null);
-    setWantedEnv([]);
-    setPresetNote(null);
     setToolPolicy(server?.toolPolicy ?? "ask");
     setEnabled(server?.enabled ?? true);
     setChatEnabled(server?.chatEnabled ?? true);
@@ -428,13 +395,6 @@ export function McpServerSheet({
     const trimmedCommand = command.trim();
     const trimmedCwd = cwd.trim();
     const trimmedUrl = url.trim();
-    const missing = wantedEnv.filter(
-      (wanted) => !envValues[wanted.name] && !storedEnvNames.includes(wanted.name),
-    );
-    if (missing.length > 0) {
-      setEnvError(`Give ${missing[0]!.name} a value.`);
-      return;
-    }
     if (transport === "stdio") {
       const commandError = validateMcpCommand(trimmedCommand);
       if (commandError) {
@@ -506,8 +466,6 @@ export function McpServerSheet({
     enabled,
     envValues,
     name,
-    storedEnvNames,
-    wantedEnv,
     onOpenChange,
     onSave,
     removedEnvNames,
@@ -588,30 +546,6 @@ export function McpServerSheet({
                 </p>
               )}
             </div>
-
-            {!isEditing && (
-              <div className="space-y-2">
-                <Label className="text-sm">Start from a preset</Label>
-                <Select value="" onValueChange={(value) => value && applyPreset(value)}>
-                  <SelectTrigger className="w-full" aria-label="Start from a preset">
-                    <SelectValue>
-                      {(value) => findMcpPreset(value)?.label ?? "Pick a server"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MCP_PRESETS.map((preset) => (
-                      <SelectItem key={preset.id} value={preset.id}>
-                        {preset.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-muted-foreground text-xs">
-                  Fills in the command and the variables the server needs. Every field stays
-                  editable.
-                </p>
-              </div>
-            )}
 
             {allowStdio && (
               <div className="space-y-2">
@@ -732,7 +666,6 @@ export function McpServerSheet({
                       variables below. The first run may download packages.
                     </p>
                   )}
-                  {presetNote && <p className="text-muted-foreground text-xs">{presetNote}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -761,52 +694,32 @@ export function McpServerSheet({
                   <Label className="text-sm">Variables</Label>
                   {envNames.length > 0 && (
                     <ul className="space-y-1.5">
-                      {envNames.map((variable) => {
-                        const wanted = wantedEnv.find((entry) => entry.name === variable);
-                        return (
-                          <li
-                            key={variable}
-                            className="bg-muted/50 border-border space-y-1.5 rounded-lg border px-2.5 py-1.5"
-                          >
-                            <div className="flex items-center gap-2">
-                              <KeyRound className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                              <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                                {variable}
-                              </span>
-                              {!wanted && (
-                                <span className="text-muted-foreground shrink-0 text-[11px]">
-                                  {envValues[variable] ? "new value" : "stored"}
-                                </span>
-                              )}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 shrink-0 px-1.5 text-[11px]"
-                                onClick={() => removeEnvVariable(variable)}
-                                aria-label={`Remove ${variable}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                            {wanted && (
-                              <Input
-                                type="password"
-                                value={envValues[variable] ?? ""}
-                                onChange={(event) => {
-                                  const typed = event.target.value;
-                                  setEnvValues((current) => ({ ...current, [variable]: typed }));
-                                  setEnvError(null);
-                                }}
-                                placeholder={wanted.what}
-                                className="h-8 text-xs"
-                                autoComplete="off"
-                                aria-label={`Value of ${variable}`}
-                              />
-                            )}
-                          </li>
-                        );
-                      })}
+                      {envNames.map((variable) => (
+                        <li
+                          key={variable}
+                          className="bg-muted/50 border-border rounded-lg border px-2.5 py-1.5"
+                        >
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                              {variable}
+                            </span>
+                            <span className="text-muted-foreground shrink-0 text-[11px]">
+                              {envValues[variable] ? "new value" : "stored"}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 shrink-0 px-1.5 text-[11px]"
+                              onClick={() => removeEnvVariable(variable)}
+                              aria-label={`Remove ${variable}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   )}
                   <div className="flex flex-col gap-2 sm:flex-row">
