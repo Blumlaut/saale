@@ -200,7 +200,12 @@ function orDbNull(value: Record<string, unknown>): JsonColumnValue {
  * Canonical `defaultToolConfig`: known categories only, and only entries that
  * differ from the category default (the row stays sparse).
  */
-function normalizeToolConfig(value: unknown, defaults: Record<string, boolean> = Object.fromEntries(TOOL_CATEGORIES.map((c) => [c.key, c.defaultEnabled]))): Record<string, boolean> {
+function normalizeToolConfig(
+  value: unknown,
+  defaults: Record<string, boolean> = Object.fromEntries(
+    TOOL_CATEGORIES.map((c) => [c.key, c.defaultEnabled]),
+  ),
+): Record<string, boolean> {
   const stored = asRecord(value);
   const result: Record<string, boolean> = {};
   for (const category of TOOL_CATEGORIES) {

@@ -149,8 +149,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
     defineStructuredTool({
       name: "mail_accounts",
       label: "List Email Accounts",
-      description:
-        "List all connected email accounts with their addresses and enabled status.",
+      description: "List all connected email accounts with their addresses and enabled status.",
       parameters: Type.Object({}),
       outputSchema: MAIL_ACCOUNTS_SCHEMA,
       execute: async (_toolCallId) => {
