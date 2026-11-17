@@ -8,9 +8,10 @@
  * shows on a repo that has never had one.
  */
 
+import { GitActionNotReadyError, GitActionRefusedError, runGitAction } from "./actions";
 import { checkoutOf } from "./checkout";
 import { loadCoderSession } from "./changes";
-import { runInWorkspace, shellQuote } from "./git";
+import { GitError, runInWorkspace, shellQuote } from "./git";
 import { prisma } from "@/lib/db";
 import {
   resolveGithubCommandEnv,
@@ -281,6 +282,30 @@ export class PullRequestError extends Error {
 }
 
 /**
+ * The branch on the remote, because `gh pr create` has nothing else to open.
+ *
+ * A chat's branch stays local until somebody pushes it, which is the ordinary
+ * state of work in progress, so the button that opens the pull request is where
+ * the push belongs.
+ */
+async function pushBranch(userId: string, sessionId: string): Promise<void> {
+  try {
+    const pushed = await runGitAction(userId, sessionId, { action: "push" });
+    if (!pushed) throw new PullRequestError("This chat has no branch to push.");
+  } catch (err) {
+    if (err instanceof PullRequestError) throw err;
+    if (
+      err instanceof GitActionRefusedError ||
+      err instanceof GitActionNotReadyError ||
+      err instanceof GitError
+    ) {
+      throw new PullRequestError(err.message);
+    }
+    throw err;
+  }
+}
+
+/**
  * Open a pull request for the branch, filled from its commits.
  *
  * `--fill` is what makes this one click: the title comes from the branch's first
@@ -293,6 +318,8 @@ export async function createPullRequest(
 ): Promise<CoderPullRequest> {
   const target = await ghTarget(userId, sessionId);
   if (!target) throw new PullRequestError("This chat has no checkout to open a pull request from.");
+
+  await pushBranch(userId, sessionId);
 
   // The author GitHub records is the token's. An installation token names the
   // app's bot, so this one call uses the person's own authorization: the chat

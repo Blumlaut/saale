@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GitActionRefusedError } from "@/lib/coder/actions";
 import {
   createPullRequest,
   parsePullRequest,
@@ -18,6 +19,7 @@ import {
 const mocks = vi.hoisted(() => ({
   updateMany: vi.fn(),
   runInWorkspace: vi.fn(),
+  runGitAction: vi.fn(),
   loadCoderSession: vi.fn(),
   // The real module answers `{}` when nothing is configured; the mock must too,
   // or the code under test trips over an undefined env.
@@ -29,6 +31,10 @@ vi.mock("@/lib/db", () => ({ prisma: { chatSession: { updateMany: mocks.updateMa
 vi.mock("@/lib/coder/git", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/coder/git")>()),
   runInWorkspace: mocks.runInWorkspace,
+}));
+vi.mock("@/lib/coder/actions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/coder/actions")>()),
+  runGitAction: mocks.runGitAction,
 }));
 vi.mock("@/lib/coder/changes", () => ({ loadCoderSession: mocks.loadCoderSession }));
 vi.mock("@/lib/sandbox/env", () => ({ resolveSandboxEnv: vi.fn(async () => ({})) }));
@@ -227,6 +233,31 @@ describe("createPullRequest", () => {
     });
     mocks.commandEnv.mockResolvedValue({ GH_TOKEN: "installation-token" });
     mocks.userEnv.mockResolvedValue({ GH_TOKEN: "personal-token" });
+    mocks.runGitAction.mockResolvedValue({ output: "" });
+  });
+
+  it("pushes the branch before it asks the forge for a pull request", async () => {
+    mocks.runInWorkspace
+      .mockResolvedValueOnce({ stdout: `${CREATED}\n`, stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: JSON.stringify(OPEN_PR), stderr: "", exitCode: 0 });
+
+    await createPullRequest("u1", "c1", { draft: true });
+
+    expect(mocks.runGitAction).toHaveBeenCalledWith("u1", "c1", { action: "push" });
+    expect(mocks.runGitAction.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.runInWorkspace.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("stops with git's reason when the branch could not be pushed", async () => {
+    mocks.runGitAction.mockRejectedValue(
+      new GitActionRefusedError("A detached HEAD has no branch to push."),
+    );
+
+    await expect(createPullRequest("u1", "c1", { draft: false })).rejects.toThrow(
+      "A detached HEAD has no branch to push.",
+    );
+    expect(mocks.runInWorkspace).not.toHaveBeenCalled();
   });
 
   it("opens it with the connected account's token, not the installation's", async () => {
