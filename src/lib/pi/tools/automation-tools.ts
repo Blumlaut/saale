@@ -22,20 +22,14 @@ import { previewScript, previewWatcherTick, runWatcherTick } from "@/lib/watcher
  * the user can recreate.
  */
 
-/** How a script is expected to report. Repeated in the descriptions on purpose. */
+/**
+ * What an automation script needs beyond the codemode description it runs
+ * under: the tick state and the return gate.
+ */
 const SCRIPT_CONTRACT = [
-  "The script is an async function body run in a sandbox.",
-  "Call tools as `await tools.<name>({...})`, keep state across ticks with `store(key, value)`",
-  "and `load(key)`, and `return` something only when there is news:",
-  "`undefined`/`null`/`false` means nothing happened and nobody is woken.",
-  'Find a tool you cannot name with `searchTools("what you need")` inside the script',
-  "(`ALL_TOOLS` lists every tool).",
-  "A call resolves to the tool's value, so read its fields (`r.exitCode`, `r.stdout`).",
-  "A script that should tell the user something itself calls `tools.telegram_send({ message })`",
-  'during the run. with `deliver: "silent"` that is the whole delivery and no model is woken.',
-  "Never match a marker against a whole result. it echoes the arguments it was called with ",
-  "and never paste a result into the script text: keep it in a variable, or in `store()`.",
-  "Timers, `fetch`, `require` and `process` do not exist.",
+  "Keep state across ticks with `store(key, value)` and `load(key)`.",
+  "`return` something only when there is news: `undefined`/`null`/`false` means nothing happened and nobody is woken.",
+  "Never match a marker against a whole result. it echoes the arguments it was called with.",
 ].join(" ");
 
 /** What a fire does, in the words the model needs to choose one. */
@@ -292,11 +286,11 @@ export function createAutomationTools(userId: string, sessionId: string): ToolDe
     defineStructuredTool({
       name: "automation_test",
       label: "Test Automation Script",
-      description: `Run an automation script once and report what it returned, without scheduling it, recording a tick, or waking anyone. Use this to write and check a script before creating the automation. ${SCRIPT_CONTRACT} Provide either \`script\` (draft, at any point), or \`automationId\` to check a saved automation.`,
+      description: `Run an automation script once and report what it returned, without scheduling it, recording a tick, or waking anyone. Use this to write and check a script before creating the automation. Provide either \`script\` (draft, at any point), or \`automationId\` to check a saved automation.`,
       parameters: Type.Object({
         script: Type.Optional(
           Type.String({
-            description: "A draft script to run. May be provided before the automation exists.",
+            description: `A draft script to run. May be provided before the automation exists. ${SCRIPT_CONTRACT}`,
           }),
         ),
         automationId: Type.Optional(
@@ -346,7 +340,7 @@ export function createAutomationTools(userId: string, sessionId: string): ToolDe
     defineStructuredTool({
       name: "automation_create",
       label: "Create Automation",
-      description: `Create an automation: it ticks on a cron schedule and does something with the tick. Use it for anything that has to happen later or on a cadence. checking a mailbox, a remote host, a feed, a git repo. where running a full agent every few minutes would be wasteful. Without a \`script\` there is no gate: every tick wakes you, which is what a plain scheduled prompt is. ${SCRIPT_CONTRACT} ${DELIVER_CONTRACT} It ticks from the moment you create it, and a tool that would ask you in a chat runs here unattended.`,
+      description: `Create an automation: it ticks on a cron schedule and does something with the tick. Use it for anything that has to happen later or on a cadence. checking a mailbox, a remote host, a feed, a git repo. where running a full agent every few minutes would be wasteful. Without a \`script\` there is no gate: every tick wakes you, which is what a plain scheduled prompt is. It ticks from the moment you create it, and a tool that would ask you in a chat runs here unattended.`,
       parameters: Type.Object({
         name: Type.String({ description: "Automation name (max 100 chars, unique per user)." }),
         cronExpression: Type.Optional(
@@ -464,7 +458,9 @@ export function createAutomationTools(userId: string, sessionId: string): ToolDe
       parameters: Type.Object({
         automationId: Type.String({ description: "Automation id." }),
         script: Type.Optional(
-          Type.String({ description: "New script body. Pass an empty string to remove the gate." }),
+          Type.String({
+            description: `New script body. ${SCRIPT_CONTRACT} Pass an empty string to remove the gate.`,
+          }),
         ),
         cronExpression: Type.Optional(
           Type.String({
