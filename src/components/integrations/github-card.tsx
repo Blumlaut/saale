@@ -825,7 +825,7 @@ function GithubSetupDialog({
               ))}
             </div>
             <p className="text-muted-foreground text-xs">
-              Each chat is then confined to its own project&apos;s repository.
+              Each chat then reaches every repository this installation covers.
             </p>
           </div>
         )}
