@@ -5,6 +5,7 @@ import os from "os";
 import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { userWorkspacePath } from "@/lib/sandbox/workspace";
+import { chatUploadFileName } from "@/lib/file-attachment";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -185,7 +186,7 @@ describe("POST with staged attachments", () => {
 
     // The message content carries the file reference the model reads.
     expect(createData().content).toBe(
-      `check this out\n[File attached: report.pdf (application/pdf) at ${path.join(userRoot, "uploads", "report.pdf")}]`,
+      `check this out\n[File attached: report.pdf (application/pdf) at ${path.join(userRoot, "uploads", chatUploadFileName("report.pdf", staged.uploadId))}]`,
     );
 
     // The attachment record points at the host-side copy under files/.
@@ -196,10 +197,12 @@ describe("POST with staged attachments", () => {
     expect(att.width).toBeNull();
     expect(att.height).toBeNull();
 
-    // The file was delivered into the agent workspace under its own name.
-    expect(await fs.readFile(path.join(userRoot, "uploads", "report.pdf"))).toEqual(
-      Buffer.from(pdfBytes),
-    );
+    // The file was delivered into the agent workspace, named after the upload.
+    expect(
+      await fs.readFile(
+        path.join(userRoot, "uploads", chatUploadFileName("report.pdf", staged.uploadId)),
+      ),
+    ).toEqual(Buffer.from(pdfBytes));
 
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -215,7 +218,7 @@ describe("POST with staged attachments", () => {
     expect(res.status).toBe(200);
 
     expect(createData().content).toBe(
-      `[Image attached: photo.png (image/png) at ${path.join(userRoot, "uploads", "photo.png")}]`,
+      `[Image attached: photo.png (image/png) at ${path.join(userRoot, "uploads", chatUploadFileName("photo.png", staged.uploadId))}]`,
     );
 
     // Re-encoded image keeps the existing storagePath + dimensions.
@@ -231,22 +234,28 @@ describe("POST with staged attachments", () => {
 
   it("accepts arbitrary file types (zip, csv, unknown)", async () => {
     stubDbMessage("msg-3");
-
-    const res = await POST(
-      attachmentRequest("files", [
-        await stageUpload("archive.zip", new Uint8Array([0x50, 0x4b]), "application/zip"),
-        await stageUpload("data.csv", new Uint8Array([0x61, 0x2c, 0x62]), "text/csv"),
-        await stageUpload("blob.bin", new Uint8Array([0x00, 0x01]), "application/octet-stream"),
-      ]),
-      params(),
+    const archive = await stageUpload(
+      "archive.zip",
+      new Uint8Array([0x50, 0x4b]),
+      "application/zip",
+    );
+    const csv = await stageUpload("data.csv", new Uint8Array([0x61, 0x2c, 0x62]), "text/csv");
+    const blob = await stageUpload(
+      "blob.bin",
+      new Uint8Array([0x00, 0x01]),
+      "application/octet-stream",
     );
 
+    const res = await POST(attachmentRequest("files", [archive, csv, blob]), params());
+
     expect(res.status).toBe(200);
-    expect(await fs.readdir(path.join(userRoot, "uploads")).then((names) => names.sort())).toEqual([
-      "archive.zip",
-      "blob.bin",
-      "data.csv",
-    ]);
+    expect(await fs.readdir(path.join(userRoot, "uploads")).then((names) => names.sort())).toEqual(
+      [
+        chatUploadFileName("archive.zip", archive.uploadId),
+        chatUploadFileName("blob.bin", blob.uploadId),
+        chatUploadFileName("data.csv", csv.uploadId),
+      ].sort(),
+    );
   });
 });
 

@@ -38,7 +38,7 @@ export function sanitizeFileName(name: string): string {
  * Every screenshot is called "image.png" and one path holds one file, so the
  * upload's own id goes into the name: a second picture cannot land on the first.
  */
-function uploadFileName(safeName: string, uploadId: string): string {
+export function chatUploadFileName(safeName: string, uploadId: string): string {
   const extension = path.extname(safeName);
   const base = extension ? safeName.slice(0, -extension.length) : safeName;
   return `${base}-${uploadId.replace(/-/g, "").slice(0, 8)}${extension}`;
@@ -100,7 +100,7 @@ export async function adoptChatUpload(
   const { provider } = await openUserFileTarget(userId);
   const root = provider.root;
   const staged = stagedUploadPath(root, ref.uploadId);
-  const agentPath = `${root}/${CHAT_UPLOADS_DIR}/${uploadFileName(safeName, ref.uploadId)}`;
+  const agentPath = `${root}/${CHAT_UPLOADS_DIR}/${chatUploadFileName(safeName, ref.uploadId)}`;
 
   const stats = await provider.stat(staged);
   if (!stats || stats.kind !== "file") throw new FileNotFoundError(staged);

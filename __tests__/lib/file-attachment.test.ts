@@ -99,7 +99,7 @@ describe("adoptChatUpload", () => {
     expect(result.stored.safeName).toBe("report.pdf");
     expect(result.stored.width).toBeUndefined();
     expect(result.agentPath).toBe(
-      path.join(userRoot, "uploads", `report-${uploadId.replace(/-/g, "").slice(0, 8)}.pdf`),
+      path.join(userRoot, "uploads", attachmentsModule.chatUploadFileName("report.pdf", uploadId)),
     );
 
     // The bytes the user sent are the bytes both copies hold.
