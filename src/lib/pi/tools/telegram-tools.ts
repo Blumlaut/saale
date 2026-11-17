@@ -157,7 +157,7 @@ export function createTelegramTools(userId: string, sessionId: string): ToolDefi
           };
         }
 
-        return { value, text: JSON.stringify(value, null, 2) };
+        return { value, text: JSON.stringify(value) };
       },
     }),
   ];

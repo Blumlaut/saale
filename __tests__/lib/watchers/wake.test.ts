@@ -49,8 +49,8 @@ describe("buildWakeMessage", () => {
     expect(message).toContain('Automation "Watch the inbox" fired.');
     expect(message).toContain("Summarise what is new and archive it.");
     expect(message).toContain("```json");
-    // The value is the evidence, so it is embedded as readable JSON.
-    expect(message).toContain('"count": 2');
+    // The value is the evidence, so it is embedded as JSON.
+    expect(message).toContain('{"count":2');
     expect(message).toContain('"Deploy failed"');
   });
 

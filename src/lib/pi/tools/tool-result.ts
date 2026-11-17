@@ -30,7 +30,7 @@ import type { Static, TSchema } from "typebox";
  */
 export interface ToolOutcome<TValue, TDetails> {
   value: TValue;
-  /** Model-facing text. Defaults to the value as pretty-printed JSON. */
+  /** Model-facing text. Defaults to the value as JSON. */
   text?: string;
   /** Blocks to place after the text, before the metadata. */
   content?: readonly (TextContent | ImageContent)[];
@@ -90,7 +90,8 @@ export function defineStructuredTool<
       // shows and what `outputSchema` declares.
       const value = JSON.parse(JSON.stringify(outcome.value)) as JsonValue;
 
-      const text = outcome.text ?? JSON.stringify(value, null, 2);
+      // Compact: the transcript replays every result on every turn, whitespace included.
+      const text = outcome.text ?? JSON.stringify(value);
       const blocks = outcome.content ?? [];
       const content: (TextContent | ImageContent)[] = [];
 

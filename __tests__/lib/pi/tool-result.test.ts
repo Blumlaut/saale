@@ -39,7 +39,7 @@ describe("defineStructuredTool", () => {
 
     expect(result.structuredContent).toEqual({ input: 21, doubled: 42 });
     expect(result.content).toEqual([
-      { type: "text", text: JSON.stringify({ input: 21, doubled: 42 }, null, 2) },
+      { type: "text", text: JSON.stringify({ input: 21, doubled: 42 }) },
     ]);
     expect(JSON.parse(textOf(result))).toEqual(result.structuredContent);
   });
@@ -91,7 +91,7 @@ describe("defineStructuredTool", () => {
     expect(result.content).toHaveLength(1);
     expect(result.content[0]).toEqual({
       type: "text",
-      text: `${JSON.stringify({ input: 2, doubled: 4 }, null, 2)}\n{"_saaleInfraMeta":{"type":"sample","machineId":"m-1","stdout":"first line"}}`,
+      text: `${JSON.stringify({ input: 2, doubled: 4 })}\n{"_saaleInfraMeta":{"type":"sample","machineId":"m-1","stdout":"first line"}}`,
     });
   });
 

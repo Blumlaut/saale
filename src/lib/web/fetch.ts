@@ -137,7 +137,6 @@ function normalizeContentType(raw: string): string | undefined {
   return match && match[1] ? match[1].trim().toLowerCase() : undefined;
 }
 
-
 function rawFetchResult(
   url: string,
   finalUrl: string,
@@ -472,7 +471,8 @@ async function fetchWithRedirects(
   if (jsonResponse) {
     try {
       const parsed = JSON.parse(rawBody);
-      const pretty = JSON.stringify(parsed, null, 2);
+      // Compact: the content is replayed in the transcript on every turn.
+      const json = JSON.stringify(parsed);
       return {
         url,
         finalUrl,
@@ -484,7 +484,7 @@ async function fetchWithRedirects(
         description: undefined,
         siteName: undefined,
         publishedDate: undefined,
-        content: truncateContent(pretty, maxChars),
+        content: truncateContent(json, maxChars),
         format: format === "json" ? "json" : "markdown",
       };
     } catch {

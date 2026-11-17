@@ -48,7 +48,7 @@ export function buildWakeMessage(options: {
 
   let payload: string;
   try {
-    payload = JSON.stringify(options.value, null, 2) ?? String(options.value);
+    payload = JSON.stringify(options.value) ?? String(options.value);
   } catch (err) {
     // A value the sandbox returned is JSON by construction; this is a guard
     // against a future change to the runner, not an expected path.

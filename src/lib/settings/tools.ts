@@ -29,7 +29,7 @@ const KEY_PREFIXES = [
 ];
 
 function toText(value: unknown): string {
-  return JSON.stringify(value, null, 2);
+  return JSON.stringify(value);
 }
 
 /** One setting with its value, as a filtered listing reports it. */

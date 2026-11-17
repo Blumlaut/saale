@@ -588,7 +588,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
           value: { count: emails.length, emails: emailData },
           // The text has always been the message array itself; the value a
           // script reads is the same array under a count.
-          text: JSON.stringify(emailData, null, 2),
+          text: JSON.stringify(emailData),
           meta: mailMeta,
           details: { count: emails.length },
         };
