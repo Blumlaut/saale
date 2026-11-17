@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026.11.16 - 2026-11-17
+
+- fix slash command value completion (d633a450)
+- push the branch before opening a pull request (844bcc5f)
+- keep the cli's git helper when the app goes (fbf3ea48)
+- unify tool config normalizers in properties.ts (85995ae8)
+- extract raw fetch result helper in fetch.ts (ddb8be9e)
+- cover the skills panel's remove flow (4df49ce2)
+- install skills from the integrations settings (3d30968a)
+- serve installed skills over an api (5a857930)
+- read installed skills in every chat (ef59047f)
+- sign in over loopback and paste the redirect (f12141ec)
+- move the mcp sign-in into the row menu (51a17c0d)
+- sign in with a client metadata document (59e50f01)
+- point an mcp notice at the settings page (b23df289)
+- sign in to an mcp server from its row (97983450)
+- name the reason when an mcp test fails (79f92b61)
+- say why an mcp sign-in could not start (98a66f29)
+- drop the mcp preset list from the add sheet (bd425468)
+- stop the integrations page waiting on telegram (ee6df8ac)
+- keep a resized panel inside its row (24b062e6)
+
 ## 2026.11.15 - 2026-11-16
 
 - keep same-named uploads apart in uploads/ (52697d7a)
