@@ -253,7 +253,9 @@ export async function readGithubAppSummary(): Promise<GithubAppSummary | null> {
 export async function readGithubAppSummaryFresh(): Promise<GithubAppSummary | null> {
   const summary = await readGithubAppSummary();
   if (!summary) return null;
-  const permissions = await refreshGithubAppPermissions(summary);
+  // A `GET /app` without a permission set leaves the row alone, so the summary
+  // reports what the row holds instead of claiming the app has none at all.
+  const permissions = (await refreshGithubAppPermissions(summary)) ?? summary.permissions;
   return {
     ...summary,
     permissions,
@@ -335,16 +337,21 @@ export async function saveGithubApp(input: GithubAppInput): Promise<GithubAppSum
     },
   });
 
+  // The row is the answer. GitHub's verification is the freshest one there is,
+  // so the form says what the app is missing while the admin is still on it —
+  // and when GitHub sent no set, the row keeps what an earlier save stored, so
+  // the answer has to be that rather than "none".
+  const storedPermissions =
+    identity.permissions ?? (row.permissions as Record<string, string> | null);
+
   return {
     appId: row.appId,
     clientId: row.clientId,
     slug: row.slug,
     name: row.name,
     ownerLogin: row.ownerLogin,
-    // The verification two steps up is the only fresh answer about the app, so
-    // the form says what it is missing while the admin is still on it.
-    permissions: identity.permissions ?? null,
-    missingPermissions: missingGithubAppPermissions(identity.permissions),
+    permissions: storedPermissions,
+    missingPermissions: missingGithubAppPermissions(storedPermissions),
     enabled: row.enabled,
     updatedAt: row.updatedAt,
   };

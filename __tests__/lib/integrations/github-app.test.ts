@@ -209,6 +209,29 @@ describe("saveGithubApp", () => {
     expect(JSON.stringify(summary)).not.toContain("secret");
   });
 
+  it("answers with the set the row holds when GitHub sends none", async () => {
+    // The upsert leaves the column alone in that case, so answering "no
+    // permissions" would make the panel disagree with what it just wrote — and
+    // offer to save credentials that are already missing a permission.
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+    });
+
+    const summary = await save();
+
+    const payload = db.githubApp.upsert.mock.calls[0]?.[0] as { update: Record<string, unknown> };
+    expect("permissions" in payload.update).toBe(false);
+    expect(summary.permissions).toEqual({ contents: "write" });
+    expect(summary.missingPermissions.map((entry) => entry.name)).toEqual([
+      "pull_requests",
+      "workflows",
+      "checks",
+      "metadata",
+    ]);
+  });
+
   it("reports GitHub's refusal instead of storing unusable credentials", async () => {
     client.readAppIdentity.mockRejectedValue(
       new GithubApiError("A JSON web token could not be decoded", 401),
@@ -626,6 +649,28 @@ describe("the app's permissions against Saale's needs", () => {
     const summary = await readGithubAppSummaryFresh();
 
     expect(summary?.permissions).toEqual({ workflows: "write", checks: "read", metadata: "read" });
+    expect(db.githubApp.update).not.toHaveBeenCalled();
+  });
+
+  it("reports the row's set when GitHub answers without one", async () => {
+    // Same rule as the save path: the row is what the panel renders from, and a
+    // permission map GitHub left out is not the same as having none.
+    db.githubApp.findUnique.mockResolvedValue({ ...APP_ROW, permissions: { contents: "write" } });
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+    });
+
+    const summary = await readGithubAppSummaryFresh();
+
+    expect(summary?.permissions).toEqual({ contents: "write" });
+    expect(summary?.missingPermissions.map((entry) => entry.name)).toEqual([
+      "pull_requests",
+      "workflows",
+      "checks",
+      "metadata",
+    ]);
     expect(db.githubApp.update).not.toHaveBeenCalled();
   });
 
