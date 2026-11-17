@@ -3,8 +3,10 @@
  *
  * The command line is `name:value` pairs, so the menu follows the caret: after
  * `/image ` it lists the argument names, and inside `size:` it lists that
- * argument's values. Pure functions over the composer's text, so the composer
- * stays a component and this stays testable.
+ * argument's values. A bare word that names no argument completes the first
+ * argument's values, so `/model qwen` picks a model straight away. Pure
+ * functions over the composer's text, so the composer stays a component and
+ * this stays testable.
  */
 
 import { choiceValue, missingArgument, parseCommandArguments } from "./arguments";
@@ -77,7 +79,8 @@ export function commandReady(meta: CommandMeta | undefined, args: string, attach
  *
  * Returns null when there is nothing to offer: the text is inside the value of
  * a free-text argument, or every argument the command declares is already
- * filled in.
+ * filled in. A bare word that names no argument completes the first unfilled
+ * argument's values.
  */
 export function argumentHints(
   meta: CommandMeta | undefined,
@@ -106,37 +109,55 @@ export function argumentHints(
     // A value typed out in full is done; offering it again would swallow Enter.
     const choices = (typed ? candidates(typed, context.options) : []).filter(
       (candidate) =>
-        candidate.value.toLowerCase() !== value && candidate.value.toLowerCase().startsWith(value),
+        candidate.value.toLowerCase() !== value && candidate.value.toLowerCase().includes(value),
     );
     return choices.length === 0 || !typed
       ? null
       : {
-          hints: choices.map((candidate) => ({
-            insert: candidate.value,
-            label: candidate.value,
-            // The argument's name is the note; the description is what the
-            // value means, which for a listed option is its own label.
-            description: candidate.description,
-            kind: typed.kind,
-            note: typed.name,
-            target: "value" as const,
-          })),
+          hints: choices.map((candidate) => valueHint(candidate, typed, candidate.value)),
           replace: { start: start + colon + 1, end: args.length },
         };
   }
 
   const query = token.toLowerCase();
   const filled = new Set(filledArguments(args, declared));
-  const wanted = declared.filter(
-    (arg) => !filled.has(arg.name) && arg.name.toLowerCase().startsWith(query),
-  );
+  const unfilled = declared.filter((arg) => !filled.has(arg.name));
+  const wanted = unfilled.filter((arg) => arg.name.toLowerCase().startsWith(query));
 
-  return wanted.length === 0
+  if (wanted.length > 0) {
+    return {
+      hints: wanted.map((arg) => hint(arg, attached, context.options)),
+      replace: { start, end: args.length },
+    };
+  }
+
+  // A word that names no argument is a value for the first one still waiting:
+  // `/model qwen` completes the model right after the command is picked.
+  const target = unfilled[0];
+  if (!target || (target.kind !== "choice" && target.kind !== "boolean")) return null;
+  const values = candidates(target, context.options).filter((candidate) =>
+    candidate.value.toLowerCase().includes(query),
+  );
+  return values.length === 0
     ? null
     : {
-        hints: wanted.map((arg) => hint(arg, attached, context.options)),
+        hints: values.map((candidate) =>
+          valueHint(candidate, target, `${target.name}:${candidate.value}`),
+        ),
         replace: { start, end: args.length },
       };
+}
+
+/** A value row: the argument's name is the note, the option's label the description. */
+function valueHint(candidate: Candidate, arg: CommandArgument, insert: string): ArgumentHint {
+  return {
+    insert,
+    label: candidate.value,
+    description: candidate.description,
+    kind: arg.kind,
+    note: arg.name,
+    target: "value",
+  };
 }
 
 /** One value an argument accepts, and what to say about it. */

@@ -171,6 +171,36 @@ test("offers a choice's options and takes one with Tab", async ({ browser }) => 
   await context.close();
 });
 
+test("completes the first argument from a bare word typed after the command", async ({
+  browser,
+}) => {
+  const { context, page, composer } = await openComposer(browser);
+
+  await page.route("**/command/options?name=model", (route) =>
+    route.fulfill({
+      json: {
+        options: {
+          name: [
+            { value: "opencode-go:qwen4-max", label: "Qwen4 Max" },
+            { value: "anthropic:claude-sonnet-4", label: "Claude Sonnet 4" },
+          ],
+        },
+      },
+    }),
+  );
+
+  // Typing straight after the command fills its first argument, and a part
+  // of the value matches wherever it sits inside the option.
+  await composer.pressSequentially("/model qwen");
+  const option = page.locator(`${LISTBOX} [role="option"]`).first();
+  await expect(option).toContainText("opencode-go:qwen4-max");
+
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("/model name:opencode-go:qwen4-max");
+
+  await context.close();
+});
+
 test("runs a command whose arguments are optional when Enter is pressed", async ({ browser }) => {
   const { context, page, composer } = await openComposer(browser);
   const posted = page.waitForRequest(

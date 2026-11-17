@@ -12,6 +12,15 @@ import { getCommandMeta } from "@/lib/commands/catalog";
 const image = getCommandMeta("image");
 const edit = getCommandMeta("edit");
 const stfu = getCommandMeta("stfu");
+const model = getCommandMeta("model");
+const stop = getCommandMeta("stop");
+
+const modelOptions = {
+  name: [
+    { value: "opencode-go:qwen4-max", label: "Qwen4 Max" },
+    { value: "anthropic:claude-sonnet-4", label: "Claude Sonnet 4" },
+  ],
+};
 
 describe("readCommandDraft", () => {
   it("splits a command and its arguments", () => {
@@ -102,7 +111,7 @@ describe("argumentHints", () => {
     expect(completion?.hints[1]).toMatchObject({ description: "1024 × 1536 · portrait" });
   });
 
-  it("narrows the listed values to the typed prefix", () => {
+  it("narrows the listed values to the typed part, anywhere in the value", () => {
     const completion = argumentHints(image, "size:1024x1", {
       options: {
         size: [
@@ -114,6 +123,10 @@ describe("argumentHints", () => {
 
     expect(completion?.hints.map((hint) => hint.insert)).toEqual(["1024x1024", "1024x1536"]);
     expect(completion?.replace).toEqual({ start: 5, end: 11 });
+
+    const middle = argumentHints(model, "name:qwen", { options: modelOptions });
+    expect(middle?.hints.map((hint) => hint.insert)).toEqual(["opencode-go:qwen4-max"]);
+    expect(middle?.replace).toEqual({ start: 5, end: 9 });
   });
 
   it("says nothing for a dynamic choice the server has not answered for yet", () => {
@@ -168,5 +181,56 @@ describe("argumentHints", () => {
     const completion = argumentHints(image, "prompt:a fox\nsi");
 
     expect(completion?.replace).toEqual({ start: 13, end: 15 });
+  });
+
+  it("completes the first argument's values from a bare word", () => {
+    const completion = argumentHints(model, "qwen", { options: modelOptions });
+
+    expect(completion?.hints.map((hint) => hint.insert)).toEqual(["name:opencode-go:qwen4-max"]);
+    expect(completion?.hints[0]).toMatchObject({ note: "name", target: "value", kind: "choice" });
+    expect(completion?.replace).toEqual({ start: 0, end: 4 });
+  });
+
+  it("completes static choices and booleans from a bare word too", () => {
+    expect(argumentHints(stfu, "perm")?.hints.map((hint) => hint.insert)).toEqual([
+      "time:permanent",
+    ]);
+    expect(argumentHints(stop, "tr")?.hints.map((hint) => hint.insert)).toEqual(["clear:true"]);
+    // The bare word still needs its argument name, so a full value is offered.
+    expect(argumentHints(stfu, "stop")?.hints.map((hint) => hint.insert)).toEqual(["time:stop"]);
+  });
+
+  it("prefers an argument name the bare word starts with", () => {
+    expect(argumentHints(stfu, "t")?.hints.map((hint) => hint.insert)).toEqual(["time:"]);
+  });
+
+  it("offers the next choice once the text argument is filled", () => {
+    const completion = argumentHints(image, "prompt:a fox 1024", {
+      options: {
+        size: [
+          { value: "1024x1024", label: "square" },
+          { value: "1024x1536", label: "portrait" },
+        ],
+      },
+    });
+
+    expect(completion?.hints.map((hint) => hint.insert)).toEqual([
+      "size:1024x1024",
+      "size:1024x1536",
+    ]);
+    expect(completion?.replace).toEqual({ start: 13, end: 17 });
+  });
+
+  it("keeps free text free while the first argument is text", () => {
+    expect(argumentHints(image, "a red fox")).toBeNull();
+    expect(
+      argumentHints(image, "1024", {
+        options: { size: [{ value: "1024x1024", label: "square" }] },
+      }),
+    ).toBeNull();
+  });
+
+  it("says nothing when a bare word matches no value", () => {
+    expect(argumentHints(model, "zzz", { options: modelOptions })).toBeNull();
   });
 });
