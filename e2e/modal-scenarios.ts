@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import type { GithubAppSection, GithubStatus } from "@/lib/integrations/github";
+import type { GithubAppSummary } from "@/lib/integrations/github-app";
 
 import { gotoAndSettle, DESKTOP_VIEWPORT } from "./utils";
 import { settingsSection, type SettingsSectionId } from "@/lib/navigation/settings-nav";
@@ -1006,22 +1007,28 @@ async function mockCoderChat(page: Page) {
   );
 }
 
+/** The app as the admin route serializes it: the summary, with its date as a string. */
+type GithubAppPayload = Omit<GithubAppSummary, "updatedAt"> & { updatedAt: string };
+
 /** A saved app, so the panel's destructive confirmation can be opened offline. */
 async function mockGithubApp(page: Page) {
+  const app: GithubAppPayload = {
+    appId: "5674116",
+    clientId: "Iv23liJl7QK5AbPMsDQ3",
+    slug: "askguenther-test",
+    name: "AskGuenther Test",
+    ownerLogin: "Juli04",
+    permissions: { contents: "write", metadata: "read", pull_requests: "write" },
+    missingPermissions: [],
+    enabled: true,
+    updatedAt: NOW,
+  };
+
   await page.route(/\/api\/admin\/github\/app$/, (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({
       json: {
-        app: {
-          appId: "5674116",
-          clientId: "Iv23liJl7QK5AbPMsDQ3",
-          slug: "askguenther-test",
-          name: "AskGuenther Test",
-          ownerLogin: "Juli04",
-          permissions: { contents: "write", metadata: "read", pull_requests: "write" },
-          enabled: true,
-          updatedAt: NOW,
-        },
+        app,
         publicUrl: "https://saale.example.com",
         callbackUrl: "https://saale.example.com/api/integrations/github/installed",
         setupUrl: "https://saale.example.com/api/integrations/github/installed",
@@ -1280,7 +1287,9 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: async (page) => {
       await gotoChatSession(page, await ensureChatSession(page));
       const composer = visible(page, 'textarea[placeholder="Message Saale..."]');
-      await composer.fill("/model");
+      // A command that takes arguments lands in the composer as `/model ` so
+      // they can be filled in; Enter on that line runs it and opens its sheet.
+      await composer.fill("/model ");
       await composer.press("Enter");
       await page.locator('[data-slot="sheet-content"]').waitFor({ state: "visible" });
     },
