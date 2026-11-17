@@ -120,10 +120,10 @@ describe("/api/mcp/servers/:serverId/oauth/start", () => {
     expect(mockEvictUserSessions).toHaveBeenCalledWith(USER_ID);
   });
 
-  it("reports a failure to start as a 502", async () => {
+  it("reports a failure to start as a 400 with a readable reason", async () => {
     mockStart.mockRejectedValue(new Error("discovery failed"));
     const response = await startOAuth(request(), params("srv-1"));
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "discovery failed" });
   });
 });
@@ -150,6 +150,7 @@ describe("/api/mcp/servers/:serverId/oauth", () => {
       status: "pending",
       error: null,
       authorizationUrl: "https://as.example/a",
+      manual: false,
       hasOAuth: false,
     });
   });

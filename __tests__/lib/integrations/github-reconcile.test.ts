@@ -107,7 +107,9 @@ describe("reconcileGithubSource", () => {
     expect(result.target).toBe("cli");
     expect(result.changed).toBe(true);
     expect(codes(result)).toEqual(["adopted-cli"]);
-    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "cli");
+    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "cli", {
+      cliLogin: "octocat",
+    });
     expect(settings.setSetting).toHaveBeenCalledWith(USER, "github.source", "cli");
   });
 
@@ -119,7 +121,7 @@ describe("reconcileGithubSource", () => {
 
     expect(result.target).toBe("app");
     expect(result.error).toBeNull();
-    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "app");
+    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "app", { cliLogin: null });
     expect(settings.setSetting).toHaveBeenCalledWith(USER, "github.source", "app");
   });
 
@@ -134,7 +136,9 @@ describe("reconcileGithubSource", () => {
     expect(result.target).toBe("app");
     // The removal is what tells the user their gh login is gone.
     expect(codes(result)).toContain("removed-cli");
-    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "app");
+    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "app", {
+      cliLogin: "octocat",
+    });
   });
 
   it("leaves the stored source alone when the workspace cannot be changed", async () => {
@@ -164,7 +168,9 @@ describe("reconcileGithubSource", () => {
     expect(result.notices).toEqual([]);
     expect(settings.setSetting).not.toHaveBeenCalled();
     // The helper is still re-asserted: it is what keeps exactly one in place.
-    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "cli");
+    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "cli", {
+      cliLogin: "octocat",
+    });
   });
 
   it("leaves both alone when nothing is connected", async () => {
@@ -172,7 +178,7 @@ describe("reconcileGithubSource", () => {
 
     expect(result.target).toBe("");
     expect(result.changed).toBe(false);
-    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "");
+    expect(credentials.applyGithubSource).toHaveBeenCalledWith(USER, "", { cliLogin: null });
   });
 });
 
