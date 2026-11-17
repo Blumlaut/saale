@@ -150,7 +150,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
       name: "mail_accounts",
       label: "List Email Accounts",
       description:
-        "List all connected email accounts with their metadata: IDs, addresses, enabled status, last sync time, folder list, and message counts per folder.",
+        "List all connected email accounts with their addresses and enabled status.",
       parameters: Type.Object({}),
       outputSchema: MAIL_ACCOUNTS_SCHEMA,
       execute: async (_toolCallId) => {

@@ -537,7 +537,7 @@ export function createJobTools(userId: string): ToolDefinition[] {
       name: "model_list",
       label: "List Models",
       description:
-        "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Each model includes a 'modelId' field in 'provider:model' format that you can pass directly to job_create or job_update. Returns models grouped by provider, filtered by admin config.",
+        "List all available AI models for this user. Use this to find valid model IDs before creating or updating jobs. Each model includes a 'modelId' field in 'provider:model' format that you can pass directly to job_create or job_update.",
       parameters: Type.Object({}),
       outputSchema: modelListSchema,
       execute: async (_toolCallId, _params) => {
