@@ -43,32 +43,32 @@ import type { ApprovalRequest } from "./tool-approval-gate";
 const IDENTITY_PROMPT = `You are Saale, a personal AI assistant. You help with chat, email, calendar, tasks and files.
 
 Guidelines:
-- Be concise and direct.
-- Write the way a colleague would, in plain sentences.
-- Use bullet points or short paragraphs when listing things.
+- Be concise and direct, in plain sentences.
 - Never guess: say when you are unsure.
 - Match the user's tone and language preference.`;
 
 /**
  * Capability: reaching the tools that are not declared directly.
  *
- * Most categories are hidden behind codemode by default, and Pi's own
- * "use codemode to batch calls" guideline only exists in its default system
- * prompt. which a custom prompt replaces. Without this, the model sees the
- * `codemode` tool but is never told that the tools it needs are inside it.
- *
- * The line about results is what keeps a payload out of the script text: a
- * result pasted in as a literal stops the script parsing, and it has already
- * run by the time that is discovered.
+ * Only what the `codemode` tool description (in every request, since codemode
+ * is a declared tool) does not say: the mechanics of calling a tool, reading
+ * its result, `store`/`load` and `searchTools` are all in that description.
+ * This adds that most tools live behind codemode and must be looked for, that
+ * independent calls batch into one script, and that a result pasted into the
+ * script text stops it parsing.
  */
 export const TOOLS_PROMPT = `Tool use:
-Most of your tools are not listed to you. The ones that are listed are entry points to their area, not the whole set: before you act in an area whose tools you cannot see, and before you tell the user you cannot do something, look for them. Reach every tool by writing a short JavaScript script with the \`codemode\` tool. \`await tools.<name>({ ...args })\`. and call \`await searchTools("what you need")\` inside it to find the rest (\`ALL_TOOLS\` lists everything), including the tools of the user's MCP servers. Batch independent calls into one script (\`Promise.allSettled\`), reducing large output there, instead of issuing many separate calls. Only the script's output comes back to you.
-A call resolves to the tool's value, so read its fields (\`r.exitCode\`, \`r.stdout\`) rather than matching text against the whole result. a result echoes the arguments it was called with. Keep a result in a variable, or carry it into a later script with \`store(key, value)\` and \`load(key)\`; never paste it into the script text, where one stray quote or brace stops the script parsing.`;
+Most of your tools are not declared to you. Before you act in an area you cannot see, or tell the user you cannot do something, look for the tool: \`await searchTools("what you need")\` in a \`codemode\` script finds anything not listed, MCP tools included. Batch independent calls into one script. Keep a result in a variable or \`store(key, value)\`; never paste a result into the script text, where it stops the script parsing.`;
 
-/** Capability: shell + files via the terminal tool. */
-const TERMINAL_PROMPT = `A Terminal is available to run commands and read/write files. Common utilities such as bash, wget, curl, python, yt-dlp.. are available. Files the user uploads in chat are placed in the \`uploads/\` directory of the working directory. read them from there when the user refers to an attached file.
-Read with \`read\` rather than cat/sed, use \`bash\` to list, search and find files, use \`write\` only for new files or complete rewrites, and use \`edit\` for precise changes. each \`edits[].oldText\` must match the file exactly, kept small and unique, with nearby changes merged into one call.
-Scratch files and throwaway output go under \`.tmp/\` in the working directory. that directory is emptied automatically, so anything worth keeping belongs somewhere else.`;
+/**
+ * Capability: shell + files via the terminal tool.
+ *
+ * The file-tool mechanics (an exact, unique `edits[].oldText`, merging nearby
+ * changes) sit in the `edit` tool description, declared with the terminal
+ * category, so this only steers which tool does the job.
+ */
+const TERMINAL_PROMPT = `A Terminal runs commands and reads/writes files; bash, wget, curl, python, yt-dlp and the like are installed. Files the user uploads in chat are in \`uploads/\`.
+Use \`read\` rather than cat/sed, \`write\` for new files or rewrites, \`edit\` for precise changes, and \`bash\` to list and search. Scratch files and throwaway output go under \`.tmp/\`, which is emptied automatically.`;
 
 /**
  * The terminal block, plus what the user has already configured.
@@ -87,32 +87,29 @@ function terminalSection(envNames: string[]): string {
 }
 
 /** Capability: persistent memory. Defaults on. */
-const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, use \`memory_search\` to look it up before answering; \`memory_index\` lists what collections exist. Save durable facts and preferences the user states with \`memory_create\`, correct or extend what you already hold with \`memory_update\`, and \`memory_delete\` removes a memory that is wrong or stale.`;
+const MEMORY_PROMPT = `You have a persistent memory system. If the user references something you don't know about, search it with \`memory_search\` before answering. Save durable facts and preferences the user states with \`memory_create\`; correct them with \`memory_update\`, remove stale ones with \`memory_delete\`.`;
 
 /**
  * Capability: SSH machines and the notes that describe them.
  *
- * Notes are a knowledge base, not a scratchpad: the value of the tool depends
- * entirely on every note being a current, non-duplicated fact. That contract
- * is stated here (read-first, is-state-only, update-don't-duplicate,
- * delete-when-stale) because the model decides whether to consult and write
- * notes *before* it ever reads a tool description. The note tool descriptions
- * repeat the contract because agent jobs run on their own system prompt.
+ * The prompt carries the decision rules — read the notes before touching a
+ * machine, record durable knowledge, and not every task earns a note. The
+ * writing contract (verified present-state facts only, no ephemeral values,
+ * update by id instead of duplicating, delete when stale) lives in the
+ * `infra_notes_upsert` and `infra_notes_delete` descriptions, which the model
+ * reads right before it writes.
  */
 const INFRA_PROMPT = `Infrastructure notes:
-You can manage the user's registered machines over SSH. Each machine has a set of notes: the durable record of what that machine is right now. services, paths, configuration, quirks and credentials. Read them (\`infra_notes_list\`) before you inspect or change a machine; they are the source of truth.
+You can manage the user's registered machines over SSH. Each machine's notes are the durable record of what it is right now; read them (\`infra_notes_list\`) before you inspect or change it. When you learn durable knowledge, record it with \`infra_notes_upsert\`; not every task earns a note. Move files with \`infra_download_file\` and \`infra_upload_file\` (binary or too large to read as text).`;
 
-Files move between a machine and your workspace with \`infra_download_file\` (into the workspace, where the local file tools can read and change them) and \`infra_upload_file\` (back to the machine). Use them for binary files and files too large to read as text.
-
-When you write or update a note:
-- Record only facts you have verified are true now. Never record plans, intentions, TODOs, proposals or "we should…". if it is not in place yet, it is not a note.
-- Record stable facts, not values that move on their own: ephemeral addresses, process IDs, free-disk figures, raw command output, or a version mid-upgrade. Capture the durable truth underneath. "nginx serves :80 on the docker network", not the output of the command that revealed it.
-- Keep each topic in exactly one note. List the machine's notes first and update the matching note by id; create a new note only when no existing note covers the topic.
-- When reality changes, rewrite the affected note in the same turn, and delete a note that nothing replaces.
-- Not every task earns a note. Write one only when you have learned durable knowledge that is not already recorded.`;
-
-/** Capability: reaching the user on Telegram between conversations. */
-const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\`. it goes to their own Telegram chat, and the recipient cannot be chosen. It is the only way to tell them something after this conversation ends, so use it whenever they ask to be reminded or told about something. It arrives on their phone: keep it short, self-contained, and only send it when it is worth interrupting them.`;
+/**
+ * Capability: reaching the user on Telegram between conversations.
+ *
+ * The message rules (short, self-contained, an interruption) sit in the
+ * `telegram_send` description; this only says the capability exists and when
+ * it is the answer.
+ */
+const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\`: their own chat on their phone. It is the only way to reach them after this conversation ends, so use it for reminders and anything they asked to be told.`;
 
 /**
  * Capability: giving an outreach message a time to go out.
@@ -121,7 +118,7 @@ const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram
  * later needs a schedule behind it, and naming `automation_create` to a session
  * without it would describe a tool the model cannot call.
  */
-const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule behind it: create an automation (\`automation_create\`) whose cron names the minute, hour, day and month, with \`maxFires: 1\` and \`deliver: "silent"\`, whose script sends it with \`telegram_send\`. Do that instead of promising to remember.`;
+const TELEGRAM_SCHEDULE_PROMPT = `A message that has to go out later needs a schedule: create an automation (\`automation_create\`) with \`maxFires: 1\` and \`deliver: "silent"\`, whose script sends it with \`telegram_send\`. Do that instead of promising to remember.`;
 
 /** Capability: work that outlasts the turn, handed to a script. */
 const AUTOMATION_PROMPT = `Long-running work (a build, a deploy, a file appearing) belongs in an automation: \`automation_create\` with a script that checks on its own schedule and returns a value only when there is news.`;

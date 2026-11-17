@@ -91,11 +91,11 @@ describe("buildCoderSystemPrompt for a shared checkout", () => {
 describe("buildCoderSystemPrompt capability sections", () => {
   it("describes the terminal contract only while that category is on", () => {
     const on = buildCoderSystemPrompt({ toolConfig: { terminal: true } });
-    expect(on).toContain("A Terminal is available");
+    expect(on).toContain("A Terminal runs commands");
     expect(on).toContain("`read` rather than cat/sed");
 
     const off = buildCoderSystemPrompt({ toolConfig: { terminal: false } });
-    expect(off).not.toContain("A Terminal is available");
+    expect(off).not.toContain("A Terminal runs commands");
     expect(off).not.toContain("`read` rather than cat/sed");
   });
 

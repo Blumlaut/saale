@@ -20,17 +20,16 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).not.toContain("Custom instructions");
     // Terminal and memory default on, and the tools are resolved with those same
     // defaults  so the prompt must describe them without being asked.
-    expect(prompt).toContain("A Terminal is available");
+    expect(prompt).toContain("A Terminal runs commands");
     expect(prompt).toContain("persistent memory system");
   });
 
   it("tells the model how to reach hidden tools", () => {
-    // Pi's own "use codemode to batch calls" guideline lives in the default
-    // system prompt, which a custom prompt replaces  so Saale states it here.
+    // The codemode tool description carries the script mechanics; the prompt
+    // must say the tools live behind it and are found with searchTools.
     for (const config of [undefined, {}, { terminal: false, memory: false }]) {
       const prompt = buildAgentSystemPrompt(config ? { toolConfig: config } : {});
       expect(prompt).toContain("Tool use:");
-      expect(prompt).toContain("tools.<name>");
       expect(prompt).toContain("searchTools");
     }
   });
@@ -41,7 +40,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).not.toContain("Tool use:");
     expect(prompt).not.toContain("searchTools");
     // The tools the session does have are still described.
-    expect(prompt).toContain("A Terminal is available");
+    expect(prompt).toContain("A Terminal runs commands");
   });
 
   it("names the variables Saale sets for a command", () => {
@@ -68,31 +67,31 @@ describe("buildAgentSystemPrompt", () => {
 
   it("includes terminal instruction when terminal tool is enabled", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { terminal: true } });
-    expect(prompt).toContain("A Terminal is available");
-    // The file-tool usage rules Pi keeps in its own rules section.
+    expect(prompt).toContain("A Terminal runs commands");
+    // The file-tool mechanics live in the `edit` tool description, so the
+    // prompt only steers which tool does the job.
     expect(prompt).toContain("`read` rather than cat/sed");
-    expect(prompt).toContain("edits[].oldText` must match the file exactly");
   });
 
   it("skips terminal instruction when terminal tool is disabled", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { terminal: false } });
-    expect(prompt).not.toContain("A Terminal is available");
+    expect(prompt).not.toContain("A Terminal runs commands");
   });
 
   it("includes terminal instruction by default", () => {
     // The chat stores a null toolConfig; the tools still default on, so the
     // capability block must appear rather than the model being left unaware of
     // `write`.
-    expect(buildAgentSystemPrompt({ toolConfig: {} })).toContain("A Terminal is available");
-    expect(buildAgentSystemPrompt({})).toContain("A Terminal is available");
+    expect(buildAgentSystemPrompt({ toolConfig: {} })).toContain("A Terminal runs commands");
+    expect(buildAgentSystemPrompt({})).toContain("A Terminal runs commands");
   });
 
   it("includes terminal instruction for legacy files/bash keys", () => {
     expect(buildAgentSystemPrompt({ toolConfig: { files: true } })).toContain(
-      "A Terminal is available",
+      "A Terminal runs commands",
     );
     expect(buildAgentSystemPrompt({ toolConfig: { bash: true } })).toContain(
-      "A Terminal is available",
+      "A Terminal runs commands",
     );
   });
 
@@ -114,15 +113,12 @@ describe("buildAgentSystemPrompt", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { infra: true } });
     expect(prompt).toContain("Infrastructure notes:");
     // Read-first: notes are the source of truth, not a scratchpad.
-    expect(prompt).toContain("Read them");
-    // Is-state only: no plans, intentions, TODOs or ephemeral values.
-    expect(prompt).toContain("true now");
-    expect(prompt).toContain("plans, intentions, TODOs");
-    // No duplicates: update the matching note by id.
-    expect(prompt).toContain("exactly one note");
-    expect(prompt).toContain("update the matching note by id");
-    // Delete when stale.
-    expect(prompt).toContain("delete a note that nothing replaces");
+    expect(prompt).toContain("read them");
+    expect(prompt).toContain("infra_notes_list");
+    // Record durable knowledge, and not every task earns a note. The writing
+    // contract itself sits in the infra_notes_upsert description.
+    expect(prompt).toContain("infra_notes_upsert");
+    expect(prompt).toContain("not every task earns a note");
   });
 
   it("skips infrastructure instruction when infra tool is disabled", () => {
@@ -144,7 +140,7 @@ describe("buildAgentSystemPrompt", () => {
     });
     expect(prompt).toContain("You are Saale");
     expect(prompt).toContain("Custom instructions:\nBe friendly.");
-    expect(prompt).toContain("A Terminal is available");
+    expect(prompt).toContain("A Terminal runs commands");
     expect(prompt).toContain("persistent memory system");
     expect(prompt).toContain("Infrastructure notes:");
   });
@@ -153,9 +149,9 @@ describe("buildAgentSystemPrompt", () => {
     const prompt = buildAgentSystemPrompt({ toolConfig: { telegram: true } });
 
     // The agent has to know outreach exists, or "remind me" becomes a promise
-    // it cannot keep.
+    // it cannot keep. The message rules live in the telegram_send description.
     expect(prompt).toContain("telegram_send");
-    expect(prompt).toContain("cannot be chosen");
+    expect(prompt).toContain("only way to reach them after this conversation ends");
   });
 
   it("skips the outreach instruction when Telegram is disabled", () => {
@@ -289,9 +285,7 @@ describe("createAgentResourceLoader: workspace", () => {
     fs.mkdirSync(path.join(root, ".agents/skills/sofa"), { recursive: true });
     fs.writeFileSync(
       path.join(root, ".agents/skills/sofa/SKILL.md"),
-      ["---", "name: sofa", "description: Ask and answer on SOFA", "---", "", "Steps."].join(
-        "\n",
-      ),
+      ["---", "name: sofa", "description: Ask and answer on SOFA", "---", "", "Steps."].join("\n"),
     );
 
     const loader = await createAgentResourceLoader({
