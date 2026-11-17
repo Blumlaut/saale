@@ -22,10 +22,8 @@ vi.mock("@/lib/push/config", () => ({
 vi.mock("@/lib/push/deferred", () => ({ scheduleMobilePush: mockScheduleMobilePush }));
 vi.mock("@/lib/push/seen", () => ({ wasPushSeenSince: mockWasPushSeenSince }));
 vi.mock("web-push", () => ({
-  default: {
-    setVapidDetails: vi.fn(),
-    sendNotification: (...args: unknown[]) => mockSendNotification(...args),
-  },
+  setVapidDetails: vi.fn(),
+  sendNotification: (...args: unknown[]) => mockSendNotification(...args),
 }));
 
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

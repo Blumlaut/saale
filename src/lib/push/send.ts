@@ -10,7 +10,7 @@
  * few minutes in the queue (`./deferred`), long enough for a computer that
  * showed the notification to take it back.
  */
-import webpush from "web-push";
+import { sendNotification, setVapidDetails } from "web-push";
 import { prisma } from "@/lib/db";
 import { getVapidConfig, getMobilePushDelayMs } from "./config";
 import { scheduleMobilePush } from "./deferred";
@@ -70,7 +70,7 @@ let vapidConfiguredFor: string | null = null;
  */
 function configureWebPush(vapid: { publicKey: string; privateKey: string; subject: string }): void {
   if (vapidConfiguredFor === vapid.publicKey) return;
-  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+  setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
   vapidConfiguredFor = vapid.publicKey;
 }
 
@@ -103,7 +103,7 @@ async function deliver(
   await Promise.all(
     subscribers.map(async (subscription) => {
       try {
-        await webpush.sendNotification(
+        await sendNotification(
           {
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
@@ -230,7 +230,7 @@ export async function sendPushToSubscription(
   configureWebPush(vapid);
 
   try {
-    await webpush.sendNotification(
+    await sendNotification(
       {
         endpoint: subscription.endpoint,
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
