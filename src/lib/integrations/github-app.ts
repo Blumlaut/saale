@@ -342,7 +342,7 @@ export async function saveGithubApp(input: GithubAppInput): Promise<GithubAppSum
   // and when GitHub sent no set, the row keeps what an earlier save stored, so
   // the answer has to be that rather than "none".
   const storedPermissions =
-    identity.permissions ?? (row.permissions as Record<string, string> | null);
+    identity.permissions ?? (isStringRecord(row.permissions) ? row.permissions : null);
 
   return {
     appId: row.appId,

@@ -232,6 +232,27 @@ describe("saveGithubApp", () => {
     ]);
   });
 
+  it("ignores a stored set that is not a map of levels", async () => {
+    // The column is `jsonb`, so a shape GitHub never sends still has to be read.
+    client.readAppIdentity.mockResolvedValue({
+      slug: "saale",
+      name: "Saale",
+      ownerLogin: "askguenther",
+    });
+    db.githubApp.upsert.mockResolvedValue({ ...APP_ROW, permissions: ["contents"] });
+
+    const summary = await save();
+
+    expect(summary.permissions).toBeNull();
+    expect(summary.missingPermissions.map((entry) => entry.name)).toEqual([
+      "contents",
+      "pull_requests",
+      "workflows",
+      "checks",
+      "metadata",
+    ]);
+  });
+
   it("reports GitHub's refusal instead of storing unusable credentials", async () => {
     client.readAppIdentity.mockRejectedValue(
       new GithubApiError("A JSON web token could not be decoded", 401),
