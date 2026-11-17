@@ -15,8 +15,8 @@
  * - An **installation** token (`ghs_…`, one hour) acts as the app on the
  *   account it is installed on. It is what background work uses, and the
  *   endpoint that mints it accepts `repositories` and `permissions` to make a
- *   token narrower than the installation — that is how a coding agent is
- *   confined to the one repository of its chat.
+ *   token narrower than the installation, which GitHub enforces: anything the
+ *   installation was not granted is refused.
  *
  * GitHub's own limits that shape this file: an app JWT lives at most ten
  * minutes, a device code fifteen, and a device-flow poll must not be faster
@@ -385,8 +385,8 @@ export async function listInstallationRepositoryRefs(
  * permissions.
  *
  * Narrowing never widens: GitHub refuses a repository the installation was not
- * granted and a permission the app was not registered with. That is what makes
- * it safe to hand a coding agent a token for exactly its chat's repository.
+ * granted and a permission the app was not registered with, so a scope can only
+ * take access away from what the installation already has.
  */
 export async function createInstallationToken(options: {
   jwt: string;

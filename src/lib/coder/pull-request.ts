@@ -323,8 +323,8 @@ export async function createPullRequest(
 
   // The author GitHub records is the token's. An installation token names the
   // app's bot, so this one call uses the person's own authorization: the chat
-  // pushed the branch under the narrow token, and opening the pull request is
-  // the moment the work has to belong to somebody.
+  // pushed the branch under its installation token, and opening the pull request
+  // is the moment the work has to belong to somebody.
   const authorEnv = await resolveGithubUserEnv(userId, target.ownEnv).catch((err: unknown) => {
     console.error(`Failed to resolve the GitHub author for ${target.dir}:`, err);
     return {};

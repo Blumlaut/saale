@@ -207,8 +207,8 @@ fi
 case "$1" in
   get)
     body=$(cat)
-    # A token in the environment is the narrowest one there is: a chat's
-    # installation token, minted for that chat's repository.
+    # A token in the environment is the narrowest one there is: the installation
+    # token Saale minted for the chat that runs this command.
     if [ -n "$GH_TOKEN" ]; then
       echo "username=x-access-token"
       echo "password=$GH_TOKEN"
