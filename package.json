@@ -1,6 +1,6 @@
 {
   "name": "saale",
-  "version": "2026.11.16",
+  "version": "2026.11.17",
   "private": true,
   "packageManager": "pnpm@12.18.0",
   "devEngines": {

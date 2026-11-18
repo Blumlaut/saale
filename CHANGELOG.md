@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026.11.17 - 2026-11-18
+
+- Bump the production-dependencies group across 1 directory with 8 updates (348e5a99)
+- Bump the dev-dependencies group with 5 updates (1fe805f4)
+- fix the stale e2e fixtures (d4cd6f1d)
+- catch the oauth and github tests up (16a382cf)
+- share the upload name between code and tests (69430ae0)
+- format the two files main still fails lint on (b70c5898)
+- bump web-push to v4 and use named imports (1d52946d)
+- trim the inactionable bits of tool descriptions (0438c088)
+- render tool results as compact JSON (1fda120a)
+- keep the script contract where scripts are written (274cddb8)
+- guard the stored github app permissions again (57e5945e)
+- drop the other promises of a narrow token (29be826f)
+- answer with the permissions the app row holds (f76fced9)
+- keep the GitHub prompt to two lines (b5e06042)
+- drop what the repository picker left behind (22a5016c)
+- compare the app's permissions out of key order (e54a2a7e)
+- say the installation is the boundary, not the chat (3a0d1bb1)
+- give a coder chat the installation's token, not one repository's (7e8b0fb9)
+- show an installation's repositories instead of a picker that cannot save (db83208f)
+- check the app's permissions in the admin, while it is set up (4507f9e3)
+- document the permission the repository picker needs (66d8f211)
+- ask for the installation permission, and say when it is missing (c9a23bdc)
+- give the repository picker its own action (5dd1fe5d)
+- stop calling an env token a cli login (1eec6f31)
+- read the installation picker by github's id (14035e12)
+- show the setup dialog's code beside a cli login (a12ca6f1)
+- show the cli login under an unauthorized app (53e8ade8)
+- tighten chat system prompt capability sections (697ff6d2)
+
 ## 2026.11.16 - 2026-11-17
 
 - fix slash command value completion (d633a450)
