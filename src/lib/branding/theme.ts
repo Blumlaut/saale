@@ -48,7 +48,7 @@ export const BRAND_COLOR_TOKENS: readonly BrandColorToken[] = [
 
 /** The colour each token falls back to, copied from `globals.css`. */
 export const DEFAULT_BRAND_COLORS: Record<BrandMode, Record<BrandColorKey, string>> = {
-  light: { primary: "#f97316", secondary: "#111827" },
+  light: { primary: "#c2410c", secondary: "#ffffff" },
   dark: { primary: "#ff7a2e", secondary: "#0b0b0c" },
 };
 

@@ -55,41 +55,44 @@
 
 /* `.light` repeats the palette so a dark page can hold a light island. the
    branding preview in the admin settings. */
+/* Warm paper neutrals: the cool gray ramp read sterile in light, and the
+   ember primary clears 4.5:1 as text on white, which the bright orange did
+   not. Dark mode keeps its brighter orange and dark ink on it. */
 :root,
 .light {
-  --background: #f7f8fa;
-  --foreground: #111827;
+  --background: #f6f5f1;
+  --foreground: #1c1917;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #1c1917;
   --popover: #ffffff;
-  --popover-foreground: #111827;
-  --primary: #f97316;
-  --primary-foreground: #111827;
-  --secondary: #f1f2f4;
-  --secondary-foreground: #111827;
-  --muted: #f1f2f4;
-  --muted-foreground: #6b7280;
-  --accent: #f1f2f4;
-  --accent-foreground: #111827;
-  --destructive: #ef4444;
+  --popover-foreground: #1c1917;
+  --primary: #c2410c;
+  --primary-foreground: #ffffff;
+  --secondary: #efece6;
+  --secondary-foreground: #1c1917;
+  --muted: #efece6;
+  --muted-foreground: #6d675d;
+  --accent: #efece6;
+  --accent-foreground: #1c1917;
+  --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e5e7e8;
-  --input: #d1d5db;
-  --ring: #f97316;
-  --chart-1: #f97316;
-  --chart-2: #9ca3af;
-  --chart-3: #6b7280;
-  --chart-4: #4b5563;
-  --chart-5: #374151;
+  --border: #e2ded6;
+  --input: #cfc9be;
+  --ring: #c2410c;
+  --chart-1: #c2410c;
+  --chart-2: #8f8a80;
+  --chart-3: #6d675d;
+  --chart-4: #4a443c;
+  --chart-5: #33302b;
   --radius: 0.75rem;
   --sidebar: #ffffff;
-  --sidebar-foreground: #111827;
-  --sidebar-primary: #f97316;
-  --sidebar-primary-foreground: #111827;
-  --sidebar-accent: #f1f2f4;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e5e7e8;
-  --sidebar-ring: #f97316;
+  --sidebar-foreground: #1c1917;
+  --sidebar-primary: #c2410c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #efece6;
+  --sidebar-accent-foreground: #1c1917;
+  --sidebar-border: #e2ded6;
+  --sidebar-ring: #c2410c;
 }
 
 /* ===== Dark mode ===== */

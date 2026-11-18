@@ -76,11 +76,11 @@ function token(styles: CSSStyleDeclaration, name: string, fallback: string): str
 export function terminalTheme(styles: CSSStyleDeclaration, dark: boolean): ITheme {
   const ansi = dark ? ANSI_DARK : ANSI_LIGHT;
   return {
-    background: token(styles, "--background", dark ? "#0b0b0c" : "#f7f8fa"),
-    foreground: token(styles, "--foreground", dark ? "#f5f5f7" : "#111827"),
-    cursor: token(styles, "--primary", dark ? "#ff7a2e" : "#f97316"),
-    cursorAccent: token(styles, "--background", dark ? "#0b0b0c" : "#f7f8fa"),
-    selectionBackground: token(styles, "--muted-foreground", dark ? "#6b7280" : "#9ca3af"),
+    background: token(styles, "--background", dark ? "#0b0b0c" : "#f6f5f1"),
+    foreground: token(styles, "--foreground", dark ? "#f5f5f7" : "#1c1917"),
+    cursor: token(styles, "--primary", dark ? "#ff7a2e" : "#c2410c"),
+    cursorAccent: token(styles, "--background", dark ? "#0b0b0c" : "#f6f5f1"),
+    selectionBackground: token(styles, "--muted-foreground", dark ? "#6b7280" : "#6d675d"),
     black: ansi[0],
     red: ansi[1],
     green: ansi[2],

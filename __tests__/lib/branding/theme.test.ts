@@ -138,7 +138,7 @@ describe("resolveBrandColors", () => {
   it("fills untouched tokens from the palette", () => {
     const resolved = resolveBrandColors({ light: { primary: "#2563eb" }, dark: {} });
 
-    expect(resolved.light).toEqual({ primary: "#2563eb", secondary: "#111827" });
+    expect(resolved.light).toEqual({ primary: "#2563eb", secondary: "#ffffff" });
     expect(resolved.dark).toEqual(DEFAULT_BRAND_COLORS.dark);
   });
 });
@@ -219,6 +219,6 @@ describe("accentInk", () => {
 
   it("checks the ink against the palette accent when no accent is set", () => {
     expect(accentInk("dark", { light: {}, dark: {} })).toBe(DEFAULT_BRAND_COLORS.dark.secondary);
-    expect(accentInk("light", { light: { secondary: "#f8fafc" }, dark: {} })).not.toBe("#f8fafc");
+    expect(accentInk("light", { light: { secondary: "#fdba74" }, dark: {} })).not.toBe("#fdba74");
   });
 });

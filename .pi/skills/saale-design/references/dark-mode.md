@@ -17,8 +17,8 @@ There is no glass in either mode. Dark mode panels are **solid flat surfaces**:
 className = "bg-card text-card-foreground border border-border";
 
 // Row hover / selected — token fills, both modes
-className = "hover:bg-accent/60";   // hover
-className = "bg-accent";            // selected
+className = "hover:bg-accent/60"; // hover
+className = "bg-accent"; // selected
 
 // Overlay (dialog/sheet/popover) — flat, bordered, elevated
 className = "bg-popover border border-border shadow-2xl";
@@ -32,9 +32,9 @@ All colors are flat hex custom properties in `globals.css`:
 
 ```css
 :root {
-  --background: #f7f8fa;
-  --foreground: #111827;
-  --primary: #f97316;
+  --background: #f6f5f1;
+  --foreground: #1c1917;
+  --primary: #c2410c;
   /* ... */
 }
 
@@ -64,12 +64,12 @@ className = "bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green
 
 ## Contrast Verification
 
-| Element | Light | Dark |
-|---------|-------|------|
-| Primary text on background | ~15:1 | ~17:1 |
-| Secondary text on background | ~4.8:1 | ~7:1 |
-| Border on background | visible 1px edge | visible 1px edge |
-| Orange on card (text) | use `#c2570c`-equivalent tints, not raw orange on white | passes |
+| Element                      | Light                        | Dark                 |
+| ---------------------------- | ---------------------------- | -------------------- |
+| Primary text on background   | ~16:1                        | ~17:1                |
+| Secondary text on background | ~5.1:1                       | ~7:1                 |
+| Border on background         | visible 1px edge             | visible 1px edge     |
+| Accent on card (text)        | ember `#c2410c` passes 4.5:1 | bright orange passes |
 
 Test every component in both modes. If it reads well in light but not dark, adjust the token — don't add component-specific overrides.
 

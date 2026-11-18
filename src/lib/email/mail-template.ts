@@ -12,13 +12,13 @@
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 /** The light theme, spelled out because a mail cannot read the app's tokens. */
-const INK = "#111827";
-const INK_MUTED = "#6b7280";
-const INK_FAINT = "#9ca3af";
-const ACCENT = "#f97316";
+const INK = "#1c1917";
+const INK_MUTED = "#6d675d";
+const INK_FAINT = "#a8a29e";
+const ACCENT = "#c2410c";
 const SURFACE = "#ffffff";
-const PAGE = "#f7f8fa";
-const BORDER = "#e5e7e8";
+const PAGE = "#f6f5f1";
+const BORDER = "#e2ded6";
 
 /**
  * The same roles in the dark theme. A client that takes the media query swaps
@@ -88,7 +88,7 @@ export function renderAccountMail({
   const text = [heading, "", ...(url ? [url, ""] : []), note, "", instanceName].join("\n");
 
   const buttonRow = link
-    ? `<p class="mail-button-row" style="margin:0 0 24px;text-align:center"><a href="${link.href}" class="mail-button" style="display:inline-block;background:${ACCENT};color:${INK};font-family:${FONT};font-size:15px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px">${link.label}</a></p>\n`
+    ? `<p class="mail-button-row" style="margin:0 0 24px;text-align:center"><a href="${link.href}" class="mail-button" style="display:inline-block;background:${ACCENT};color:#ffffff;font-family:${FONT};font-size:15px;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px">${link.label}</a></p>\n`
     : "";
 
   const fallbackRow = link

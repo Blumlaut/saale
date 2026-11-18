@@ -25,9 +25,9 @@ interface TaskItemProps {
 }
 
 const priorityConfig = {
-  high: { dot: "bg-red-400", label: "High" },
-  medium: { dot: "bg-amber-400", label: "Medium" },
-  low: { dot: "bg-gray-400", label: "Low" },
+  high: { dot: "bg-red-500 dark:bg-red-400", label: "High" },
+  medium: { dot: "bg-amber-600 dark:bg-amber-400", label: "Medium" },
+  low: { dot: "bg-gray-500 dark:bg-gray-400", label: "Low" },
 };
 
 const sourceConfig: Record<string, { icon: typeof Mail; label: string }> = {
