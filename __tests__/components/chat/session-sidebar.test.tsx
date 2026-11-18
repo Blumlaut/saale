@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { WORKTREE_KEPT_CODE } from "@/lib/coder/force-delete";
 import { broadcastWatchersChanged } from "@/lib/chat/session-events";
@@ -651,6 +651,25 @@ describe("SessionSidebar pinned chats", () => {
 
     await revealRowActions("Fresh chat");
     expect(await screen.findByRole("menuitem", { name: "Pin chat" })).toBeInTheDocument();
+  });
+});
+
+describe("SessionSidebar new chat", () => {
+  it("offers a new chat from the title bar while a chat is open", async () => {
+    const onNewChat = vi.fn();
+    render(<SessionSidebar activeSessionId="s-1" onNewChat={onNewChat} />);
+    await screen.findByText("Fresh chat");
+
+    const header = screen.getByText("Conversations").parentElement as HTMLElement;
+    fireEvent.click(within(header).getByRole("button", { name: "New chat" }));
+
+    expect(onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers nothing to start when the list cannot start a chat", async () => {
+    await renderSidebar("s-1");
+
+    expect(screen.queryByRole("button", { name: "New chat" })).not.toBeInTheDocument();
   });
 });
 

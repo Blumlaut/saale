@@ -74,6 +74,21 @@ function markDeleting(
   return sessions.map((session) => (ids.has(session.id) ? { ...session, deleting } : session));
 }
 
+/** The title bar's new-chat action. Phones get the full-width bar below instead. */
+function NewChatIconButton({ onNewChat }: { onNewChat: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="hidden shrink-0 md:inline-flex"
+      aria-label="New chat"
+      onClick={onNewChat}
+    >
+      <MessageSquarePlus className="h-4 w-4" />
+    </Button>
+  );
+}
+
 function watcherLabel(count: number): string {
   return `${count} ${count === 1 ? "watcher" : "watchers"} attached`;
 }
@@ -407,23 +422,13 @@ export function SessionSidebar({
             </p>
           </div>
           {headerAction}
-          {/* The title bar's own action. Phones get the full-width button below. */}
-          {onNewChat && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="hidden shrink-0 md:inline-flex"
-              aria-label="New chat"
-              onClick={onNewChat}
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-            </Button>
-          )}
+          {onNewChat && <NewChatIconButton onNewChat={onNewChat} />}
         </div>
       ) : (
         <div className="border-border/30 flex h-11 shrink-0 items-center gap-2 border-b px-4">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">Conversations</h2>
           {headerAction}
+          {onNewChat && <NewChatIconButton onNewChat={onNewChat} />}
         </div>
       )}
 
