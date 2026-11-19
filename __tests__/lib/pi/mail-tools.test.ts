@@ -51,6 +51,7 @@ vi.mock("@/lib/search/sources", () => ({ searchMail: vi.fn() }));
 // Import mocks for assertions
 import * as db from "@/lib/db";
 import { searchMail } from "@/lib/search/sources";
+import { fetchMessageBody } from "@/lib/email/imap";
 import { sendMailForAccount } from "@/lib/email/send-mail";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,6 +59,7 @@ const mockEmailAccount = db.prisma.emailAccount as any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockEmailMessage = db.prisma.emailMessage as any;
 const mockSearchMail = searchMail as unknown as ReturnType<typeof vi.fn>;
+const mockFetchMessageBody = fetchMessageBody as unknown as ReturnType<typeof vi.fn>;
 
 // Import after mocks
 import { getUserAccountIds, formatFrom, createMailTools } from "@/lib/pi/tools/mail-tools";
@@ -283,6 +285,117 @@ describe("createMailTools", () => {
       const text = (result.content[0] as { type: string; text: string }).text;
 
       expect(text).toContain("Bob <bob@example.com>");
+    });
+
+    it("reads an html-only body as text", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        {
+          id: "msg-1",
+          uid: "1",
+          fromName: "TIDAL",
+          fromEmail: "no-reply@tidal.com",
+          to: "me@example.com",
+          subject: "Dein Preis ändert sich",
+          date: new Date("2025-01-01"),
+          bodyHtml: '<div class="email-content"><p>Ab Januar 12,99 Euro.</p></div>',
+          bodyText: null,
+          bodyPreview: null,
+          isRead: true,
+          isStarred: false,
+          folder: "INBOX",
+          tags: [],
+          aiSummary: null,
+          spamScore: null,
+          accountId: "acc-1",
+        },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailRead = tools.find((t) => t.name === "mail_read")!;
+
+      const result = await callExecute(mailRead.execute, { ids: ["msg-1"] });
+      const value = result.structuredContent as {
+        emails: Array<{ bodyText: string | null }>;
+      };
+
+      expect(value.emails[0]?.bodyText).toContain("Ab Januar 12,99 Euro.");
+    });
+
+    it("ignores a whitespace-only text body", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        {
+          id: "msg-1",
+          uid: "1",
+          fromName: "TIDAL",
+          fromEmail: "no-reply@tidal.com",
+          to: "me@example.com",
+          subject: "Dein Preis ändert sich",
+          date: new Date("2025-01-01"),
+          bodyHtml: "<p>Ab Januar 12,99 Euro.</p>",
+          bodyText: "\n\n",
+          bodyPreview: "\n\n",
+          isRead: true,
+          isStarred: false,
+          folder: "INBOX",
+          tags: [],
+          aiSummary: null,
+          spamScore: null,
+          accountId: "acc-1",
+        },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailRead = tools.find((t) => t.name === "mail_read")!;
+
+      const result = await callExecute(mailRead.execute, { ids: ["msg-1"] });
+      const value = result.structuredContent as {
+        emails: Array<{ bodyText: string | null }>;
+      };
+
+      expect(value.emails[0]?.bodyText).toContain("Ab Januar 12,99 Euro.");
+    });
+
+    it("fetches the body of a message stored without one", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        {
+          id: "msg-1",
+          uid: "1",
+          fromName: "TIDAL",
+          fromEmail: "no-reply@tidal.com",
+          to: "me@example.com",
+          subject: "Dein Preis ändert sich",
+          date: new Date("2025-01-01"),
+          bodyHtml: null,
+          bodyText: null,
+          bodyPreview: null,
+          isRead: true,
+          isStarred: false,
+          folder: "INBOX",
+          tags: [],
+          aiSummary: null,
+          spamScore: null,
+          accountId: "acc-1",
+        },
+      ]);
+      mockFetchMessageBody.mockResolvedValueOnce({
+        bodyHtml: null,
+        bodyText: "Ab Januar 12,99 Euro.",
+        bodyPreview: "Ab Januar 12,99 Euro.",
+      });
+
+      const tools = createMailTools(userId);
+      const mailRead = tools.find((t) => t.name === "mail_read")!;
+
+      const result = await callExecute(mailRead.execute, { ids: ["msg-1"] });
+      const value = result.structuredContent as {
+        emails: Array<{ bodyText: string | null }>;
+      };
+
+      expect(mockFetchMessageBody).toHaveBeenCalledWith("msg-1");
+      expect(value.emails[0]?.bodyText).toBe("Ab Januar 12,99 Euro.");
     });
   });
 

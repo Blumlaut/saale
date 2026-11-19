@@ -10,6 +10,7 @@ import { searchMail } from "@/lib/search/sources";
 import { snippetAround } from "@/lib/search/snippet";
 import { syncEmailAccount } from "@/lib/email/sync";
 import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
+import { emailBodyText } from "@/lib/email/body-text";
 import { getUploadsDir } from "@/lib/uploads";
 
 function getUserDir(userId: string): string {
@@ -523,8 +524,11 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }
         }
 
-        // Fetch bodies on-demand for messages that don't have them yet
-        const emailsWithoutBody = emails.filter((e) => !e.bodyHtml && !e.bodyText);
+        // Fetch bodies on-demand for messages that don't have them yet, and for the
+        // html-only mail whose text part came back empty.
+        const emailsWithoutBody = emails.filter(
+          (e) => !emailBodyText({ text: e.bodyText, html: e.bodyHtml }),
+        );
         if (emailsWithoutBody.length > 0) {
           const bodyResults = await Promise.all(
             emailsWithoutBody.map(async (e) => ({ id: e.id, body: await fetchMessageBody(e.id) })),
@@ -564,7 +568,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             to: e.to,
             subject: e.subject,
             date: e.date.toISOString(),
-            bodyText: e.bodyText ?? e.bodyPreview,
+            bodyText: emailBodyText({ text: e.bodyText, html: e.bodyHtml }) ?? e.bodyPreview,
             read: e.isRead,
             starred: e.isStarred,
             folder: e.folder,

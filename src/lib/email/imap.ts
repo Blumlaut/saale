@@ -6,6 +6,7 @@ import { simpleParser } from "mailparser";
 import { discoverFolders, resolveSentFolder } from "@/lib/email/folders";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 import { sanitizePostgresString } from "@/lib/email/utils";
+import { emailBodyText } from "@/lib/email/body-text";
 
 /**
  * IMAP flag constants mapped to our local fields.
@@ -332,13 +333,14 @@ export async function fetchMessageBody(messageId: string): Promise<{
 
     const parsed = await simpleParser(fetched.source);
     const bodyHtml = sanitizeEmailHtml(sanitizePostgresString(parsed.html));
+    const bodyText = emailBodyText({ text: parsed.text, html: parsed.html });
 
     const updated = await prisma.emailMessage.update({
       where: { id: messageId },
       data: {
-        bodyPreview: sanitizePostgresString(parsed.text?.slice(0, 500)) ?? null,
+        bodyPreview: sanitizePostgresString(bodyText?.slice(0, 500)) ?? null,
         bodyHtml,
-        bodyText: sanitizePostgresString(parsed.text),
+        bodyText: sanitizePostgresString(bodyText),
       },
     });
 
