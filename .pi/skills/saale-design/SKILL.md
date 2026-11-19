@@ -184,9 +184,17 @@ is working in.
   tab carries a dot while the editor holds text that is not on disk. The guard is the
   same spec's "edits a file and saves it".
 - The other home for the editor is the Files page (`/dashboard/files`, opt-in in the
-  sidebar): the browser on one side and `FileView` on the other, with a drag handle
-  between them. A phone gets one at a time, and opening a file swaps the browser for
-  the editor. The guard is `e2e/files-page.spec.ts`.
+  sidebar): the browser on one side and the editor on the other, with a drag handle
+  between them. Files open as tabs (each keeps its buffer while another is in
+  front), and a pinned Console tab holds a shell on the workspace. A phone gets one
+  at a time: opening a file, or the console from the browser's toolbar, swaps the
+  browser for the editor. The guard is `e2e/files-page.spec.ts`.
+- The Console is a real terminal (`src/components/console/console-panel.tsx`, xterm
+  with stdin): a shell needs its keystrokes as they are typed. Its session belongs to the server
+  (`src/lib/terminal/shell-sessions.ts`), so it outlives a tab switch.
+- A remote workspace is the same browser pointed at `machine:<id>`: a server's home
+  directory over SFTP (`src/lib/files/remote-provider.ts`), reached from the files
+  page's Connect menu.
 
 ### Remembered View State
 

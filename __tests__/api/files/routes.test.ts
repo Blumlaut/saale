@@ -26,13 +26,13 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/files/targets", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/files/targets")>()),
-  openUserFileTarget: vi.fn(),
+  openFileTarget: vi.fn(),
 }));
 
 import { requireSession } from "@/lib/auth";
 import { WorkspaceUnavailableError } from "@/lib/files/errors";
 import { createLocalFileProvider } from "@/lib/files/local-provider";
-import { openUserFileTarget } from "@/lib/files/targets";
+import { openFileTarget } from "@/lib/files/targets";
 import { FULL_CAPABILITIES } from "@/lib/files/types";
 import { GET as listRoute } from "@/app/api/files/list/route";
 import { GET as rawRoute } from "@/app/api/files/raw/route";
@@ -60,7 +60,7 @@ const TREE: FakeTree = {
 
 function useTree(tree: FakeTree = TREE) {
   const provider = createFakeProvider(tree, ROOT);
-  vi.mocked(openUserFileTarget).mockResolvedValue({
+  vi.mocked(openFileTarget).mockResolvedValue({
     provider,
     info: {
       id: "user",
@@ -165,7 +165,7 @@ describe("authorization", () => {
   });
 
   it("reports a workspace that cannot be reached as a conflict, not a crash", async () => {
-    vi.mocked(openUserFileTarget).mockRejectedValueOnce(
+    vi.mocked(openFileTarget).mockRejectedValueOnce(
       new WorkspaceUnavailableError("The workspace is not mounted."),
     );
 
@@ -179,7 +179,7 @@ describe("authorization", () => {
     const response = await get(listRoute, "?path=/");
 
     expect(response.status).toBe(200);
-    expect(openUserFileTarget).toHaveBeenCalledWith("user-1");
+    expect(openFileTarget).toHaveBeenCalledWith("user-1", { kind: "workspace" });
   });
 });
 
@@ -322,9 +322,14 @@ describe("GET /api/files/raw", () => {
       const content = Buffer.alloc(12 * 1024 * 1024);
       for (let index = 0; index < content.length; index += 1) content[index] = index % 251;
       await fs.writeFile(path.join(root, "dump.img"), content);
-      vi.mocked(openUserFileTarget).mockResolvedValue({
+      vi.mocked(openFileTarget).mockResolvedValue({
         provider: createLocalFileProvider({ root }),
-        info: { id: "user", label: "files", root, capabilities: FULL_CAPABILITIES },
+        info: {
+          id: "user",
+          label: "files",
+          root,
+          capabilities: FULL_CAPABILITIES,
+        },
       });
 
       const response = await get(

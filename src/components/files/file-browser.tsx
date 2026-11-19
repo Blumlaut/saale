@@ -53,6 +53,8 @@ export interface FileBrowserProps {
   rootPath?: string;
   /** Rendered first in the toolbar. e.g. a back link to the room. */
   leading?: ReactNode;
+  /** Rendered with the toolbar's actions, before refresh and upload. */
+  actions?: ReactNode;
   /** What to say when the workspace is empty. */
   emptyHint?: ReactNode;
   /**
@@ -122,6 +124,7 @@ export function FileBrowser({
   target,
   rootPath,
   leading,
+  actions,
   emptyHint,
   dense,
   onOpenFile,
@@ -196,6 +199,7 @@ export function FileBrowser({
 
   return (
     <GlassPanel
+      data-slot="file-browser"
       className="@container relative flex h-full flex-col overflow-hidden border-0"
       onDragEnter={(event: DragEvent<HTMLDivElement>) => {
         if (!capabilities.upload) return;
@@ -282,6 +286,7 @@ export function FileBrowser({
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
+          {actions}
           <Button
             type="button"
             variant="ghost"
@@ -438,7 +443,7 @@ export function FileBrowser({
             const Icon = iconFor(entry);
             const selected = browser.selected.has(entry.path);
 
-            const actions = rowActions(entry);
+            const menuActions = rowActions(entry);
 
             return (
               <div key={entry.path}>
@@ -535,12 +540,12 @@ export function FileBrowser({
                         )}
                       />
                       <DropdownMenuContent align="end">
-                        <FileRowMenuItems entry={entry} actions={actions} />
+                        <FileRowMenuItems entry={entry} actions={menuActions} />
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </ContextMenuTrigger>
                   <ContextMenuContent>
-                    <FileRowMenuItems entry={entry} actions={actions} />
+                    <FileRowMenuItems entry={entry} actions={menuActions} />
                   </ContextMenuContent>
                 </ContextMenu>
                 {index < entries.length - 1 && <Separator />}

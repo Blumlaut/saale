@@ -6,7 +6,7 @@
  */
 
 import { generateKeyPairSync } from "crypto";
-import type { Client as SSH2Client, SFTPWrapper, Stats } from "ssh2";
+import type { Client as SSH2Client, ClientChannel, SFTPWrapper, Stats } from "ssh2";
 import { NodeSSH } from "node-ssh";
 import sshpk from "sshpk";
 import { prisma } from "@/lib/db";
@@ -750,4 +750,151 @@ export async function listDirectory(
   } finally {
     disconnect();
   }
+}
+
+/** An SFTP session, and the connection that has to be closed with it. */
+export interface SftpSession {
+  sftp: SFTPWrapper;
+  release(): void;
+}
+
+/**
+ * Open an SFTP session for this machine.
+ *
+ * One connection per call, like every other SSH use here: a session kept open
+ * for a browser that was closed is a leaked connection and a held credential.
+ * The caller releases it, so a stream that outlives the call can hold it.
+ */
+export async function openSftpSession(machineId: string, userId: string): Promise<SftpSession> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    return { sftp: await getSftp(ssh), release: disconnect };
+  } catch (err) {
+    disconnect();
+    throw err;
+  }
+}
+
+/**
+ * The home directory of the account this machine connects as.
+ *
+ * It is the root of a remote file target, and it is only known once the machine
+ * has answered, so a caller that needs it up front pays for one connection.
+ */
+export async function remoteHome(machineId: string, userId: string): Promise<string> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+
+  try {
+    const result = await ssh.execCommand('printf %s "$HOME"');
+    // An account whose home is the root keeps its slash; trimming leaves "".
+    const home = (result.stdout ?? "").trim().replace(/\/+$/, "") || "/";
+    if (result.code !== 0 || !home.startsWith("/")) {
+      throw new Error(result.stderr?.trim() || "The remote shell did not report a home directory");
+    }
+    return home;
+  } finally {
+    disconnect();
+  }
+}
+
+// ─── Interactive Shell ──────────────────────────────────────────
+
+/** What the remote terminal calls itself. Programs that draw a screen ask. */
+const SHELL_TERM = "xterm-256color";
+
+/** A shell on a machine, held open for as long as the user is reading it. */
+export interface RemoteShell {
+  /** Keystrokes, as a terminal sends them. */
+  write(data: Buffer): void;
+  resize(cols: number, rows: number): void;
+  close(): void;
+}
+
+export interface RemoteShellOptions {
+  cols: number;
+  rows: number;
+  /** Output as it arrives, decoded from the bytes the machine sent. */
+  onData: (text: string) => void;
+  /** The shell ended, on the machine's side or ours. */
+  onClose: () => void;
+}
+
+/**
+ * Open a login shell on a machine.
+ *
+ * Unlike the per-command connections, this one stays open: it is a terminal,
+ * and the shell keeps the state (a directory, a job, a prompt) that makes one
+ * useful. The caller closes it, and nothing else does.
+ */
+export async function openShellChannel(
+  machineId: string,
+  userId: string,
+  options: RemoteShellOptions,
+): Promise<RemoteShell> {
+  const { ssh, disconnect } = await connect(machineId, userId);
+  const connection = (ssh as { connection?: SSH2Client }).connection;
+  if (!connection) {
+    disconnect();
+    throw new Error("The SSH connection holds no channel");
+  }
+
+  return new Promise<RemoteShell>((resolve, reject) => {
+    connection.shell(
+      { term: SHELL_TERM, cols: options.cols, rows: options.rows },
+      (err: Error | undefined, channel: ClientChannel) => {
+        if (err) {
+          disconnect();
+          reject(err);
+          return;
+        }
+
+        // Chunk boundaries land mid-character, so the bytes are decoded as a
+        // stream rather than per chunk. Each source gets its own, since a
+        // character never continues across the two.
+        const outDecoder = new TextDecoder();
+        const errorDecoder = new TextDecoder();
+        let closed = false;
+
+        const finish = () => {
+          if (closed) return;
+          closed = true;
+          try {
+            disconnect();
+          } catch (disposeErr) {
+            console.error("Failed to close the machine's shell connection:", disposeErr);
+          }
+          options.onClose();
+        };
+
+        channel.on("data", (chunk: Buffer) => {
+          const text = outDecoder.decode(chunk, { stream: true });
+          if (text) options.onData(text);
+        });
+        channel.stderr.on("data", (chunk: Buffer) => {
+          const text = errorDecoder.decode(chunk, { stream: true });
+          if (text) options.onData(text);
+        });
+        channel.on("close", finish);
+        channel.on("error", (channelErr: Error) => {
+          console.error(`The shell on machine ${machineId} failed:`, channelErr);
+          finish();
+        });
+
+        resolve({
+          write: (data) => {
+            if (!closed) channel.write(data);
+          },
+          resize: (cols, rows) => {
+            if (!closed) channel.setWindow(rows, cols, 0, 0);
+          },
+          close: () => {
+            if (closed) return;
+            channel.close();
+            finish();
+          },
+        });
+      },
+    );
+  });
 }

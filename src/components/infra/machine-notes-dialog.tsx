@@ -42,7 +42,7 @@ import {
   type InfraNote,
   type NoteCategory,
 } from "@/lib/infra/notes";
-import type { InfraMachine } from "@/app/dashboard/infra/page";
+import type { InfraMachine } from "@/lib/infra/types";
 
 interface MachineNotesDialogProps {
   open: boolean;

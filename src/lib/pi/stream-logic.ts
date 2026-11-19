@@ -152,6 +152,41 @@ export function formatSseEvent(event: string, data: unknown, id?: number): strin
   return `${idLine}event: ${event}\ndata: ${escaped}\n\n`;
 }
 
+/** One event read back off an SSE stream. */
+export interface SseFrame {
+  event: string;
+  /** The `data:` lines, joined the way they were sent. */
+  data: string;
+}
+
+/**
+ * Take the complete events off the front of an SSE buffer.
+ *
+ * A reader hands out bytes, so an event can arrive in halves: what is left over
+ * comes back as `rest` and belongs at the front of the next read.
+ */
+export function parseSseFrames(buffer: string): { frames: SseFrame[]; rest: string } {
+  const frames: SseFrame[] = [];
+  let rest = buffer;
+
+  for (;;) {
+    const boundary = rest.indexOf("\n\n");
+    if (boundary === -1) break;
+    const block = rest.slice(0, boundary);
+    rest = rest.slice(boundary + 2);
+
+    let event = "";
+    const data: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+    }
+    if (event && data.length > 0) frames.push({ event, data: data.join("\n") });
+  }
+
+  return { frames, rest };
+}
+
 /**
  * Accumulate text from assistant message_update events.
  *

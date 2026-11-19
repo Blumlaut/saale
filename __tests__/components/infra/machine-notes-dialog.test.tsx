@@ -16,7 +16,7 @@ vi.mock("@/lib/http", () => ({
 }));
 
 import { MachineNotesDialog } from "@/components/infra/machine-notes-dialog";
-import type { InfraMachine } from "@/app/dashboard/infra/page";
+import type { InfraMachine } from "@/lib/infra/types";
 
 const MACHINE: InfraMachine = {
   id: "m-1",

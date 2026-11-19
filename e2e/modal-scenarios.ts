@@ -1907,6 +1907,28 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
       await click(page, '[role="menuitem"]:has-text("Delete")');
     },
   },
+  {
+    name: "files · discard a tab's unsaved text",
+    path: "/dashboard/files",
+    sources: ["src/app/dashboard/files/page.tsx"],
+    mock: mockFiles,
+    open: async (page) => {
+      await click(page, `button:has-text("${FILES_NOTES}")`);
+      // Monaco boots after the file arrives, and the tab only asks once the
+      // editor holds something the file itself does not.
+      const editor = visible(page, ".monaco-editor");
+      await editor.waitFor({ state: "visible", timeout: 30_000 });
+      await editor.locator(".view-lines").click();
+      await page.keyboard.press("ControlOrMeta+End");
+      await page.keyboard.type("edited");
+      await page.waitForFunction(
+        () => document.querySelector('[title="Unsaved changes"]') !== null,
+        undefined,
+        { timeout: 10_000 },
+      );
+      await click(page, `[aria-label="Close ${FILES_NOTES}"]`);
+    },
+  },
 
   // ── Admin ─────────────────────────────────────────────────────────────────
   {

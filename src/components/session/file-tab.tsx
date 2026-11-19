@@ -39,8 +39,18 @@ export function CloseTab({ label, onClose }: { label: string; onClose: () => voi
   );
 }
 
+/** The dot a tab carries while its editor holds text that is not on disk. */
+export function DirtyDot() {
+  return (
+    <span
+      title="Unsaved changes"
+      className="bg-primary inline-block size-1.5 shrink-0 rounded-full"
+    />
+  );
+}
+
 /** One file's bytes, its path and a way to save them. */
-function FileTabContent({
+export function FileTabContent({
   target,
   entry,
   rootPath,
@@ -127,12 +137,7 @@ export function useFileTab({
         label: <span className="hidden max-w-24 truncate @min-[280px]:inline">{entry.name}</span>,
         trailing: (
           <>
-            {dirty ? (
-              <span
-                title="Unsaved changes"
-                className="bg-primary inline-block size-1.5 shrink-0 rounded-full"
-              />
-            ) : null}
+            {dirty ? <DirtyDot /> : null}
             <CloseTab
               label="Close the file tab"
               onClose={() => {

@@ -3,6 +3,7 @@ import {
   decideStaleGenerationAction,
   decideStreamAction,
   formatSseEvent,
+  parseSseFrames,
   extractCumulativeText,
   extractThinking,
   extractToolCallIds,
@@ -251,6 +252,33 @@ describe("formatSseEvent", () => {
 
   it("omits the id line when no id is given (unbuffered events)", () => {
     expect(formatSseEvent("done", {})).not.toContain("id:");
+  });
+});
+
+describe("parseSseFrames", () => {
+  it("reads events back the way they were written", () => {
+    const buffer = formatSseEvent("output", { type: "output", text: "$ " });
+    const { frames, rest } = parseSseFrames(buffer);
+
+    expect(frames).toEqual([{ event: "output", data: '{"type":"output","text":"$ "}' }]);
+    expect(rest).toBe("");
+  });
+
+  it("keeps an event that arrived in halves for the next read", () => {
+    const buffer = 'event: output\ndata: {"type":"output"';
+    const { frames, rest } = parseSseFrames(buffer);
+
+    expect(frames).toEqual([]);
+    expect(rest).toBe(buffer);
+  });
+
+  it("reads several events in one read, in order", () => {
+    const buffer = formatSseEvent("a", 1) + formatSseEvent("b", 2);
+    expect(parseSseFrames(buffer).frames.map((frame) => frame.event)).toEqual(["a", "b"]);
+  });
+
+  it("ignores a block with no data", () => {
+    expect(parseSseFrames("event: ping\n\n").frames).toEqual([]);
   });
 });
 

@@ -16,11 +16,13 @@ import {
   FileModifiedError,
   FileNotFoundError,
   FilePathEscapeError,
+  FileTargetError,
   FileUploadError,
   WorkspaceUnavailableError,
 } from "./errors";
 import { isSafeEntryName, requireWithinRoot } from "./paths";
-import { USER_FILE_TARGET, openUserFileTarget, type OpenedFileTarget } from "./targets";
+import { parseFileTargetToken } from "./target-tokens";
+import { openFileTarget, type OpenedFileTarget } from "./targets";
 
 /** The workspace this request is about, or the response that refuses it. */
 export async function openRequestTarget(
@@ -29,15 +31,15 @@ export async function openRequestTarget(
   const session = await requireSession();
   if (!session.ok) return { ok: false, response: session.response };
 
-  const target = request.nextUrl.searchParams.get("target");
-  if (target !== null && target !== "" && target !== USER_FILE_TARGET) {
+  const parsed = parseFileTargetToken(request.nextUrl.searchParams.get("target"));
+  if (!parsed) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Unknown file target" }, { status: 400 }),
     };
   }
 
-  return { ok: true, opened: await openUserFileTarget(session.user.id) };
+  return { ok: true, opened: await openFileTarget(session.user.id, parsed) };
 }
 
 /**
@@ -78,6 +80,9 @@ export function fileErrorResponse(err: unknown, context: string): NextResponse {
     return NextResponse.json({ error: err.message }, { status: 413 });
   }
   if (err instanceof FileUploadError) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  if (err instanceof FileTargetError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   if (err instanceof WorkspaceUnavailableError) {

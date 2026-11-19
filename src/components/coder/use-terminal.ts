@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseSseFrames } from "@/lib/pi/stream-logic";
 
 /**
  * The terminal panel's state: what the chat's run printed, and what is running.
@@ -45,32 +46,6 @@ export interface TerminalState {
   sendInput: (text: string) => Promise<void>;
   resize: (size: TerminalSize) => void;
   clear: () => void;
-}
-
-/** Split the frames out of a stream of SSE bytes. */
-function parseFrames(buffer: string): {
-  frames: Array<{ event: string; data: string }>;
-  rest: string;
-} {
-  const frames: Array<{ event: string; data: string }> = [];
-  let rest = buffer;
-
-  for (;;) {
-    const boundary = rest.indexOf("\n\n");
-    if (boundary === -1) break;
-    const block = rest.slice(0, boundary);
-    rest = rest.slice(boundary + 2);
-
-    let event = "";
-    const data: string[] = [];
-    for (const line of block.split("\n")) {
-      if (line.startsWith("event:")) event = line.slice(6).trim();
-      else if (line.startsWith("data:")) data.push(line.slice(5).trim());
-    }
-    if (event && data.length > 0) frames.push({ event, data: data.join("\n") });
-  }
-
-  return { frames, rest };
 }
 
 /** The line the panel writes before a command's output. */
@@ -144,7 +119,7 @@ export function useTerminal(sessionId: string, sink: TerminalSink): TerminalStat
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const parsed = parseFrames(buffer);
+        const parsed = parseSseFrames(buffer);
         buffer = parsed.rest;
 
         for (const frame of parsed.frames) {

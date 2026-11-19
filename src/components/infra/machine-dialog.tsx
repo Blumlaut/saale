@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Plug, CheckCircle, AlertCircle, KeyRound, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { postJson, patchJson } from "@/lib/http";
-import type { InfraMachine } from "@/app/dashboard/infra/page";
+import type { InfraMachine } from "@/lib/infra/types";
 
 interface MachineDialogProps {
   open: boolean;

@@ -5,18 +5,7 @@ import { Page } from "@/components/layout/page";
 import { MachineList } from "@/components/infra/machine-list";
 import { MachineDialog } from "@/components/infra/machine-dialog";
 import { MachineNotesDialog } from "@/components/infra/machine-notes-dialog";
-
-export interface InfraMachine {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  authMethod: string;
-  noteCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { InfraMachine } from "@/lib/infra/types";
 
 export default function InfraPage() {
   const [showDialog, setShowDialog] = useState(false);

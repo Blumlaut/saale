@@ -18,10 +18,20 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000);
 // The e2e suite sends every request from one address, so a run raises this.
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 60);
 
+/**
+ * Paths that need a ceiling of their own, and why.
+ *
+ * A terminal sends one small write per keystroke, so the per-minute limit that
+ * suits a page's API answers 429 to the second line someone types.
+ */
+const RATE_LIMIT_OVERRIDES: Record<string, number> = {
+  "/api/terminal/input": 6000,
+};
+
 /** Public JSON for a shared chat, served beside the page that reads it. */
 const SHARE_API_PREFIX = "/api/chat/sessions/share/";
 
-function isRateLimited(key: string): boolean {
+function isRateLimited(key: string, max: number): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(key);
 
@@ -31,7 +41,7 @@ function isRateLimited(key: string): boolean {
   }
 
   entry.count++;
-  return entry.count > RATE_LIMIT_MAX;
+  return entry.count > max;
 }
 
 function getRateLimitKey(request: NextRequest): string {
@@ -66,7 +76,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Rate limiting for API routes (in-memory, best-effort per-instance)
-  if (pathname.startsWith("/api/") && isRateLimited(getRateLimitKey(request))) {
+  const limit = RATE_LIMIT_OVERRIDES[pathname] ?? RATE_LIMIT_MAX;
+  if (pathname.startsWith("/api/") && isRateLimited(getRateLimitKey(request), limit)) {
     return new NextResponse(JSON.stringify({ error: "Too many requests. Try again later." }), {
       status: 429,
       headers: {

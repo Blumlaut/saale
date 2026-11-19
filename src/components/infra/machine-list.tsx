@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PageActions, PageAction } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -26,8 +26,9 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchJson, deleteJson, postJson } from "@/lib/http";
-import type { InfraMachine } from "@/app/dashboard/infra/page";
+import { deleteJson, postJson } from "@/lib/http";
+import { useMachines } from "@/hooks/use-machines";
+import type { InfraMachine } from "@/lib/infra/types";
 
 interface MachineListProps {
   onAdd: () => void;
@@ -37,8 +38,7 @@ interface MachineListProps {
 }
 
 export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineListProps) {
-  const [machines, setMachines] = useState<InfraMachine[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { machines, loading, error, forget } = useMachines();
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>(
     {},
@@ -46,15 +46,6 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
   const [pendingDelete, setPendingDelete] = useState<InfraMachine | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    fetchJson<{ machines: InfraMachine[] }>("/api/infra/machines")
-      .then((data) => {
-        setMachines(data.machines ?? []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
 
   const testConnection = async (id: string) => {
     setTestingId(id);
@@ -102,7 +93,7 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
     setDeleteError(null);
     try {
       await deleteJson(`/api/infra/machines/${pendingDelete.id}`);
-      setMachines((prev) => prev.filter((m) => m.id !== pendingDelete.id));
+      forget(pendingDelete.id);
       setPendingDelete(null);
       onRefresh();
     } catch (err) {
@@ -136,10 +127,12 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
         {toolbar}
         <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
           <Server className="text-muted-foreground mb-3 h-8 w-8" />
-          <h3 className="text-sm font-medium">No machines registered</h3>
+          <h3 className="text-sm font-medium">
+            {error ? "Could not read your machines" : "No machines registered"}
+          </h3>
           <p className="text-muted-foreground mt-1 max-w-xs text-xs">
-            Add a remote machine to let the agent connect via SSH and run commands, manage files,
-            and maintain notes.
+            {error ??
+              "Add a remote machine to let the agent connect via SSH and run commands, manage files, and maintain notes."}
           </p>
         </div>
       </GlassPanel>

@@ -64,6 +64,20 @@ export class FileLimitError extends Error {
   }
 }
 
+/**
+ * A target this user cannot open: a machine that is not theirs, or one that is
+ * not answering.
+ */
+export class FileTargetError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status = 502) {
+    super(message);
+    this.name = "FileTargetError";
+    this.status = status;
+  }
+}
+
 /** The workspace cannot be reached on this deployment (no terminal container). */
 export class WorkspaceUnavailableError extends Error {
   constructor(message: string) {
