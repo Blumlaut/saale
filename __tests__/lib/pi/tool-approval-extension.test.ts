@@ -27,6 +27,8 @@ interface RegistryTool {
   name: string;
   exposure?: "direct" | "codemode" | "deferred" | "model-only" | "hidden";
   readOnly?: boolean;
+  namespace?: { name: string; aliases?: string[] };
+  reachesTools?: (input: Record<string, unknown>) => "all" | readonly string[];
 }
 
 interface ToolCallEvent {
@@ -72,6 +74,8 @@ function setup(
         name: tool.name,
         exposure: tool.exposure ?? "direct",
         ...(tool.readOnly ? { annotations: { readOnlyHint: true } } : {}),
+        ...(tool.namespace ? { namespace: tool.namespace } : {}),
+        ...(tool.reachesTools ? { reachesTools: tool.reachesTools } : {}),
       })),
     getActiveTools: () => options.active ?? tools.map((tool) => tool.name),
   };
@@ -528,6 +532,139 @@ describe("tool approval gate", () => {
         }),
       ).toBeUndefined();
       expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("tools that orchestrate other tools", () => {
+    const REGISTRY: RegistryTool[] = [
+      { name: "plugin_write" },
+      { name: "plugin_delete" },
+      { name: "plugin_lookup", readOnly: true },
+      { name: "plugin_chain", reachesTools: () => ["plugin_write"] },
+      { name: "plugin_lookup_chain", reachesTools: () => ["plugin_lookup"] },
+      { name: "plugin_wide_chain", reachesTools: () => "all" },
+    ];
+
+    it("asks once, covering the calls its declaration reaches", async () => {
+      const { call } = setup({ tools: REGISTRY });
+      expect(await call({ toolName: "plugin_chain", input: {} })).toBeUndefined();
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+      expect(mockRequestToolApproval).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: "plugin_chain",
+          batch: { tools: ["plugin_write"], dynamic: false },
+        }),
+      );
+    });
+
+    it("covers the announced calls after approval, and nothing else", async () => {
+      const { call, sessionId } = setup({ tools: REGISTRY });
+      const toolCallId = uniqueId("chain");
+      await call({ toolName: "plugin_chain", toolCallId, input: {} });
+      expect(
+        isApprovalScopeGranted({
+          sessionId,
+          toolCallId: `${toolCallId}/1`,
+          toolName: "plugin_write",
+        }),
+      ).toBe(true);
+
+      mockRequestToolApproval.mockClear();
+      expect(
+        await call({
+          toolName: "plugin_write",
+          toolCallId: `${toolCallId}/1`,
+          parentToolCallId: toolCallId,
+          input: {},
+        }),
+      ).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+
+      await call({
+        toolName: "plugin_delete",
+        toolCallId: `${toolCallId}/2`,
+        parentToolCallId: toolCallId,
+        input: {},
+      });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it("releases the scope when the call's result arrives", async () => {
+      const { call, onToolResult, sessionId } = setup({ tools: REGISTRY });
+      const toolCallId = uniqueId("chain");
+      await call({ toolName: "plugin_chain", toolCallId, input: {} });
+      expect(isApprovalScopeGranted({ sessionId, toolCallId, toolName: "plugin_write" })).toBe(
+        true,
+      );
+
+      await onToolResult({ toolName: "plugin_chain", toolCallId, input: {} });
+      expect(isApprovalScopeGranted({ sessionId, toolCallId, toolName: "plugin_write" })).toBe(
+        false,
+      );
+    });
+
+    it("covers nothing when the declaration reaches everything", async () => {
+      const { call, sessionId } = setup({ tools: REGISTRY });
+      const toolCallId = uniqueId("chain");
+      await call({ toolName: "plugin_wide_chain", toolCallId, input: {} });
+      // The card names no calls, because a card cannot name every tool.
+      expect(mockRequestToolApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ toolName: "plugin_wide_chain" }),
+      );
+      expect(mockRequestToolApproval.mock.calls[0]?.[0]).not.toHaveProperty("batch");
+      expect(isApprovalScopeGranted({ sessionId, toolCallId, toolName: "plugin_write" })).toBe(
+        false,
+      );
+    });
+
+    it("reaches the tools of a namespace its words contain", async () => {
+      const { call } = setup({
+        tools: [
+          ...REGISTRY,
+          { name: "mcp__docs__search", namespace: { name: "mcp__docs" } },
+          { name: "docs_chain", reachesTools: () => ["mcp__docs__se"] },
+        ],
+      });
+      await call({ toolName: "docs_chain", input: {} });
+      expect(mockRequestToolApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ batch: { tools: ["mcp__docs__search"], dynamic: false } }),
+      );
+    });
+
+    it("runs on auto when nothing it reaches would ask", async () => {
+      const { call } = setup({
+        tools: REGISTRY,
+        gate: { toolPolicies: { plugin_lookup_chain: "auto" } },
+      });
+      expect(await call({ toolName: "plugin_lookup_chain", input: {} })).toBeUndefined();
+      expect(mockRequestToolApproval).not.toHaveBeenCalled();
+    });
+
+    it("leaves a nested call to its own policy", async () => {
+      const { call } = setup({ tools: REGISTRY });
+      await call({
+        toolName: "plugin_chain",
+        parentToolCallId: "call-parent",
+        input: {},
+      });
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+      expect(mockRequestToolApproval.mock.calls[0]?.[0]).not.toHaveProperty("batch");
+    });
+
+    it("holds the call when the declaration cannot be read", async () => {
+      const { call } = setup({
+        tools: [
+          {
+            name: "broken_chain",
+            reachesTools: () => {
+              throw new Error("bad input");
+            },
+          },
+        ],
+      });
+      expect(await call({ toolName: "broken_chain", input: {} })).toBeUndefined();
+      expect(mockRequestToolApproval).toHaveBeenCalledTimes(1);
+      expect(mockRequestToolApproval.mock.calls[0]?.[0]).not.toHaveProperty("batch");
     });
   });
 

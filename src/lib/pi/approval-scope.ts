@@ -1,9 +1,10 @@
 /**
  * Approval scopes: one decision that covers the calls a tool makes while it runs.
  *
- * A tool that orchestrates other tools (`codemode`, whose script calls several)
- * can ask the user once for everything it is about to do. The calls it then
- * makes are *nested*. Pi ids them `<calling id>/<n>`. and each one would
+ * A tool that orchestrates other tools (`codemode`, whose script calls several,
+ * or any tool that declares `reachesTools`) can ask the user once for
+ * everything it is about to do. The calls it then makes are *nested*. Pi ids
+ * them `<calling id>/<n>`. and each one would
  * otherwise ask again, because the gate that sees a nested call only knows the
  * call in front of it: it cannot tell whether the user just approved the parent.
  *

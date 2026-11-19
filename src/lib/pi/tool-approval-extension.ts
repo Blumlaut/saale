@@ -15,10 +15,11 @@
  * 1. `off`. blocked, and not even auto-approve mode re-enables it.
  * 2. Auto-approve mode (`/stfu`) is on for the user. everything that would ask
  *    runs. still never a tool set to `off`.
- * 3. `codemode`. the script is the approval unit: one card listing the calls
- *    that would ask on their own, and one click standing in for all of them
- *    (see `approval-scope.ts`).
- * 4. A call already covered by the script approval the user gave. runs.
+ * 3. A tool that orchestrates other tools: its call is the approval unit. The
+ *    card lists the calls that would ask on their own, and one click stands in
+ *    for all of them (see `approval-scope.ts`). A codemode script announces its
+ *    calls in its source; any other tool declares them with `reachesTools`.
+ * 4. A call already covered by the approval the user gave. runs.
  * 5. `auto` on a command-aware tool (`bash`, `infra_exec`). the command decides;
  *    risky ones ask, safe ones run. A decision model, when one is configured,
  *    answers that question instead and the command checks stay its fallback. A
@@ -104,11 +105,9 @@ export function createToolApprovalExtension(options: ToolApprovalOptions): Exten
       }
     });
 
-    // The script has finished (or was aborted): its approval covers nothing.
+    // The call has finished (or was aborted): its approval covers nothing.
     pi.on("tool_result", (event) => {
-      if (event.toolName === CODEMODE_TOOL_NAME && !event.parentToolCallId) {
-        releaseApprovalScope(options.sessionId, event.toolCallId);
-      }
+      if (!event.parentToolCallId) releaseApprovalScope(options.sessionId, event.toolCallId);
       return undefined;
     });
   };
@@ -140,20 +139,35 @@ async function decideCall(
   // Accepting everything that would ask; `off` never comes back this way.
   if (await isAutoApproveActive(options.userId)) return undefined;
 
-  // A script is one decision covering the calls it announces.
-  if (toolName === CODEMODE_TOOL_NAME && !event.parentToolCallId) {
-    return decideScript({
-      policy,
-      toolCallId: event.toolCallId,
-      input,
-      pi,
-      context: policies,
-      gate: options,
-      signal: ctx.signal,
-    });
+  // A tool that orchestrates other tools is one decision covering the calls it
+  // announces: a script names them in its source, a tool declares them.
+  if (!event.parentToolCallId) {
+    if (toolName === CODEMODE_TOOL_NAME) {
+      return decideScript({
+        policy,
+        toolCallId: event.toolCallId,
+        input,
+        pi,
+        context: policies,
+        gate: options,
+        signal: ctx.signal,
+      });
+    }
+    const reach = declaredReach({ toolName, input, pi, context: policies });
+    if (reach) {
+      return approveOrchestratedCall({
+        policy,
+        toolCallId: event.toolCallId,
+        toolName,
+        input,
+        ...reach,
+        gate: options,
+        signal: ctx.signal,
+      });
+    }
   }
 
-  // The user already approved this call as part of the script that
+  // The user already approved this call as part of the call that
   // announced it; asking again would undo the one-click decision.
   if (
     isApprovalScopeGranted({
@@ -245,12 +259,7 @@ async function ask(options: {
 /**
  * Decide a codemode script.
  *
- * A script's calls each carry their own policy, so gating them one by one puts
- * a card in front of the user per call — the same decision, asked N times. The
- * script is the approval unit instead: the card lists the calls that would ask
- * on their own, and the answer covers exactly those (`approval-scope.ts`).
- *
- * What the card covers is read from the script's source, so a call to a tool
+ * What the call covers is read from the script's source, so a call to a tool
  * the script reaches by a computed name is not covered and asks for itself. The
  * card says so, so an approval never reads as a blanket one.
  *
@@ -266,39 +275,124 @@ async function decideScript(options: {
   gate: ToolApprovalOptions;
   signal: AbortSignal | undefined;
 }): Promise<{ block: true; reason: string } | undefined> {
-  // Allowed: the script runs as one step, and every call it makes follows its
-  // own policy — that is what the rest of this gate is for.
-  if (options.policy === "allow") return undefined;
-
   const code = typeof options.input.code === "string" ? options.input.code : "";
   const references = readScriptToolReferences(code);
-  const covered = referencedCallsNeedingApproval(references, options.pi, options.context);
-
-  // "auto" (the default): only a decision to make when the script reaches
-  // something that would ask for itself.
-  if (options.policy === "auto" && covered.length === 0) return undefined;
-
-  const denied = await ask({
+  return approveOrchestratedCall({
+    policy: options.policy,
     toolCallId: options.toolCallId,
     toolName: CODEMODE_TOOL_NAME,
     input: options.input,
+    covered: referencedCallsNeedingApproval(references, options.pi, options.context),
+    dynamic: references.dynamic,
     gate: options.gate,
     signal: options.signal,
-    ...(covered.length > 0 ? { batch: { tools: covered, dynamic: references.dynamic } } : {}),
+  });
+}
+
+/**
+ * Decide a call that goes on to run other tools.
+ *
+ * Each call it makes carries its own policy, so gating them one by one puts a
+ * card in front of the user per call — the same decision, asked N times. The
+ * call is the approval unit instead: the card lists the calls that would ask on
+ * their own, and the answer covers exactly those (`approval-scope.ts`).
+ */
+async function approveOrchestratedCall(options: {
+  policy: ToolPolicy;
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  /** The calls it announces that would each ask for approval on their own. */
+  covered: string[];
+  /** It can also reach calls it does not announce, which ask for themselves. */
+  dynamic: boolean;
+  gate: ToolApprovalOptions;
+  signal?: AbortSignal | undefined;
+}): Promise<{ block: true; reason: string } | undefined> {
+  // Allowed: it runs as one step, and every call it makes follows its own
+  // policy — that is what the rest of this gate is for.
+  if (options.policy === "allow") return undefined;
+
+  // "auto" (the default): only a decision to make when it reaches something
+  // that would ask for itself.
+  if (options.policy === "auto" && options.covered.length === 0) return undefined;
+
+  const denied = await ask({
+    toolCallId: options.toolCallId,
+    toolName: options.toolName,
+    input: options.input,
+    gate: options.gate,
+    signal: options.signal,
+    ...(options.covered.length > 0
+      ? { batch: { tools: options.covered, dynamic: options.dynamic } }
+      : {}),
   });
   if (denied) return denied;
 
-  // The approval stands in for every covered call the script goes on to make;
-  // anything else still asks for itself.
-  if (covered.length > 0) {
+  // The approval stands in for every covered call it goes on to make; anything
+  // else still asks for itself.
+  if (options.covered.length > 0) {
     grantApprovalScope({
       sessionId: options.gate.sessionId,
       toolCallId: options.toolCallId,
-      tools: covered,
+      tools: options.covered,
       expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
     });
   }
   return undefined;
+}
+
+/**
+ * What a call of a tool that orchestrates others announces, from the tool's own
+ * `reachesTools` declaration. `null` when the tool declares nothing, so the
+ * call is decided by its policy alone.
+ */
+function declaredReach(options: {
+  toolName: string;
+  input: Record<string, unknown>;
+  pi: ExtensionAPI;
+  context: ToolPolicyContext;
+}): { covered: string[]; dynamic: boolean } | null {
+  const tool = options.pi.getAllTools().find((candidate) => candidate.name === options.toolName);
+  if (!tool?.reachesTools) return null;
+
+  let reach: "all" | readonly string[];
+  try {
+    reach = tool.reachesTools(options.input);
+  } catch (err) {
+    // The declaration is the tool's own reading of its arguments, so a broken
+    // one is not a reason to hold the call: it runs, and its calls ask.
+    console.error(`Failed to read what "${options.toolName}" reaches:`, err);
+    return null;
+  }
+
+  // Everything: there is nothing to name on a card, and covering every tool
+  // would hand out decisions the user was never shown.
+  if (reach === "all") return { covered: [], dynamic: true };
+
+  const named = toolsNamedBy(reach, options.pi);
+  return { covered: callsNeedingApproval(named, options.pi, options.context), dynamic: false };
+}
+
+/**
+ * The tools a declaration's words name: a word names every tool whose name it
+ * contains, and every tool in a namespace it contains. Pi's own rule for
+ * `reachesTools`.
+ */
+function toolsNamedBy(words: readonly string[], pi: ExtensionAPI): string[] {
+  const callable = new Set(callableToolNames(pi));
+  const named: string[] = [];
+  for (const tool of pi.getAllTools()) {
+    if (!callable.has(tool.name)) continue;
+    const names = [
+      tool.name,
+      ...(tool.namespace ? [tool.namespace.name, ...(tool.namespace.aliases ?? [])] : []),
+    ];
+    if (words.some((word) => word !== "" && names.some((name) => word.includes(name)))) {
+      named.push(tool.name);
+    }
+  }
+  return named;
 }
 
 /** Whether the tool declares itself safe to run without asking. */
@@ -308,23 +402,38 @@ function isReadOnlyTool(pi: ExtensionAPI, toolName: string): boolean {
 }
 
 /**
+ * Which of these tools would each ask for approval when called on their own.
+ *
+ * Command-aware `auto` tools stay out: their decision is made from the command
+ * they are called with, which only exists at the call.
+ */
+function callsNeedingApproval(
+  toolNames: readonly string[],
+  pi: ExtensionAPI,
+  context: ToolPolicyContext,
+): string[] {
+  return toolNames.filter(
+    (toolName) =>
+      resolveToolPolicy(toolName, context, { readOnly: isReadOnlyTool(pi, toolName) }) === "ask",
+  );
+}
+
+/**
  * The tools a script reaches that would each ask for approval on their own.
  *
  * Only names the source shows count. A script that picks a tool by a computed
  * name reaches something this answer cannot see, so that call asks for itself
  * when it happens — a card up front would cover calls the script may never make.
- * Command-aware `auto` tools stay out either way: their decision is made from
- * the command they are called with, which only exists at the call.
  */
 function referencedCallsNeedingApproval(
   references: { keys: readonly string[] },
   pi: ExtensionAPI,
   context: ToolPolicyContext,
 ): string[] {
-  const callable = callableToolNames(pi);
-  return resolveReferencedTools(references.keys, callable).filter(
-    (toolName) =>
-      resolveToolPolicy(toolName, context, { readOnly: isReadOnlyTool(pi, toolName) }) === "ask",
+  return callsNeedingApproval(
+    resolveReferencedTools(references.keys, callableToolNames(pi)),
+    pi,
+    context,
   );
 }
 
