@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.18 - 2026-11-19
+
+- warm up the light mode palette (5ac626ae)
+- offer a new chat from the list while in a chat (82dccb23)
+
 ## 2026.11.17 - 2026-11-18
 
 - Bump the production-dependencies group across 1 directory with 8 updates (348e5a99)
