@@ -78,7 +78,7 @@ describe("ApprovalMessage", () => {
     expect(screen.getByText("Send Email")).toBeInTheDocument();
     expect(screen.getByText("Delete Task")).toBeInTheDocument();
     // Nothing says the script can reach further than the list.
-    expect(screen.queryByText(/pick tools by name/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reach tools it does not name/)).not.toBeInTheDocument();
   });
 
   it("says when the covered list may not be the whole plan", () => {
@@ -95,7 +95,7 @@ describe("ApprovalMessage", () => {
     );
 
     expect(screen.getByText("One approval covers this call:")).toBeInTheDocument();
-    expect(screen.getByText(/pick tools by name/)).toBeInTheDocument();
+    expect(screen.getByText(/reach tools it does not name/)).toBeInTheDocument();
   });
 
   it("shows labeled fields and hides the raw-arguments dump by default", () => {

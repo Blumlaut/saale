@@ -44,8 +44,9 @@ export async function sendTelegramApprovalRequest(
   const label = findToolInfo(request.toolName)?.label ?? request.toolName;
   const summary = request.summary ?? summarizeToolAction(request.toolName, request.args);
 
-  // The calls one decision stands in for. A script's approval covers the calls
-  // it announced, so the card names them: the user is deciding on those.
+  // The calls one decision stands in for. A call that orchestrates others
+  // announces what it reaches, so the card names them: the user is deciding on
+  // those.
   const covered = (request.batch?.tools ?? []).map((name) => findToolInfo(name)?.label ?? name);
 
   // Truncate args for display
@@ -58,7 +59,7 @@ export async function sendTelegramApprovalRequest(
     (covered.length > 0
       ? `\n\n<b>One approval covers:</b> ${escapeHtml(covered.join(", "))}` +
         (request.batch?.dynamic
-          ? `\n<i>It can also call tools by name. those ask on their own.</i>`
+          ? `\n<i>It can also reach tools it does not name. those ask on their own.</i>`
           : "")
       : "") +
     `\n\n<code>${escapeHtml(request.toolName)}</code> · session ${request.sessionId.slice(0, 8)}...\n\n` +

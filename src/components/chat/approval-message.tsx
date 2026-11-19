@@ -202,10 +202,10 @@ export function ApprovalMessage({ sessionId, approval, onResolved }: ApprovalMes
 /**
  * The calls an approval stands in for.
  *
- * A script's approval covers the calls it announced, so the card has to name
- * them: the user is approving those calls, not the script's text. Calls the
- * script makes that are not listed still ask for themselves, which is what the
- * note below says when the script can pick tools by name.
+ * A call that orchestrates others announces what it reaches, and the card has
+ * to name them: the user is approving those calls. Calls it makes that are not
+ * listed still ask for themselves, which is what the note below says when the
+ * reach is wider than the list.
  */
 function BatchList({ batch }: { batch: ApprovalBatchData }) {
   const labels = batch.tools.map((name) => findToolInfo(name)?.label ?? name);
@@ -226,7 +226,7 @@ function BatchList({ batch }: { batch: ApprovalBatchData }) {
       </div>
       {batch.dynamic && (
         <p className="text-muted-foreground text-[11px]">
-          The script can also pick tools by name while it runs. those ask on their own.
+          It can also reach tools it does not name. those ask on their own.
         </p>
       )}
     </div>
