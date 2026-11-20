@@ -2,8 +2,12 @@
 # next to the dependencies is npm's shape and pnpm ignores it without a word.
 overrides:
   'monaco-editor>dompurify': ^3.4.17
+  # Prisma pins 3.20.0, which a ReDoS in Schema.TemplateLiteral affects.
+  '@prisma/config>effect': ^3.22.5
   '@earendil-works/pi-ai>undici': ^8.12.4
   '@earendil-works/pi-coding-agent>undici': ^8.12.4
+  # ts-morph 26 pins minimatch 10, which globparts amplification affects.
+  '@ts-morph/common>minimatch': ^11.0.1
 allowBuilds:
   '@google/genai': true
   '@prisma/engines': true
@@ -35,6 +39,7 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-schema@1.6.0'
   - '@earendil-works/pi-telemetry@1.6.0'
   - '@earendil-works/pi-tui@1.6.0'
+  - effect@3.22.5
 permissions:
   compromise:
     skills: false
