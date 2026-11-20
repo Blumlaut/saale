@@ -1,5 +1,4 @@
 diff --git a/package.json b/package.json
-index 8a9bac6630685b37f2bb87c31c64a26702546fc0..b669e34d303298055859ed9570e65d1d5427a813 100644
 --- a/package.json
 +++ b/package.json
 @@ -9,17 +9,20 @@
@@ -10,12 +9,12 @@ index 8a9bac6630685b37f2bb87c31c64a26702546fc0..b669e34d303298055859ed9570e65d1d
 +			"import": "./dist/index.js",
 +			"default": "./dist/index.js"
  		},
- 		"./oauth": {
- 			"source": "./src/oauth/index.ts",
- 			"types": "./dist/oauth/index.d.ts",
--			"import": "./dist/oauth/index.js"
-+			"import": "./dist/oauth/index.js",
-+			"default": "./dist/oauth/index.js"
+ 		"./render": {
+ 			"source": "./src/render.ts",
+ 			"types": "./dist/render.d.ts",
+-			"import": "./dist/render.js"
++			"import": "./dist/render.js",
++			"default": "./dist/render.js"
  		},
  		"./testing": {
  			"source": "./src/testing/index.ts",
@@ -25,4 +24,4 @@ index 8a9bac6630685b37f2bb87c31c64a26702546fc0..b669e34d303298055859ed9570e65d1d
 +			"default": "./dist/testing/index.js"
  		}
  	},
- 	"sideEffects": false,
+ 	"files": [

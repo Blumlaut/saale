@@ -1,8 +1,7 @@
 diff --git a/package.json b/package.json
-index 57e8f262c954d7c9277adea1e49348e0bcb2212a..6c7261ec61536c8a7ae4c9cd5a8ddb3548531069 100644
 --- a/package.json
 +++ b/package.json
-@@ -13,47 +13,58 @@
+@@ -13,51 +13,63 @@
  	"exports": {
  		".": {
  			"types": "./dist/index.d.ts",
@@ -15,6 +14,12 @@ index 57e8f262c954d7c9277adea1e49348e0bcb2212a..6c7261ec61536c8a7ae4c9cd5a8ddb35
 -			"import": "./dist/models.js"
 +			"import": "./dist/models.js",
 +			"default": "./dist/models.js"
+ 		},
+ 		"./session-resources": {
+ 			"types": "./dist/session-resources.d.ts",
+-			"import": "./dist/session-resources.js"
++			"import": "./dist/session-resources.js",
++			"default": "./dist/session-resources.js"
  		},
  		"./compat": {
  			"types": "./dist/compat.d.ts",
