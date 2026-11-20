@@ -66,11 +66,9 @@ export function FilePreview({ target, entry, kind, content }: FilePreviewProps) 
 /**
  * A PDF, handed to the viewer the browser already ships.
  *
- * It arrives as an object URL rather than the raw endpoint's own URL: the
- * response carries `X-Frame-Options: DENY` and `frame-ancestors 'none'`, which
- * every page here needs and which would stop the frame from loading. A blob of
- * the same bytes has no headers to answer to, and the browser decides from its
- * own type how to render it.
+ * The bytes arrive as an object URL so a refusal from the server ("too large to
+ * preview") lands in the panel as a sentence; a frame pointed straight at the
+ * endpoint would render whatever the refusal body happens to be.
  */
 function PdfPreview({ target, entry }: { target: string; entry: FileEntry }) {
   const [url, setUrl] = useState<string | null>(null);

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { PATH_HEADER } from "@/lib/auth/redirect";
+import { DOWNLOAD_PREFIXES } from "@/lib/download-prefixes";
 import {
   resolveSettingsEntry,
   SETTINGS_ROOT,
@@ -92,8 +93,10 @@ export async function middleware(request: NextRequest) {
   requestHeaders.set(PATH_HEADER, `${pathname}${request.nextUrl.search}`);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
+  const download = DOWNLOAD_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+
   response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Frame-Options", download ? "SAMEORIGIN" : "DENY");
   response.headers.set("X-XSS-Protection", "1; mode=block");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // The composer records voice input; nothing here opens the camera.
@@ -123,7 +126,7 @@ export async function middleware(request: NextRequest) {
       "manifest-src 'self'",
       // A PDF preview frames an object URL of the file's own bytes.
       "frame-src 'self' blob:",
-      "frame-ancestors 'none'",
+      download ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
     ].join("; "),

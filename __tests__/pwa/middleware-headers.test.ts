@@ -1,8 +1,19 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { NextRequest } from "next/server";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { DOWNLOAD_PREFIXES } from "@/lib/download-prefixes";
 import { middleware } from "@/middleware";
+
+const API_DIR = path.join(process.cwd(), "src/app/api");
+
+/** `/…/src/app/api/chat/attachments/[id]/route.ts` for `/api/chat/attachments/[id]`. */
+function routePathOf(routeFile: string): string {
+  return `/api${routeFile.slice(API_DIR.length).replace(/[\\/]route\.ts$/, "")}`;
+}
 
 /**
  * The service worker only installs if the CSP lets a same-origin worker load,
@@ -101,5 +112,50 @@ describe("framing", () => {
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3630");
     const local = (await headersFor("/dashboard/coder/p/c")).get("Content-Security-Policy");
     expect(local).toContain("frame-ancestors 'none'");
+  });
+
+  // WebKit reads these before it decides a response is a download, so a refusal
+  // here is a download button that quietly does nothing in Safari.
+  it("lets this origin frame the files it downloads", async () => {
+    for (const path of [
+      "/api/files/raw?target=t&path=a.png&download=1",
+      "/api/files/zip?target=t&path=a.png",
+      "/api/chat/attachments/abc",
+      "/api/chat/workspace-files?file=a.png&download=1",
+      "/api/calendar/export?from=2026-01-01",
+    ]) {
+      const headers = await headersFor(path);
+      expect(headers.get("X-Frame-Options"), path).toBe("SAMEORIGIN");
+      expect(headers.get("Content-Security-Policy"), path).toContain("frame-ancestors 'self'");
+    }
+  });
+
+  it("keeps other origins, and every other response, out", async () => {
+    expect((await headersFor("/api/files/list?target=t")).get("X-Frame-Options")).toBe("DENY");
+    expect((await headersFor("/dashboard/files")).get("X-Frame-Options")).toBe("DENY");
+  });
+
+  // The list is what makes a download work in Safari, and a route added without
+  // it is a button that only fails on some browsers. Read the routes instead.
+  it("registers every route that can send a download", async () => {
+    const routes = (await readdir(API_DIR, { recursive: true })).filter((file) =>
+      file.endsWith("route.ts"),
+    );
+    const unregistered: string[] = [];
+
+    for (const route of routes) {
+      const absolute = path.join(API_DIR, route);
+      const source = await readFile(absolute, "utf8");
+      // A streamed file and a `Content-Disposition` are the two ways a route
+      // hands bytes to the browser's download machinery.
+      const serves = /contentDisposition\(|Content-Disposition|streamedFileResponse\(/.test(source);
+      if (!serves) continue;
+
+      const routePath = routePathOf(absolute);
+      const registered = DOWNLOAD_PREFIXES.some((prefix) => routePath.startsWith(prefix));
+      if (!registered) unregistered.push(routePath.replace(/\[[^\]]+\]/g, "x"));
+    }
+
+    expect(unregistered).toEqual([]);
   });
 });

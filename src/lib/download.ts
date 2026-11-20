@@ -13,6 +13,10 @@
  * download itself. The response's `Content-Disposition` still names the file;
  * framing does not stand in the way, because the download is decided before
  * `X-Frame-Options`/`frame-ancestors` are enforced.
+ *
+ * Chromium decides that way. WebKit reads the framing headers first and drops
+ * the frame, so `@/middleware` lets this origin frame the endpoints listed in
+ * `@/lib/download-prefixes`, and Safari downloads like the rest.
  */
 
 import { toast } from "sonner";
