@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.11.19 - 2026-11-20
+
+- word the coverage note for any orchestrating tool (a39898f3)
+- cover nested calls for any orchestrating tool (b6e2b774)
+- files page: servers, tabs and a console (24e1e507)
+- read the html part when a mail has no text (4933b3e4)
+
 ## 2026.11.18 - 2026-11-19
 
 - warm up the light mode palette (5ac626ae)
