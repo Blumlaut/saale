@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.11.20 - 2026-11-21
+
+- let safari download through the hidden frame (bc9b1be4)
+- clear both dependabot alerts with overrides (2beeca73)
+- bump every dependency and the pi packages (2fb11da4)
+
 ## 2026.11.19 - 2026-11-20
 
 - word the coverage note for any orchestrating tool (a39898f3)
