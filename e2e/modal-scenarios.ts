@@ -157,6 +157,14 @@ const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx"
 const PROVIDER_ADD_SHEET = "src/components/providers/provider-add-sheet.tsx";
 const MODEL_LIMITS_SHEET = "src/components/providers/model-limits-sheet.tsx";
 const CODER_CREATE_DIALOG = "src/components/coder/project-create-dialog.tsx";
+const PROVIDER_CONNECTIONS = "src/components/providers/provider-connections.tsx";
+const SANDBOX_ENV_CARD = "src/components/integrations/sandbox-env-card.tsx";
+const SHARED_MCP_SECTION = "src/components/admin/admin-settings/shared-mcp-section.tsx";
+const SHARED_PROMPTS_SECTION = "src/components/admin/admin-settings/shared-prompts-section.tsx";
+const CONFIRM_DIALOG = "src/components/shared/confirm-dialog.tsx";
+const SESSION_SIDEBAR = "src/components/chat/session-sidebar.tsx";
+const CODER_CHAT_LIST = "src/components/coder/project-list.tsx";
+const DELETE_CHAT_DIALOG = "src/components/coder/delete-chat-dialog.tsx";
 const FORCE_DELETE_DIALOG = "src/components/shared/force-delete-dialog.tsx";
 const DELETE_ERROR_DIALOG = "src/components/chat/delete-error-dialog.tsx";
 const PROJECT_SETTINGS_SHEET = "src/components/coder/project-settings-sheet.tsx";
@@ -253,7 +261,7 @@ async function mockConfigurableModels(page: Page) {
  * A row that labels its actions is found by that label; not every row is a
  * hover card, so the wrapper class is the other way in.
  */
-async function openRowMenu(page: Page, rowText: string) {
+export async function openRowMenu(page: Page, rowText: string) {
   const labelled = page.getByRole("button", { name: `Actions for ${rowText}` });
   const hoverRow = page
     .locator("div.group")
@@ -589,6 +597,72 @@ async function mockMemories(page: Page) {
       },
     }),
   );
+}
+
+/** A variable already set, so the row that removes it exists. */
+async function mockSandboxEnv(page: Page) {
+  await page.route(/\/api\/settings\/sandbox-env(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { names: ["GITHUB_PERSONAL_ACCESS_TOKEN"] } });
+  });
+}
+
+/** A provider this account linked, so the row menu that unlinks it exists. */
+async function mockLinkedProvider(page: Page) {
+  await page.route(/\/api\/providers(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        availableProviders: [
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            baseUrl: "https://api.anthropic.com",
+            methods: [{ type: "api_key", label: "Anthropic API key", subscription: false }],
+            modelCount: 3,
+            modelsConfigurable: true,
+            custom: false,
+            configured: true,
+            source: "stored",
+            isGlobal: false,
+          },
+        ],
+        providers: [],
+      },
+    });
+  });
+}
+
+/** One server the instance shares, so the row that deletes it exists. */
+async function mockSharedMcpServers(page: Page) {
+  await page.route(/\/api\/admin\/shared-mcp-servers(\?|$)/, (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        servers: [
+          {
+            id: "e2e-shared-mcp",
+            name: "instance_knowledge",
+            transport: "http",
+            url: "https://knowledge.a-very-long-hostname.example.com/api/mcp",
+            command: null,
+            cwd: null,
+            description: "Search the instance's own documentation",
+            toolPolicy: "allow",
+            enabled: true,
+            chatEnabled: true,
+            coderEnabled: true,
+            hasToken: true,
+            hasOAuth: false,
+            shared: true,
+            envNames: [],
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ],
+      },
+    });
+  });
 }
 
 /** One prompt to edit and delete; its hint and description are the long parts. */
@@ -1165,6 +1239,19 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: (page) => click(page, 'button:has-text("New automation")'),
   },
 
+  {
+    name: "jobs · delete a job confirmation",
+    path: "/dashboard/jobs/scheduled",
+    sources: ["src/components/jobs/job-list.tsx"],
+    skip: "the instance's own jobs are locked, so no row carries the delete control",
+  },
+  {
+    name: "jobs · delete an automation confirmation",
+    path: "/dashboard/jobs/automations",
+    sources: ["src/components/jobs/watcher-list.tsx"],
+    skip: "needs an automation on the account; the e2e instance starts with none",
+  },
+
   // ── Chat ──────────────────────────────────────────────────────────────────
   {
     name: "chat · session list sheet",
@@ -1179,7 +1266,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "chat · delete selected chats",
     path: "/dashboard/chat",
-    sources: [FORCE_DELETE_DIALOG],
+    sources: [FORCE_DELETE_DIALOG, SESSION_SIDEBAR],
     open: async (page) => {
       // At phone widths the session list only exists inside the sheet, so the
       // selection has to be started from there.
@@ -1464,6 +1551,27 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "settings · remove an environment variable",
+    path: SETTINGS,
+    sources: [SANDBOX_ENV_CARD],
+    mock: mockSandboxEnv,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, 'button[aria-label="Remove GITHUB_PERSONAL_ACCESS_TOKEN"]');
+    },
+  },
+  {
+    name: "settings · unlink a provider",
+    path: SETTINGS,
+    sources: [PROVIDER_CONNECTIONS],
+    mock: mockLinkedProvider,
+    open: async (page) => {
+      await openSettingsSection(page, "models");
+      await click(page, 'button:has-text("Actions for Anthropic")');
+      await click(page, '[role="menuitem"]:has-text("Disconnect")');
+    },
+  },
+  {
     name: "settings · connect provider",
     path: SETTINGS,
     sources: [PROVIDER_LOGIN_SHEET],
@@ -1651,6 +1759,12 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     open: (page) => click(page, 'button[aria-label="Add calendar"]'),
   },
   {
+    name: "calendar · delete event confirmation",
+    path: "/dashboard/calendar",
+    sources: ["src/app/dashboard/calendar/page.tsx"],
+    skip: "requires an event on the grid  the e2e user has a local calendar but no seeded event",
+  },
+  {
     name: "calendar · event details",
     path: "/dashboard/calendar",
     sources: ["src/components/calendar/event-view-sheet.tsx"],
@@ -1819,7 +1933,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "coder · delete project confirmation",
     path: "/dashboard/coder",
-    sources: [FORCE_DELETE_DIALOG],
+    sources: [FORCE_DELETE_DIALOG, CODER_CHAT_LIST],
     mock: mockCoderProjects,
     open: async (page) => {
       await openRowMenu(page, "e2e-project-with-a-long-name");
@@ -1829,7 +1943,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "coder · delete chat confirmation",
     path: "/dashboard/coder/e2e-project",
-    sources: [FORCE_DELETE_DIALOG],
+    sources: [FORCE_DELETE_DIALOG, DELETE_CHAT_DIALOG],
     mock: mockCoderProjects,
     open: async (page) => {
       await click(page, '[aria-label^="Actions for A coder chat with a long title"]');
@@ -1983,11 +2097,21 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "admin · delete shared prompt",
     path: "/admin/settings/shared-prompts",
-    sources: ["src/components/shared/confirm-dialog.tsx"],
+    sources: [SHARED_PROMPTS_SECTION, CONFIRM_DIALOG],
     mock: mockSharedPrompts,
     open: async (page) => {
       await click(page, 'button:has-text("Actions for /review")');
       await click(page, '[role="menuitem"]:has-text("Delete")');
+    },
+  },
+  {
+    name: "admin · delete a shared mcp server",
+    path: "/admin/settings/shared-mcp",
+    sources: [SHARED_MCP_SECTION],
+    mock: mockSharedMcpServers,
+    open: async (page) => {
+      await openRowMenu(page, "instance_knowledge");
+      await click(page, '[role="menuitem"]:has-text("Remove")');
     },
   },
   {

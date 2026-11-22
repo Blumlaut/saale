@@ -61,6 +61,7 @@ export function useSandboxEnv() {
     } catch (err) {
       console.error(`Failed to remove sandbox variable ${name}:`, err);
       setError(err instanceof Error ? err.message : "Failed to remove variable");
+      throw err;
     } finally {
       setSaving(false);
     }

@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fetchJson } from "@/lib/http";
+import { deleteJson, fetchJson } from "@/lib/http";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { oneOf, usePersistedState } from "@/hooks/use-persisted-state";
+import { OVERLAY_EXIT_MS } from "@/lib/utils";
 import { startOfWeekUTC } from "@/lib/calendar/date-utils";
 import type { CalendarEvent } from "@/types/shared";
 import type { CalendarAccountSummary } from "@/types/shared";
@@ -32,6 +34,7 @@ export default function CalendarPage() {
   const [viewSheetOpen, setViewSheetOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [deleteEvent, setDeleteEvent] = useState<CalendarEvent | null>(null);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -127,6 +130,18 @@ export default function CalendarPage() {
   const handleEventCreated = useCallback(() => {
     loadEvents();
   }, [loadEvents]);
+
+  const handleDeleteEvent = useCallback(async () => {
+    if (!deleteEvent) return;
+    try {
+      await deleteJson(`/api/calendar/events/${deleteEvent.id}`);
+      setSelectedEvent(null);
+      await loadEvents();
+    } catch (err) {
+      console.error("Failed to delete the event:", err);
+      throw err;
+    }
+  }, [deleteEvent, loadEvents]);
 
   const formatDateRange = () => {
     if (view === "month") {
@@ -242,6 +257,18 @@ export default function CalendarPage() {
         accounts={accounts}
         event={selectedEvent}
         onSuccess={handleEventCreated}
+        onRequestDelete={(event) => {
+          setViewSheetOpen(false);
+          setTimeout(() => setDeleteEvent(event), OVERLAY_EXIT_MS);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteEvent !== null}
+        title={`Delete “${deleteEvent?.summary ?? "this event"}”?`}
+        description="The event leaves the calendar for good."
+        onOpenChange={(open) => !open && setDeleteEvent(null)}
+        onConfirm={handleDeleteEvent}
       />
 
       {/* Create Event Dialog */}

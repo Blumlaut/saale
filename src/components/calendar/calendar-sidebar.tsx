@@ -12,16 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { patchJson, deleteJson, postJson } from "@/lib/http";
 import type { CalendarAccountSummary } from "@/types/shared";
@@ -32,8 +23,7 @@ interface CalendarSidebarProps {
 }
 
 export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarProps) {
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [addAccountId, setAddAccountId] = useState<string | null>(null);
   const [newCalendarName, setNewCalendarName] = useState("");
@@ -62,13 +52,11 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
   const handleDeleteCalendar = useCallback(async () => {
     if (!pendingDelete) return;
     try {
-      await deleteJson(`/api/calendar/calendars/${pendingDelete}`);
+      await deleteJson(`/api/calendar/calendars/${pendingDelete.id}`);
       await onAccountsChange();
     } catch (err) {
       console.error("Failed to delete calendar:", err);
-    } finally {
-      setAlertOpen(false);
-      setPendingDelete(null);
+      throw err;
     }
   }, [pendingDelete, onAccountsChange]);
 
@@ -267,10 +255,7 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
                                 Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => {
-                                  setPendingDelete(cal.id);
-                                  setAlertOpen(true);
-                                }}
+                                onClick={() => setPendingDelete({ id: cal.id, name: cal.name })}
                                 className="text-destructive focus:text-destructive"
                               >
                                 <Trash2 className="mr-2 h-3 w-3" />
@@ -362,23 +347,13 @@ export function CalendarSidebar({ accounts, onAccountsChange }: CalendarSidebarP
         </SheetContent>
       </Sheet>
 
-      {/* Delete confirmation */}
-      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Calendar</AlertDialogTitle>
-            <AlertDialogDescription>
-              Delete this calendar and all its events? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteCalendar} variant="destructive">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Delete ${pendingDelete?.name ?? "this calendar"}?`}
+        description="Its events go with it. This cannot be undone."
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={handleDeleteCalendar}
+      />
     </div>
   );
 }

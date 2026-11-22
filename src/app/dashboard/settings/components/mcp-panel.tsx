@@ -5,16 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileJson, Loader2, Plug, Plus } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
 import { isCategoryEnabled } from "@/lib/pi/tool-categories";
 import { McpServerRow } from "@/components/mcp/mcp-server-row";
@@ -54,7 +45,6 @@ export function McpPanel() {
   const [signInOnOpen, setSignInOnOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<McpServer | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const openAdd = () => {
     setEditing(null);
@@ -92,14 +82,11 @@ export function McpPanel() {
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
-    setDeleting(true);
     try {
       await deleteServer(pendingDelete.id);
     } catch (err) {
       console.error("Failed to delete MCP server:", err);
-    } finally {
-      setDeleting(false);
-      setPendingDelete(null);
+      throw err;
     }
   };
 
@@ -212,33 +199,15 @@ export function McpPanel() {
 
       <McpImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={importServers} />
 
-      <AlertDialog
+      <ConfirmDialog
         open={pendingDelete !== null}
+        title={`Remove ${pendingDelete?.name ?? "this server"}?`}
+        description="The assistant loses this server's tools in every chat. Any OAuth sign-in or stored token for it is deleted."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
         onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The assistant will lose this server&apos;s tools in every chat. Any OAuth sign-in or
-              stored token for it is deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} variant="destructive" disabled={deleting}>
-              {deleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Removing…
-                </>
-              ) : (
-                "Remove"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

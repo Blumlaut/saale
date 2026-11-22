@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Loader2, Link as LinkIcon, Trash2 } from "lucide-react";
-import { postJson, patchJson, deleteJson } from "@/lib/http";
+import { postJson, patchJson } from "@/lib/http";
 import type { CalendarAccountSummary } from "@/types/shared";
 
 interface SubscriptionData {
@@ -26,6 +26,8 @@ interface SubscriptionDialogProps {
   accounts: CalendarAccountSummary[];
   subscription?: SubscriptionData | null;
   onSuccess?: () => void;
+  /** Asks the section for a confirmation, which closes this dialog first. */
+  onRequestDelete: (id: string) => void;
 }
 
 export function SubscriptionDialog({
@@ -34,6 +36,7 @@ export function SubscriptionDialog({
   accounts,
   subscription,
   onSuccess,
+  onRequestDelete,
 }: SubscriptionDialogProps) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -41,7 +44,6 @@ export function SubscriptionDialog({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const isEditing = !!subscription;
 
@@ -113,19 +115,10 @@ export function SubscriptionDialog({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!subscription) return;
-    setDeleting(true);
-    try {
-      await deleteJson(`/api/calendar/subscriptions/${subscription.id}`);
-      resetForm();
-      onOpenChange(false);
-      onSuccess?.();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setDeleting(false);
-    }
+    onOpenChange(false);
+    onRequestDelete(subscription.id);
   };
 
   return (
@@ -226,14 +219,9 @@ export function SubscriptionDialog({
                 variant="outline"
                 size="sm"
                 onClick={handleDelete}
-                disabled={deleting}
                 className="text-destructive hover:text-destructive"
               >
-                {deleting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="mr-2 h-4 w-4" />
-                )}
+                <Trash2 className="mr-2 h-4 w-4" />
                 Remove
               </Button>
             ) : (

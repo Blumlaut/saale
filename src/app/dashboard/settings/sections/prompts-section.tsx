@@ -4,14 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Loader2, Plus, FileText } from "lucide-react";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import {
@@ -43,7 +36,6 @@ export function PromptsSection() {
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<PromptItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const loadPrompts = useCallback(async () => {
     try {
@@ -85,15 +77,12 @@ export function PromptsSection() {
 
   const remove = async () => {
     if (!deleteTarget) return;
-    setDeleting(true);
     try {
       await deleteJson(`/api/prompts/${deleteTarget.id}`);
-      setDeleteTarget(null);
       await loadPrompts();
     } catch (err) {
       console.error("Failed to delete prompt:", err);
-    } finally {
-      setDeleting(false);
+      throw err;
     }
   };
 
@@ -181,29 +170,13 @@ export function PromptsSection() {
         onSave={() => void save()}
       />
 
-      <AlertDialog
+      <ConfirmDialog
         open={deleteTarget !== null}
+        title={deleteTarget ? `Delete /${deleteTarget.name}?` : "Delete this prompt?"}
+        description="The prompt is removed from your `/` menu. Anything you already sent with it stays in the chat."
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete /{deleteTarget?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The prompt is removed from your `/` menu. Anything you already sent with it stays in
-              the chat.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={remove} disabled={deleting}>
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={remove}
+      />
     </div>
   );
 }

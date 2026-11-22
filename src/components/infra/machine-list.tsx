@@ -6,15 +6,6 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Server,
   Pencil,
   Trash2,
@@ -26,6 +17,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { deleteJson, postJson } from "@/lib/http";
 import { useMachines } from "@/hooks/use-machines";
 import type { InfraMachine } from "@/lib/infra/types";
@@ -44,8 +36,6 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
     {},
   );
   const [pendingDelete, setPendingDelete] = useState<InfraMachine | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const testConnection = async (id: string) => {
     setTestingId(id);
@@ -78,29 +68,15 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
     }
   };
 
-  const changeDelete = (open: boolean) => {
-    if (!open) {
-      if (deleting) return;
-      setPendingDelete(null);
-      setDeleteError(null);
-    }
-  };
-
   const handleDelete = async () => {
     if (!pendingDelete) return;
-
-    setDeleting(true);
-    setDeleteError(null);
     try {
       await deleteJson(`/api/infra/machines/${pendingDelete.id}`);
       forget(pendingDelete.id);
-      setPendingDelete(null);
       onRefresh();
     } catch (err) {
       console.error("Failed to delete machine:", err);
-      setDeleteError(err instanceof Error ? err.message : "Failed to remove the machine");
-    } finally {
-      setDeleting(false);
+      throw err;
     }
   };
 
@@ -142,29 +118,15 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
   return (
     <GlassPanel className="flex h-full flex-col overflow-hidden border-0">
       {toolbar}
-      <AlertDialog open={pendingDelete !== null} onOpenChange={changeDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="break-all">
-              Remove “{pendingDelete?.name}”?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              The machine is removed with all of its notes. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          {deleteError && <p className="text-destructive text-sm break-words">{deleteError}</p>}
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            {/* The box closes once the delete has landed. */}
-            <Button variant="destructive" disabled={deleting} onClick={() => void handleDelete()}>
-              {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-              Remove
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={`Remove “${pendingDelete?.name ?? "this machine"}”?`}
+        description="The machine is removed with all of its notes. This cannot be undone."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={handleDelete}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {machines.map((machine, i) => {
           const isTesting = testingId === machine.id;
@@ -243,7 +205,6 @@ export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineLi
                     size="icon"
                     className="text-destructive h-7 w-7"
                     onClick={() => setPendingDelete(machine)}
-                    disabled={deleting}
                     title="Remove"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

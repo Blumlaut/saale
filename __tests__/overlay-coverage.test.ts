@@ -16,8 +16,14 @@ import { MODAL_SCENARIOS } from "../e2e/modal-scenarios";
 
 const REPO_ROOT = join(__dirname, "..");
 
-/** Overlay popups rendered by our own components (not Select/Popover/Menu popups). */
-const OVERLAY_RENDER = /<(DialogContent|AlertDialogContent|SheetContent)\b/;
+/**
+ * Overlay popups rendered by our own components (not Select/Popover/Menu popups).
+ *
+ * The shared delete confirmations count: a component that renders one renders a
+ * modal, and it is the component that has to register a scenario for it.
+ */
+const OVERLAY_RENDER =
+  /<(DialogContent|AlertDialogContent|SheetContent|ConfirmDialog|ForceDeleteDialog)\b/;
 
 /** Shared primitives that *define* the overlays  nothing to cover. */
 const PRIMITIVE_DIR = "src/components/ui/";

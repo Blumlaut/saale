@@ -2,16 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, Loader2, PackagePlus } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -153,63 +144,32 @@ export function PluginUninstallDialog({
   onRemoved,
 }: PluginUninstallDialogProps) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const remove = async () => {
     if (!plugin || busy) return;
     setBusy(true);
-    setError(null);
     try {
       const response = await deleteJson<PluginResponse>("/api/admin/plugins/install", {
         id: plugin.id,
       });
       onRemoved(response);
-      onOpenChange(false);
     } catch (err) {
       console.error("Failed to uninstall a plugin:", err);
-      setError(err instanceof Error ? err.message : "Could not remove the package");
+      throw err;
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <AlertDialog
+    <ConfirmDialog
       open={plugin !== null}
-      onOpenChange={(next) => {
-        if (busy) return;
-        if (!next) setError(null);
-        onOpenChange(next);
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="break-all">
-            Uninstall {plugin?.name ?? "this plugin"}?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            npm removes it from the plugin directory, so it stops loading in every session.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-
-        {error && <p className="text-destructive text-xs break-words">{error}</p>}
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive/10 text-destructive hover:bg-destructive/20"
-            disabled={busy}
-            onClick={(event) => {
-              // Keep the dialog open until npm has finished.
-              event.preventDefault();
-              void remove();
-            }}
-          >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {busy ? "Removing…" : "Uninstall"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      title={`Uninstall ${plugin?.name ?? "this plugin"}?`}
+      description="npm removes it from the plugin directory, so it stops loading in every session."
+      confirmLabel="Uninstall"
+      busyLabel="Uninstalling…"
+      onOpenChange={onOpenChange}
+      onConfirm={remove}
+    />
   );
 }

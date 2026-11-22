@@ -10,16 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
 import { AlertCircle, Check, Copy, ExternalLink, Loader2, MessageCircle } from "lucide-react";
 import type { TelegramLoginStatus } from "@/lib/telegram/oidc";
@@ -133,7 +124,6 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -200,17 +190,13 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
   }, []);
 
   const remove = useCallback(async () => {
-    setRemoving(true);
     try {
       await deleteJson("/api/admin/telegram");
       setBot({ configured: false });
       toast.success("Telegram bot removed");
     } catch (err) {
       console.error("Failed to remove the Telegram bot:", err);
-      toast.error("Failed to remove the bot");
-    } finally {
-      setRemoving(false);
-      setRemoveOpen(false);
+      throw err;
     }
   }, []);
 
@@ -387,30 +373,15 @@ export function TelegramBotPanel({ flat }: { flat?: boolean } = {}) {
         </GlassPanel>
       )}
 
-      <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Telegram bot</AlertDialogTitle>
-            <AlertDialogDescription>
-              The bot is removed and every linked account is unlinked. Users will have to link again
-              if a new bot is configured later.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={remove} variant="destructive" disabled={removing}>
-              {removing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Removing...
-                </>
-              ) : (
-                "Remove"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={removeOpen}
+        title="Remove Telegram bot"
+        description="The bot is removed and every linked account is unlinked. Users have to link again if a new bot is configured later."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        onOpenChange={setRemoveOpen}
+        onConfirm={remove}
+      />
     </>
   );
 }

@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import { getCronLabel } from "@/lib/jobs/cron-label";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { broadcastWatchersChanged } from "@/lib/chat/session-events";
 import type { ScriptWatcher, ScriptWatcherTick } from "@/types/shared";
 
@@ -119,6 +120,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const [ticks, setTicks] = useState<ScriptWatcherTick[]>([]);
   const [loadingTicks, setLoadingTicks] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ScriptWatcher | null>(null);
 
   const openChat = useCallback(
     (sessionId: string) => router.push(`/dashboard/chat/${sessionId}`),
@@ -200,11 +202,12 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
     }
   };
 
-  const handleDelete = async (watcher: ScriptWatcher) => {
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
     try {
-      await deleteJson(`/api/automations/${watcher.id}`);
-      setWatchers((prev) => prev.filter((w) => w.id !== watcher.id));
-      if (selectedId === watcher.id) {
+      await deleteJson(`/api/automations/${pendingDelete.id}`);
+      setWatchers((prev) => prev.filter((w) => w.id !== pendingDelete.id));
+      if (selectedId === pendingDelete.id) {
         setSelectedId(null);
         setTicks([]);
       }
@@ -212,6 +215,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
       onRefresh?.();
     } catch (err) {
       console.error("Failed to delete automation:", err);
+      throw err;
     }
   };
 
@@ -327,7 +331,7 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => void handleDelete(watcher)}
+                          onClick={() => setPendingDelete(watcher)}
                           className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -438,6 +442,18 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
           </GlassPanelContent>
         </GlassPanel>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={
+          pendingDelete
+            ? `Delete the “${pendingDelete.name}” automation?`
+            : "Delete this automation?"
+        }
+        description="Its schedule stops and its ticks go with it."
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

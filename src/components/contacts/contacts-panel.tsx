@@ -5,20 +5,11 @@ import { fetchJson, deleteJson } from "@/lib/http";
 import { toast } from "sonner";
 import { ContactList } from "@/components/contacts/contact-list";
 import { ContactSheet } from "@/components/contacts/contact-sheet";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { Contact } from "@/types/shared";
 
 /**
- * Contact book. list, create/edit sheet and delete confirmation.
+ * Contact book: list, create/edit sheet and delete confirmation.
  * Rendered inside a tab on the mail page; manages its own data.
  */
 export function ContactsPanel() {
@@ -65,11 +56,10 @@ export function ContactsPanel() {
     try {
       await deleteJson(`/api/contacts/${deleting.id}`);
       setContacts((prev) => prev.filter((c) => c.id !== deleting.id));
-      setDeleting(null);
       toast.success("Contact deleted");
     } catch (err) {
       console.error("Failed to delete contact:", err);
-      toast.error("Failed to delete contact");
+      throw err;
     }
   }, [deleting]);
 
@@ -92,25 +82,13 @@ export function ContactsPanel() {
         onSaved={handleSaved}
       />
 
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
-            <AlertDialogDescription className="break-all">
-              {deleting?.email} will be permanently removed from your contact book.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground"
-              onClick={handleDelete}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting?.name ?? "this contact"}?`}
+        description={`${deleting?.email ?? ""} will be permanently removed from your contact book.`}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

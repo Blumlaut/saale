@@ -2,16 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, MoreVertical, RefreshCw, Trash2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -104,7 +95,6 @@ export function WorkspacesArea() {
     const base = `/api/admin/workspaces/${encodeURIComponent(pending.row.identity)}`;
     try {
       await deleteJson(pending.kind === "delete" ? base : `${base}/container`);
-      setPending(null);
       await load();
       return true;
     } catch (err) {
@@ -220,52 +210,28 @@ function WorkspaceActionDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => Promise<boolean>;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (pending) setFailed(false);
-  }, [pending]);
-
   const deleting = pending?.kind === "delete";
   const name = pending?.row.owner?.name ?? pending?.row.identity ?? "";
 
   async function confirm(): Promise<void> {
-    setBusy(true);
-    try {
-      if (!(await onConfirm())) setFailed(true);
-    } finally {
-      setBusy(false);
-    }
+    if (await onConfirm()) return;
+    throw new Error(deleting ? "The directory was not removed." : "The container was not removed.");
   }
 
   return (
-    <AlertDialog open={pending !== null} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="break-all">
-            {deleting ? `Delete ${name}?` : `Remove the container for ${name}?`}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {deleting
-              ? `${pending?.row.bytes ? `${formatFileSize(pending.row.bytes)} goes with it. ` : ""}No account owns this directory, so nothing can restore it.`
-              : "The files stay. Its next command builds a fresh container, and anything installed inside this one is gone."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {failed ? (
-          <p className="text-destructive text-xs">
-            {deleting ? "The directory was not removed." : "The container was not removed."}
-          </p>
-        ) : null}
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" disabled={busy} onClick={() => void confirm()}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {deleting ? "Delete" : "Remove"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      open={pending !== null}
+      title={deleting ? `Delete ${name}?` : `Remove the container for ${name}?`}
+      description={
+        deleting
+          ? `${pending?.row.bytes ? `${formatFileSize(pending.row.bytes)} goes with it. ` : ""}No account owns this directory, so nothing can restore it.`
+          : "The files stay. Its next command builds a fresh container, and anything installed inside this one is gone."
+      }
+      confirmLabel={deleting ? "Delete" : "Remove"}
+      busyLabel={deleting ? "Deleting…" : "Removing…"}
+      onOpenChange={onOpenChange}
+      onConfirm={confirm}
+    />
   );
 }
 

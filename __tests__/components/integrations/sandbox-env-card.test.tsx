@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxEnvCard } from "@/components/integrations/sandbox-env-card";
 
@@ -68,7 +68,7 @@ describe("SandboxEnvCard", () => {
     expect(screen.getByLabelText("Value")).toHaveAttribute("type", "password");
   });
 
-  it("removes a variable by name", async () => {
+  it("asks before removing a variable, then removes it by name", async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ names: ["GH_TOKEN"] }))
       .mockResolvedValueOnce(jsonResponse({ names: [] }));
@@ -78,10 +78,33 @@ describe("SandboxEnvCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove GH_TOKEN" }));
 
+    // Nothing leaves until the confirmation says so.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Remove GH_TOKEN?");
+
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+
     await waitFor(() => expect(screen.getByText("None set")).toBeInTheDocument());
     const [url, init] = fetchMock.mock.calls[1]!;
     expect(url).toBe("/api/settings/sandbox-env?name=GH_TOKEN");
     expect(init.method).toBe("DELETE");
+  });
+
+  it("keeps the variable when the confirmation is cancelled", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ names: ["GH_TOKEN"] }));
+
+    render(<SandboxEnvCard />);
+    await screen.findByText("GH_TOKEN");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove GH_TOKEN" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("GH_TOKEN")).toBeInTheDocument();
   });
 
   it("shows the API's own reason when a name is refused", async () => {

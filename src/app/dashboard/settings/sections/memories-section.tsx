@@ -20,14 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -118,14 +111,11 @@ export function MemoriesSection() {
   const [newTagInput, setNewTagInput] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Delete alert state
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     type: "memory" | "collection";
     id: string;
     name: string;
   } | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load data
@@ -233,25 +223,19 @@ export function MemoriesSection() {
     setCreating(false);
   };
 
-  // Delete memory
   const handleDeleteMemory = async () => {
     if (!deleteTarget || deleteTarget.type !== "memory") return;
-    setDeleting(true);
     try {
       await deleteJson(`/api/memories/${deleteTarget.id}`);
       await loadData();
     } catch (err) {
       console.error("Failed to delete memory:", err);
+      throw err;
     }
-    setDeleting(false);
-    setDeleteOpen(false);
-    setDeleteTarget(null);
   };
 
-  // Delete collection
   const handleDeleteCollection = async () => {
     if (!deleteTarget || deleteTarget.type !== "collection") return;
-    setDeleting(true);
     try {
       await deleteJson(`/api/memories/collections?name=${encodeURIComponent(deleteTarget.name)}`);
       if (filterCollection === deleteTarget.name) {
@@ -260,10 +244,8 @@ export function MemoriesSection() {
       await loadData();
     } catch (err) {
       console.error("Failed to delete collection:", err);
+      throw err;
     }
-    setDeleting(false);
-    setDeleteOpen(false);
-    setDeleteTarget(null);
   };
 
   return (
@@ -328,10 +310,9 @@ export function MemoriesSection() {
                             Filter to {col.name}
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={() => {
-                              setDeleteTarget({ type: "collection", id: col.name, name: col.name });
-                              setDeleteOpen(true);
-                            }}
+                            onClick={() =>
+                              setDeleteTarget({ type: "collection", id: col.name, name: col.name })
+                            }
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -471,10 +452,9 @@ export function MemoriesSection() {
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => {
-                          setDeleteTarget({ type: "memory", id: memory.id, name: memory.title });
-                          setDeleteOpen(true);
-                        }}
+                        onClick={() =>
+                          setDeleteTarget({ type: "memory", id: memory.id, name: memory.title })
+                        }
                         className="text-destructive focus:text-destructive"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -563,42 +543,21 @@ export function MemoriesSection() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteTarget?.type === "memory" ? "Delete Memory" : "Delete Collection"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget?.type === "memory"
-                ? `Delete "${deleteTarget.name}"? This cannot be undone.`
-                : `Delete the "${deleteTarget?.name}" collection and all its memories? This cannot be undone.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteOpen(false);
-                setDeleteTarget(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={
-                deleteTarget?.type === "memory" ? handleDeleteMemory : handleDeleteCollection
-              }
-              disabled={deleting}
-            >
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={
+          deleteTarget?.type === "memory"
+            ? `Delete the “${deleteTarget.name}” memory?`
+            : `Delete the “${deleteTarget?.name ?? ""}” collection?`
+        }
+        description={
+          deleteTarget?.type === "memory"
+            ? "This cannot be undone."
+            : "Every memory in it goes with it."
+        }
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={deleteTarget?.type === "memory" ? handleDeleteMemory : handleDeleteCollection}
+      />
     </>
   );
 }

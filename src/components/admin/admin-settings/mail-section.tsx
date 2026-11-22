@@ -7,16 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Select,
   SelectContent,
@@ -109,9 +100,8 @@ export function MailSection() {
 
   const removeMail = async () => {
     const err = await remove();
-    setRemoveOpen(false);
-    if (err) toast.error("Could not remove the mail relay");
-    else toast.success("Mail relay removed");
+    if (err) throw new Error(err.message || "Could not remove the mail relay");
+    toast.success("Mail relay removed");
   };
 
   const sendTest = async () => {
@@ -313,21 +303,15 @@ export function MailSection() {
             ) : null}
           </PageSection>
 
-          <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove the mail relay?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Verification links and password resets stop going out until a relay is configured
-                  again.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep it</AlertDialogCancel>
-                <AlertDialogAction onClick={() => void removeMail()}>Remove</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <ConfirmDialog
+            open={removeOpen}
+            title="Remove the mail relay?"
+            description="Verification links and password resets stop going out until a relay is configured again."
+            confirmLabel="Remove"
+            busyLabel="Removing…"
+            onOpenChange={setRemoveOpen}
+            onConfirm={removeMail}
+          />
         </>
       ) : null}
     </AdminSettingsFrame>

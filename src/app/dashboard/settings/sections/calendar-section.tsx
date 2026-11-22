@@ -5,6 +5,7 @@ import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
+import { OVERLAY_EXIT_MS } from "@/lib/utils";
 import {
   Calendar,
   Loader2,
@@ -29,7 +30,6 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CalendarAccountDialog } from "@/components/calendar/calendar-account-dialog";
 import { SubscriptionDialog } from "@/components/calendar/subscription-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { CalendarAccountSummary } from "@/types/shared";
 
 interface Subscription {
@@ -59,10 +60,9 @@ export function CalendarSection() {
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
   const [editingSubscription, setEditingSubscription] = useState<Subscription | null>(null);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{
+  const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
-    action: "sync" | "delete" | "sync-sub" | "delete-sub";
+    name: string;
     type: "account" | "subscription";
   } | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
@@ -125,28 +125,17 @@ export function CalendarSection() {
 
   const executeAction = async (
     id: string,
-    action: "sync" | "delete" | "sync-sub" | "delete-sub",
+    action: "sync" | "sync-sub",
     type: "account" | "subscription",
   ) => {
     setActionLoading(action + ":" + id);
     try {
-      let url: string;
-      let method: "POST" | "DELETE";
+      const url =
+        type === "account"
+          ? `/api/calendar/accounts/${id}/sync`
+          : `/api/calendar/subscriptions/${id}`;
 
-      if (type === "account") {
-        url =
-          action === "delete"
-            ? `/api/calendar/accounts/${id}`
-            : `/api/calendar/accounts/${id}/sync`;
-        method = action === "delete" ? "DELETE" : "POST";
-      } else {
-        url = `/api/calendar/subscriptions/${id}`;
-        method = action === "delete-sub" ? "DELETE" : "POST";
-      }
-
-      if (method === "DELETE") {
-        await deleteJson(url);
-      } else if (action === "sync-sub") {
+      if (action === "sync-sub") {
         const res = await postJson<{
           sync: {
             eventsCreated: number;
@@ -158,8 +147,6 @@ export function CalendarSection() {
         }>(url, {});
         if (res.sync?.error) {
           setAlertError(res.sync.error);
-          setPendingAction({ id, action, type });
-          setAlertOpen(true);
         } else {
           setSyncResult({
             id,
@@ -169,7 +156,7 @@ export function CalendarSection() {
             parsed: res.sync.parsedEvents ?? null,
           });
         }
-      } else if (action === "sync") {
+      } else {
         const res = await postJson<{
           sync: {
             calendarsSynced: number;
@@ -181,8 +168,6 @@ export function CalendarSection() {
         }>(url, {});
         if (res.sync?.errors?.length) {
           setAlertError(res.sync.errors.join("; "));
-          setPendingAction({ id, action, type });
-          setAlertOpen(true);
         } else {
           setSyncResult({
             id,
@@ -192,37 +177,28 @@ export function CalendarSection() {
             parsed: null,
           });
         }
-      } else {
-        await postJson(url, {});
       }
       await loadData();
     } catch (err) {
+      console.error("Failed to sync the calendar:", err);
       setAlertError((err as Error).message);
-      setPendingAction({ id, action, type });
-      setAlertOpen(true);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleActionRequest = (
-    id: string,
-    action: "sync" | "delete" | "sync-sub" | "delete-sub",
-    type: "account" | "subscription",
-  ) => {
-    if (action === "sync" || action === "sync-sub") {
-      executeAction(id, action, type);
-      return;
-    }
-    setPendingAction({ id, action, type });
-    setAlertError(null);
-    setAlertOpen(true);
-  };
-
-  const handleAlertConfirm = () => {
-    setAlertOpen(false);
-    if (pendingAction) {
-      executeAction(pendingAction.id, pendingAction.action, pendingAction.type);
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    const base =
+      deleteTarget.type === "account"
+        ? `/api/calendar/accounts/${deleteTarget.id}`
+        : `/api/calendar/subscriptions/${deleteTarget.id}`;
+    try {
+      await deleteJson(base);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete the calendar entry:", err);
+      throw err;
     }
   };
 
@@ -399,6 +375,7 @@ export function CalendarSection() {
                                 size="icon"
                                 className="h-8 w-8"
                                 disabled={isBusy}
+                                aria-label={`Actions for ${account.name}`}
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
@@ -406,7 +383,7 @@ export function CalendarSection() {
                           />
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => handleActionRequest(account.id, "sync", "account")}
+                              onClick={() => void executeAction(account.id, "sync", "account")}
                               disabled={isBusy}
                             >
                               {actionLoading === "sync:" + account.id ? (
@@ -417,7 +394,13 @@ export function CalendarSection() {
                               Sync Now
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleActionRequest(account.id, "delete", "account")}
+                              onClick={() =>
+                                setDeleteTarget({
+                                  id: account.id,
+                                  name: account.name,
+                                  type: "account",
+                                })
+                              }
                               disabled={isBusy}
                               className="text-destructive focus:text-destructive"
                             >
@@ -529,6 +512,7 @@ export function CalendarSection() {
                                 size="icon"
                                 className="h-8 w-8"
                                 disabled={isBusy}
+                                aria-label={`Actions for ${sub.name}`}
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
@@ -545,9 +529,7 @@ export function CalendarSection() {
                               Edit
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() =>
-                                handleActionRequest(sub.id, "sync-sub", "subscription")
-                              }
+                              onClick={() => void executeAction(sub.id, "sync-sub", "subscription")}
                               disabled={isBusy}
                             >
                               {isBusy ? (
@@ -559,7 +541,11 @@ export function CalendarSection() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
-                                handleActionRequest(sub.id, "delete-sub", "subscription")
+                                setDeleteTarget({
+                                  id: sub.id,
+                                  name: sub.name,
+                                  type: "subscription",
+                                })
                               }
                               disabled={isBusy}
                               className="text-destructive focus:text-destructive"
@@ -602,41 +588,44 @@ export function CalendarSection() {
         accounts={accounts}
         subscription={editingSubscription}
         onSuccess={loadData}
+        onRequestDelete={(id) =>
+          setTimeout(() => {
+            const subscription = subscriptions.find((entry) => entry.id === id);
+            setDeleteTarget({
+              id,
+              name: subscription?.name ?? "this subscription",
+              type: "subscription",
+            });
+          }, OVERLAY_EXIT_MS)
+        }
       />
 
-      {/* Confirmation / Error Alert Dialog */}
-      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+      {/* A sync that came back with a reason of its own. */}
+      <AlertDialog open={alertError !== null} onOpenChange={(open) => !open && setAlertError(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {alertError
-                ? "Error"
-                : pendingAction?.type === "account"
-                  ? "Delete Account"
-                  : "Remove Subscription"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {alertError
-                ? alertError
-                : pendingAction?.type === "account"
-                  ? "Delete this calendar account and all its synced events? This cannot be undone."
-                  : "Remove this subscription and its synced events? This cannot be undone."}
-            </AlertDialogDescription>
+            <AlertDialogTitle>Error</AlertDialogTitle>
+            <AlertDialogDescription>{alertError}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            {alertError ? (
-              <AlertDialogAction onClick={() => setAlertOpen(false)}>OK</AlertDialogAction>
-            ) : (
-              <>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleAlertConfirm} variant="destructive">
-                  {pendingAction?.type === "account" ? "Delete" : "Remove"}
-                </AlertDialogAction>
-              </>
-            )}
+            <AlertDialogAction onClick={() => setAlertError(null)}>OK</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={
+          deleteTarget?.type === "account"
+            ? `Delete the ${deleteTarget.name} account?`
+            : `Remove ${deleteTarget?.name ?? "this subscription"}?`
+        }
+        description="Its synced events go with it. This cannot be undone."
+        confirmLabel={deleteTarget?.type === "account" ? "Delete" : "Remove"}
+        busyLabel={deleteTarget?.type === "account" ? "Deleting…" : "Removing…"}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

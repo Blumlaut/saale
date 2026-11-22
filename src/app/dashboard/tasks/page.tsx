@@ -2,21 +2,11 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
-import { Trash2 } from "lucide-react";
 import { Page } from "@/components/layout/page";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
 import { TaskChatDialog } from "@/components/tasks/task-chat-dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { Task } from "@/types/shared";
 
 export default function TasksPage() {
@@ -67,9 +57,9 @@ export default function TasksPage() {
     try {
       await deleteJson(`/api/tasks/${deleteTask.id}`);
       setTasks((prev) => prev.filter((t) => t.id !== deleteTask.id));
-      setDeleteTask(null);
     } catch (err) {
       console.error("Failed to delete task:", err);
+      throw err;
     }
   }, [deleteTask]);
 
@@ -145,24 +135,13 @@ export default function TasksPage() {
         task={chatTask}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog open={!!deleteTask} onOpenChange={(open) => !open && setDeleteTask(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Task</AlertDialogTitle>
-            <AlertDialogDescription>
-              Delete &quot;{deleteTask?.title}&quot;? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} variant="destructive">
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={!!deleteTask}
+        title={`Delete “${deleteTask?.title ?? "this task"}”?`}
+        description="This cannot be undone."
+        onOpenChange={(open) => !open && setDeleteTask(null)}
+        onConfirm={handleDelete}
+      />
     </Page>
   );
 }

@@ -36,6 +36,8 @@ import { PageAction, PageActions } from "@/components/layout/page";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Separator } from "@/components/ui/separator";
 import { deleteJson, patchJson, postJson } from "@/lib/http";
+import { OVERLAY_EXIT_MS } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { ProviderCatalogView } from "@/lib/providers/catalog";
 import type { ProviderAuthType } from "@/lib/providers/login";
 
@@ -47,9 +49,6 @@ import type { ProviderAuthType } from "@/lib/providers/login";
  * row is connected by running Pi's own sign-in flow for that provider, so a
  * provider Pi gains is configurable here the day the package is updated.
  */
-
-/** The add sheet's exit animation, so the sign-in sheet never opens on top of it. */
-const SHEET_EXIT_MS = 200;
 
 /** Feedback from the last endpoint import or capability probe. */
 type DiscoveryInfo =
@@ -117,11 +116,16 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
   const [errorText, setErrorText] = useState("");
   const [discoveryInfo, setDiscoveryInfo] = useState<DiscoveryInfo | null>(null);
   const [detecting, setDetecting] = useState<string | null>(null);
+  const [pendingDisconnect, setPendingDisconnect] = useState<{
+    provider: string;
+    name: string;
+  } | null>(null);
 
-  const loginTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** What the add sheet opens once it has slid away. */
+  const sheetExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
-      if (loginTimer.current) clearTimeout(loginTimer.current);
+      if (sheetExitTimer.current) clearTimeout(sheetExitTimer.current);
     },
     [],
   );
@@ -191,28 +195,38 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
     setAddOpen(true);
   };
 
-  /** Unlink from inside the manage sheet. close it, then drop the credential. */
+  const requestDisconnect = (provider: string, name?: string) => {
+    setPendingDisconnect({
+      provider,
+      name: name ?? catalog.find((entry) => entry.id === provider)?.name ?? provider,
+    });
+  };
+
+  /** Unlink from the manage sheet, which has to slide away before the box opens. */
   const handleSheetDisconnect = (entry: ProviderCatalogView) => {
     setAddOpen(false);
-    void handleDisconnect(entry.id);
+    sheetExitTimer.current = setTimeout(() => {
+      requestDisconnect(entry.id, entry.name);
+    }, OVERLAY_EXIT_MS);
   };
 
   const handleConnect = (entry: ProviderCatalogView, authType: ProviderAuthType) => {
     setAddOpen(false);
-    // Wait for the picker to slide away. two overlays at once is never right.
-    loginTimer.current = setTimeout(() => {
+    sheetExitTimer.current = setTimeout(() => {
       setLoginTarget({ providerId: entry.id, providerName: entry.name, authType });
-    }, SHEET_EXIT_MS);
+    }, OVERLAY_EXIT_MS);
   };
 
-  const handleDisconnect = async (provider: string) => {
+  const handleDisconnect = async () => {
+    if (!pendingDisconnect) return;
     try {
-      await deleteJson(`${endpoints.providers}?provider=${encodeURIComponent(provider)}`);
+      await deleteJson(
+        `${endpoints.providers}?provider=${encodeURIComponent(pendingDisconnect.provider)}`,
+      );
       await loadAll();
     } catch (err) {
       console.error("Failed to disconnect the provider:", err);
-      setStatus("error");
-      setErrorText(err instanceof Error ? err.message : "Failed to disconnect");
+      throw err;
     }
   };
 
@@ -350,7 +364,7 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
                   entry={entry}
                   readOnly={scope === "user" && entry.isGlobal}
                   onConfigureEndpoint={() => openEndpointForm(entry.id)}
-                  onDisconnect={handleDisconnect}
+                  onDisconnect={requestDisconnect}
                   onDetect={() => void handleDetectCapabilities(entry.id)}
                   detecting={detecting === entry.id}
                 />
@@ -427,6 +441,16 @@ export function ProviderConnections({ scope, onChanged }: ProviderConnectionsPro
         onConnected={() => {
           void loadAll();
         }}
+      />
+
+      <ConfirmDialog
+        open={pendingDisconnect !== null}
+        title={`Unlink ${pendingDisconnect?.name ?? "this provider"}?`}
+        description="Its key or sign-in is deleted, and the models it offers stop being available."
+        confirmLabel="Unlink"
+        busyLabel="Unlinking…"
+        onOpenChange={(open) => !open && setPendingDisconnect(null)}
+        onConfirm={handleDisconnect}
       />
     </div>
   );

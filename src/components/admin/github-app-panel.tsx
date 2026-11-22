@@ -11,16 +11,7 @@ import {
   ExternalLink,
   Loader2,
 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -239,7 +230,6 @@ export function GithubAppPanel() {
   };
 
   const remove = async () => {
-    setConfirmDelete(false);
     setError(null);
     try {
       await deleteJson("/api/admin/github/app");
@@ -249,7 +239,7 @@ export function GithubAppPanel() {
       toast.success("GitHub App removed");
     } catch (err) {
       console.error("Failed to remove the GitHub App:", err);
-      setError(err instanceof Error ? err.message : "Failed to remove the GitHub App");
+      throw err;
     }
   };
 
@@ -769,21 +759,15 @@ export function GithubAppPanel() {
         </GlassPanel>
       )}
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove the GitHub App?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Its installations and every token an account authorized with it are deleted. The
-              authorization itself stays at GitHub — remove it there under “Authorized GitHub Apps”.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void remove()}>Remove</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Remove the GitHub App?"
+        description="Its installations and every token an account authorized with it are deleted. The authorization itself stays at GitHub. Remove it there under “Authorized GitHub Apps”."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        onOpenChange={setConfirmDelete}
+        onConfirm={remove}
+      />
     </div>
   );
 }

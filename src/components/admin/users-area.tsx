@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Page, PageAction, PageActions, PageStatus } from "@/components/layout/page";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -93,10 +94,7 @@ export function UsersArea() {
       : (passwordProblem(editPassword, policy.minPasswordLength) ??
         (editPasswordConfirm !== editPassword ? "Passwords do not match" : null));
 
-  // Delete confirm
-  const [showDelete, setShowDelete] = useState(false);
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Impersonate
   const [impersonating, setImpersonating] = useState<string | null>(null);
@@ -235,11 +233,6 @@ export function UsersArea() {
     setEditing(false);
   };
 
-  const openDelete = (user: AdminUser) => {
-    setDeleteUser(user);
-    setShowDelete(true);
-  };
-
   const handleImpersonate = async (user: AdminUser) => {
     setImpersonating(user.id);
     try {
@@ -255,20 +248,17 @@ export function UsersArea() {
 
   const handleDelete = async () => {
     if (!deleteUser) return;
-    setDeleting(true);
     try {
       await postJson("/api/auth/admin/remove-user", {
         userId: deleteUser.id,
       });
-      setShowDelete(false);
-      setDeleteUser(null);
       setSaveStatus("success");
       await loadUsers();
     } catch (err) {
       console.error("Failed to delete user:", err);
       setSaveStatus("error");
+      throw err;
     }
-    setDeleting(false);
   };
 
   if (loading) {
@@ -395,7 +385,7 @@ export function UsersArea() {
                         variant="ghost"
                         size="icon"
                         className="text-destructive h-8 w-8"
-                        onClick={() => openDelete(user)}
+                        onClick={() => setDeleteUser(user)}
                         disabled={!can("delete")}
                         title={can("delete") ? "Delete this user" : "Your role cannot delete users"}
                       >
@@ -633,29 +623,13 @@ export function UsersArea() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm dialog */}
-      <Dialog open={showDelete} onOpenChange={setShowDelete}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete user</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm">
-              Are you sure you want to delete{" "}
-              <span className="font-medium">{deleteUser?.email}</span>? This cannot be undone.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowDelete(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteUser !== null}
+        title={`Delete ${deleteUser?.username ?? "this user"}?`}
+        description={`${deleteUser?.email ?? "This account"} is removed along with everything it owns. This cannot be undone.`}
+        onOpenChange={(open) => !open && setDeleteUser(null)}
+        onConfirm={handleDelete}
+      />
     </Page>
   );
 }

@@ -9,14 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -76,7 +69,6 @@ export function MachineNotesDialog({
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<InfraNote | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Mobile: show either the list or the editor, desktop shows both
   const [mobilePane, setMobilePane] = useState<"list" | "editor">("list");
@@ -186,19 +178,14 @@ export function MachineNotesDialog({
 
   const confirmDelete = useCallback(async () => {
     if (!machine || !deleteTarget) return;
-    setDeleting(true);
     try {
       await deleteJson(`/api/infra/machines/${machine.id}/notes/${deleteTarget.id}`);
-      setDeleteTarget(null);
       if (selectedId === deleteTarget.id) clearEditor();
       await loadNotes();
       onSuccess();
     } catch (err) {
       console.error("Failed to delete machine note:", err);
-      setSaveError(err instanceof Error ? err.message : "Failed to delete note");
-      setDeleteTarget(null);
-    } finally {
-      setDeleting(false);
+      throw err;
     }
   }, [machine, deleteTarget, selectedId, clearEditor, loadNotes, onSuccess]);
 
@@ -438,31 +425,13 @@ export function MachineNotesDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation */}
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(o) => {
-          if (!o && !deleting) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Note</AlertDialogTitle>
-            <AlertDialogDescription>
-              Delete &quot;{deleteTarget?.title}&quot;? This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
-              {deleting && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              Delete
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={`Delete “${deleteTarget?.title ?? "this note"}”?`}
+        description="This cannot be undone."
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </>
   );
 }

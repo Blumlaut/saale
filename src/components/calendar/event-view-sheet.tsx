@@ -4,16 +4,8 @@ import type { CalendarAccountSummary, CalendarEvent } from "@/types/shared";
 import { useState, useEffect, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import {
-  Calendar as CalendarIcon,
-  Clock,
-  Info,
-  Loader2,
-  MapPin,
-  Pencil,
-  Trash2,
-} from "lucide-react";
-import { patchJson, deleteJson } from "@/lib/http";
+import { Calendar as CalendarIcon, Clock, Info, MapPin, Pencil, Trash2 } from "lucide-react";
+import { patchJson } from "@/lib/http";
 import { draftFromEvent, EMPTY_EVENT_DRAFT, eventDraftPayload } from "@/lib/calendar/event-draft";
 import type { EventDraft } from "@/lib/calendar/event-draft";
 import { EventFormFields } from "@/components/calendar/event-form-fields";
@@ -24,13 +16,20 @@ interface EventViewSheetProps {
   accounts: CalendarAccountSummary[];
   event: CalendarEvent | null;
   onSuccess?: () => void;
+  /** Asks the page for a confirmation, which closes this sheet first. */
+  onRequestDelete: (event: CalendarEvent) => void;
 }
 
-export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventViewSheetProps) {
+export function EventViewSheet({
+  open,
+  onOpenChange,
+  event,
+  onSuccess,
+  onRequestDelete,
+}: EventViewSheetProps) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [draft, setDraft] = useState<EventDraft>(EMPTY_EVENT_DRAFT);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   const isReadOnly = event?.source === "subscription";
@@ -63,20 +62,6 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
       setError((err as Error).message);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!event) return;
-    setDeleting(true);
-    try {
-      await deleteJson(`/api/calendar/events/${event.id}`);
-      onOpenChange(false);
-      onSuccess?.();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -226,15 +211,10 @@ export function EventViewSheet({ open, onOpenChange, event, onSuccess }: EventVi
                   <>
                     <Button
                       className="h-9 flex-1 text-xs font-medium"
-                      onClick={handleDelete}
-                      disabled={deleting}
+                      onClick={() => event && onRequestDelete(event)}
                       variant="destructive"
                     >
-                      {deleting ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      )}
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                       Delete
                     </Button>
                     <Button

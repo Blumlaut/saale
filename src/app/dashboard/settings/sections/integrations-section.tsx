@@ -2,17 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
-import { Loader2, Plug } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Plug } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { deleteJson } from "@/lib/http";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import type { IntegrationId } from "@/lib/integrations/types";
@@ -37,10 +28,7 @@ export function IntegrationsSection() {
   // Link dialog
   const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
 
-  // Delete confirmation
-  const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
   const [deleteIntegrationId, setDeleteIntegrationId] = useState<IntegrationId | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // ─── Handlers ─────────────────────────────────────────────────────
 
@@ -52,16 +40,12 @@ export function IntegrationsSection() {
 
   const handleDelete = useCallback(async () => {
     if (!deleteIntegrationId) return;
-    setDeleting(true);
     try {
       await deleteJson(`/api/integrations/${deleteIntegrationId}`);
       await telegram.loadIntegration();
     } catch (err) {
       console.error(`Failed to delete ${deleteIntegrationId} integration:`, err);
-    } finally {
-      setDeleting(false);
-      setDeleteAlertOpen(false);
-      setDeleteIntegrationId(null);
+      throw err;
     }
   }, [deleteIntegrationId, telegram]);
 
@@ -96,10 +80,7 @@ export function IntegrationsSection() {
               noticesDisabled={!settings}
               noticesSaving={saveState === "saving"}
               onToolNoticesChange={(on) => update({ telegramToolNotices: on })}
-              onUnlink={() => {
-                setDeleteIntegrationId("telegram");
-                setDeleteAlertOpen(true);
-              }}
+              onUnlink={() => setDeleteIntegrationId("telegram")}
             />
             <SandboxEnvCard />
             <GithubCard />
@@ -124,34 +105,19 @@ export function IntegrationsSection() {
         onDone={telegram.loadIntegration}
       />
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteAlertOpen} onOpenChange={setDeleteAlertOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleteIntegrationId
-                ? `Remove ${INTEGRATIONS.find((i) => i.id === deleteIntegrationId)?.name} Integration`
-                : "Remove Integration"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteIntegrationId ? DELETE_DESCRIPTIONS[deleteIntegrationId] : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} variant="destructive" disabled={deleting}>
-              {deleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Removing...
-                </>
-              ) : (
-                "Remove"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteIntegrationId !== null}
+        title={
+          deleteIntegrationId
+            ? `Remove ${INTEGRATIONS.find((i) => i.id === deleteIntegrationId)?.name} integration?`
+            : "Remove integration?"
+        }
+        description={deleteIntegrationId ? DELETE_DESCRIPTIONS[deleteIntegrationId] : ""}
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        onOpenChange={(open) => !open && setDeleteIntegrationId(null)}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

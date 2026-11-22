@@ -13,6 +13,7 @@ import { getCronLabel } from "@/lib/jobs/cron-label";
 import { JobRowActions } from "@/components/jobs/job-row-actions";
 import { RunStatusBadge } from "@/components/jobs/run-status-badge";
 import { fetchJson, patchJson, deleteJson } from "@/lib/http";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { GlassPanelHeader } from "@/components/ui/glass-panel";
 import { ConfigDisplay } from "@/components/jobs/config-form";
 import type { JobSchema } from "@/types/shared";
@@ -69,6 +70,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [schemas, setSchemas] = useState<JobSchema[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<Job | null>(null);
 
   const loadJobs = useCallback(
     async (silent = false) => {
@@ -204,21 +206,27 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
     }
   };
 
-  const handleDelete = async (jobId: string) => {
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
     try {
-      await deleteJson(`/api/jobs/${jobId}`);
-      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+      await deleteJson(`/api/jobs/${pendingDelete.id}`);
+      setJobs((prev) => prev.filter((j) => j.id !== pendingDelete.id));
       onRefresh?.();
-      if (selectedJob?.id === jobId) {
+      if (selectedJob?.id === pendingDelete.id) {
         setSelectedJob(null);
         setRuns([]);
       }
     } catch (err) {
       console.error("Failed to delete job:", err);
+      throw err;
     }
   };
 
   const jobSchema = selectedJob ? schemas.find((s) => s.type === selectedJob.type) : null;
+
+  const pendingLabel = pendingDelete
+    ? (schemas.find((s) => s.type === pendingDelete.type)?.label ?? pendingDelete.type)
+    : null;
 
   return (
     <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-5">
@@ -287,7 +295,7 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
                         pendingRun={runningId === job.id}
                         onRun={() => handleRun(job.id)}
                         onEdit={() => onEdit?.(job)}
-                        onDelete={() => handleDelete(job.id)}
+                        onDelete={() => setPendingDelete(job)}
                       />
                     </div>
                     {i < jobs.length - 1 && <Separator className="px-4" />}
@@ -411,6 +419,14 @@ export function JobList({ onRefresh, onEdit, action }: JobListProps) {
           )}
         </GlassPanel>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingLabel ? `Delete the ${pendingLabel} job?` : "Delete this job?"}
+        description="Its schedule stops and the run history goes with it."
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

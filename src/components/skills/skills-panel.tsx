@@ -10,16 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Spinner } from "@/components/ui/spinner";
 import { useSkills } from "@/hooks/use-skills";
@@ -34,18 +25,14 @@ export function SkillsPanel() {
   const { skills, loading, installSkill, removeSkill } = useSkills();
   const [addOpen, setAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SkillView | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
-    setDeleting(true);
     try {
       await removeSkill(pendingDelete.name);
     } catch (err) {
       console.error("Failed to remove a skill:", err);
-    } finally {
-      setDeleting(false);
-      setPendingDelete(null);
+      throw err;
     }
   };
 
@@ -129,25 +116,15 @@ export function SkillsPanel() {
 
       <SkillAddDialog open={addOpen} onOpenChange={setAddOpen} onInstall={installSkill} />
 
-      <AlertDialog
+      <ConfirmDialog
         open={pendingDelete !== null}
+        title={`Remove ${pendingDelete?.name ?? "this skill"}?`}
+        description="The assistant stops offering this skill in your chats. Its files leave your workspace."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
         onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {pendingDelete?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The assistant stops offering this skill in your chats. Its files leave your workspace.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} variant="destructive" disabled={deleting}>
-              {deleting ? "Removing..." : "Remove"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

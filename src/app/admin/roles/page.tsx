@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Page, PageAction, PageActions, PageStatus } from "@/components/layout/page";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -96,10 +97,7 @@ export default function AdminRolesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<AdminRole | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadRoles = useCallback(async () => {
     try {
@@ -182,19 +180,14 @@ export default function AdminRolesPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    setDeleting(true);
-    setDeleteError(null);
     try {
       await deleteJson(`/api/admin/roles/${deleteTarget.name}`);
-      setDeleteTarget(null);
       setSaveStatus("success");
       await loadRoles();
     } catch (err) {
       console.error("Failed to delete role:", err);
-      setDeleteError(err instanceof Error ? err.message : "Could not delete the role");
       setSaveStatus("error");
-    } finally {
-      setDeleting(false);
+      throw err;
     }
   };
 
@@ -271,10 +264,7 @@ export default function AdminRolesPage() {
                         variant="ghost"
                         size="icon"
                         className="text-destructive h-8 w-8"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setDeleteTarget(role);
-                        }}
+                        onClick={() => setDeleteTarget(role)}
                         disabled={!canManage || role.builtin}
                         title={
                           role.builtin ? "Built-in roles cannot be deleted" : "Delete this role"
@@ -390,33 +380,13 @@ export default function AdminRolesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm dialog */}
-      <Dialog
+      <ConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete role</DialogTitle>
-          </DialogHeader>
-          <p className="text-muted-foreground text-sm">
-            Delete <span className="text-foreground font-medium">{deleteTarget?.label}</span>? Roles
-            still assigned to an account cannot be deleted.
-          </p>
-          {deleteError && <p className="text-destructive text-xs">{deleteError}</p>}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={`Delete ${deleteTarget?.label ?? "this role"}?`}
+        description="An account that still holds this role keeps it. Move those accounts first."
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </Page>
   );
 }

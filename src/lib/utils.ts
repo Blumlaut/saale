@@ -6,6 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * How long an overlay takes to slide away. The next overlay opens after it, so
+ * two are never on screen at once. Matches the slowest one, the sheet's 200ms.
+ */
+export const OVERLAY_EXIT_MS = 200;
+
+/**
  * Class list for a hint attached to a row or card: a copy button, an open-link
  * arrow, something the row works without. It waits for hover or keyboard focus,
  * stays put while its menu is open, and is always visible on a device that

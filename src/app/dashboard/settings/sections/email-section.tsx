@@ -24,7 +24,6 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -32,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AccountSheet } from "@/components/mail/account-sheet";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import type { EmailAccount } from "../types";
 
 export function EmailSection() {
@@ -40,10 +40,10 @@ export function EmailSection() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{
-    accountId: string;
-    action: "sync" | "full-refresh" | "delete";
+  const [confirmTarget, setConfirmTarget] = useState<{
+    id: string;
+    email: string;
+    action: "delete" | "full-refresh";
   } | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
 
@@ -62,43 +62,45 @@ export function EmailSection() {
     loadAccounts().then(() => setEmailLoading(false));
   }, []);
 
+  /** Sync asks nothing and reports its own failure; the other two ask first. */
   const handleActionRequest = (accountId: string, action: "sync" | "full-refresh" | "delete") => {
+    const account = emailAccounts.find((entry) => entry.id === accountId);
     if (action === "sync") {
-      executeAction(accountId, action);
+      void syncAccount(accountId);
       return;
     }
-    setPendingAction({ accountId, action });
-    setAlertError(null);
-    setAlertOpen(true);
+    setConfirmTarget({ id: accountId, email: account?.email ?? "this account", action });
   };
 
-  const executeAction = async (accountId: string, action: "sync" | "full-refresh" | "delete") => {
-    setActionLoading(action + ":" + accountId);
-    try {
-      const url =
-        action === "delete"
-          ? `/api/email/accounts/${accountId}`
-          : `/api/email/accounts/${accountId}/${action === "full-refresh" ? "full-refresh" : "sync"}`;
+  const runAction = async (accountId: string, action: "sync" | "full-refresh" | "delete") => {
+    const url =
+      action === "delete"
+        ? `/api/email/accounts/${accountId}`
+        : `/api/email/accounts/${accountId}/${action === "full-refresh" ? "full-refresh" : "sync"}`;
+    if (action === "delete") await deleteJson(url);
+    else await postJson(url, {});
+    await loadAccounts();
+  };
 
-      if (action === "delete") {
-        await deleteJson(url);
-      } else {
-        await postJson(url, {});
-      }
-      await loadAccounts();
+  const syncAccount = async (accountId: string) => {
+    setActionLoading("sync:" + accountId);
+    try {
+      await runAction(accountId, "sync");
     } catch (err) {
+      console.error(`Failed to sync email account ${accountId}:`, err);
       setAlertError((err as Error).message);
-      setPendingAction({ accountId, action });
-      setAlertOpen(true);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleAlertConfirm = () => {
-    setAlertOpen(false);
-    if (pendingAction) {
-      executeAction(pendingAction.accountId, pendingAction.action);
+  const runConfirmed = async () => {
+    if (!confirmTarget) return;
+    try {
+      await runAction(confirmTarget.id, confirmTarget.action);
+    } catch (err) {
+      console.error(`Failed to ${confirmTarget.action} email account ${confirmTarget.id}:`, err);
+      throw err;
     }
   };
 
@@ -236,6 +238,7 @@ export function EmailSection() {
                               size="icon"
                               className="h-8 w-8"
                               disabled={isBusy}
+                              aria-label={`Actions for ${account.email}`}
                             >
                               <MoreVertical className="h-4 w-4" />
                             </Button>
@@ -266,11 +269,7 @@ export function EmailSection() {
                             onClick={() => handleActionRequest(account.id, "full-refresh")}
                             disabled={isBusy}
                           >
-                            {actionLoading === "full-refresh:" + account.id ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <AlertTriangle className="mr-2 h-4 w-4" />
-                            )}
+                            <AlertTriangle className="mr-2 h-4 w-4" />
                             Full Refresh
                           </DropdownMenuItem>
                           <DropdownMenuItem
@@ -299,42 +298,36 @@ export function EmailSection() {
         onSuccess={loadAccounts}
       />
 
-      {/* Confirmation / Error Alert Dialog */}
-      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+      {/* A sync that came back with a reason of its own. */}
+      <AlertDialog open={alertError !== null} onOpenChange={(open) => !open && setAlertError(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {alertError
-                ? "Error"
-                : pendingAction?.action === "delete"
-                  ? "Delete Account"
-                  : "Full Refresh"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {alertError
-                ? alertError
-                : pendingAction?.action === "delete"
-                  ? "Delete this email account and all its synced messages? This cannot be undone."
-                  : "This will delete all synced emails and re-download everything. Continue?"}
-            </AlertDialogDescription>
+            <AlertDialogTitle>Error</AlertDialogTitle>
+            <AlertDialogDescription>{alertError}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            {alertError ? (
-              <AlertDialogAction onClick={() => setAlertOpen(false)}>OK</AlertDialogAction>
-            ) : (
-              <>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleAlertConfirm}
-                  variant={pendingAction?.action === "delete" ? "destructive" : "default"}
-                >
-                  {pendingAction?.action === "delete" ? "Delete" : "Continue"}
-                </AlertDialogAction>
-              </>
-            )}
+            <AlertDialogAction onClick={() => setAlertError(null)}>OK</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        title={
+          confirmTarget?.action === "delete"
+            ? `Delete the ${confirmTarget.email} account?`
+            : `Re-download every message in ${confirmTarget?.email ?? "this account"}?`
+        }
+        description={
+          confirmTarget?.action === "delete"
+            ? "Its synced messages go with it. This cannot be undone."
+            : "The messages already stored are deleted and fetched again from the server."
+        }
+        confirmLabel={confirmTarget?.action === "delete" ? "Delete" : "Continue"}
+        busyLabel={confirmTarget?.action === "delete" ? "Deleting…" : "Re-downloading…"}
+        onOpenChange={(open) => !open && setConfirmTarget(null)}
+        onConfirm={runConfirmed}
+      />
     </>
   );
 }

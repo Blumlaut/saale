@@ -13,16 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Page, PageAction, PageActions } from "@/components/layout/page";
 import { deleteJson, fetchJson } from "@/lib/http";
 import type { SsoProviderStatus } from "@/lib/auth/sso-config";
@@ -56,7 +47,6 @@ export function SsoSection() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<SsoProviderStatus | null>(null);
   const [removing, setRemoving] = useState<SsoProviderStatus | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchJson<{ providers: SsoProviderStatus[] }>("/api/admin/sso")
@@ -87,20 +77,15 @@ export function SsoSection() {
 
   const remove = useCallback(async () => {
     if (!removing) return;
-
-    setDeleting(true);
     try {
       const data = await deleteJson<{ providers: SsoProviderStatus[] }>(
         `/api/admin/sso/${removing.id}`,
       );
       setProviders(data.providers);
       toast.success("Provider removed");
-      setRemoving(null);
     } catch (err) {
       console.error("Failed to remove the single sign-on provider:", err);
-      toast.error("Could not remove the provider");
-    } finally {
-      setDeleting(false);
+      throw err;
     }
   }, [removing]);
 
@@ -220,23 +205,15 @@ export function SsoSection() {
         onSaved={saved}
       />
 
-      <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The login page stops offering this provider, and accounts that only exist there cannot
-              sign in until it is added again.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction disabled={deleting} onClick={() => void remove()}>
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Remove ${removing?.name ?? "this provider"}?`}
+        description="The login page stops offering this provider, and accounts that only exist there cannot sign in until it is added again."
+        confirmLabel="Remove"
+        busyLabel="Removing…"
+        onOpenChange={(open) => !open && setRemoving(null)}
+        onConfirm={remove}
+      />
     </Page>
   );
 }
