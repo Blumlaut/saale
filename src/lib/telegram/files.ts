@@ -176,12 +176,73 @@ export function sharedFileFromToolCall(
   };
 }
 
+/** A workspace file on its way to a Telegram chat. */
+export interface TelegramWorkspaceFile {
+  /** Path inside the user's workspace, or the chat's worktree. */
+  filePath: string;
+  /** Text under the file on the phone; the file's own name when omitted. */
+  caption?: string | undefined;
+}
+
+/** What became of one file a delivery was asked to carry. */
+export interface TelegramFileDelivery {
+  filePath: string;
+  /* The name the phone sees, which is the found file's when the read worked. */
+  fileName: string;
+  ok: boolean;
+  /** Why it did not arrive, safe to show in a tool result. */
+  error?: string;
+}
+
+/**
+ * Upload workspace files to a Telegram chat.
+ *
+ * Images go out as photos and everything else as a document (see
+ * `sendTelegramFile`). One unreadable or oversized file does not cost the
+ * others, so each is reported on its own: a caller that asked for three files
+ * has to be able to say which one the user is missing.
+ */
+export async function sendWorkspaceFilesToTelegram(params: {
+  userId: string;
+  encryptedToken: string;
+  chatId: bigint;
+  files: readonly TelegramWorkspaceFile[];
+  /** The chat the files belong to, so a relative path resolves against its worktree. */
+  session?: string | undefined;
+}): Promise<{ messageIds: number[]; files: TelegramFileDelivery[] }> {
+  const { userId, encryptedToken, chatId, files, session } = params;
+
+  const messageIds: number[] = [];
+  const delivered: TelegramFileDelivery[] = [];
+
+  for (const { filePath, caption } of files) {
+    try {
+      const file = await readWorkspaceFile(userId, filePath, { session });
+      const messageId = await sendTelegramFile(encryptedToken, chatId, file, {
+        caption: caption?.trim() || file.fileName,
+      });
+      messageIds.push(messageId);
+      delivered.push({ filePath, fileName: file.fileName, ok: true });
+    } catch (err) {
+      console.error(`Failed to send workspace file "${filePath}" to Telegram chat ${chatId}:`, err);
+      delivered.push({
+        filePath,
+        fileName: path.basename(filePath),
+        ok: false,
+        error: err instanceof Error ? err.message : "Telegram rejected the file",
+      });
+    }
+  }
+
+  return { messageIds, files: delivered };
+}
+
 /**
  * Send a file the agent showed with `show_file` to the user's Telegram chat.
  *
  * The web UI fetches the file on demand from the workspace; a phone has no such
- * client, so the bytes go with the answer instead. Failures are logged and
- * swallowed: the run is past the tool call that produced the file, and the
+ * client, so the bytes go with the answer instead. A failure is a logged
+ * warning: the run is past the tool call that produced the file, and the
  * question of whether it could be uploaded must not fail the answer's text too.
  */
 export async function sendSharedFileToTelegram(params: {
@@ -195,15 +256,11 @@ export async function sendSharedFileToTelegram(params: {
 }): Promise<void> {
   const { userId, encryptedToken, telegramChatId, filePath, description, session } = params;
 
-  try {
-    const file = await readWorkspaceFile(userId, filePath, { session });
-    await sendTelegramFile(encryptedToken, telegramChatId, file, {
-      caption: description?.trim() || file.fileName,
-    });
-  } catch (err) {
-    console.error(
-      `Failed to send workspace file "${filePath}" to Telegram chat ${telegramChatId}:`,
-      err,
-    );
-  }
+  await sendWorkspaceFilesToTelegram({
+    userId,
+    encryptedToken,
+    chatId: telegramChatId,
+    files: [{ filePath, caption: description }],
+    session,
+  });
 }

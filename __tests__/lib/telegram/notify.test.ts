@@ -10,6 +10,7 @@ const {
   mockRecordOutboundMessages,
   mockResolveSourceChat,
   mockResolveTelegramSendTarget,
+  mockSendWorkspaceFilesToTelegram,
   TelegramTargetError,
 } = vi.hoisted(() => ({
   mockGetTelegramBot: vi.fn(),
@@ -19,6 +20,7 @@ const {
   mockRecordOutboundMessages: vi.fn(),
   mockResolveSourceChat: vi.fn(),
   mockResolveTelegramSendTarget: vi.fn(),
+  mockSendWorkspaceFilesToTelegram: vi.fn(),
   TelegramTargetError: class TelegramTargetError extends Error {},
 }));
 
@@ -38,7 +40,12 @@ vi.mock("@/lib/telegram/chats", () => ({
 }));
 
 vi.mock("@/lib/telegram/client", () => ({
+  TELEGRAM_MAX_CAPTION_LENGTH: 1024,
   sendTelegramMessage: (...args: unknown[]) => mockSendTelegramMessage(...args),
+}));
+
+vi.mock("@/lib/telegram/files", () => ({
+  sendWorkspaceFilesToTelegram: (...args: unknown[]) => mockSendWorkspaceFilesToTelegram(...args),
 }));
 
 vi.mock("@/lib/telegram/outbound", () => ({
@@ -102,6 +109,10 @@ beforeEach(() => {
   );
   mockRecordOutboundMessage.mockResolvedValue(undefined);
   mockRecordOutboundMessages.mockResolvedValue(undefined);
+  mockSendWorkspaceFilesToTelegram.mockResolvedValue({
+    messageIds: [77],
+    files: [{ filePath: "out/chart.png", fileName: "chart.png", ok: true }],
+  });
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -359,5 +370,82 @@ describe("deliverTelegramMessage", () => {
       reason: "send_failed",
       error: "Bad Request: chat not found",
     });
+  });
+
+  it("puts a short message under the first file as its caption", async () => {
+    const result = await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "NVDA last 8 hours",
+      files: [{ filePath: "out/chart.png" }],
+      session: "sess-1",
+    });
+
+    // One message on the phone, not a note followed by an unrelated picture.
+    expect(mockSendTelegramMessage).not.toHaveBeenCalled();
+    expect(mockSendWorkspaceFilesToTelegram).toHaveBeenCalledWith({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      files: [{ filePath: "out/chart.png", caption: "NVDA last 8 hours" }],
+      session: "sess-1",
+    });
+    expect(result.files).toEqual([{ filePath: "out/chart.png", fileName: "chart.png", ok: true }]);
+  });
+
+  it("sends a message too long for a caption on its own, then the files", async () => {
+    await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "x".repeat(1025),
+      files: [{ filePath: "out/chart.png" }],
+    });
+
+    expect(mockSendTelegramMessage).toHaveBeenCalled();
+    expect(mockSendWorkspaceFilesToTelegram).toHaveBeenCalledWith(
+      expect.objectContaining({ files: [{ filePath: "out/chart.png" }] }),
+    );
+  });
+
+  it("ledgers the files too, so a reply to one finds the chat", async () => {
+    await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "A note too long to sit under the picture. ".repeat(40),
+      sourceSessionId: "sess-9",
+      files: [{ filePath: "out/chart.png" }],
+    });
+
+    expect(mockRecordOutboundMessages).toHaveBeenCalledWith({
+      userId,
+      chatId,
+      messageIds: [42, 77],
+      sourceSessionId: "sess-9",
+    });
+  });
+
+  it("reports a file that did not arrive without failing the message", async () => {
+    mockSendWorkspaceFilesToTelegram.mockResolvedValue({
+      messageIds: [],
+      files: [
+        { filePath: "out/huge.pdf", fileName: "huge.pdf", ok: false, error: "File too large" },
+      ],
+    });
+
+    const result = await deliverTelegramMessage({
+      userId,
+      encryptedToken: "enc",
+      chatId,
+      content: "x".repeat(1025),
+      files: [{ filePath: "out/huge.pdf" }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.files).toEqual([
+      { filePath: "out/huge.pdf", fileName: "huge.pdf", ok: false, error: "File too large" },
+    ]);
   });
 });

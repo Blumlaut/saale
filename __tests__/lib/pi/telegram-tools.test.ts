@@ -102,14 +102,14 @@ describe("createTelegramTools", () => {
       expect(result.details).toEqual({ chatId: "119075844", label: "Jane" });
     });
 
-    it("takes an optional group target and nothing else", () => {
+    it("takes an optional group target, workspace files, and nothing else", () => {
       const parameters = toolNamed("telegram_send").parameters as {
         properties?: Record<string, unknown>;
       };
 
       // The recipient is a chat id from `telegram_chats`, never a Telegram
       // user id, so there is no way to name a person.
-      expect(Object.keys(parameters.properties ?? {})).toEqual(["message", "target"]);
+      expect(Object.keys(parameters.properties ?? {})).toEqual(["message", "files", "target"]);
     });
 
     it("passes a group target through to delivery", async () => {
@@ -163,12 +163,88 @@ describe("createTelegramTools", () => {
       ).rejects.toThrow(/No Telegram bot is connected/);
     });
 
-    it("refuses an empty message without calling Telegram", async () => {
+    it("refuses an empty send without calling Telegram", async () => {
       await expect(
         callExecute(toolNamed("telegram_send").execute, { message: "   " }),
-      ).rejects.toThrow(/message is empty/);
+      ).rejects.toThrow(/Nothing to send/);
 
       expect(mockSendTelegramToUser).not.toHaveBeenCalled();
+    });
+
+    it("carries workspace files, resolving them against this chat", async () => {
+      mockSendTelegramToUser.mockResolvedValue({
+        ok: true,
+        chatId: "119075844",
+        label: "Jane",
+        files: [{ filePath: "chart.png", fileName: "chart.png", ok: true }],
+      });
+
+      const result = await callExecute(toolNamed("telegram_send").execute, {
+        message: "NVDA last 8 hours",
+        files: ["chart.png"],
+      });
+
+      expect(mockSendTelegramToUser).toHaveBeenCalledWith({
+        userId,
+        content: "NVDA last 8 hours",
+        sourceSessionId: sessionId,
+        target: null,
+        files: [{ filePath: "chart.png" }],
+        session: sessionId,
+      });
+      expect(result.structuredContent).toEqual({
+        sent: true,
+        chatId: "119075844",
+        label: "Jane",
+        files: [{ fileName: "chart.png", ok: true }],
+      });
+      expect(result.content[0].text).toContain('"chart.png"');
+    });
+
+    it("sends files without a message at all", async () => {
+      mockSendTelegramToUser.mockResolvedValue({ ok: true, chatId: "1", label: "Jane" });
+
+      await callExecute(toolNamed("telegram_send").execute, { files: ["report.pdf"] });
+
+      expect(mockSendTelegramToUser).toHaveBeenCalledWith({
+        userId,
+        content: "",
+        sourceSessionId: sessionId,
+        target: null,
+        files: [{ filePath: "report.pdf" }],
+        session: sessionId,
+      });
+    });
+
+    it("names the file that did not arrive, so the model can say which", async () => {
+      mockSendTelegramToUser.mockResolvedValue({
+        ok: true,
+        chatId: "1",
+        label: "Jane",
+        files: [
+          { filePath: "chart.png", fileName: "chart.png", ok: true },
+          {
+            filePath: "huge.pdf",
+            fileName: "huge.pdf",
+            ok: false,
+            error: "File too large: 80.0MB",
+          },
+        ],
+      });
+
+      const result = await callExecute(toolNamed("telegram_send").execute, {
+        message: "Two reports",
+        files: ["chart.png", "huge.pdf"],
+      });
+
+      // The text arrived, so the call succeeded; the lost file is stated, not hidden.
+      expect(result.content[0].text).toContain(
+        'Not delivered: "huge.pdf" (File too large: 80.0MB).',
+      );
+      expect(result.structuredContent.files).toEqual([
+        { fileName: "chart.png", ok: true },
+        { fileName: "huge.pdf", ok: false, error: "File too large: 80.0MB" },
+      ]);
     });
 
     it("trims the message before sending", async () => {

@@ -1,6 +1,11 @@
 import { getTelegramBot } from "./bot";
-import { sendTelegramMessage } from "./client";
+import { TELEGRAM_MAX_CAPTION_LENGTH, sendTelegramMessage } from "./client";
 import { resolveTelegramSendTarget, TelegramTargetError, type TelegramSendTarget } from "./chats";
+import {
+  sendWorkspaceFilesToTelegram,
+  type TelegramFileDelivery,
+  type TelegramWorkspaceFile,
+} from "./files";
 import { getLinkByUserId, type TelegramLinkInfo } from "./links";
 import { recordOutboundMessage, resolveSourceChat } from "./outbound";
 import { recordOutboundMessages } from "./outbound-messages";
@@ -48,6 +53,8 @@ export interface TelegramDelivery {
   reason?: TelegramDeliveryFailure;
   /** Human-readable failure detail, safe to show in a tool result. */
   error?: string;
+  /** What became of each file the delivery carried. Absent when it carried none. */
+  files?: TelegramFileDelivery[];
 }
 
 /**
@@ -66,20 +73,46 @@ export async function deliverTelegramMessage(params: {
   sourceSessionId?: string | null | undefined;
   /** Group title when the message went to a group, so the source chat sees where. */
   sentTo?: string | null | undefined;
+  /** Workspace files to upload with the message. */
+  files?: readonly TelegramWorkspaceFile[] | undefined;
+  /** The chat the files belong to, so a relative path resolves against its worktree. */
+  session?: string | undefined;
 }): Promise<TelegramDelivery> {
-  const { userId, encryptedToken, chatId, content, sourceSessionId, sentTo } = params;
+  const { userId, encryptedToken, chatId, content, sourceSessionId, sentTo, session } = params;
+  const files = params.files ?? [];
 
-  let messageIds: number[];
-  try {
-    messageIds = await sendTelegramMessage(encryptedToken, chatId, content);
-  } catch (err) {
-    return {
-      ok: false,
-      chatId: chatId.toString(),
-      reason: "send_failed",
-      error: err instanceof Error ? err.message : "Telegram rejected the message",
-    };
+  // A line short enough to fit a caption travels under the first file, so the
+  // picture and what the agent said about it arrive as one message.
+  const asCaption = files.length > 0 && content.trim().length <= TELEGRAM_MAX_CAPTION_LENGTH;
+
+  let messageIds: number[] = [];
+  if (!asCaption) {
+    try {
+      messageIds = await sendTelegramMessage(encryptedToken, chatId, content);
+    } catch (err) {
+      return {
+        ok: false,
+        chatId: chatId.toString(),
+        reason: "send_failed",
+        error: err instanceof Error ? err.message : "Telegram rejected the message",
+      };
+    }
   }
+
+  const withFiles = files.map((file, index) =>
+    asCaption && index === 0 ? { ...file, caption: content.trim() } : file,
+  );
+  const uploads =
+    files.length > 0
+      ? await sendWorkspaceFilesToTelegram({
+          userId,
+          encryptedToken,
+          chatId,
+          files: withFiles,
+          session,
+        })
+      : { messageIds: [], files: [] };
+  messageIds = [...messageIds, ...uploads.messageIds];
 
   // Only a message that arrived has something to reply to, so both records
   // follow the send. The source is resolved first: an id a caller made up must
@@ -103,7 +136,11 @@ export async function deliverTelegramMessage(params: {
     console.error(`[telegram] Failed to ledger outbound messages for user ${userId}:`, err);
   }
 
-  return { ok: true, chatId: chatId.toString() };
+  return {
+    ok: true,
+    chatId: chatId.toString(),
+    ...(uploads.files.length > 0 ? { files: uploads.files } : {}),
+  };
 }
 
 /**
@@ -116,14 +153,18 @@ export async function deliverTelegramMessage(params: {
  * @param params.content - Message text (Markdown; split automatically if long)
  * @param params.sourceSessionId - The chat that produced the message, when one did
  * @param params.target - A group chat id from `telegram_chats`; omit for the private chat
+ * @param params.files - Workspace files to carry, images as photos and the rest as documents
+ * @param params.session - The chat the files resolve against, for relative paths
  */
 export async function sendTelegramToUser(params: {
   userId: string;
   content: string;
   sourceSessionId?: string | null | undefined;
   target?: string | null | undefined;
+  files?: readonly TelegramWorkspaceFile[] | undefined;
+  session?: string | undefined;
 }): Promise<TelegramDelivery> {
-  const { userId, content, sourceSessionId, target } = params;
+  const { userId, content, sourceSessionId, target, files, session } = params;
 
   const bot = await getTelegramBot();
   if (!bot) {
@@ -177,6 +218,8 @@ export async function sendTelegramToUser(params: {
     content,
     sourceSessionId,
     sentTo: destination.group ? (destination.label ?? "group") : null,
+    ...(files && files.length > 0 ? { files } : {}),
+    ...(session ? { session } : {}),
   });
 
   return { ...delivery, ...(destination.label ? { label: destination.label } : {}) };

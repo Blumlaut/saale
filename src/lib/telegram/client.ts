@@ -18,7 +18,7 @@ function requestTimeout() {
 }
 
 /** Telegram's caption ceiling; a longer one is rejected along with the file. */
-const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
+export const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 
 /** Types Telegram renders inline as a photo rather than a file attachment. */
 const PHOTO_MIME_TYPES = new Set([

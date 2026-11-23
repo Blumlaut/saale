@@ -14,11 +14,19 @@ export const TELEGRAM_SEND_TOOL_NAME = "telegram_send";
 /** Name of the tool that lists destinations, so the two read as a pair. */
 export const TELEGRAM_CHATS_TOOL_NAME = "telegram_chats";
 
+/** What became of one file the send was asked to carry. */
+const telegramFileSchema = Type.Object({
+  fileName: Type.String(),
+  ok: Type.Boolean(),
+  error: Type.Optional(Type.String()),
+});
+
 /** Confirmation of a delivered message: where it went, and how to name it. */
 const telegramSendSchema = Type.Object({
   sent: Type.Boolean(),
   chatId: Type.Optional(Type.String()),
   label: Type.Optional(Type.String()),
+  files: Type.Optional(Type.Array(telegramFileSchema)),
 });
 
 /** One destination: the user's private chat, or a group they added the bot to. */
@@ -61,14 +69,27 @@ export function createTelegramTools(userId: string, sessionId: string): ToolDefi
         "reach them later; it is the only way to contact them after the " +
         "conversation ends. By default it goes to the user's own chat. Pass a " +
         "`target` chat id from `telegram_chats` to post in a group the user added " +
-        "the bot to. Write it as a complete, self-contained message they can act " +
-        "on without this conversation, and keep it short. it interrupts them.",
+        "the bot to. Pass `files` to carry workspace files with it: images arrive " +
+        "as photos, everything else as a document. Write it as a complete, " +
+        "self-contained message they can act on without this conversation, and " +
+        "keep it short. it interrupts them.",
       parameters: Type.Object({
-        message: Type.String({
-          description:
-            "The message to send, in Markdown. Self-contained. the user may not " +
-            "remember the context it came from.",
-        }),
+        message: Type.Optional(
+          Type.String({
+            description:
+              "The message to send, in Markdown. Self-contained. the user may not " +
+              "remember the context it came from. A short one becomes the caption " +
+              "of the first file.",
+          }),
+        ),
+        files: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Workspace paths to send along, relative to the chat's worktree or " +
+              "absolute inside the workspace. Images arrive as photos, everything " +
+              "else as a document. Max 50MB each.",
+          }),
+        ),
         target: Type.Optional(
           Type.String({
             description:
@@ -79,9 +100,10 @@ export function createTelegramTools(userId: string, sessionId: string): ToolDefi
       }),
       outputSchema: telegramSendSchema,
       execute: async (_toolCallId, params) => {
-        const message = params.message.trim();
-        if (!message) {
-          throw new Error("The message is empty. nothing was sent.");
+        const message = (params.message ?? "").trim();
+        const files = (params.files ?? []).map((filePath) => ({ filePath }));
+        if (!message && files.length === 0) {
+          throw new Error("Nothing to send: give a message, at least one file, or both.");
         }
 
         const delivery = await sendTelegramToUser({
@@ -89,6 +111,7 @@ export function createTelegramTools(userId: string, sessionId: string): ToolDefi
           content: message,
           sourceSessionId: sessionId,
           target: params.target ?? null,
+          ...(files.length > 0 ? { files, session: sessionId } : {}),
         });
 
         if (!delivery.ok) {
@@ -98,13 +121,38 @@ export function createTelegramTools(userId: string, sessionId: string): ToolDefi
           throw new Error(`Telegram message not delivered: ${delivery.error}`);
         }
 
+        const sent = delivery.files?.filter((file) => file.ok) ?? [];
+        const failed = delivery.files?.filter((file) => !file.ok) ?? [];
+        const where = delivery.label ? `"${delivery.label}"` : "the user";
+        const carried = [
+          ...(message ? ["your message"] : []),
+          ...(sent.length > 0 ? [sent.map((file) => `"${file.fileName}"`).join(", ")] : []),
+        ];
+        const warning =
+          failed.length > 0
+            ? ` Not delivered: ${failed
+                .map((file) => `"${file.fileName}" (${file.error ?? "Telegram rejected it"})`)
+                .join("; ")}.`
+            : "";
+
         return {
           value: {
             sent: true,
             ...(delivery.chatId ? { chatId: delivery.chatId } : {}),
             ...(delivery.label ? { label: delivery.label } : {}),
+            ...(delivery.files
+              ? {
+                  files: delivery.files.map((file) => ({
+                    fileName: file.fileName,
+                    ok: file.ok,
+                    ...(file.error ? { error: file.error } : {}),
+                  })),
+                }
+              : {}),
           },
-          text: `Sent to ${delivery.label ? `"${delivery.label}"` : "the user"} on Telegram. They will see it on their phone.`,
+          text:
+            `Sent ${carried.join(" and ")} to ${where} on Telegram. They will see it on their phone.` +
+            warning,
           details: { chatId: delivery.chatId, label: delivery.label },
         };
       },

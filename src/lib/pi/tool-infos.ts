@@ -887,6 +887,7 @@ export const TOOL_ARG_LABELS: Record<string, Record<string, string>> = {
   edit: { path: "File", edits: "Edits" },
   bash: { command: "Command" },
   show_file: { filePath: "File", description: "Note" },
+  telegram_send: { message: "Message", files: "Files", target: "Group" },
   generate_image: { prompt: "Prompt" },
   edit_image: { images: "Pictures", prompt: "Change" },
   codemode: { code: "Script" },

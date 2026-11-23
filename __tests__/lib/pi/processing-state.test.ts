@@ -152,6 +152,9 @@ describe("buildAgentSystemPrompt", () => {
     // it cannot keep. The message rules live in the telegram_send description.
     expect(prompt).toContain("telegram_send");
     expect(prompt).toContain("only way to reach them after this conversation ends");
+    // A chart the agent drew has a way onto the phone, so it does not share it
+    // in the app and assume it arrived.
+    expect(prompt).toContain("files");
   });
 
   it("skips the outreach instruction when Telegram is disabled", () => {

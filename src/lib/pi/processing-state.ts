@@ -109,7 +109,7 @@ You can manage the user's registered machines over SSH. Each machine's notes are
  * `telegram_send` description; this only says the capability exists and when
  * it is the answer.
  */
-const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\`: their own chat on their phone. It is the only way to reach them after this conversation ends, so use it for reminders and anything they asked to be told.`;
+const TELEGRAM_PROMPT = `You can reach the user outside this app with \`telegram_send\`: their own chat on their phone. It is the only way to reach them after this conversation ends, so use it for reminders and anything they asked to be told. It carries workspace files too (\`files\`), so a chart, a screenshot or a document you produced can reach their phone.`;
 
 /**
  * Capability: giving an outreach message a time to go out.

@@ -284,6 +284,90 @@ describe("sharedFileFromToolCall", () => {
   });
 });
 
+// ─── sendWorkspaceFilesToTelegram ──────────────────────��─────────────────────
+
+describe("sendWorkspaceFilesToTelegram", () => {
+  const chart = {
+    fileName: "chart.png",
+    mimeType: "image/png",
+    size: 3,
+    buffer: new Uint8Array([1, 2, 3]),
+  };
+
+  beforeEach(() => {
+    mockSendTelegramFile.mockReset();
+    mockSendTelegramFile.mockResolvedValue(55);
+    consoleErrorSpy.mockClear();
+  });
+
+  it("uploads every file and reports their ids", async () => {
+    mockReadWorkspaceFile.mockResolvedValue(chart);
+
+    const sent = await filesModule.sendWorkspaceFilesToTelegram({
+      userId: "user-1",
+      encryptedToken: "tok",
+      chatId: BigInt(1),
+      files: [{ filePath: "out/chart.png" }, { filePath: "out/chart.png" }],
+    });
+
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "out/chart.png", {
+      session: undefined,
+    });
+    expect(sent.messageIds).toEqual([55, 55]);
+    expect(sent.files).toEqual([
+      { filePath: "out/chart.png", fileName: "chart.png", ok: true },
+      { filePath: "out/chart.png", fileName: "chart.png", ok: true },
+    ]);
+  });
+
+  it("keeps the rest of a batch when one file cannot be read", async () => {
+    mockReadWorkspaceFile
+      .mockRejectedValueOnce(new Error("File too large: 80.0MB. Max: 50MB."))
+      .mockResolvedValueOnce(chart);
+
+    const sent = await filesModule.sendWorkspaceFilesToTelegram({
+      userId: "user-1",
+      encryptedToken: "tok",
+      chatId: BigInt(1),
+      files: [{ filePath: "huge.pdf" }, { filePath: "out/chart.png" }],
+    });
+
+    expect(sent.messageIds).toEqual([55]);
+    expect(sent.files).toEqual([
+      {
+        filePath: "huge.pdf",
+        fileName: "huge.pdf",
+        ok: false,
+        error: "File too large: 80.0MB. Max: 50MB.",
+      },
+      { filePath: "out/chart.png", fileName: "chart.png", ok: true },
+    ]);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("huge.pdf"),
+      expect.any(Error),
+    );
+  });
+
+  it("captions the file with what the caller gave it", async () => {
+    mockReadWorkspaceFile.mockResolvedValue(chart);
+
+    await filesModule.sendWorkspaceFilesToTelegram({
+      userId: "user-1",
+      encryptedToken: "tok",
+      chatId: BigInt(1),
+      session: "chat-1",
+      files: [{ filePath: "chart.png", caption: "NVDA last 8 hours" }],
+    });
+
+    expect(mockReadWorkspaceFile).toHaveBeenCalledWith("user-1", "chart.png", {
+      session: "chat-1",
+    });
+    expect(mockSendTelegramFile).toHaveBeenCalledWith("tok", BigInt(1), chart, {
+      caption: "NVDA last 8 hours",
+    });
+  });
+});
+
 // ─── sendSharedFileToTelegram ────────────────────────────────────────────────
 
 describe("sendSharedFileToTelegram", () => {
