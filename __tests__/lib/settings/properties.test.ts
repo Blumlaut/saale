@@ -366,6 +366,24 @@ describe("settings projections", () => {
     expect(web.read(both)).toBe("ask");
   });
 
+  it("keeps a policy stored for an MCP tool", () => {
+    const bash = userProperty("tools.policy.bash");
+    // A server set to allow, with one tool of it held back to ask: the tool's
+    // own policy is the only record of that, so it survives a column write.
+    const row = apply(
+      bash,
+      userRow({
+        toolPolicies: { mcp__homeassistant__HassTurnOn: "ask", "not-a-tool": "allow" },
+      }),
+      "off",
+    );
+
+    expect(row.toolPolicies).toEqual({
+      bash: "off",
+      mcp__homeassistant__HassTurnOn: "ask",
+    });
+  });
+
   it("round-trips a purpose model override and clears it", () => {
     const property = userProperty("models.purpose.email_draft");
     const row = apply(property, userRow(), "anthropic:claude-sonnet-4");

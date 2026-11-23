@@ -55,6 +55,7 @@ import {
   SIDEBAR_NAV_ITEMS,
   type SidebarNavEntry,
 } from "@/lib/navigation/sidebar-nav";
+import { mcpServerFromToolName } from "@/lib/mcp/shared";
 import { formatModelReference, splitModelReference } from "@/lib/pi/model-ref";
 import { MAX_WORKSPACE_NAME_LENGTH } from "@/lib/branding/workspace-name";
 import { DEFAULT_THEME, THEME_NAMES } from "@/lib/theme";
@@ -217,7 +218,13 @@ function normalizeToolConfig(
   return result;
 }
 
-/** Canonical `toolPolicies`: known tools only, valid policies, defaults dropped. */
+/**
+ * Canonical `toolPolicies`: known tools only, valid policies, defaults dropped.
+ *
+ * An MCP tool is kept as it is. It has no catalog default, it follows its
+ * server's policy when it has none of its own, and an explicit `ask` is how a
+ * user takes one tool back off a server set to allow.
+ */
 function normalizeToolPolicies(value: unknown): Record<string, string> {
   const stored = asRecord(value);
   const result: Record<string, string> = {};
@@ -227,6 +234,12 @@ function normalizeToolPolicies(value: unknown): Record<string, string> {
     if (!(POLICY_VALUES as readonly string[]).includes(entry)) continue;
     if (entry === tool.defaultPolicy) continue;
     result[tool.name] = entry;
+  }
+  for (const [name, entry] of Object.entries(stored)) {
+    if (mcpServerFromToolName(name) === null) continue;
+    if (typeof entry !== "string") continue;
+    if (!(POLICY_VALUES as readonly string[]).includes(entry)) continue;
+    result[name] = entry;
   }
   return result;
 }

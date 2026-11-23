@@ -228,6 +228,18 @@ describe("applyUserSettingsPatch", () => {
     });
   });
 
+  it("keeps the policy of an MCP tool, which has no catalog entry", async () => {
+    await applyUserSettingsPatch(USER_ID, {
+      toolPolicies: { mcp__homeassistant__HassTurnOn: "ask" },
+    });
+
+    // The gate resolves `mcp__server__tool` from this map, so dropping the name
+    // would quietly put the tool back on its server's policy.
+    expect(lastArgs(mocks.updateUserSettings).data).toEqual({
+      toolPolicies: { mcp__homeassistant__HassTurnOn: "ask" },
+    });
+  });
+
   it("rejects an invalid value inside a blob", async () => {
     await expect(
       applyUserSettingsPatch(USER_ID, { toolPolicies: { bash: "bogus" } }),
