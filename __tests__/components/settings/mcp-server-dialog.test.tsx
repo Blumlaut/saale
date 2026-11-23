@@ -319,6 +319,44 @@ describe("McpServerDialog OAuth sign-in", () => {
     expect(onToolPolicyChange).toHaveBeenCalledWith("mcp__linear__create_issue", "off");
   });
 
+  it("reads the tools again when the dialog is reopened", async () => {
+    const loadTools = vi
+      .fn()
+      .mockResolvedValue([
+        { name: "mcp__linear__create_issue", label: "create_issue", description: null },
+      ]);
+    const props = sheetProps({
+      server: savedServer({ name: "linear", url: "https://mcp.linear.app/mcp" }),
+      loadTools,
+      onToolPolicyChange: vi.fn(),
+    });
+    const view = render(<McpServerDialog {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Go to Tools" }));
+    await screen.findByRole("combobox", { name: "Approval for create_issue" });
+
+    // A second visit starts from an empty list, so the step has to ask again.
+    view.rerender(<McpServerDialog {...props} open={false} />);
+    view.rerender(<McpServerDialog {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Go to Tools" }));
+
+    await waitFor(() => expect(loadTools).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByRole("combobox", { name: "Approval for create_issue" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no Tools step before the server exists", () => {
+    const { name, url } = renderDialog({ loadTools: vi.fn(), onToolPolicyChange: vi.fn() });
+
+    type(name, "linear");
+    fireEvent.change(url, { target: { value: "https://mcp.linear.app/mcp" } });
+
+    // A tool list belongs to a stored server, so the step waits for the save.
+    expect(screen.queryByRole("button", { name: "Go to Tools" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to Access" })).toBeInTheDocument();
+  });
+
   it("reaches the tools once a new server is added", async () => {
     const loadTools = vi
       .fn()

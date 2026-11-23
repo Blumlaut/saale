@@ -79,7 +79,7 @@ const OAUTH_POLL_INTERVAL_MS = 1_500;
 /** The inputs whose validation message can appear under them. */
 type ManagedField = "name" | "url" | "command" | "cwd";
 
-/** How the server is reached, as the sheet offers it. */
+/** How the server is reached, as the dialog offers it. */
 const TRANSPORT_OPTIONS: { value: McpTransport; label: string; hint: string }[] = [
   { value: "http", label: "Endpoint URL", hint: "An MCP endpoint hosted anywhere." },
   {
@@ -115,7 +115,7 @@ interface McpServerDialogProps {
   allowStdio?: boolean;
   /**
    * A browser sign-in belongs to one account, so the admin's shared-server form
-   * leaves all three of these out and the sheet shows no sign-in block.
+   * leaves all three of these out and the dialog shows no sign-in block.
    */
   onStartOAuth?: (id: string) => Promise<McpOAuthStart>;
   onOAuthStatus?: (id: string) => Promise<McpOAuthStatus>;
@@ -123,7 +123,7 @@ interface McpServerDialogProps {
   /** Finish a sign-in the browser could not deliver, from the pasted address. */
   onCompleteOAuth?: (id: string, url: string) => Promise<void>;
   /**
-   * Start the sign-in as soon as the sheet shows a saved server, for the row's
+   * Start the sign-in as soon as the dialog shows a saved server, for the row's
    * Sign in button: the browser is the only thing left for the user to touch.
    */
   signInOnOpen?: boolean;
@@ -165,7 +165,7 @@ export function McpServerDialog({
   const [description, setDescription] = useState("");
   const [token, setToken] = useState("");
   /**
-   * The command's variables. A stored value never comes back, so the sheet lists
+   * The command's variables. A stored value never comes back, so the form lists
    * names and holds only the values typed in this visit: saving sets those and
    * removes the names taken off the list.
    */
@@ -220,17 +220,13 @@ export function McpServerDialog({
    */
   const foldedName = normalizeMcpServerName(name);
 
-  /**
-   * Counts the times the sheet has been opened, closed, or moved to another
-   * server. A sign-in or test started in an earlier one answers into a sheet the
-   * user has already left, so its result is dropped rather than written onto the
-   * server now on screen.
-   */
   /** The server this dialog writes to: the one being edited, or the one just created. */
   const serverId = server?.id ?? savedId;
 
   /** Per-tool policies need somewhere to be stored, so they are the caller's to offer. */
-  const offersTools = Boolean(loadTools && onToolPolicyChange);
+  const canOfferTools = Boolean(loadTools && onToolPolicyChange);
+  /** A tool list belongs to a stored server, so the step waits for the first save. */
+  const offersTools = canOfferTools && serverId !== null;
   /** A sign-in needs a stored server and an endpoint, so an unsaved or command server skips it. */
   const offersSignIn = canSignIn && transport === "http" && (isEditing || savedId !== null);
 
@@ -244,6 +240,12 @@ export function McpServerDialog({
   const currentKey = stepKeys.includes(step) ? step : stepKeys[stepKeys.length - 1]!;
   const current = stepKeys.indexOf(currentKey) + 1;
 
+  /**
+   * Counts the times the dialog has been opened, closed, or moved to another
+   * server. A sign-in or test started in an earlier one answers into a dialog the
+   * user has already left, so its result is dropped rather than written onto the
+   * server now on screen.
+   */
   const session = useRef(0);
   const stillCurrent = useCallback((startedAt: number) => session.current === startedAt, []);
 
@@ -338,7 +340,7 @@ export function McpServerDialog({
     setAutoSignIn(signInOnOpen);
   }, [canSignIn, open, server, signInOnOpen]);
 
-  // Follow a browser sign-in until it settles or the sheet closes.
+  // Follow a browser sign-in until it settles or the dialog closes.
   useEffect(() => {
     const serverId = server?.id;
     if (!open || oauthPhase !== "pending" || !serverId || !onOAuthStatus) return;
@@ -407,6 +409,10 @@ export function McpServerDialog({
       if (!stillCurrent(startedAt)) return;
       setTestResult(result);
       if (!result.success && result.error) setError(result.error);
+    } catch (err) {
+      if (!stillCurrent(startedAt)) return;
+      console.error("Failed to test the MCP server:", err);
+      setError((err as Error).message || "The test could not run");
     } finally {
       setTesting(false);
     }
@@ -461,12 +467,12 @@ export function McpServerDialog({
     }
   }, [command, cwd, loadTools, onTest, serverId, stillCurrent, transport, url]);
 
-  /** Read the tool list when the step is first shown, once per server. */
-  const toolsRead = useRef<string | null>(null);
+  /** Read the tool list when the step is first shown in this visit. */
+  const toolsRead = useRef(0);
   useEffect(() => {
     if (currentKey !== "tools" || !serverId || !loadTools) return;
-    if (toolsRead.current === serverId) return;
-    toolsRead.current = serverId;
+    if (toolsRead.current === session.current) return;
+    toolsRead.current = session.current;
     void probeTools();
   }, [currentKey, loadTools, probeTools, serverId]);
 
@@ -635,9 +641,9 @@ export function McpServerDialog({
       const signingInNext = canSignIn && transport === "http";
       if (!server && createdId) {
         setSavedId(createdId);
-        if (offersTools || signingInNext) {
-          setAutoSignIn(!offersTools && signingInNext);
-          setStep(offersTools ? "tools" : "signin");
+        if (canOfferTools || signingInNext) {
+          setAutoSignIn(!canOfferTools && signingInNext);
+          setStep(canOfferTools ? "tools" : "signin");
           return;
         }
       }
@@ -658,8 +664,8 @@ export function McpServerDialog({
     enabled,
     envValues,
     name,
+    canOfferTools,
     onOpenChange,
-    offersTools,
     server,
     onSave,
     removedEnvNames,
@@ -1071,21 +1077,13 @@ export function McpServerDialog({
                   Each tool asks, runs or stays blocked on its own. One without a policy follows the
                   server&apos;s ({MCP_POLICY_LABELS[toolPolicy] ?? "Ask"}).
                 </p>
-                {!serverId ? (
-                  <p className="text-muted-foreground text-xs">
-                    The list appears once the server is added.
-                  </p>
-                ) : (
-                  <McpToolPolicyRows
-                    state={toolsState ?? { kind: "loading" }}
-                    toolPolicies={toolPolicies}
-                    probing={probingTools}
-                    onProbe={() => void probeTools()}
-                    onToolPolicyChange={(toolName, policy) =>
-                      onToolPolicyChange?.(toolName, policy)
-                    }
-                  />
-                )}
+                <McpToolPolicyRows
+                  state={toolsState ?? { kind: "loading" }}
+                  toolPolicies={toolPolicies}
+                  probing={probingTools}
+                  onProbe={() => void probeTools()}
+                  onToolPolicyChange={(toolName, policy) => onToolPolicyChange?.(toolName, policy)}
+                />
               </div>
             </div>
           ) : (

@@ -6,7 +6,6 @@
  * `BETTER_AUTH_URL` is the single source: it is the URL the app is actually
  * served from, the same one better-auth derives its cookie scheme from.
  */
-
 export function getPublicUrl(): string {
   const url = (process.env.BETTER_AUTH_URL ?? "").trim();
   if (url) return url.replace(/\/+$/, "");
