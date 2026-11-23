@@ -156,6 +156,22 @@ describe("MCP OAuth", () => {
     expect(mcpOAuthRedirectUrl()).toBe("https://saale.example/api/mcp/oauth/callback");
   });
 
+  it("registers the host the sign-in was started from", async () => {
+    const target = server();
+    await expect(
+      probeMcpServer({ url: target.url, authProvider: createMcpAuthProvider(target) }),
+    ).rejects.toBeInstanceOf(McpOAuthAuthorizationRequiredError);
+
+    const start = await startMcpOAuthSignIn(target, { baseUrl: "https://preview.example" });
+    const authorizationUrl = new URL(start.authorizationUrl!);
+
+    // A page served from a preview hostname is not on localhost, so the code
+    // has to come back to the address the browser is actually on.
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://preview.example/api/mcp/oauth/callback",
+    );
+  });
+
   it("completes a sign-in and authenticates with the stored token", async () => {
     const target = server();
 

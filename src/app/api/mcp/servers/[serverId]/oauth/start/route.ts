@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { startMcpOAuthSignIn } from "@/lib/mcp/oauth";
 import { describeMcpSignInError } from "@/lib/mcp/oauth-errors";
+import { getRequestPublicUrl } from "@/lib/public-url";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 
 /**
@@ -13,7 +14,7 @@ import { evictUserSessions } from "@/lib/pi/agent-pool";
  * refresh token was still good and no browser is needed.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ serverId: string }> },
 ) {
   const authResult = await requireSession();
@@ -34,12 +35,15 @@ export async function POST(
   }
 
   try {
-    const result = await startMcpOAuthSignIn({
-      id: server.id,
-      userId,
-      name: server.name,
-      url: server.url,
-    });
+    const result = await startMcpOAuthSignIn(
+      {
+        id: server.id,
+        userId,
+        name: server.name,
+        url: server.url,
+      },
+      { baseUrl: getRequestPublicUrl(request) },
+    );
 
     // New credentials change what a pooled session authenticates with.
     if (result.status === "succeeded") await evictUserSessions(userId);

@@ -490,3 +490,15 @@ describe("McpServerSheet command servers", () => {
     expect(test.mock.calls[0]![1]).toMatchObject({ transport: "stdio", command });
   });
 });
+
+describe("McpServerSheet tool approval", () => {
+  it("changes a server from allow back to ask", async () => {
+    const { onSave } = renderSheet({ server: savedServer({ toolPolicy: "allow" }) });
+
+    chooseOption(screen.getAllByRole("combobox")[0]!, "Ask");
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect((onSave.mock.calls[0]![0] as McpServerInput).toolPolicy).toBe("ask");
+  });
+});

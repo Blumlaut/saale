@@ -108,11 +108,18 @@ const CONSENT_PROBE_TIMEOUT_MS = 10_000;
 interface SignInAttempt {
   redirectUrl: string;
   manual: boolean;
+  /** This instance's address for this sign-in, which names its client document. */
+  baseUrl: string;
 }
 
-/** Redirect URI an authorization server sends the browser back to. */
-export function mcpOAuthRedirectUrl(): string {
-  return `${getPublicUrl()}/api/mcp/oauth/callback`;
+/**
+ * Redirect URI an authorization server sends the browser back to.
+ *
+ * `baseUrl` is the address the request reached this instance at, when the
+ * configured public URL is a loopback one (see `getRequestPublicUrl`).
+ */
+export function mcpOAuthRedirectUrl(baseUrl: string = getPublicUrl()): string {
+  return `${baseUrl}/api/mcp/oauth/callback`;
 }
 
 /**
@@ -120,17 +127,19 @@ export function mcpOAuthRedirectUrl(): string {
  * Client ID Metadata Documents takes this URL as the client id, so it can check
  * who is signing in without a registration step.
  */
-export function mcpOAuthClientMetadataUrl(): string {
-  return `${getPublicUrl()}/api/mcp/oauth/client-metadata`;
+export function mcpOAuthClientMetadataUrl(baseUrl: string = getPublicUrl()): string {
+  return `${baseUrl}/api/mcp/oauth/client-metadata`;
 }
 
 /** The document itself: what this client is called, and where it comes back to. */
-export async function mcpOAuthClientMetadata(): Promise<Record<string, unknown>> {
+export async function mcpOAuthClientMetadata(
+  baseUrl: string = getPublicUrl(),
+): Promise<Record<string, unknown>> {
   return {
-    client_id: mcpOAuthClientMetadataUrl(),
+    client_id: mcpOAuthClientMetadataUrl(baseUrl),
     client_name: await getWorkspaceName(),
-    client_uri: getPublicUrl(),
-    redirect_uris: [mcpOAuthRedirectUrl()],
+    client_uri: baseUrl,
+    redirect_uris: [mcpOAuthRedirectUrl(baseUrl)],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     token_endpoint_auth_method: "none",
@@ -152,11 +161,14 @@ function acceptsClientMetadataDocument(metadata: AuthorizationServerMetadata | u
 }
 
 /** The document to identify with, or undefined to register instead. */
-function clientMetadataDocumentFor(metadata: AuthorizationServerMetadata | undefined) {
-  const url = mcpOAuthClientMetadataUrl();
+function clientMetadataDocumentFor(
+  metadata: AuthorizationServerMetadata | undefined,
+  baseUrl: string,
+) {
+  const url = mcpOAuthClientMetadataUrl(baseUrl);
   // A document is read over https; a dev server's http address cannot serve one.
   if (!url.startsWith("https:") || !acceptsClientMetadataDocument(metadata)) return undefined;
-  return { url, redirectUrl: mcpOAuthRedirectUrl() };
+  return { url, redirectUrl: mcpOAuthRedirectUrl(baseUrl) };
 }
 
 /**
@@ -217,7 +229,12 @@ async function createOAuthClientProvider(
     clientMetadata: { client_name: await getWorkspaceName() },
     // Servers that read a metadata document take this instance's own address as
     // the client, which needs no registration and no loopback callback.
-    ...(attempt.manual ? {} : { clientMetadataDocument: clientMetadataDocumentFor }),
+    ...(attempt.manual
+      ? {}
+      : {
+          clientMetadataDocument: (metadata) =>
+            clientMetadataDocumentFor(metadata, attempt.baseUrl),
+        }),
     store: createOAuthStateStore(server),
     onRedirect,
   });
@@ -647,9 +664,12 @@ async function startAttempt(
 }
 
 /** The redirect URI and answer path of a stored sign-in, or the public one. */
-function attemptFromFlow(flow: StoredMcpOAuthFlow | null): SignInAttempt {
-  if (!flow) return { redirectUrl: mcpOAuthRedirectUrl(), manual: false };
-  return { redirectUrl: flow.redirectUrl, manual: flow.manual };
+function attemptFromFlow(
+  flow: StoredMcpOAuthFlow | null,
+  baseUrl: string = getPublicUrl(),
+): SignInAttempt {
+  if (!flow) return { redirectUrl: mcpOAuthRedirectUrl(baseUrl), manual: false, baseUrl };
+  return { redirectUrl: flow.redirectUrl, manual: flow.manual, baseUrl };
 }
 
 /**
@@ -663,12 +683,16 @@ function attemptFromFlow(flow: StoredMcpOAuthFlow | null): SignInAttempt {
  * A server whose grant is still refreshable is completed here instead, the same
  * rule Pi's CLI applies to `/mcp` sign-in.
  */
-export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOAuthStartResult> {
+export async function startMcpOAuthSignIn(
+  server: McpOAuthServer,
+  options: { baseUrl?: string } = {},
+): Promise<McpOAuthStartResult> {
+  const baseUrl = options.baseUrl ?? getPublicUrl();
   const challenge = await readMcpOAuthChallenge(server.id);
 
   const publicAttempt = await startAttempt(
     server,
-    { redirectUrl: mcpOAuthRedirectUrl(), manual: false },
+    { redirectUrl: mcpOAuthRedirectUrl(baseUrl), manual: false, baseUrl },
     challenge,
   ).catch((err) => {
     if (!refusesClient(err)) throw err;
@@ -687,7 +711,7 @@ export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOA
 
   const loopback = await startAttempt(
     server,
-    { redirectUrl: LOOPBACK_REDIRECT_URL, manual: true },
+    { redirectUrl: LOOPBACK_REDIRECT_URL, manual: true, baseUrl },
     challenge,
   );
   return loopback.result;
@@ -700,9 +724,10 @@ export async function startMcpOAuthSignIn(server: McpOAuthServer): Promise<McpOA
 export async function completeMcpOAuthSignIn(
   server: McpOAuthServer,
   params: { code: string; iss?: string },
+  options: { baseUrl?: string } = {},
 ): Promise<void> {
   const started = await readStoredFlow(server.id);
-  const attempt = attemptFromFlow(started);
+  const attempt = attemptFromFlow(started, options.baseUrl ?? getPublicUrl());
   const provider = await createOAuthClientProvider(server, () => {}, attempt);
   const result = await authorizeMcp(provider, {
     serverUrl: server.url,
@@ -728,6 +753,7 @@ export async function completeMcpOAuthSignIn(
 export async function completeMcpOAuthSignInFromUrl(
   server: McpOAuthServer,
   pasted: string,
+  options: { baseUrl?: string } = {},
 ): Promise<void> {
   const started = await readStoredFlow(server.id);
   if (!started || started.status !== "pending" || !started.manual) {
@@ -738,10 +764,14 @@ export async function completeMcpOAuthSignInFromUrl(
     state: started.state,
     redirectUrl: started.redirectUrl,
   });
-  await completeMcpOAuthSignIn(server, {
-    code: response.code,
-    ...(response.iss ? { iss: response.iss } : {}),
-  });
+  await completeMcpOAuthSignIn(
+    server,
+    {
+      code: response.code,
+      ...(response.iss ? { iss: response.iss } : {}),
+    },
+    options,
+  );
 }
 
 /** Record that a sign-in completed, for the polling settings page. */

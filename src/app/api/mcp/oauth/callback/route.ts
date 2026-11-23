@@ -10,6 +10,7 @@ import {
   resolveMcpOAuthState,
 } from "@/lib/mcp/oauth";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
+import { getRequestPublicUrl } from "@/lib/public-url";
 import { describeMcpSignInError } from "@/lib/mcp/oauth-errors";
 
 /**
@@ -84,6 +85,7 @@ export async function GET(request: NextRequest) {
     await completeMcpOAuthSignIn(
       { id: server.id, userId: server.userId, name: server.name, url: server.url },
       { code, ...(query.get("iss") ? { iss: query.get("iss") as string } : {}) },
+      { baseUrl: getRequestPublicUrl(request) },
     );
     await markMcpOAuthSignInSucceeded(link.userId, link.serverId);
 

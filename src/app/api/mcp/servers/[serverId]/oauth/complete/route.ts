@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { completeMcpOAuthSignInFromUrl, markMcpOAuthSignInSucceeded } from "@/lib/mcp/oauth";
 import { describeMcpSignInError } from "@/lib/mcp/oauth-errors";
+import { getRequestPublicUrl } from "@/lib/public-url";
 import { evictUserSessions } from "@/lib/pi/agent-pool";
 
 /**
@@ -43,6 +44,7 @@ export async function POST(
     await completeMcpOAuthSignInFromUrl(
       { id: server.id, userId, name: server.name, url: server.url },
       pasted,
+      { baseUrl: getRequestPublicUrl(request) },
     );
     await markMcpOAuthSignInSucceeded(userId, server.id);
     // The server's tools become available on the next session.
