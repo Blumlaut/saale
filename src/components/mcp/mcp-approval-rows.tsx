@@ -110,8 +110,8 @@ export function McpApprovalRows({
         const expanded = Boolean(open[server.id]);
         return (
           <div key={server.id}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-0 flex-1 basis-full sm:basis-0">
                 <span className="text-sm">{server.name}</span>
                 {server.shared && (
                   <Badge variant="outline" className="ml-2 shrink-0">
@@ -123,7 +123,7 @@ export function McpApprovalRows({
                   <p className="text-muted-foreground text-xs">{server.description}</p>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-3">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 <ScopeSwitches
                   label={server.name}
                   chat={server.chatEnabled}
