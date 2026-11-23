@@ -240,6 +240,15 @@ export function validateMcpUrl(url: string): string | null {
   return null;
 }
 
+/** One tool of a server, as an approval row names it. */
+export interface McpToolSummary {
+  /** The name the model calls: `mcp__<server>__<tool>`. */
+  name: string;
+  /** The tool's own name, which is what the server published. */
+  label: string;
+  description: string | null;
+}
+
 /** The shape the settings UI receives; the token itself never leaves the server. */
 export interface McpServerView {
   id: string;

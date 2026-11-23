@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/select";
 import { ScopeSwitches } from "@/components/shared/tool-scopes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { McpServer, McpToolSummary } from "@/hooks/use-mcp-servers";
-import { isMcpToolPolicy, type McpToolPolicy } from "@/lib/mcp/shared";
+import type { McpServer } from "@/hooks/use-mcp-servers";
+import { isMcpToolPolicy, type McpToolPolicy, type McpToolSummary } from "@/lib/mcp/shared";
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import { MCP_POLICY_OPTIONS, MCP_POLICY_LABELS, mcpPolicyHint } from "./mcp-policy";
 

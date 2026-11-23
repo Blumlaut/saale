@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { deleteJson, fetchJson, patchJson, postJson } from "@/lib/http";
-import type { McpToolPolicy, McpTransport } from "@/lib/mcp/shared";
+import type { McpToolPolicy, McpToolSummary, McpTransport } from "@/lib/mcp/shared";
 
 export interface McpServer {
   id: string;
@@ -62,15 +62,6 @@ export interface McpTestResult {
   error?: string;
   /** The server asked for an OAuth sign-in rather than accepting the request. */
   needsAuth?: boolean;
-}
-
-/** One tool of a server, as an approval row names it. */
-export interface McpToolSummary {
-  /** The name the model calls: `mcp__<server>__<tool>`. */
-  name: string;
-  /** The tool's own name, which is what the server published. */
-  label: string;
-  description: string | null;
 }
 
 /** What an import added, and what it could not. */

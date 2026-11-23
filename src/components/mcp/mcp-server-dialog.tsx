@@ -42,6 +42,7 @@ import {
   validateMcpServerName,
   validateMcpUrl,
   type McpToolPolicy,
+  type McpToolSummary,
   type McpTransport,
 } from "@/lib/mcp/shared";
 import { SetupSteps } from "@/components/shared/setup-steps";
@@ -55,7 +56,6 @@ import type {
   McpServer,
   McpServerInput,
   McpTestResult,
-  McpToolSummary,
 } from "@/hooks/use-mcp-servers";
 
 /**

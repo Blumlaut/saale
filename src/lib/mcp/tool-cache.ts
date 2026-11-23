@@ -9,18 +9,11 @@
 
 import { createMcpToolName } from "@earendil-works/pi-mcp";
 
+import type { McpToolSummary } from "@/lib/mcp/shared";
 import { getRedis } from "@/lib/redis";
 
 /** How long a catalogue is worth showing before it is looked up again. */
 const TOOLS_TTL_SECONDS = 7 * 24 * 60 * 60;
-
-/** One tool of a server, as a settings row names it. */
-export interface McpToolSummary {
-  /** The name the model calls: `mcp__<server>__<tool>`. */
-  name: string;
-  label: string;
-  description: string | null;
-}
 
 function toolsKey(serverId: string): string {
   return `mcp-tools:${serverId}`;
@@ -59,10 +52,11 @@ export async function readCachedMcpTools(serverId: string): Promise<McpToolSumma
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed.filter(
-      (entry): entry is McpToolSummary =>
-        Boolean(entry) && typeof (entry as McpToolSummary).name === "string",
-    );
+    return parsed.filter((entry): entry is McpToolSummary => {
+      if (!entry || typeof entry !== "object") return false;
+      const tool = entry as Partial<McpToolSummary>;
+      return typeof tool.name === "string" && typeof tool.label === "string";
+    });
   } catch (err) {
     console.error(`Failed to read the cached tools of MCP server ${serverId}:`, err);
     return null;
