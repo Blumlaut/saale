@@ -46,16 +46,19 @@ function McpPolicySelect({
   label,
   onChange,
   followServer = false,
+  disabled = false,
 }: {
   /** The stored answer: a policy, or `clear` for a tool that follows its server. */
   stored: string;
   label: string;
   onChange: (value: string) => void;
   followServer?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Select
       value={stored}
+      disabled={disabled}
       onValueChange={(next: string | null) => {
         if (next) onChange(next);
       }}
@@ -184,16 +187,20 @@ export function McpApprovalRows({
                   onChatChange={(checked) => onScopeChange(server, { chatEnabled: checked })}
                   onCoderChange={(checked) => onScopeChange(server, { coderEnabled: checked })}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0"
-                  aria-label={`${expanded ? "Hide" : "Show"} the tools of ${server.name}`}
-                  aria-expanded={expanded}
-                  onClick={() => toggle(server)}
-                >
-                  {expanded ? <ChevronDown /> : <ChevronRight />}
-                </Button>
+                {/* A shared server is the instance's, and its tools are listed for
+                    the admin; nothing here can reach them. */}
+                {!server.shared && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0"
+                    aria-label={`${expanded ? "Hide" : "Show"} the tools of ${server.name}`}
+                    aria-expanded={expanded}
+                    onClick={() => toggle(server)}
+                  >
+                    {expanded ? <ChevronDown /> : <ChevronRight />}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -203,12 +210,13 @@ export function McpApprovalRows({
                 <div className="min-w-0">
                   <p className="text-xs">Approval</p>
                   <p className="text-muted-foreground text-[11px]">
-                    {mcpPolicyHint(server.toolPolicy)}
+                    {server.shared ? "Set by the instance" : mcpPolicyHint(server.toolPolicy)}
                   </p>
                 </div>
                 <McpPolicySelect
                   stored={server.toolPolicy}
                   label={`Approval for ${server.name}`}
+                  disabled={server.shared}
                   onChange={(value) => onServerPolicyChange(server, value as McpToolPolicy)}
                 />
               </div>

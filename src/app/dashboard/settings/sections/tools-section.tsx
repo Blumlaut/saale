@@ -32,6 +32,8 @@ import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/l
 import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
 import { McpApprovalRows } from "@/components/mcp/mcp-approval-rows";
+import { withToolPolicy } from "@/components/mcp/mcp-policy";
+import { toast } from "sonner";
 import type { McpToolPolicy } from "@/lib/mcp/shared";
 import { SETTINGS_ROOT } from "@/lib/navigation/settings-nav";
 
@@ -92,16 +94,14 @@ export function ToolsSection() {
       await mcp.updateServer(server.id, { toolPolicy: policy });
     } catch (err) {
       console.error(`Failed to change the approval of MCP server "${server.name}":`, err);
+      toast.error((err as Error).message || "Failed to change the server's approval");
     }
   };
 
   /** A tool's own policy wins over its server's; clearing it falls back. */
   const handleMcpToolPolicy = (toolName: string, policy: ToolPolicy | null) => {
     if (!settings) return;
-    const next = { ...toolPolicies };
-    if (policy) next[toolName] = policy;
-    else delete next[toolName];
-    update({ toolPolicies: Object.keys(next).length > 0 ? next : null });
+    update({ toolPolicies: withToolPolicy(toolPolicies, toolName, policy) });
   };
 
   /** Connect to a server so its tool names are known, then list them. */

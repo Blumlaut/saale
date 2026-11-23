@@ -13,6 +13,7 @@ import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
 import { McpServerDialog } from "@/components/mcp/mcp-server-dialog";
 import { McpImportDialog } from "@/components/mcp/mcp-import-dialog";
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
+import { withToolPolicy } from "@/components/mcp/mcp-policy";
 import { useUserSettings } from "./user-settings-provider";
 
 /**
@@ -40,10 +41,10 @@ export function McpPanel() {
     loadServers,
   } = useMcpServers();
 
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<McpServer | null>(null);
-  /** The sheet was opened by a row's Sign in button, so it starts the sign-in. */
+  /** The dialog was opened by a row's Sign in button, so it starts the sign-in. */
   const [signInOnOpen, setSignInOnOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<McpServer | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -51,28 +52,25 @@ export function McpPanel() {
   const openAdd = () => {
     setEditing(null);
     setSignInOnOpen(false);
-    setSheetOpen(true);
+    setDialogOpen(true);
   };
 
   const openEdit = (server: McpServer) => {
     setEditing(server);
     setSignInOnOpen(false);
-    setSheetOpen(true);
+    setDialogOpen(true);
   };
 
   const openSignIn = (server: McpServer) => {
     setEditing(server);
     setSignInOnOpen(true);
-    setSheetOpen(true);
+    setDialogOpen(true);
   };
 
   /** A tool's own policy outlives the server's, so it is the account's setting. */
   const handleToolPolicyChange = (toolName: string, policy: ToolPolicy | null) => {
     if (!settings) return;
-    const next = { ...((settings.toolPolicies ?? {}) as Record<string, ToolPolicy>) };
-    if (policy) next[toolName] = policy;
-    else delete next[toolName];
-    update({ toolPolicies: Object.keys(next).length > 0 ? next : null });
+    update({ toolPolicies: withToolPolicy(settings.toolPolicies, toolName, policy) });
   };
 
   const handleSave = async (input: Parameters<typeof createServer>[0]) => {
@@ -187,13 +185,13 @@ export function McpPanel() {
       </GlassPanel>
 
       <McpServerDialog
-        open={sheetOpen}
+        open={dialogOpen}
         onOpenChange={(open) => {
-          setSheetOpen(open);
+          setDialogOpen(open);
           if (!open) {
             setSignInOnOpen(false);
             // A sign-in completed in the browser changes `hasOAuth`, which the
-            // open sheet cannot see; refresh once it closes.
+            // open dialog cannot see; refresh once it closes.
             void loadServers();
           }
         }}

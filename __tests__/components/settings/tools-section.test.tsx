@@ -394,6 +394,24 @@ describe("Tools MCP servers", () => {
     expect(updateMcpServer).toHaveBeenCalledWith("srv-1", { toolPolicy: "ask" });
   });
 
+  it("leaves a shared server's approval to the instance", () => {
+    updateMcpServer.mockClear();
+    mcpState.current = {
+      servers: [server({ shared: true, toolPolicy: "allow" })],
+      loading: false,
+      error: null,
+    };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+    expect(screen.getByRole("combobox", { name: "Approval for homeassistant" })).toBeDisabled();
+    expect(screen.getByText("Set by the instance")).toBeInTheDocument();
+    // Its tools belong to the instance too, so the row offers no list of them.
+    expect(
+      screen.queryByRole("button", { name: "Show the tools of homeassistant" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("gives one tool a policy of its own", async () => {
     loadTools.mockResolvedValue([
       { name: "mcp__homeassistant__HassTurnOn", label: "HassTurnOn", description: null },

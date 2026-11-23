@@ -1,4 +1,5 @@
 import type { McpToolPolicy } from "@/lib/mcp/shared";
+import type { ToolPolicy } from "@/lib/pi/tool-infos";
 
 /**
  * How a server's tools are approved, whichever control offers it.
@@ -27,4 +28,19 @@ export const MCP_POLICY_LABELS: Record<string, string> = {
 /** The hint under a policy control, for the value it holds. */
 export function mcpPolicyHint(policy: McpToolPolicy): string | undefined {
   return MCP_POLICY_OPTIONS.find((option) => option.value === policy)?.hint;
+}
+
+/**
+ * The `toolPolicies` column with one tool's answer set, or taken back out when
+ * `policy` is null so the tool follows its server again.
+ */
+export function withToolPolicy(
+  policies: Record<string, ToolPolicy> | null | undefined,
+  toolName: string,
+  policy: ToolPolicy | null,
+): Record<string, ToolPolicy> | null {
+  const next = { ...policies };
+  if (policy) next[toolName] = policy;
+  else delete next[toolName];
+  return Object.keys(next).length > 0 ? next : null;
 }
