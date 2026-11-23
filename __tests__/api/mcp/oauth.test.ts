@@ -217,6 +217,8 @@ describe("/api/mcp/oauth/callback", () => {
     expect(mockComplete).toHaveBeenCalledWith(
       expect.objectContaining({ id: "srv-1", userId: USER_ID }),
       { code: "abc", iss: "as" },
+      // The exchange uses the address the sign-in was registered against.
+      { baseUrl: "http://localhost:3630" },
     );
     expect(mockMarkSucceeded).toHaveBeenCalledWith(USER_ID, "srv-1");
     expect(mockEvictUserSessions).toHaveBeenCalledWith(USER_ID);
