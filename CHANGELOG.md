@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.21 - 2026-11-23
+
+- confirm every delete with the shared dialog (7b6305b2)
+
 ## 2026.11.20 - 2026-11-21
 
 - let safari download through the hidden frame (bc9b1be4)
