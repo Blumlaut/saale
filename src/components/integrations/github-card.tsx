@@ -673,11 +673,7 @@ function GithubSetupDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {app.configured && (
-          <div aria-label="Setup steps">
-            <SetupSteps steps={SETUP_STEPS} current={step} />
-          </div>
-        )}
+        {app.configured && <SetupSteps steps={SETUP_STEPS} current={step} />}
 
         {!app.configured ? (
           <SignInBody

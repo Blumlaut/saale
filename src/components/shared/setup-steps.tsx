@@ -2,6 +2,8 @@
 
 import { Check } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 /**
  * The steps of a guided setup, as a dialog or a card shows them.
  *
@@ -22,7 +24,7 @@ export function SetupSteps({
   className?: string;
 }) {
   return (
-    <div className={className ? `flex items-center gap-2 ${className}` : "flex items-center gap-2"}>
+    <div role="group" aria-label="Setup steps" className={cn("flex items-center gap-2", className)}>
       {steps.map((label, index) => {
         const number = index + 1;
         const content = (
