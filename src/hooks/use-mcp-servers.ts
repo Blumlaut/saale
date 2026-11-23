@@ -64,6 +64,15 @@ export interface McpTestResult {
   needsAuth?: boolean;
 }
 
+/** One tool of a server, as an approval row names it. */
+export interface McpToolSummary {
+  /** The name the model calls: `mcp__<server>__<tool>`. */
+  name: string;
+  /** The tool's own name, which is what the server published. */
+  label: string;
+  description: string | null;
+}
+
 /** What an import added, and what it could not. */
 export interface ImportedMcpServerList {
   created: McpServer[];
@@ -199,6 +208,17 @@ export function useMcpServers() {
     [loadServers],
   );
 
+  /**
+   * The tools a server last answered with, or null when it has not been reached
+   * yet. A policy per tool needs the names, which only the server has.
+   */
+  const loadTools = useCallback(async (id: string): Promise<McpToolSummary[] | null> => {
+    const data = await fetchJson<{ tools: McpToolSummary[] | null }>(
+      `/api/mcp/servers/${id}/tools`,
+    );
+    return data.tools;
+  }, []);
+
   /** Add the servers of a config pasted from another client. */
   const importServers = useCallback(
     async (config: string): Promise<ImportedMcpServerList> => {
@@ -229,6 +249,7 @@ export function useMcpServers() {
     updateServer,
     deleteServer,
     importServers,
+    loadTools,
     testServer,
     startOAuth,
     readOAuthStatus,

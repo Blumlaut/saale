@@ -3,13 +3,7 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { McpServer } from "@/hooks/use-mcp-servers";
-
-/** How a server's tool calls are approved, as the row names it. */
-export const MCP_POLICY_LABELS: Record<string, string> = {
-  ask: "Ask",
-  allow: "Allow",
-  off: "Blocked",
-};
+import { MCP_POLICY_LABELS } from "./mcp-policy";
 
 /** Where a server connects, or null when that is both scopes. */
 function scopeLabel(server: McpServer): string | null {

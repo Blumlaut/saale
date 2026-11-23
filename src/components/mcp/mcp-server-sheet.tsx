@@ -37,6 +37,7 @@ import {
   type McpTransport,
 } from "@/lib/mcp/shared";
 import { envNameError, envValueBytes } from "@/lib/sandbox/env-rules";
+import { MCP_POLICY_OPTIONS, mcpPolicyHint } from "./mcp-policy";
 import type {
   McpOAuthStart,
   McpOAuthStatus,
@@ -50,13 +51,6 @@ const OAUTH_POLL_INTERVAL_MS = 1_500;
 
 /** The inputs whose validation message can appear under them. */
 type ManagedField = "name" | "url" | "command" | "cwd";
-
-/** One policy per server: the default for every tool it contributes. */
-const POLICY_OPTIONS: { value: McpToolPolicy; label: string; hint: string }[] = [
-  { value: "ask", label: "Ask", hint: "Ask for approval before running a tool" },
-  { value: "allow", label: "Allow", hint: "Run tools automatically" },
-  { value: "off", label: "Block", hint: "Never run tools from this server" },
-];
 
 /** How the server is reached, as the sheet offers it. */
 const TRANSPORT_OPTIONS: { value: McpTransport; label: string; hint: string }[] = [
@@ -648,21 +642,19 @@ export function McpServerSheet({
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {(value) =>
-                      POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
+                      MCP_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {POLICY_OPTIONS.map((option) => (
+                  {MCP_POLICY_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground text-xs">
-                {POLICY_OPTIONS.find((option) => option.value === toolPolicy)?.hint}
-              </p>
+              <p className="text-muted-foreground text-xs">{mcpPolicyHint(toolPolicy)}</p>
             </div>
 
             <div className="space-y-2">

@@ -15,13 +15,15 @@ const { settingsState, update } = vi.hoisted(() => ({
 
 // The MCP servers live in their own table; the page only reads the list and
 // writes a server's scope.
-const { mcpState, updateMcpServer } = vi.hoisted(() => ({
+const { mcpState, updateMcpServer, loadTools, testServer } = vi.hoisted(() => ({
   mcpState: {
     current: {
       servers: [] as Array<{
         id: string;
         name: string;
+        transport: string;
         description: string;
+        toolPolicy: string;
         enabled: boolean;
         chatEnabled: boolean;
         coderEnabled: boolean;
@@ -31,6 +33,8 @@ const { mcpState, updateMcpServer } = vi.hoisted(() => ({
     },
   },
   updateMcpServer: vi.fn().mockResolvedValue(undefined),
+  loadTools: vi.fn(async (): Promise<unknown> => null),
+  testServer: vi.fn(async (): Promise<unknown> => ({ success: true, tools: [] })),
 }));
 
 vi.mock("@/hooks/use-mcp-servers", () => ({
@@ -39,6 +43,8 @@ vi.mock("@/hooks/use-mcp-servers", () => ({
     loading: mcpState.current.loading,
     error: mcpState.current.error,
     updateServer: updateMcpServer,
+    loadTools,
+    testServer,
   }),
 }));
 
@@ -317,7 +323,9 @@ describe("Tools MCP servers", () => {
     return {
       id: "srv-1",
       name: "homeassistant",
+      transport: "http",
       description: "Control the smart home",
+      toolPolicy: "ask",
       enabled: true,
       chatEnabled: true,
       coderEnabled: true,
@@ -367,6 +375,67 @@ describe("Tools MCP servers", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  it("sets a server's approval policy from its row", () => {
+    updateMcpServer.mockClear();
+    mcpState.current = { servers: [server({ toolPolicy: "allow" })], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+    const approval = screen.getByRole("combobox", { name: "Approval for homeassistant" });
+    fireEvent.click(approval);
+    const ask = screen.getByRole("option", { name: "Ask" });
+    fireEvent.pointerDown(ask);
+    fireEvent.pointerUp(ask);
+    fireEvent.click(ask);
+
+    // The row's default for every tool it contributes lives on the server.
+    expect(updateMcpServer).toHaveBeenCalledWith("srv-1", { toolPolicy: "ask" });
+  });
+
+  it("gives one tool a policy of its own", async () => {
+    loadTools.mockResolvedValue([
+      { name: "mcp__homeassistant__HassTurnOn", label: "HassTurnOn", description: null },
+    ]);
+    mcpState.current = { servers: [server({ toolPolicy: "allow" })], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+    fireEvent.click(screen.getByRole("button", { name: "Show the tools of homeassistant" }));
+
+    const forTool = await screen.findByRole("combobox", { name: "Approval for HassTurnOn" });
+    // A tool without a policy of its own follows its server.
+    expect(forTool).toHaveTextContent("Allow");
+
+    fireEvent.click(forTool);
+    const off = screen.getByRole("option", { name: "Block" });
+    fireEvent.pointerDown(off);
+    fireEvent.pointerUp(off);
+    fireEvent.click(off);
+
+    expect(update).toHaveBeenCalledWith({
+      toolPolicies: { mcp__homeassistant__HassTurnOn: "off" },
+    });
+  });
+
+  it("finds a server's tools when it has never answered", async () => {
+    loadTools
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue([
+        { name: "mcp__homeassistant__HassTurnOn", label: "HassTurnOn", description: null },
+      ]);
+    testServer.mockClear();
+    mcpState.current = { servers: [server()], loading: false, error: null };
+    renderTab({ ...baseSettings });
+
+    expandMcp();
+    fireEvent.click(screen.getByRole("button", { name: "Show the tools of homeassistant" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /find tools/i }));
+
+    await screen.findByRole("combobox", { name: "Approval for HassTurnOn" });
+    expect(testServer).toHaveBeenCalledWith("srv-1", { transport: "http" });
   });
 
   it("points at the integrations page when no server is configured", () => {

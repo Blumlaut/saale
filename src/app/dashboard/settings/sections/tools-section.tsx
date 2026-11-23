@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { ToolCategoryRow } from "@/components/shared/tool-category-row";
 import { ScopeSwitches, ToolScopeHeader } from "@/components/shared/tool-scopes";
@@ -32,6 +31,8 @@ import {
 import { getToolsByCategory, getUncategorizedTools, getDefaultPolicy } from "@/lib/pi/tool-infos";
 import { resolveCoderToolConfig } from "@/lib/pi/coder-tools";
 import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
+import { McpApprovalRows } from "@/components/mcp/mcp-approval-rows";
+import type { McpToolPolicy } from "@/lib/mcp/shared";
 import { SETTINGS_ROOT } from "@/lib/navigation/settings-nav";
 
 /** Exposure option descriptions, for the selected value's hint line. */
@@ -83,6 +84,30 @@ export function ToolsSection() {
     } catch (err) {
       console.error(`Failed to change the scope of MCP server "${server.name}":`, err);
     }
+  };
+
+  /** A server's approval policy is the default for every tool it contributes. */
+  const handleMcpServerPolicy = async (server: McpServer, policy: McpToolPolicy) => {
+    try {
+      await mcp.updateServer(server.id, { toolPolicy: policy });
+    } catch (err) {
+      console.error(`Failed to change the approval of MCP server "${server.name}":`, err);
+    }
+  };
+
+  /** A tool's own policy wins over its server's; clearing it falls back. */
+  const handleMcpToolPolicy = (toolName: string, policy: ToolPolicy | null) => {
+    if (!settings) return;
+    const next = { ...toolPolicies };
+    if (policy) next[toolName] = policy;
+    else delete next[toolName];
+    update({ toolPolicies: Object.keys(next).length > 0 ? next : null });
+  };
+
+  /** Connect to a server so its tool names are known, then list them. */
+  const handleMcpProbe = async (server: McpServer) => {
+    const result = await mcp.testServer(server.id, { transport: server.transport });
+    if (!result.success) throw new Error(result.error ?? "The server did not answer.");
   };
 
   const handlePolicyChange = (toolName: string, policy: ToolPolicy) => {
@@ -218,9 +243,9 @@ export function ToolsSection() {
                           </Select>
                         </div>
 
-                        {/* MCP has no catalog tools: the servers are the rows. */}
+                        {/* MCP has no catalog tools: the servers, and their own tools. */}
                         {category.key === "mcp" && (
-                          <div className="space-y-1.5">
+                          <div className="mb-3">
                             {mcp.loading ? (
                               <p className="text-muted-foreground text-xs">Loading servers…</p>
                             ) : mcp.error ? (
@@ -237,48 +262,20 @@ export function ToolsSection() {
                                 .
                               </p>
                             ) : (
-                              mcp.servers.map((server) => (
-                                <div
-                                  key={server.id}
-                                  className="flex flex-wrap items-center justify-between gap-3"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <span className="text-sm">{server.name}</span>
-                                    {server.shared && (
-                                      <Badge variant="outline" className="ml-2 shrink-0">
-                                        Shared
-                                      </Badge>
-                                    )}
-                                    {!server.enabled && (
-                                      <span className="text-muted-foreground text-xs"> - off</span>
-                                    )}
-                                    {server.description && (
-                                      <p className="text-muted-foreground text-xs">
-                                        {server.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex shrink-0 items-center gap-3">
-                                    <ScopeSwitches
-                                      label={server.name}
-                                      chat={server.chatEnabled}
-                                      coder={server.coderEnabled}
-                                      disabled={!server.enabled || server.shared}
-                                      onChatChange={(checked) =>
-                                        void handleMcpScopeChange(server, { chatEnabled: checked })
-                                      }
-                                      onCoderChange={(checked) =>
-                                        void handleMcpScopeChange(server, { coderEnabled: checked })
-                                      }
-                                    />
-                                    <span className="w-6" aria-hidden />
-                                  </div>
-                                </div>
-                              ))
+                              <McpApprovalRows
+                                servers={mcp.servers}
+                                toolPolicies={toolPolicies}
+                                loadTools={mcp.loadTools}
+                                probeServer={handleMcpProbe}
+                                onScopeChange={(server, patch) =>
+                                  void handleMcpScopeChange(server, patch)
+                                }
+                                onServerPolicyChange={handleMcpServerPolicy}
+                                onToolPolicyChange={handleMcpToolPolicy}
+                              />
                             )}
                           </div>
                         )}
-
                         <div className="space-y-1.5">
                           {tools.map((tool) => (
                             <PolicyRow

@@ -8,6 +8,7 @@ import { cacheMcpOAuthChallenge, createMcpAuthProvider } from "@/lib/mcp/oauth";
 import { describeProbeError, isMcpOAuthRequired, probeMcpServer } from "@/lib/mcp/probe";
 import { readMcpEnv, readMcpToken } from "@/lib/mcp/servers";
 import { probeStdioMcpServer } from "@/lib/mcp/stdio";
+import { cacheMcpTools } from "@/lib/mcp/tool-cache";
 import {
   isMcpTransport,
   parseMcpEnv,
@@ -61,6 +62,7 @@ export async function POST(
   if (transport === "stdio") {
     return probeCommand({
       userId,
+      serverId: stored?.id ?? null,
       name: stored?.name ?? null,
       command: stored?.command ?? null,
       cwd: stored?.cwd ?? null,
@@ -99,6 +101,8 @@ export async function POST(
       token,
       ...(authProvider ? { authProvider } : {}),
     });
+    // The tools a server answered with are what its own approval rows name.
+    if (stored) await cacheMcpTools(stored.id, stored.name, result.tools);
     return NextResponse.json({
       success: true,
       serverName: result.serverName,
@@ -120,6 +124,8 @@ export async function POST(
 /** Run a stdio server's command in the account's workspace and list its tools. */
 async function probeCommand(options: {
   userId: string;
+  /** The saved server the probe belongs to, so its tool list can be kept. */
+  serverId: string | null;
   name: string | null;
   /** The stored command, for a saved server the form did not repeat. */
   command: string | null;
@@ -162,6 +168,7 @@ async function probeCommand(options: {
       { userId, name, command, cwd: cwd || null, env },
       { timeoutMs: STDIO_PROBE_TIMEOUT_MS },
     );
+    if (options.serverId) await cacheMcpTools(options.serverId, name, result.tools);
     return NextResponse.json({
       success: true,
       serverName: result.serverName,
