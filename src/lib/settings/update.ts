@@ -172,6 +172,15 @@ function sameValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Whether two policy maps hold the same entries, whatever their order. */
+function samePolicies(a: unknown, b: unknown): boolean {
+  const entries = (value: unknown) =>
+    Object.entries(value && typeof value === "object" ? value : {}).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+  return sameValue(entries(a), entries(b));
+}
+
 // ─── Writes: one property (the agent path) ───────────────────────────────────
 
 /**
@@ -279,6 +288,13 @@ export async function applyUserSettingsPatch(
   }
 
   const settings = await prisma.appSettings.update({ where: { userId }, data: update });
+  // The registry knows the catalog's tools, so a policy stored for an MCP tool
+  // is invisible to every property above: the column itself is the evidence.
+  if (
+    picked.toolPolicies !== undefined &&
+    !samePolicies(current.toolPolicies, settings.toolPolicies)
+  )
+    evicts = true;
   if (evicts) await evictUserSessions(userId);
   return settings;
 }

@@ -240,6 +240,28 @@ describe("applyUserSettingsPatch", () => {
     });
   });
 
+  it("evicts the user's sessions when an MCP tool's policy changes", async () => {
+    await applyUserSettingsPatch(USER_ID, {
+      toolPolicies: { mcp__homeassistant__HassTurnOn: "ask" },
+    });
+
+    // A session keeps the policies it was built with, and no property covers an
+    // MCP tool, so the column itself has to trigger the rebuild.
+    expect(mocks.evictUserSessions).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it("leaves the sessions alone when a policy patch changes nothing", async () => {
+    mocks.upsertUserSettings.mockResolvedValue(
+      userRow({ toolPolicies: { mcp__homeassistant__HassTurnOn: "ask" } }),
+    );
+
+    await applyUserSettingsPatch(USER_ID, {
+      toolPolicies: { mcp__homeassistant__HassTurnOn: "ask" },
+    });
+
+    expect(mocks.evictUserSessions).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid value inside a blob", async () => {
     await expect(
       applyUserSettingsPatch(USER_ID, { toolPolicies: { bash: "bogus" } }),
