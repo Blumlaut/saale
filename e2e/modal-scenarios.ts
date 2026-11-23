@@ -518,6 +518,22 @@ async function mockSkills(page: Page) {
 }
 
 export async function mockMcpServers(page: Page) {
+  // The tools step lists a server's own tools, so it needs a catalogue.
+  await page.route(/\/api\/mcp\/servers\/[^/]+\/tools$/, (route) =>
+    route.fulfill({
+      json: {
+        tools: [
+          {
+            name: "mcp__homeassistant__HassTurnOn",
+            label: "HassTurnOn",
+            description:
+              "Turns on a device or entity in the house and reports the state it ended up in.",
+          },
+          { name: "mcp__homeassistant__HassTurnOff", label: "HassTurnOff", description: null },
+        ],
+      },
+    }),
+  );
   await page.route(/\/api\/mcp\/servers(\?|$)/, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await route.fulfill({
