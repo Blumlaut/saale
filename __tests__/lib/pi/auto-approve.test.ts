@@ -67,34 +67,34 @@ describe("auto-approve (/stfu) module", () => {
   });
 
   it("reports an expiry and clears the flag early", async () => {
-    expect(await getAutoApproveStatus("user-1")).toBeNull();
-    const expiry = await enableAutoApprove("user-1");
-    expect(await isAutoApproveActive("user-1")).toBe(true);
-    expect(await getAutoApproveStatus("user-1")).toEqual({ expiresAt: expiry });
+    expect(await getAutoApproveStatus("user-1", "chat-1")).toBeNull();
+    const expiry = await enableAutoApprove("user-1", "chat-1");
+    expect(await isAutoApproveActive("user-1", "chat-1")).toBe(true);
+    expect(await getAutoApproveStatus("user-1", "chat-1")).toEqual({ expiresAt: expiry });
 
-    await disableAutoApprove("user-1");
-    expect(await isAutoApproveActive("user-1")).toBe(false);
+    await disableAutoApprove("user-1", "chat-1");
+    expect(await isAutoApproveActive("user-1", "chat-1")).toBe(false);
   });
 
   it("expires on its own", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "chat-1");
     await vi.advanceTimersByTimeAsync(STFU_DURATION_MS + 1_000);
-    expect(await isAutoApproveActive("user-1")).toBe(false);
+    expect(await isAutoApproveActive("user-1", "chat-1")).toBe(false);
   });
 
   it("stays on without a TTL when enabled permanently", async () => {
-    expect(await enableAutoApprove("user-1", null)).toBeNull();
-    expect(await getAutoApproveStatus("user-1")).toEqual({ expiresAt: null });
+    expect(await enableAutoApprove("user-1", "chat-1", null)).toBeNull();
+    expect(await getAutoApproveStatus("user-1", "chat-1")).toEqual({ expiresAt: null });
 
     await vi.advanceTimersByTimeAsync(STFU_DURATION_MS * 100);
-    expect(await isAutoApproveActive("user-1")).toBe(true);
+    expect(await isAutoApproveActive("user-1", "chat-1")).toBe(true);
 
-    await disableAutoApprove("user-1");
-    expect(await isAutoApproveActive("user-1")).toBe(false);
+    await disableAutoApprove("user-1", "chat-1");
+    expect(await isAutoApproveActive("user-1", "chat-1")).toBe(false);
   });
 
   it("runs an 'ask' tool without a request while active", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "session-stfu-ask");
     const gate = makeGate({ sessionId: "session-stfu-ask", toolPolicies: { infra_exec: "ask" } });
 
     expect(
@@ -104,7 +104,7 @@ describe("auto-approve (/stfu) module", () => {
   });
 
   it("does not re-enable an 'off' tool", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "session-stfu-off");
     const gate = makeGate({ sessionId: "session-stfu-off", toolPolicies: { infra_exec: "off" } });
 
     expect(await gate.call({ toolName: "infra_exec", toolCallId: "tc-2", input: {} })).toEqual({
@@ -115,7 +115,7 @@ describe("auto-approve (/stfu) module", () => {
   });
 
   it("asks again once the window has expired", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "session-stfu-expired");
     await vi.advanceTimersByTimeAsync(STFU_DURATION_MS + 60_000);
     const gate = makeGate({
       sessionId: "session-stfu-expired",
@@ -131,7 +131,7 @@ describe("auto-approve (/stfu) module", () => {
   });
 
   it("accepts a risky command under the 'auto' policy while active", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "session-stfu-auto");
     const gate = makeGate({ sessionId: "session-stfu-auto", toolPolicies: { bash: "auto" } });
 
     expect(
@@ -140,8 +140,23 @@ describe("auto-approve (/stfu) module", () => {
     expect(gate.requests).toHaveLength(0);
   });
 
+  it("leaves another chat of the same account asking", async () => {
+    await enableAutoApprove("user-1", "session-stfu-mine");
+    const gate = makeGate({
+      sessionId: "session-stfu-theirs",
+      toolPolicies: { infra_exec: "ask" },
+    });
+
+    const promise = gate.call({ toolName: "infra_exec", toolCallId: "tc-6", input: {} });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(gate.requests).toHaveLength(1);
+
+    await resolveApproval("session-stfu-theirs", "tc-6", true);
+    expect(await promise).toBeUndefined();
+  });
+
   it("is scoped to the user who enabled it", async () => {
-    await enableAutoApprove("user-1");
+    await enableAutoApprove("user-1", "session-stfu-other");
     const gate = makeGate({
       sessionId: "session-stfu-other",
       toolPolicies: { infra_exec: "ask" },

@@ -13,7 +13,7 @@
  * The decision, in order:
  *
  * 1. `off`. blocked, and not even auto-approve mode re-enables it.
- * 2. Auto-approve mode (`/stfu`) is on for the user. everything that would ask
+ * 2. Auto-approve mode (`/stfu`) is on for this chat. everything that would ask
  *    runs. still never a tool set to `off`.
  * 3. A tool that orchestrates other tools: its call is the approval unit. The
  *    card lists the calls that would ask on their own, and one click stands in
@@ -137,7 +137,7 @@ async function decideCall(
   }
 
   // Accepting everything that would ask; `off` never comes back this way.
-  if (await isAutoApproveActive(options.userId)) return undefined;
+  if (await isAutoApproveActive(options.userId, options.sessionId)) return undefined;
 
   // A tool that orchestrates other tools is one decision covering the calls it
   // announces: a script names them in its source, a tool declares them.

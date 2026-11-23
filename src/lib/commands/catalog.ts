@@ -81,14 +81,14 @@ export const COMMAND_CATALOG = [
   {
     name: "stfu",
     aliases: ["yolo"],
-    description: "Auto-accept tool approvals for 2 hours or permanently",
+    description: "Auto-accept this chat's tool approvals for 2 hours or permanently",
     surfaces: ["web", "telegram"],
     icon: ShieldCheck,
     arguments: [
       {
         name: "time",
         kind: "choice",
-        description: "On for 2 hours, permanent, or off",
+        description: "In this chat: on for 2 hours, permanent, or off",
         choices: [
           { value: "on", label: "Auto-accept for 2 hours" },
           { value: "permanent", label: "Stay on until I turn it off" },
