@@ -10,7 +10,7 @@ import { useMcpServers, type McpServer } from "@/hooks/use-mcp-servers";
 import { isCategoryEnabled } from "@/lib/pi/tool-categories";
 import { McpServerRow } from "@/components/mcp/mcp-server-row";
 import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
-import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
+import { McpServerDialog } from "@/components/mcp/mcp-server-dialog";
 import { McpImportDialog } from "@/components/mcp/mcp-import-dialog";
 import { useUserSettings } from "./user-settings-provider";
 
@@ -175,7 +175,7 @@ export function McpPanel() {
         </GlassPanelContent>
       </GlassPanel>
 
-      <McpServerSheet
+      <McpServerDialog
         open={sheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open);

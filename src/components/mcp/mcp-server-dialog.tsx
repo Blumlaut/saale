@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +27,7 @@ import {
   ExternalLink,
   KeyRound,
   Loader2,
+  Plug,
   Plus,
   PlugZap,
   Trash2,
@@ -36,6 +44,7 @@ import {
   type McpToolPolicy,
   type McpTransport,
 } from "@/lib/mcp/shared";
+import { SetupSteps } from "@/components/shared/setup-steps";
 import { envNameError, envValueBytes } from "@/lib/sandbox/env-rules";
 import { MCP_POLICY_OPTIONS, mcpPolicyHint } from "./mcp-policy";
 import type {
@@ -46,7 +55,10 @@ import type {
   McpTestResult,
 } from "@/hooks/use-mcp-servers";
 
-/** How often the sheet asks whether a browser sign-in has finished. */
+/** The steps an MCP server goes through, in the order it needs them. */
+const SETUP_STEPS = ["Connect", "Access", "Sign in"] as const;
+
+/** How often the dialog asks whether a browser sign-in has finished. */
 const OAUTH_POLL_INTERVAL_MS = 1_500;
 
 /** The inputs whose validation message can appear under them. */
@@ -62,7 +74,7 @@ const TRANSPORT_OPTIONS: { value: McpTransport; label: string; hint: string }[] 
   },
 ];
 
-interface McpServerSheetProps {
+interface McpServerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The server being edited, or null when adding. */
@@ -102,7 +114,7 @@ interface McpServerSheetProps {
   signInOnOpen?: boolean;
 }
 
-export function McpServerSheet({
+export function McpServerDialog({
   open,
   onOpenChange,
   server,
@@ -114,8 +126,8 @@ export function McpServerSheet({
   onSignOutOAuth,
   onCompleteOAuth,
   signInOnOpen = false,
-}: McpServerSheetProps) {
-  /** The sheet offers a sign-in only where every part of it is available. */
+}: McpServerDialogProps) {
+  /** The dialog offers a sign-in only where every part of it is available. */
   const canSignIn = Boolean(onStartOAuth && onOAuthStatus && onSignOutOAuth);
   const isEditing = server !== null;
 
@@ -138,11 +150,16 @@ export function McpServerSheet({
   const [newEnvValue, setNewEnvValue] = useState("");
   const [envError, setEnvError] = useState<string | null>(null);
 
+  const [step, setStep] = useState(1);
   const [toolPolicy, setToolPolicy] = useState<McpToolPolicy>("ask");
   const [enabled, setEnabled] = useState(true);
   const [chatEnabled, setChatEnabled] = useState(true);
   const [coderEnabled, setCoderEnabled] = useState(true);
 
+  /** The server a save created, which is what a new one signs in as. */
+  const [savedId, setSavedId] = useState<string | null>(null);
+  /** The sign-in step opens by starting the sign-in, for a row's Sign in click. */
+  const [autoSignIn, setAutoSignIn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   /** Which input a validation message belongs to, rendered under it. */
@@ -180,6 +197,17 @@ export function McpServerSheet({
    * user has already left, so its result is dropped rather than written onto the
    * server now on screen.
    */
+  /** The server this dialog writes to: the one being edited, or the one just created. */
+  const serverId = server?.id ?? savedId;
+
+  /**
+   * The steps this dialog has. A sign-in needs a stored server and an endpoint,
+   * so a command or an unsaved server stops after Access.
+   */
+  const offersSignIn = canSignIn && transport === "http" && (isEditing || savedId !== null);
+  const steps = offersSignIn ? SETUP_STEPS : SETUP_STEPS.slice(0, 2);
+  const current = Math.min(step, steps.length);
+
   const session = useRef(0);
   const stillCurrent = useCallback((startedAt: number) => session.current === startedAt, []);
 
@@ -267,7 +295,10 @@ export function McpServerSheet({
     setPasteError(null);
     setOauthError(null);
     setOauthBusy(false);
-  }, [open, server]);
+    setSavedId(null);
+    setStep(signInOnOpen ? SETUP_STEPS.length : 1);
+    setAutoSignIn(signInOnOpen);
+  }, [canSignIn, open, server, signInOnOpen]);
 
   // Follow a browser sign-in until it settles or the sheet closes.
   useEffect(() => {
@@ -344,13 +375,13 @@ export function McpServerSheet({
   }, [command, cwd, envValues, onTest, server, stillCurrent, token, transport, url]);
 
   const handleSignIn = useCallback(async () => {
-    if (!server || !onStartOAuth) return;
+    if (!serverId || !onStartOAuth) return;
     const startedAt = session.current;
     setOauthBusy(true);
     setOauthError(null);
     setTestResult(null);
     try {
-      const result = await onStartOAuth(server.id);
+      const result = await onStartOAuth(serverId);
       if (!stillCurrent(startedAt)) return;
       if (result.status === "succeeded") {
         setHasOAuth(true);
@@ -375,16 +406,16 @@ export function McpServerSheet({
     } finally {
       setOauthBusy(false);
     }
-  }, [onStartOAuth, server, stillCurrent]);
+  }, [onStartOAuth, serverId, stillCurrent]);
 
   /** Exchange the code that sits in the address the browser could not open. */
   const handleFinishWithPaste = useCallback(async () => {
-    if (!server || !onCompleteOAuth) return;
+    if (!serverId || !onCompleteOAuth) return;
     const startedAt = session.current;
     setPasteBusy(true);
     setPasteError(null);
     try {
-      await onCompleteOAuth(server.id, pastedUrl.trim());
+      await onCompleteOAuth(serverId, pastedUrl.trim());
       if (!stillCurrent(startedAt)) return;
       setHasOAuth(true);
       setOauthPhase("succeeded");
@@ -396,15 +427,15 @@ export function McpServerSheet({
     } finally {
       setPasteBusy(false);
     }
-  }, [onCompleteOAuth, pastedUrl, server, stillCurrent]);
+  }, [onCompleteOAuth, pastedUrl, serverId, stillCurrent]);
 
   const handleSignOut = useCallback(async () => {
-    if (!server || !onSignOutOAuth) return;
+    if (!serverId || !onSignOutOAuth) return;
     const startedAt = session.current;
     setOauthBusy(true);
     setOauthError(null);
     try {
-      await onSignOutOAuth(server.id);
+      await onSignOutOAuth(serverId);
       if (!stillCurrent(startedAt)) return;
       setHasOAuth(false);
       setOauthPhase("idle");
@@ -415,11 +446,12 @@ export function McpServerSheet({
     } finally {
       setOauthBusy(false);
     }
-  }, [onSignOutOAuth, server, stillCurrent]);
+  }, [onSignOutOAuth, serverId, stillCurrent]);
 
   /**
-   * Start the sign-in once, when a row's Sign in button opened this sheet. The
-   * guard is per open, so a failed start does not retry on every render.
+   * Start the sign-in once, when the sign-in step opens with the sign-in already
+   * asked for: a row's Sign in button, or the server just added. The guard is per
+   * open, so a failed start does not retry on every render.
    */
   const autoSignInStarted = useRef(false);
   useEffect(() => {
@@ -427,11 +459,12 @@ export function McpServerSheet({
       autoSignInStarted.current = false;
       return;
     }
-    if (!signInOnOpen || autoSignInStarted.current) return;
-    if (!server || server.hasOAuth || !canSignIn) return;
+    if (!autoSignIn || autoSignInStarted.current) return;
+    if (step !== SETUP_STEPS.length || !canSignIn) return;
+    if (!serverId || hasOAuth || oauthPhase !== "idle") return;
     autoSignInStarted.current = true;
     void handleSignIn();
-  }, [canSignIn, handleSignIn, open, server, signInOnOpen]);
+  }, [autoSignIn, canSignIn, handleSignIn, hasOAuth, oauthPhase, open, serverId, step]);
 
   const handleSave = useCallback(async () => {
     const normalizedName = normalizeMcpServerName(name);
@@ -469,7 +502,7 @@ export function McpServerSheet({
     setFieldError(null);
     const startedAt = session.current;
     try {
-      await onSave(
+      const saved = await onSave(
         transport === "stdio"
           ? {
               name: normalizedName,
@@ -498,8 +531,15 @@ export function McpServerSheet({
               ...(token.trim() ? { token: token.trim() } : {}),
             },
       );
-      // Closing here would shut the sheet of the server the user moved on to.
+      // Closing here would shut the dialog of the server the user moved on to.
       if (!stillCurrent(startedAt)) return;
+      const createdId = savedIdOf(saved);
+      if (!server && createdId && canSignIn && transport === "http") {
+        setSavedId(createdId);
+        setAutoSignIn(true);
+        setStep(SETUP_STEPS.length);
+        return;
+      }
       onOpenChange(false);
     } catch (err) {
       if (!stillCurrent(startedAt)) return;
@@ -508,6 +548,7 @@ export function McpServerSheet({
       setSaving(false);
     }
   }, [
+    canSignIn,
     chatEnabled,
     command,
     coderEnabled,
@@ -517,6 +558,7 @@ export function McpServerSheet({
     envValues,
     name,
     onOpenChange,
+    server,
     onSave,
     removedEnvNames,
     stillCurrent,
@@ -543,201 +585,193 @@ export function McpServerSheet({
     }
   }, [onSave, server, stillCurrent]);
 
+  /** Move to the next step, refusing while the server is not yet reachable. */
+  const goToAccess = () => {
+    const nameError = validateMcpServerName(normalizeMcpServerName(name));
+    if (nameError) {
+      setFieldError({ field: "name", message: nameError });
+      return;
+    }
+    if (transport === "stdio") {
+      const commandError = validateMcpCommand(command.trim());
+      if (commandError) {
+        setFieldError({ field: "command", message: commandError });
+        return;
+      }
+      const cwdError = validateMcpCwd(cwd.trim());
+      if (cwdError) {
+        setFieldError({ field: "cwd", message: cwdError });
+        return;
+      }
+    } else {
+      const urlError = validateMcpUrl(url.trim());
+      if (urlError) {
+        setFieldError({ field: "url", message: urlError });
+        return;
+      }
+    }
+    setFieldError(null);
+    setError(null);
+    setStep(2);
+  };
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:w-[440px] sm:max-w-none">
-        <div className="flex h-full flex-col">
-          <SheetHeader className="px-6 pt-6 pb-4">
-            <SheetTitle className="text-xl leading-tight font-semibold tracking-tight">
-              {isEditing ? "Edit MCP server" : "Add MCP server"}
-            </SheetTitle>
-          </SheetHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plug className="h-5 w-5" />
+            {isEditing ? `Edit ${server.name}` : "Add an MCP server"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? "Where Saale reaches the server, how its tools are approved, and how it signs in."
+              : "Two steps to connect a server. One more if it asks you to sign in."}
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 space-y-0.5">
-                <Label className="text-sm">Enabled</Label>
-                <p className="text-muted-foreground text-xs">
-                  Connect this server to your conversations.
-                </p>
-              </div>
-              <Switch checked={enabled} onCheckedChange={setEnabled} />
-            </div>
+        <SetupSteps steps={steps} current={current} onSelect={setStep} />
 
-            <div className="space-y-2">
-              <Label className="text-sm">Connects in</Label>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm">Chat</p>
+        <div className="max-h-[55vh] space-y-4 overflow-x-hidden overflow-y-auto pr-1">
+          {current === 1 ? (
+            <>
+              {allowStdio && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Connection</Label>
+                  <Select
+                    value={transport}
+                    onValueChange={(value) => {
+                      if (!isMcpTransport(value)) return;
+                      setTransport(value);
+                      setFieldError(null);
+                      setTestResult(null);
+                    }}
+                  >
+                    <SelectTrigger className="w-full" aria-label="Connection">
+                      <SelectValue>
+                        {(value) =>
+                          TRANSPORT_OPTIONS.find((option) => option.value === value)?.label ??
+                          "Endpoint URL"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRANSPORT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-muted-foreground text-xs">
-                    Conversations, Telegram and agent jobs.
+                    {TRANSPORT_OPTIONS.find((option) => option.value === transport)?.hint}
                   </p>
                 </div>
-                <Switch
-                  checked={chatEnabled}
-                  onCheckedChange={setChatEnabled}
-                  aria-label="Connect in chat"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm">Coder</p>
-                  <p className="text-muted-foreground text-xs">Coding chats, in a worktree.</p>
-                </div>
-                <Switch
-                  checked={coderEnabled}
-                  onCheckedChange={setCoderEnabled}
-                  aria-label="Connect in coder chats"
-                />
-              </div>
-              {!chatEnabled && !coderEnabled && (
-                <p className="text-muted-foreground text-xs">
-                  This server connects nowhere. Turn on Chat or Coder.
-                </p>
               )}
-            </div>
 
-            {allowStdio && (
               <div className="space-y-2">
-                <Label className="text-sm">Connection</Label>
-                <Select
-                  value={transport}
-                  onValueChange={(value) => {
-                    if (!isMcpTransport(value)) return;
-                    setTransport(value);
-                    setFieldError(null);
-                    setTestResult(null);
+                <Label className="text-sm">Name</Label>
+                <Input
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    clearFieldError("name");
                   }}
-                >
-                  <SelectTrigger className="w-full" aria-label="Connection">
-                    <SelectValue>
-                      {(value) =>
-                        TRANSPORT_OPTIONS.find((option) => option.value === value)?.label ??
-                        "Endpoint URL"
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TRANSPORT_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onBlur={() => setName(foldedName)}
+                  placeholder="homeassistant"
+                  autoComplete="off"
+                />
+                {fieldError?.field === "name" ? (
+                  <p className="text-destructive text-xs">{fieldError.message}</p>
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    Names this server&apos;s tools. Spaces and punctuation become underscores, e.g.{" "}
+                    <span className="break-all">{`mcp__${foldedName || "homeassistant"}__HassTurnOn`}</span>
+                  </p>
+                )}
+              </div>
+
+              {transport === "stdio" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Command</Label>
+                    <Input
+                      value={command}
+                      onChange={(event) => {
+                        setCommand(event.target.value);
+                        clearFieldError("command");
+                      }}
+                      className="font-mono text-xs"
+                      placeholder="npx -y @modelcontextprotocol/server-filesystem ."
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    {fieldError?.field === "command" ? (
+                      <p className="text-destructive text-xs">{fieldError.message}</p>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">
+                        Runs in your workspace container as you, so it reaches your files and the
+                        variables below. The first run may download packages.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Working directory</Label>
+                    <Input
+                      value={cwd}
+                      onChange={(event) => {
+                        setCwd(event.target.value);
+                        clearFieldError("cwd");
+                      }}
+                      className="font-mono text-xs"
+                      placeholder="Optional, e.g. docs"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    {fieldError?.field === "cwd" ? (
+                      <p className="text-destructive text-xs">{fieldError.message}</p>
+                    ) : (
+                      <p className="text-muted-foreground text-xs">
+                        Where the command starts, relative to your workspace root.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-sm">Endpoint URL</Label>
+                  <Input
+                    value={url}
+                    onChange={(event) => {
+                      setUrl(event.target.value);
+                      clearFieldError("url");
+                    }}
+                    placeholder="https://homeassistant.local:8123/api/mcp"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  {fieldError?.field === "url" ? (
+                    <p className="text-destructive text-xs">{fieldError.message}</p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">A streamable HTTP MCP endpoint.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label className="text-sm">Description</Label>
+                <Input
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Control the smart home"
+                />
                 <p className="text-muted-foreground text-xs">
-                  {TRANSPORT_OPTIONS.find((option) => option.value === transport)?.hint}
+                  One line telling the assistant what this server is for.
                 </p>
               </div>
-            )}
 
-            <div className="space-y-2">
-              <Label className="text-sm">Tool approval</Label>
-              <Select
-                value={toolPolicy}
-                onValueChange={(value) => {
-                  if (value) setToolPolicy(value as McpToolPolicy);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(value) =>
-                      MCP_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {MCP_POLICY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">{mcpPolicyHint(toolPolicy)}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">Name</Label>
-              <Input
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  clearFieldError("name");
-                }}
-                onBlur={() => setName(foldedName)}
-                placeholder="homeassistant"
-                autoComplete="off"
-              />
-              {fieldError?.field === "name" ? (
-                <p className="text-destructive text-xs">{fieldError.message}</p>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Names this server&apos;s tools. Spaces and punctuation become underscores, e.g.{" "}
-                  <span className="break-all">{`mcp__${foldedName || "homeassistant"}__HassTurnOn`}</span>
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm">Description</Label>
-              <Input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Control the smart home"
-              />
-              <p className="text-muted-foreground text-xs">
-                One line telling the assistant what this server is for.
-              </p>
-            </div>
-
-            {transport === "stdio" ? (
-              <>
-                <div className="space-y-2">
-                  <Label className="text-sm">Command</Label>
-                  <Input
-                    value={command}
-                    onChange={(event) => {
-                      setCommand(event.target.value);
-                      clearFieldError("command");
-                    }}
-                    className="font-mono text-xs"
-                    placeholder="npx -y @modelcontextprotocol/server-filesystem ."
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  {fieldError?.field === "command" ? (
-                    <p className="text-destructive text-xs">{fieldError.message}</p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Runs in your workspace container as you, so it reaches your files and the
-                      variables below. The first run may download packages.
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Working directory</Label>
-                  <Input
-                    value={cwd}
-                    onChange={(event) => {
-                      setCwd(event.target.value);
-                      clearFieldError("cwd");
-                    }}
-                    className="font-mono text-xs"
-                    placeholder="Optional, e.g. docs"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  {fieldError?.field === "cwd" ? (
-                    <p className="text-destructive text-xs">{fieldError.message}</p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Where the command starts, relative to your workspace root.
-                    </p>
-                  )}
-                </div>
-
+              {transport === "stdio" && (
                 <div className="space-y-2">
                   <Label className="text-sm">Variables</Label>
                   {envNames.length > 0 && (
@@ -821,28 +855,80 @@ export function McpServerSheet({
                     </p>
                   )}
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label className="text-sm">Endpoint URL</Label>
-                  <Input
-                    value={url}
-                    onChange={(event) => {
-                      setUrl(event.target.value);
-                      clearFieldError("url");
-                    }}
-                    placeholder="https://homeassistant.local:8123/api/mcp"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  {fieldError?.field === "url" ? (
-                    <p className="text-destructive text-xs">{fieldError.message}</p>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">A streamable HTTP MCP endpoint.</p>
-                  )}
+              )}
+            </>
+          ) : current === 2 ? (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <Label className="text-sm">Enabled</Label>
+                  <p className="text-muted-foreground text-xs">
+                    Connect this server to your conversations.
+                  </p>
                 </div>
+                <Switch checked={enabled} onCheckedChange={setEnabled} />
+              </div>
 
+              <div className="space-y-2">
+                <Label className="text-sm">Connects in</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-sm">Chat</p>
+                    <p className="text-muted-foreground text-xs">
+                      Conversations, Telegram and agent jobs.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={chatEnabled}
+                    onCheckedChange={setChatEnabled}
+                    aria-label="Connect in chat"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-sm">Coder</p>
+                    <p className="text-muted-foreground text-xs">Coding chats, in a worktree.</p>
+                  </div>
+                  <Switch
+                    checked={coderEnabled}
+                    onCheckedChange={setCoderEnabled}
+                    aria-label="Connect in coder chats"
+                  />
+                </div>
+                {!chatEnabled && !coderEnabled && (
+                  <p className="text-muted-foreground text-xs">
+                    This server connects nowhere. Turn on Chat or Coder.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Tool approval</Label>
+                <Select
+                  value={toolPolicy}
+                  onValueChange={(value) => {
+                    if (value) setToolPolicy(value as McpToolPolicy);
+                  }}
+                >
+                  <SelectTrigger className="w-full" aria-label="Tool approval">
+                    <SelectValue>
+                      {(value) =>
+                        MCP_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? "Ask"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MCP_POLICY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">{mcpPolicyHint(toolPolicy)}</p>
+              </div>
+
+              {transport === "http" && (
                 <div className="space-y-2">
                   <Label className="text-sm">Access token</Label>
                   <Input
@@ -869,194 +955,221 @@ export function McpServerSheet({
                     </Button>
                   )}
                 </div>
-
-                {canSignIn && (
-                  <div className="space-y-2">
-                    <Label className="text-sm">OAuth sign-in</Label>
-                    {!isEditing ? (
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              {oauthPhase === "pending" ? (
+                <div className="space-y-2">
+                  <p className="text-muted-foreground flex items-center gap-2 text-sm">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {oauthManual
+                      ? "Sign in with the page that just opened."
+                      : "Waiting for you to finish signing in…"}
+                  </p>
+                  {oauthManual && (
+                    <div className="space-y-2">
                       <p className="text-muted-foreground text-xs">
-                        Save this server first, then sign in here.
+                        The browser ends on a page that cannot load, because nothing answers at the
+                        address it was sent to. Copy that address from the address bar and paste it
+                        here.
                       </p>
-                    ) : oauthPhase === "pending" ? (
-                      <div className="space-y-2">
-                        <p className="text-muted-foreground flex items-center gap-2 text-xs">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          {oauthManual
-                            ? "Sign in with the page that just opened."
-                            : "Waiting for you to finish signing in…"}
-                        </p>
-                        {oauthManual && (
-                          <div className="space-y-2">
-                            <p className="text-muted-foreground text-xs">
-                              The browser ends on a page that cannot load, because nothing answers
-                              at the address it was sent to. Copy that address from the address bar
-                              and paste it here.
-                            </p>
-                            <Input
-                              value={pastedUrl}
-                              onChange={(event) => {
-                                setPastedUrl(event.target.value);
-                                setPasteError(null);
-                              }}
-                              placeholder="http://127.0.0.1:33418/callback?code=…"
-                              className="font-mono text-xs"
-                              autoComplete="off"
-                              spellCheck={false}
-                              aria-label="Address the browser ended on"
-                            />
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="h-8 text-xs font-medium"
-                              onClick={handleFinishWithPaste}
-                              disabled={pasteBusy || !pastedUrl.trim()}
-                            >
-                              {pasteBusy ? (
-                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                              ) : null}
-                              Finish sign-in
-                            </Button>
-                          </div>
-                        )}
-                        {pasteError && <p className="text-destructive text-xs">{pasteError}</p>}
-                        {oauthUrl && (
-                          <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
-                            <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
-                            <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-2">
-                          {oauthUrl && (
-                            <Button size="sm" variant="secondary" asChild>
-                              <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Open sign-in page
-                              </a>
-                            </Button>
-                          )}
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleSignIn}
-                            disabled={oauthBusy}
-                          >
-                            Start over
-                          </Button>
-                        </div>
-                      </div>
-                    ) : hasOAuth || oauthPhase === "succeeded" ? (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
-                          <CheckCircle className="h-3.5 w-3.5" />
-                          Signed in
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={handleSignOut}
-                          disabled={oauthBusy}
-                        >
-                          Sign out
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="h-9 text-xs font-medium"
-                          onClick={handleSignIn}
-                          disabled={oauthBusy}
-                        >
-                          {oauthBusy ? (
-                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                          )}
-                          Sign in
-                        </Button>
-                        <p className="text-muted-foreground text-xs">
-                          For servers that ask clients to sign in. A stored access token is used
-                          instead of OAuth.
-                        </p>
-                      </div>
+                      <Input
+                        value={pastedUrl}
+                        onChange={(event) => {
+                          setPastedUrl(event.target.value);
+                          setPasteError(null);
+                        }}
+                        placeholder="http://127.0.0.1:33418/callback?code=…"
+                        className="font-mono text-xs"
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-label="Address the browser ended on"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 text-xs font-medium"
+                        onClick={handleFinishWithPaste}
+                        disabled={pasteBusy || !pastedUrl.trim()}
+                      >
+                        {pasteBusy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                        Finish sign-in
+                      </Button>
+                    </div>
+                  )}
+                  {pasteError && <p className="text-destructive text-xs">{pasteError}</p>}
+                  {oauthUrl && (
+                    <div className="bg-muted border-border flex items-start gap-2 rounded-lg border px-3 py-2">
+                      <code className="min-w-0 flex-1 text-[11px] break-all">{oauthUrl}</code>
+                      <CopyButton text={oauthUrl} label="Copy the sign-in URL" />
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {oauthUrl && (
+                      <Button size="sm" variant="secondary" asChild>
+                        <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Open sign-in page
+                        </a>
+                      </Button>
                     )}
-                    {oauthError && <p className="text-destructive text-xs">{oauthError}</p>}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleSignIn}
+                      disabled={oauthBusy}
+                    >
+                      Start over
+                    </Button>
                   </div>
-                )}
-              </>
-            )}
-
-            {error && (
-              <div className="text-destructive bg-destructive/10 flex items-start gap-2 rounded-xl px-4 py-2.5 text-sm">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="min-w-0 break-words">{error}</span>
-              </div>
-            )}
-
-            {testResult?.success && (
-              <div className="space-y-2 rounded-xl bg-green-500/10 px-4 py-3 text-sm text-green-600 dark:text-green-400">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 shrink-0" />
-                  <span className="min-w-0 break-words">
-                    Connected to {testResult.serverName ?? "the server"}:{" "}
-                    {testResult.tools?.length ?? 0} tool
-                    {testResult.tools?.length === 1 ? "" : "s"}
-                  </span>
                 </div>
-                {testResult.tools && testResult.tools.length > 0 && (
-                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
-                    {testResult.tools.map((tool) => (
-                      <li key={tool.name} className="break-all">
-                        {tool.name}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
+              ) : hasOAuth || oauthPhase === "succeeded" ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-4 w-4" />
+                    Signed in
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={handleSignOut}
+                    disabled={oauthBusy}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm">This server asks clients to sign in.</p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-9 text-xs font-medium"
+                    onClick={handleSignIn}
+                    disabled={oauthBusy}
+                  >
+                    {oauthBusy ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    Sign in
+                  </Button>
+                  <p className="text-muted-foreground text-xs">
+                    A stored access token is used instead of OAuth.
+                  </p>
+                </div>
+              )}
+              {oauthError && <p className="text-destructive text-xs">{oauthError}</p>}
+            </div>
+          )}
 
-          <div className="flex shrink-0 gap-2 border-t px-6 py-4">
-            {onTest && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="h-9 text-xs font-medium"
-                onClick={handleTest}
-                disabled={
-                  testing || saving || !(transport === "stdio" ? command.trim() : url.trim())
-                }
-              >
-                {testing ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PlugZap className="mr-2 h-3.5 w-3.5" />
-                )}
-                Test
-              </Button>
-            )}
-            <Button
-              type="button"
-              className="h-9 flex-1 text-xs font-medium"
-              onClick={handleSave}
-              disabled={
-                saving ||
-                testing ||
-                !name.trim() ||
-                !(transport === "stdio" ? command.trim() : url.trim())
-              }
-            >
-              {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-              {isEditing ? "Save changes" : "Add server"}
-            </Button>
-          </div>
+          {error && (
+            <div className="text-destructive bg-destructive/10 flex items-start gap-2 rounded-xl px-4 py-2.5 text-sm">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0 break-words">{error}</span>
+            </div>
+          )}
+
+          {testResult?.success && (
+            <div className="space-y-2 rounded-xl bg-green-500/10 px-4 py-3 text-sm text-green-600 dark:text-green-400">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 break-words">
+                  Connected to {testResult.serverName ?? "the server"}:{" "}
+                  {testResult.tools?.length ?? 0} tool
+                  {testResult.tools?.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {testResult.tools && testResult.tools.length > 0 && (
+                <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
+                  {testResult.tools.map((tool) => (
+                    <li key={tool.name} className="break-all">
+                      {tool.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
-      </SheetContent>
-    </Sheet>
+
+        <DialogFooter className="sm:justify-between">
+          {current === 1 ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={goToAccess}>
+                Continue
+              </Button>
+            </>
+          ) : current === 2 ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+                Back
+              </Button>
+              <div className="flex gap-2">
+                {onTest && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleTest}
+                    disabled={
+                      testing || saving || !(transport === "stdio" ? command.trim() : url.trim())
+                    }
+                  >
+                    {testing ? (
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <PlugZap className="mr-2 h-3.5 w-3.5" />
+                    )}
+                    Test
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={
+                    saving ||
+                    testing ||
+                    !name.trim() ||
+                    !(transport === "stdio" ? command.trim() : url.trim())
+                  }
+                >
+                  {saving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+                  {isEditing ? "Save changes" : "Add server"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              {isEditing && (
+                <Button variant="outline" size="sm" onClick={() => setStep(2)}>
+                  Back
+                </Button>
+              )}
+              <Button size="sm" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
+}
+
+/** The id of a server a save created, when the caller answered with the row. */
+function savedIdOf(saved: unknown): string | null {
+  if (!saved || typeof saved !== "object" || !("id" in saved)) return null;
+  const { id } = saved as { id?: unknown };
+  return typeof id === "string" ? id : null;
 }

@@ -10,7 +10,7 @@ import { useAdminCollection } from "@/hooks/use-admin-collection";
 import type { McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 import { McpServerRow } from "@/components/mcp/mcp-server-row";
 import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
-import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
+import { McpServerDialog } from "@/components/mcp/mcp-server-dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 /**
@@ -111,7 +111,12 @@ export function SharedMcpServersSection() {
         </PageScroll>
       </GlassPanel>
 
-      <McpServerSheet open={sheetOpen} onOpenChange={setSheetOpen} server={editing} onSave={save} />
+      <McpServerDialog
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        server={editing}
+        onSave={save}
+      />
 
       <ConfirmDialog
         open={pendingDelete !== null}

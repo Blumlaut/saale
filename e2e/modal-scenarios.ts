@@ -150,7 +150,7 @@ const MEMORIES_TAB = "src/app/dashboard/settings/sections/memories-section.tsx";
 const PROMPTS_TAB = "src/app/dashboard/settings/sections/prompts-section.tsx";
 const PROMPT_DIALOG = "src/components/prompts/prompt-dialog.tsx";
 const MCP_TAB = "src/app/dashboard/settings/components/mcp-panel.tsx";
-const MCP_SHEET = "src/components/mcp/mcp-server-sheet.tsx";
+const MCP_DIALOG = "src/components/mcp/mcp-server-dialog.tsx";
 const SKILLS_PANEL = "src/components/skills/skills-panel.tsx";
 const SKILL_ADD_DIALOG = "src/components/skills/skill-add-dialog.tsx";
 const PROVIDER_LOGIN_SHEET = "src/components/providers/provider-login-sheet.tsx";
@@ -1612,7 +1612,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · add mcp server",
     path: SETTINGS,
-    sources: [MCP_SHEET],
+    sources: [MCP_DIALOG],
     mock: mockMcpServers,
     open: async (page) => {
       await openSettingsSection(page, "integrations");
@@ -1622,7 +1622,7 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · add mcp command server",
     path: SETTINGS,
-    sources: [MCP_SHEET],
+    sources: [MCP_DIALOG],
     mock: mockMcpServers,
     open: async (page) => {
       await openSettingsSection(page, "integrations");
@@ -1634,12 +1634,36 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
   {
     name: "settings · mcp command server with variables",
     path: SETTINGS,
-    sources: [MCP_SHEET],
+    sources: [MCP_DIALOG],
     mock: mockMcpServers,
     open: async (page) => {
       await openSettingsSection(page, "integrations");
       await click(page, '[aria-label="Actions for workspace_files"]');
       await clickText(page, "Edit");
+    },
+  },
+  {
+    name: "settings · mcp server access step",
+    path: SETTINGS,
+    sources: [MCP_DIALOG],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Actions for homeassistant"]');
+      await clickText(page, "Edit");
+      await clickText(page, "Continue");
+    },
+  },
+  {
+    name: "settings · mcp server sign in step",
+    path: SETTINGS,
+    sources: [MCP_DIALOG],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Actions for homeassistant"]');
+      await clickText(page, "Edit");
+      await click(page, '[aria-label="Go to Sign in"]');
     },
   },
   {

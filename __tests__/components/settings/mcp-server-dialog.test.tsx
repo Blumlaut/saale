@@ -3,10 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-import { McpServerSheet } from "@/components/mcp/mcp-server-sheet";
+import { McpServerDialog } from "@/components/mcp/mcp-server-dialog";
 import type { McpOAuthStart, McpServer, McpServerInput } from "@/hooks/use-mcp-servers";
 
-type Props = Parameters<typeof McpServerSheet>[0];
+type Props = Parameters<typeof McpServerDialog>[0];
 
 /** The sheet with stand-in callbacks; `overrides` replaces any of them. */
 function sheetProps(overrides: Partial<Props> = {}): Props {
@@ -31,9 +31,9 @@ function sheetProps(overrides: Partial<Props> = {}): Props {
   };
 }
 
-function renderSheet(overrides: Partial<Props> = {}) {
+function renderDialog(overrides: Partial<Props> = {}) {
   const props = sheetProps(overrides);
-  const view = render(<McpServerSheet {...props} />);
+  const view = render(<McpServerDialog {...props} />);
   return {
     onSave: props.onSave as unknown as ReturnType<typeof vi.fn>,
     onTest: props.onTest as unknown as ReturnType<typeof vi.fn>,
@@ -41,7 +41,7 @@ function renderSheet(overrides: Partial<Props> = {}) {
     onSignOutOAuth: props.onSignOutOAuth as unknown as ReturnType<typeof vi.fn>,
     /** Re-open the same sheet for another server, as the page does. */
     openServer: (server: McpServer | null) =>
-      view.rerender(<McpServerSheet {...props} server={server} />),
+      view.rerender(<McpServerDialog {...props} server={server} />),
     // The sheet labels sit next to the inputs without `htmlFor`, so the fields
     // are found by their placeholder. Read lazily: a command server has no URL
     // field to find.
@@ -63,9 +63,19 @@ function type(input: HTMLInputElement, text: string) {
   }
 }
 
-describe("McpServerSheet name field", () => {
+/** Move from Connect to Access, where scopes, approval and the save live. */
+function goToAccess() {
+  fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+}
+
+/** Jump to the sign-in step, which a stored endpoint server offers. */
+function goToSignIn() {
+  fireEvent.click(screen.getByRole("button", { name: "Go to Sign in" }));
+}
+
+describe("McpServerDialog name field", () => {
   it("keeps what was typed while typing and folds it when the field is left", () => {
-    const { name } = renderSheet();
+    const { name } = renderDialog();
 
     type(name, "HA Admin");
 
@@ -78,10 +88,11 @@ describe("McpServerSheet name field", () => {
   });
 
   it("saves the folded name", async () => {
-    const { name, url, onSave } = renderSheet();
+    const { name, url, onSave } = renderDialog();
 
     type(name, "Local Figma");
     fireEvent.change(url, { target: { value: "https://figma.example/mcp" } });
+    goToAccess();
     fireEvent.click(screen.getByRole("button", { name: /add server/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -89,11 +100,11 @@ describe("McpServerSheet name field", () => {
   });
 
   it("reports a name that folds to nothing under the name field", async () => {
-    const { name, url, onSave } = renderSheet();
+    const { name, url, onSave } = renderDialog();
 
     fireEvent.change(name, { target: { value: "!!!" } });
     fireEvent.change(url, { target: { value: "https://example.com/mcp" } });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    goToAccess();
 
     expect(await screen.findByText(/give this server a name/i)).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
@@ -103,11 +114,11 @@ describe("McpServerSheet name field", () => {
   });
 
   it("moves the message back to the URL when that field is the invalid one", async () => {
-    const { name, url } = renderSheet();
+    const { name, url } = renderDialog();
 
     type(name, "github");
     fireEvent.change(url, { target: { value: "ftp://example.com/mcp" } });
-    fireEvent.click(screen.getByRole("button", { name: /test/i }));
+    goToAccess();
 
     expect(await screen.findByText(/must be an http\(s\) URL/i)).toBeInTheDocument();
     expect(screen.getByText(/become underscores/i)).toBeInTheDocument();
@@ -141,7 +152,7 @@ function savedServer(overrides: Partial<McpServer> = {}): McpServer {
   };
 }
 
-describe("McpServerSheet OAuth sign-in", () => {
+describe("McpServerDialog OAuth sign-in", () => {
   it("starts a sign-in and opens the authorization URL", async () => {
     const authorizationUrl = "https://auth.linear.app/authorize?client_id=saale&state=abc";
     const onStartOAuth = vi
@@ -149,7 +160,8 @@ describe("McpServerSheet OAuth sign-in", () => {
       .mockResolvedValue({ status: "pending", authorizationUrl, manual: false });
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
-    renderSheet({ server: savedServer(), onStartOAuth });
+    renderDialog({ server: savedServer(), onStartOAuth });
+    goToSignIn();
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await waitFor(() => expect(onStartOAuth).toHaveBeenCalledWith("srv-1"));
@@ -162,7 +174,8 @@ describe("McpServerSheet OAuth sign-in", () => {
   it("shows a stored sign-in and signs out", async () => {
     const onSignOutOAuth = vi.fn().mockResolvedValue(undefined);
 
-    renderSheet({ server: savedServer({ hasOAuth: true }), onSignOutOAuth });
+    renderDialog({ server: savedServer({ hasOAuth: true }), onSignOutOAuth });
+    goToSignIn();
 
     expect(screen.getByText(/signed in/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
@@ -171,10 +184,13 @@ describe("McpServerSheet OAuth sign-in", () => {
   });
 
   it("reads the next server's sign-in state instead of the last one's", async () => {
-    const { openServer } = renderSheet({ server: savedServer({ hasOAuth: true }) });
+    const { openServer } = renderDialog({ server: savedServer({ hasOAuth: true }) });
+    goToSignIn();
     expect(screen.getByText(/signed in/i)).toBeInTheDocument();
 
+    // The next server starts at the top of its own wizard.
     openServer(savedServer({ id: "srv-2", name: "cloudflare", url: "https://cloudflare.com/mcp" }));
+    goToSignIn();
 
     expect(await screen.findByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
     expect(screen.queryByText(/signed in/i)).not.toBeInTheDocument();
@@ -189,11 +205,13 @@ describe("McpServerSheet OAuth sign-in", () => {
         }),
     );
 
-    const { openServer } = renderSheet({ server: savedServer(), onStartOAuth });
+    const { openServer } = renderDialog({ server: savedServer(), onStartOAuth });
+    goToSignIn();
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     await waitFor(() => expect(onStartOAuth).toHaveBeenCalledWith("srv-1"));
 
     openServer(savedServer({ id: "srv-2", name: "cloudflare", url: "https://cloudflare.com/mcp" }));
+    goToSignIn();
     await act(async () => {
       finish({ status: "succeeded", authorizationUrl: null, manual: false });
     });
@@ -203,11 +221,15 @@ describe("McpServerSheet OAuth sign-in", () => {
     expect(screen.queryByText(/signed in/i)).not.toBeInTheDocument();
   });
 
-  it("asks for a save before signing in to a server that is not stored yet", () => {
-    renderSheet();
+  it("offers no sign-in before the server is stored", () => {
+    const { name, url } = renderDialog();
+    fireEvent.change(name, { target: { value: "linear" } });
+    fireEvent.change(url, { target: { value: "https://mcp.linear.app/mcp" } });
 
-    expect(screen.getByText(/save this server first/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^sign in$/i })).not.toBeInTheDocument();
+    // A new server has no id for a browser sign-in to belong to.
+    expect(screen.queryByRole("button", { name: "Go to Sign in" })).not.toBeInTheDocument();
+    goToAccess();
+    expect(screen.getByRole("button", { name: /add server/i })).toBeInTheDocument();
   });
 
   it("signs in as soon as the row's button opens the sheet", async () => {
@@ -217,7 +239,7 @@ describe("McpServerSheet OAuth sign-in", () => {
     });
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
-    renderSheet({ server: savedServer(), onStartOAuth, signInOnOpen: true });
+    renderDialog({ server: savedServer(), onStartOAuth, signInOnOpen: true });
 
     await waitFor(() => expect(onStartOAuth).toHaveBeenCalledTimes(1));
     expect(onStartOAuth).toHaveBeenCalledWith("srv-1");
@@ -229,7 +251,7 @@ describe("McpServerSheet OAuth sign-in", () => {
       .fn()
       .mockResolvedValue({ status: "pending", authorizationUrl: null, manual: false });
 
-    renderSheet({ server: savedServer(), onStartOAuth });
+    renderDialog({ server: savedServer(), onStartOAuth });
 
     expect(onStartOAuth).not.toHaveBeenCalled();
   });
@@ -239,9 +261,47 @@ describe("McpServerSheet OAuth sign-in", () => {
       .fn()
       .mockResolvedValue({ status: "pending", authorizationUrl: null, manual: false });
 
-    renderSheet({ server: savedServer({ hasOAuth: true }), onStartOAuth, signInOnOpen: true });
+    renderDialog({ server: savedServer({ hasOAuth: true }), onStartOAuth, signInOnOpen: true });
 
     expect(onStartOAuth).not.toHaveBeenCalled();
+  });
+
+  it("moves on to the sign-in once a new server is added", async () => {
+    const onStartOAuth = vi.fn().mockResolvedValue({
+      status: "pending",
+      authorizationUrl: "https://auth.example/authorize?state=abc",
+      manual: false,
+    });
+    const onOpenChange = vi.fn();
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const { name, url, onSave } = renderDialog({
+      onStartOAuth,
+      onOpenChange,
+      onSave: vi.fn().mockResolvedValue(savedServer({ id: "srv-new" })),
+    });
+
+    fireEvent.change(name, { target: { value: "linear" } });
+    fireEvent.change(url, { target: { value: "https://mcp.linear.app/mcp" } });
+    goToAccess();
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    // The server exists now, so the browser sign-in has somewhere to land.
+    await waitFor(() => expect(onStartOAuth).toHaveBeenCalledWith("srv-new"));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^done$/i })).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it("offers no sign-in step for a command server", () => {
+    renderDialog({
+      allowStdio: true,
+      server: savedServer({ transport: "stdio", url: null, command: "npx -y server-filesystem ." }),
+    });
+
+    expect(screen.queryByRole("button", { name: "Go to Sign in" })).not.toBeInTheDocument();
+    goToAccess();
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeInTheDocument();
   });
 
   it("finishes a loopback sign-in from the address the browser ended on", async () => {
@@ -252,7 +312,8 @@ describe("McpServerSheet OAuth sign-in", () => {
     const onCompleteOAuth = vi.fn().mockResolvedValue(undefined);
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
-    renderSheet({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    renderDialog({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    goToSignIn();
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     // The browser cannot reach the redirect, so the sheet asks for its address.
@@ -282,7 +343,8 @@ describe("McpServerSheet OAuth sign-in", () => {
       .mockRejectedValue(new Error("This address does not carry a sign-in response."));
     const open = vi.spyOn(window, "open").mockReturnValue(null);
 
-    renderSheet({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    renderDialog({ server: savedServer(), onStartOAuth, onCompleteOAuth });
+    goToSignIn();
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     fireEvent.change(await screen.findByLabelText(/address the browser ended on/i), {
@@ -302,12 +364,13 @@ describe("McpServerSheet OAuth sign-in", () => {
  * A server is configured for the kinds of session it belongs in: one for chat,
  * one for coding chats, or both.
  */
-describe("McpServerSheet scopes", () => {
+describe("McpServerDialog scopes", () => {
   it("saves a server that is coder-only", async () => {
-    const { name, url, onSave } = renderSheet();
+    const { name, url, onSave } = renderDialog();
 
     fireEvent.change(name, { target: { value: "worktree" } });
     fireEvent.change(url, { target: { value: "https://worktree.example/mcp" } });
+    goToAccess();
     fireEvent.click(screen.getByRole("switch", { name: "Connect in chat" }));
     fireEvent.click(screen.getByRole("button", { name: /add server/i }));
 
@@ -316,14 +379,16 @@ describe("McpServerSheet scopes", () => {
   });
 
   it("reads the stored scopes back", () => {
-    renderSheet({ server: savedServer({ chatEnabled: false }) });
+    renderDialog({ server: savedServer({ chatEnabled: false }) });
+    goToAccess();
 
     expect(screen.getByRole("switch", { name: "Connect in chat" })).not.toBeChecked();
     expect(screen.getByRole("switch", { name: "Connect in coder chats" })).toBeChecked();
   });
 
   it("says so when the server is switched off everywhere", () => {
-    renderSheet({ server: savedServer({ chatEnabled: false, coderEnabled: false }) });
+    renderDialog({ server: savedServer({ chatEnabled: false, coderEnabled: false }) });
+    goToAccess();
 
     expect(screen.getByText(/connects nowhere/i)).toBeInTheDocument();
   });
@@ -343,17 +408,17 @@ function chooseOption(select: HTMLElement, name: string) {
  * workspace. The command fields replace the endpoint, the token and the
  * sign-in, since a program authenticates with the account's own variables.
  */
-describe("McpServerSheet command servers", () => {
+describe("McpServerDialog command servers", () => {
   const command = "npx -y @modelcontextprotocol/server-filesystem .";
 
   it("offers a command only where the caller allows one", () => {
-    renderSheet();
+    renderDialog();
     expect(screen.queryByText("Connection")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/homeassistant\.local/)).toBeInTheDocument();
   });
 
   it("switches from an endpoint to a command and saves it", async () => {
-    const { name, onSave } = renderSheet({ allowStdio: true });
+    const { name, onSave } = renderDialog({ allowStdio: true });
 
     fireEvent.change(name, { target: { value: "files" } });
     chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
@@ -362,6 +427,7 @@ describe("McpServerSheet command servers", () => {
     expect(screen.queryByPlaceholderText(/homeassistant\.local/)).not.toBeInTheDocument();
 
     fireEvent.change(commandInput, { target: { value: command } });
+    goToAccess();
     fireEvent.click(screen.getByRole("button", { name: /add server/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -375,7 +441,7 @@ describe("McpServerSheet command servers", () => {
   });
 
   it("reads a stored command back without asking for an endpoint", () => {
-    renderSheet({
+    renderDialog({
       server: savedServer({
         transport: "stdio",
         url: null,
@@ -397,7 +463,7 @@ describe("McpServerSheet command servers", () => {
   });
 
   it("keeps the working directory inside the workspace", async () => {
-    const { name, onSave } = renderSheet({ allowStdio: true });
+    const { name, onSave } = renderDialog({ allowStdio: true });
 
     fireEvent.change(name, { target: { value: "files" } });
     chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
@@ -407,14 +473,14 @@ describe("McpServerSheet command servers", () => {
     fireEvent.change(screen.getByPlaceholderText(/Optional, e\.g\. docs/), {
       target: { value: "../another-account" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    goToAccess();
 
     expect(await screen.findByText(/cannot lead outside your workspace/i)).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
   });
 
   it("saves the variables a command was given, and never reads one back", async () => {
-    const { name, onSave } = renderSheet({ allowStdio: true });
+    const { name, onSave } = renderDialog({ allowStdio: true });
 
     fireEvent.change(name, { target: { value: "github" } });
     chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
@@ -433,6 +499,7 @@ describe("McpServerSheet command servers", () => {
     expect(screen.getByText("GITHUB_PERSONAL_ACCESS_TOKEN")).toBeInTheDocument();
     expect(screen.queryByText("ghp_secret")).not.toBeInTheDocument();
 
+    goToAccess();
     fireEvent.click(screen.getByRole("button", { name: /add server/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -442,7 +509,7 @@ describe("McpServerSheet command servers", () => {
   });
 
   it("lists a stored variable by name and forgets it when it is removed", async () => {
-    const { onSave } = renderSheet({
+    const { onSave } = renderDialog({
       allowStdio: true,
       server: savedServer({
         transport: "stdio",
@@ -456,6 +523,7 @@ describe("McpServerSheet command servers", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove GITHUB_PERSONAL_ACCESS_TOKEN" }));
     expect(screen.queryByText("GITHUB_PERSONAL_ACCESS_TOKEN")).not.toBeInTheDocument();
 
+    goToAccess();
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
@@ -466,7 +534,7 @@ describe("McpServerSheet command servers", () => {
   });
 
   it("refuses a variable name a shell could not read", () => {
-    renderSheet({ allowStdio: true });
+    renderDialog({ allowStdio: true });
 
     chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
     fireEvent.change(screen.getByLabelText("Variable name"), { target: { value: "not-a-name" } });
@@ -477,13 +545,15 @@ describe("McpServerSheet command servers", () => {
   });
 
   it("tests the command rather than an endpoint", async () => {
-    const { onTest } = renderSheet({ allowStdio: true });
+    const { onTest } = renderDialog({ allowStdio: true });
     const test = onTest as unknown as ReturnType<typeof vi.fn>;
 
+    fireEvent.change(screen.getByPlaceholderText("homeassistant"), { target: { value: "files" } });
     chooseOption(screen.getByRole("combobox", { name: /connection/i }), "Command in workspace");
     fireEvent.change(screen.getByPlaceholderText(/server-filesystem/), {
       target: { value: command },
     });
+    goToAccess();
     fireEvent.click(screen.getByRole("button", { name: /^test$/i }));
 
     await waitFor(() => expect(test).toHaveBeenCalledTimes(1));
@@ -491,11 +561,12 @@ describe("McpServerSheet command servers", () => {
   });
 });
 
-describe("McpServerSheet tool approval", () => {
+describe("McpServerDialog tool approval", () => {
   it("changes a server from allow back to ask", async () => {
-    const { onSave } = renderSheet({ server: savedServer({ toolPolicy: "allow" }) });
+    const { onSave } = renderDialog({ server: savedServer({ toolPolicy: "allow" }) });
+    goToAccess();
 
-    chooseOption(screen.getAllByRole("combobox")[0]!, "Ask");
+    chooseOption(screen.getByRole("combobox", { name: "Tool approval" }), "Ask");
     fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
