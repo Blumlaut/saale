@@ -293,6 +293,65 @@ describe("McpServerDialog OAuth sign-in", () => {
     open.mockRestore();
   });
 
+  it("lists a server's tools on their own step", async () => {
+    const loadTools = vi
+      .fn()
+      .mockResolvedValue([
+        { name: "mcp__linear__create_issue", label: "create_issue", description: "Open an issue" },
+      ]);
+    const onToolPolicyChange = vi.fn();
+    renderDialog({
+      server: savedServer({ name: "linear", url: "https://mcp.linear.app/mcp" }),
+      loadTools,
+      onToolPolicyChange,
+      toolPolicies: {},
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Go to Tools" }));
+
+    const forTool = await screen.findByRole("combobox", { name: "Approval for create_issue" });
+    expect(loadTools).toHaveBeenCalledWith("srv-1");
+    // A tool without a policy of its own follows the server.
+    expect(forTool).toHaveTextContent("Ask");
+
+    chooseOption(forTool, "Block");
+    expect(onToolPolicyChange).toHaveBeenCalledWith("mcp__linear__create_issue", "off");
+  });
+
+  it("reaches the tools once a new server is added", async () => {
+    const loadTools = vi
+      .fn()
+      .mockResolvedValue([
+        { name: "mcp__linear__create_issue", label: "create_issue", description: null },
+      ]);
+    const onStartOAuth = vi.fn().mockResolvedValue({
+      status: "pending",
+      authorizationUrl: "https://auth.example/authorize?state=abc",
+      manual: false,
+    });
+    const { name, url, onSave } = renderDialog({
+      loadTools,
+      onStartOAuth,
+      onToolPolicyChange: vi.fn(),
+      onSave: vi.fn().mockResolvedValue(savedServer({ id: "srv-new", name: "linear" })),
+    });
+
+    fireEvent.change(name, { target: { value: "linear" } });
+    fireEvent.change(url, { target: { value: "https://mcp.linear.app/mcp" } });
+    goToAccess();
+    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+
+    // The server exists, so its tools can be listed before the sign-in.
+    expect(
+      await screen.findByRole("combobox", { name: "Approval for create_issue" }),
+    ).toBeInTheDocument();
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onStartOAuth).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    expect(await screen.findByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
+  });
+
   it("offers no sign-in step for a command server", () => {
     renderDialog({
       allowStdio: true,

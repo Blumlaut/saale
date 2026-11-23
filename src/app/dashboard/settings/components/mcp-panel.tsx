@@ -12,6 +12,7 @@ import { McpServerRow } from "@/components/mcp/mcp-server-row";
 import { McpServerRowActions } from "@/components/mcp/mcp-server-row-actions";
 import { McpServerDialog } from "@/components/mcp/mcp-server-dialog";
 import { McpImportDialog } from "@/components/mcp/mcp-import-dialog";
+import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import { useUserSettings } from "./user-settings-provider";
 
 /**
@@ -20,7 +21,7 @@ import { useUserSettings } from "./user-settings-provider";
  * category in Settings → Tools decides whether any of them connect.
  */
 export function McpPanel() {
-  const { settings } = useUserSettings();
+  const { settings, update } = useUserSettings();
   // The MCP category switch decides whether any of these servers connect.
   const paused = settings ? !isCategoryEnabled(settings.defaultToolConfig, "mcp") : false;
   const {
@@ -35,6 +36,7 @@ export function McpPanel() {
     readOAuthStatus,
     completeOAuth,
     signOutOAuth,
+    loadTools,
     loadServers,
   } = useMcpServers();
 
@@ -62,6 +64,15 @@ export function McpPanel() {
     setEditing(server);
     setSignInOnOpen(true);
     setSheetOpen(true);
+  };
+
+  /** A tool's own policy outlives the server's, so it is the account's setting. */
+  const handleToolPolicyChange = (toolName: string, policy: ToolPolicy | null) => {
+    if (!settings) return;
+    const next = { ...((settings.toolPolicies ?? {}) as Record<string, ToolPolicy>) };
+    if (policy) next[toolName] = policy;
+    else delete next[toolName];
+    update({ toolPolicies: Object.keys(next).length > 0 ? next : null });
   };
 
   const handleSave = async (input: Parameters<typeof createServer>[0]) => {
@@ -195,6 +206,9 @@ export function McpPanel() {
         onOAuthStatus={readOAuthStatus}
         onSignOutOAuth={signOutOAuth}
         onCompleteOAuth={completeOAuth}
+        loadTools={loadTools}
+        toolPolicies={(settings?.toolPolicies ?? {}) as Record<string, ToolPolicy>}
+        onToolPolicyChange={handleToolPolicyChange}
       />
 
       <McpImportDialog open={importOpen} onOpenChange={setImportOpen} onImport={importServers} />

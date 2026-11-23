@@ -1655,6 +1655,18 @@ export const MODAL_SCENARIOS: ModalScenario[] = [
     },
   },
   {
+    name: "settings · mcp server tools step",
+    path: SETTINGS,
+    sources: [MCP_DIALOG],
+    mock: mockMcpServers,
+    open: async (page) => {
+      await openSettingsSection(page, "integrations");
+      await click(page, '[aria-label="Actions for homeassistant"]');
+      await clickText(page, "Edit");
+      await click(page, '[aria-label="Go to Tools"]');
+    },
+  },
+  {
     name: "settings · mcp server sign in step",
     path: SETTINGS,
     sources: [MCP_DIALOG],

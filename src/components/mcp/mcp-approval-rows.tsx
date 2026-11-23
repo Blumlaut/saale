@@ -14,17 +14,69 @@ import {
 } from "@/components/ui/select";
 import { ScopeSwitches } from "@/components/shared/tool-scopes";
 import type { McpServer, McpToolSummary } from "@/hooks/use-mcp-servers";
-import type { McpToolPolicy } from "@/lib/mcp/shared";
+import { isMcpToolPolicy, type McpToolPolicy } from "@/lib/mcp/shared";
 import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import { MCP_POLICY_OPTIONS, MCP_POLICY_LABELS, mcpPolicyHint } from "./mcp-policy";
 
+/**
+ * A row's columns under a server's name: what it is, then its policy.
+ *
+ * The width lives here so the server's own policy and every tool's sit in one
+ * column, flush with the right edge the rest of the page's controls use.
+ */
+export const MCP_POLICY_COLUMNS = "grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3";
+
 /** A server's tool list, as the rows need it. */
-type ToolsState =
+export type McpToolsState =
   | { kind: "loading" }
   /** The server has not been reached yet, so its tool names are unknown. */
   | { kind: "unknown"; error: string | null }
   | { kind: "known"; tools: McpToolSummary[] }
   | { kind: "failed"; error: string };
+
+/**
+ * One policy control, in the column every other one shares.
+ *
+ * `stored` is what the select holds, which differs from `value` for a tool that
+ * follows its server: the trigger names the policy that will run, the menu holds
+ * "Follow server".
+ */
+function McpPolicySelect({
+  value,
+  stored,
+  label,
+  onChange,
+  followServer = false,
+}: {
+  /** The policy that will govern a call, as the trigger names it. */
+  value: McpToolPolicy;
+  /** The stored answer: a policy, or `clear` for a tool that follows its server. */
+  stored: string;
+  label: string;
+  onChange: (value: string) => void;
+  followServer?: boolean;
+}) {
+  return (
+    <Select
+      value={stored}
+      onValueChange={(next: string | null) => {
+        if (next) onChange(next);
+      }}
+    >
+      <SelectTrigger className="w-24 shrink-0" aria-label={label}>
+        <SelectValue>{() => MCP_POLICY_LABELS[value] ?? "Ask"}</SelectValue>
+      </SelectTrigger>
+      <SelectContent align="end">
+        {MCP_POLICY_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+        {followServer && <SelectItem value="clear">Follow server</SelectItem>}
+      </SelectContent>
+    </Select>
+  );
+}
 
 /**
  * The MCP servers of a tool category, with the approval policy of each one and
@@ -57,7 +109,7 @@ export function McpApprovalRows({
   /** Connect to the server and list its tools, which also caches the names. */
   probeServer: (server: McpServer) => Promise<void>;
 }) {
-  const [tools, setTools] = useState<Record<string, ToolsState>>({});
+  const [tools, setTools] = useState<Record<string, McpToolsState>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [probing, setProbing] = useState<string | null>(null);
 
@@ -104,26 +156,29 @@ export function McpApprovalRows({
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-3">
       {servers.map((server) => {
         const state = tools[server.id];
         const expanded = Boolean(open[server.id]);
         return (
           <div key={server.id}>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="min-w-0 flex-1 basis-full sm:basis-0">
-                <span className="text-sm">{server.name}</span>
-                {server.shared && (
-                  <Badge variant="outline" className="ml-2 shrink-0">
-                    Shared
-                  </Badge>
-                )}
-                {!server.enabled && <span className="text-muted-foreground text-xs"> - off</span>}
+            {/* One line with the scopes, so the Chat and Coder columns of the page hold. */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm">{server.name}</span>
+                  {server.shared && (
+                    <Badge variant="outline" className="shrink-0">
+                      Shared
+                    </Badge>
+                  )}
+                  {!server.enabled && <span className="text-muted-foreground text-xs"> - off</span>}
+                </div>
                 {server.description && (
                   <p className="text-muted-foreground text-xs">{server.description}</p>
                 )}
               </div>
-              <div className="ml-auto flex shrink-0 items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-3">
                 <ScopeSwitches
                   label={server.name}
                   chat={server.chatEnabled}
@@ -132,28 +187,6 @@ export function McpApprovalRows({
                   onChatChange={(checked) => onScopeChange(server, { chatEnabled: checked })}
                   onCoderChange={(checked) => onScopeChange(server, { coderEnabled: checked })}
                 />
-                <Select
-                  value={server.toolPolicy}
-                  onValueChange={(value) => {
-                    if (value) onServerPolicyChange(server, value as McpToolPolicy);
-                  }}
-                >
-                  <SelectTrigger
-                    className="w-24 shrink-0"
-                    aria-label={`Approval for ${server.name}`}
-                  >
-                    <SelectValue>
-                      {(value) => MCP_POLICY_LABELS[value as string] ?? "Ask"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent align="end">
-                    {MCP_POLICY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -167,10 +200,25 @@ export function McpApprovalRows({
               </div>
             </div>
 
-            {expanded && (
-              <div className="border-border/60 mt-1.5 space-y-1.5 border-l pl-3">
-                <p className="text-muted-foreground text-xs">{mcpPolicyHint(server.toolPolicy)}</p>
-                <ToolRows
+            {/* Everything below shares one column, so the selects line up. */}
+            <div className="mt-1 space-y-1.5">
+              <div className={MCP_POLICY_COLUMNS}>
+                <div className="min-w-0">
+                  <p className="text-xs">Approval</p>
+                  <p className="text-muted-foreground text-[11px]">
+                    {mcpPolicyHint(server.toolPolicy)}
+                  </p>
+                </div>
+                <McpPolicySelect
+                  value={server.toolPolicy}
+                  stored={server.toolPolicy}
+                  label={`Approval for ${server.name}`}
+                  onChange={(value) => onServerPolicyChange(server, value as McpToolPolicy)}
+                />
+              </div>
+
+              {expanded && (
+                <McpToolPolicyRows
                   server={server}
                   state={state ?? { kind: "loading" }}
                   toolPolicies={toolPolicies}
@@ -178,8 +226,8 @@ export function McpApprovalRows({
                   onProbe={() => void probe(server)}
                   onToolPolicyChange={onToolPolicyChange}
                 />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         );
       })}
@@ -187,8 +235,14 @@ export function McpApprovalRows({
   );
 }
 
-/** The tools of one server, or what it takes to learn them. */
-function ToolRows({
+/**
+ * The tools of one server with their own policies.
+ *
+ * A tool without a policy of its own follows the server, and the row says so:
+ * the select shows what will happen, and "Follow server" is how a tool is put
+ * back under it.
+ */
+export function McpToolPolicyRows({
   server,
   state,
   toolPolicies,
@@ -196,8 +250,8 @@ function ToolRows({
   onProbe,
   onToolPolicyChange,
 }: {
-  server: McpServer;
-  state: ToolsState;
+  server: Pick<McpServer, "name" | "toolPolicy">;
+  state: McpToolsState;
   toolPolicies: Record<string, ToolPolicy>;
   probing: boolean;
   onProbe: () => void;
@@ -205,7 +259,7 @@ function ToolRows({
 }) {
   if (state.kind === "loading" || probing) {
     return (
-      <p className="text-muted-foreground flex items-center gap-2 text-xs">
+      <p className="text-muted-foreground flex items-center gap-2 py-1 text-xs">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         {probing ? "Asking the server for its tools…" : "Reading the tools…"}
       </p>
@@ -238,36 +292,27 @@ function ToolRows({
   return (
     <div className="space-y-1.5">
       {state.tools.map((tool) => {
+        // A stored value that is not an MCP policy (an older "auto") leaves the
+        // gate on the server's policy, so the row shows the server's.
         const own = toolPolicies[tool.name];
-        const policy = own ?? server.toolPolicy;
+        const policy = isMcpToolPolicy(own) ? own : server.toolPolicy;
         return (
-          <div key={tool.name} className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
+          <div key={tool.name} className={MCP_POLICY_COLUMNS}>
+            <span className="min-w-0">
               <span className="font-mono text-xs break-all">{tool.label}</span>
               <span className="text-muted-foreground text-xs">
-                {own ? " - its own policy" : " - follows the server"}
+                {isMcpToolPolicy(own) ? " - its own policy" : ` - follows ${server.name}`}
               </span>
-            </div>
-            <Select
-              value={own ? policy : "clear"}
-              onValueChange={(value: string | null) => {
-                if (value === "clear") onToolPolicyChange(tool.name, null);
-                else if (value) onToolPolicyChange(tool.name, value as ToolPolicy);
-              }}
-            >
-              <SelectTrigger className="w-24 shrink-0" aria-label={`Approval for ${tool.label}`}>
-                {/* The row names what will happen, which is the server's policy until it has its own. */}
-                <SelectValue>{() => MCP_POLICY_LABELS[policy] ?? "Ask"}</SelectValue>
-              </SelectTrigger>
-              <SelectContent align="end">
-                {MCP_POLICY_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-                <SelectItem value="clear">Follow server</SelectItem>
-              </SelectContent>
-            </Select>
+            </span>
+            <McpPolicySelect
+              value={policy}
+              stored={isMcpToolPolicy(own) ? own : "clear"}
+              label={`Approval for ${tool.label}`}
+              followServer
+              onChange={(next) =>
+                onToolPolicyChange(tool.name, next === "clear" ? null : (next as ToolPolicy))
+              }
+            />
           </div>
         );
       })}

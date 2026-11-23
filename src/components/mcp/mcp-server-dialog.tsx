@@ -45,18 +45,33 @@ import {
   type McpTransport,
 } from "@/lib/mcp/shared";
 import { SetupSteps } from "@/components/shared/setup-steps";
+import { McpToolPolicyRows, type McpToolsState } from "@/components/mcp/mcp-approval-rows";
+import type { ToolPolicy } from "@/lib/pi/tool-infos";
 import { envNameError, envValueBytes } from "@/lib/sandbox/env-rules";
-import { MCP_POLICY_OPTIONS, mcpPolicyHint } from "./mcp-policy";
+import { MCP_POLICY_LABELS, MCP_POLICY_OPTIONS, mcpPolicyHint } from "./mcp-policy";
 import type {
   McpOAuthStart,
   McpOAuthStatus,
   McpServer,
   McpServerInput,
   McpTestResult,
+  McpToolSummary,
 } from "@/hooks/use-mcp-servers";
 
-/** The steps an MCP server goes through, in the order it needs them. */
-const SETUP_STEPS = ["Connect", "Access", "Sign in"] as const;
+/**
+ * The steps an MCP server goes through, in the order it needs them.
+ *
+ * Kept by name, so a step that drops out (a command server needs no sign-in,
+ * an admin form has no per-tool policies) does not renumber the others.
+ */
+type SetupStepKey = "connect" | "access" | "tools" | "signin";
+
+const STEP_LABELS: Record<SetupStepKey, string> = {
+  connect: "Connect",
+  access: "Access",
+  tools: "Tools",
+  signin: "Sign in",
+};
 
 /** How often the dialog asks whether a browser sign-in has finished. */
 const OAUTH_POLL_INTERVAL_MS = 1_500;
@@ -112,6 +127,14 @@ interface McpServerDialogProps {
    * Sign in button: the browser is the only thing left for the user to touch.
    */
   signInOnOpen?: boolean;
+  /**
+   * The tools a stored server answers with, and how each one is approved. The
+   * per-tool policy belongs to the account, so a form without it (the admin's
+   * shared server) leaves the Tools step out.
+   */
+  loadTools?: (id: string) => Promise<McpToolSummary[] | null>;
+  toolPolicies?: Record<string, ToolPolicy>;
+  onToolPolicyChange?: (toolName: string, policy: ToolPolicy | null) => void;
 }
 
 export function McpServerDialog({
@@ -126,6 +149,9 @@ export function McpServerDialog({
   onSignOutOAuth,
   onCompleteOAuth,
   signInOnOpen = false,
+  loadTools,
+  toolPolicies = {},
+  onToolPolicyChange,
 }: McpServerDialogProps) {
   /** The dialog offers a sign-in only where every part of it is available. */
   const canSignIn = Boolean(onStartOAuth && onOAuthStatus && onSignOutOAuth);
@@ -150,7 +176,7 @@ export function McpServerDialog({
   const [newEnvValue, setNewEnvValue] = useState("");
   const [envError, setEnvError] = useState<string | null>(null);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<SetupStepKey>("connect");
   const [toolPolicy, setToolPolicy] = useState<McpToolPolicy>("ask");
   const [enabled, setEnabled] = useState(true);
   const [chatEnabled, setChatEnabled] = useState(true);
@@ -158,6 +184,9 @@ export function McpServerDialog({
 
   /** The server a save created, which is what a new one signs in as. */
   const [savedId, setSavedId] = useState<string | null>(null);
+  /** The tools the Tools step lists, once a stored server has answered. */
+  const [toolsState, setToolsState] = useState<McpToolsState | null>(null);
+  const [probingTools, setProbingTools] = useState(false);
   /** The sign-in step opens by starting the sign-in, for a row's Sign in click. */
   const [autoSignIn, setAutoSignIn] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -200,13 +229,20 @@ export function McpServerDialog({
   /** The server this dialog writes to: the one being edited, or the one just created. */
   const serverId = server?.id ?? savedId;
 
-  /**
-   * The steps this dialog has. A sign-in needs a stored server and an endpoint,
-   * so a command or an unsaved server stops after Access.
-   */
+  /** Per-tool policies need somewhere to be stored, so they are the caller's to offer. */
+  const offersTools = Boolean(loadTools && onToolPolicyChange);
+  /** A sign-in needs a stored server and an endpoint, so an unsaved or command server skips it. */
   const offersSignIn = canSignIn && transport === "http" && (isEditing || savedId !== null);
-  const steps = offersSignIn ? SETUP_STEPS : SETUP_STEPS.slice(0, 2);
-  const current = Math.min(step, steps.length);
+
+  const stepKeys: SetupStepKey[] = [
+    "connect",
+    "access",
+    ...(offersTools ? (["tools"] as const) : []),
+    ...(offersSignIn ? (["signin"] as const) : []),
+  ];
+  // A transport that turns the sign-in off leaves the dialog on its last step.
+  const currentKey = stepKeys.includes(step) ? step : stepKeys[stepKeys.length - 1]!;
+  const current = stepKeys.indexOf(currentKey) + 1;
 
   const session = useRef(0);
   const stillCurrent = useCallback((startedAt: number) => session.current === startedAt, []);
@@ -296,7 +332,9 @@ export function McpServerDialog({
     setOauthError(null);
     setOauthBusy(false);
     setSavedId(null);
-    setStep(signInOnOpen ? SETUP_STEPS.length : 1);
+    setToolsState(null);
+    setProbingTools(false);
+    setStep(signInOnOpen ? "signin" : "connect");
     setAutoSignIn(signInOnOpen);
   }, [canSignIn, open, server, signInOnOpen]);
 
@@ -373,6 +411,64 @@ export function McpServerDialog({
       setTesting(false);
     }
   }, [command, cwd, envValues, onTest, server, stillCurrent, token, transport, url]);
+
+  /**
+   * Ask the server for its tools and keep the names its policy rows use.
+   *
+   * A cached list costs nothing, so the step reads that first and only connects
+   * when the server has never answered.
+   */
+  const probeTools = useCallback(async () => {
+    if (!serverId || !loadTools) return;
+    const startedAt = session.current;
+    setProbingTools(true);
+    setToolsState({ kind: "loading" });
+    try {
+      const cached = await loadTools(serverId);
+      if (!stillCurrent(startedAt)) return;
+      if (cached) {
+        setToolsState({ kind: "known", tools: cached });
+        return;
+      }
+
+      const result = onTest
+        ? await onTest(
+            serverId,
+            transport === "stdio"
+              ? {
+                  transport,
+                  command: command.trim(),
+                  ...(cwd.trim() ? { cwd: cwd.trim() } : {}),
+                }
+              : { transport, url: url.trim() },
+          )
+        : null;
+      if (!stillCurrent(startedAt)) return;
+
+      const found = await loadTools(serverId);
+      if (!stillCurrent(startedAt)) return;
+      setToolsState(
+        found
+          ? { kind: "known", tools: found }
+          : { kind: "unknown", error: result && !result.success ? (result.error ?? null) : null },
+      );
+    } catch (err) {
+      if (!stillCurrent(startedAt)) return;
+      console.error("Failed to list the tools of the MCP server:", err);
+      setToolsState({ kind: "failed", error: (err as Error).message });
+    } finally {
+      setProbingTools(false);
+    }
+  }, [command, cwd, loadTools, onTest, serverId, stillCurrent, transport, url]);
+
+  /** Read the tool list when the step is first shown, once per server. */
+  const toolsRead = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentKey !== "tools" || !serverId || !loadTools) return;
+    if (toolsRead.current === serverId) return;
+    toolsRead.current = serverId;
+    void probeTools();
+  }, [currentKey, loadTools, probeTools, serverId]);
 
   const handleSignIn = useCallback(async () => {
     if (!serverId || !onStartOAuth) return;
@@ -460,11 +556,11 @@ export function McpServerDialog({
       return;
     }
     if (!autoSignIn || autoSignInStarted.current) return;
-    if (step !== SETUP_STEPS.length || !canSignIn) return;
+    if (currentKey !== "signin" || !canSignIn) return;
     if (!serverId || hasOAuth || oauthPhase !== "idle") return;
     autoSignInStarted.current = true;
     void handleSignIn();
-  }, [autoSignIn, canSignIn, handleSignIn, hasOAuth, oauthPhase, open, serverId, step]);
+  }, [autoSignIn, canSignIn, currentKey, handleSignIn, hasOAuth, oauthPhase, open, serverId]);
 
   const handleSave = useCallback(async () => {
     const normalizedName = normalizeMcpServerName(name);
@@ -534,11 +630,16 @@ export function McpServerDialog({
       // Closing here would shut the dialog of the server the user moved on to.
       if (!stillCurrent(startedAt)) return;
       const createdId = savedIdOf(saved);
-      if (!server && createdId && canSignIn && transport === "http") {
+      // `offersSignIn` still reads the server that has just been created, so the
+      // sign-in is decided from what the form says about it.
+      const signingInNext = canSignIn && transport === "http";
+      if (!server && createdId) {
         setSavedId(createdId);
-        setAutoSignIn(true);
-        setStep(SETUP_STEPS.length);
-        return;
+        if (offersTools || signingInNext) {
+          setAutoSignIn(!offersTools && signingInNext);
+          setStep(offersTools ? "tools" : "signin");
+          return;
+        }
       }
       onOpenChange(false);
     } catch (err) {
@@ -558,6 +659,7 @@ export function McpServerDialog({
     envValues,
     name,
     onOpenChange,
+    offersTools,
     server,
     onSave,
     removedEnvNames,
@@ -612,7 +714,7 @@ export function McpServerDialog({
     }
     setFieldError(null);
     setError(null);
-    setStep(2);
+    setStep("access");
   };
 
   return (
@@ -626,14 +728,18 @@ export function McpServerDialog({
           <DialogDescription>
             {isEditing
               ? "Where Saale reaches the server, how its tools are approved, and how it signs in."
-              : "Two steps to connect a server. One more if it asks you to sign in."}
+              : "Two steps to connect a server, then its tools. One more if it asks you to sign in."}
           </DialogDescription>
         </DialogHeader>
 
-        <SetupSteps steps={steps} current={current} onSelect={setStep} />
+        <SetupSteps
+          steps={stepKeys.map((key) => STEP_LABELS[key])}
+          current={current}
+          onSelect={(next) => setStep(stepKeys[next - 1] ?? "connect")}
+        />
 
         <div className="max-h-[55vh] space-y-4 overflow-x-hidden overflow-y-auto pr-1">
-          {current === 1 ? (
+          {currentKey === "connect" ? (
             <>
               {allowStdio && (
                 <div className="space-y-2">
@@ -857,7 +963,7 @@ export function McpServerDialog({
                 </div>
               )}
             </>
-          ) : current === 2 ? (
+          ) : currentKey === "access" ? (
             <>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 space-y-0.5">
@@ -957,6 +1063,32 @@ export function McpServerDialog({
                 </div>
               )}
             </>
+          ) : currentKey === "tools" ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label className="text-sm">Tools</Label>
+                <p className="text-muted-foreground text-xs">
+                  Each tool asks, runs or stays blocked on its own. One without a policy follows the
+                  server&apos;s ({MCP_POLICY_LABELS[toolPolicy] ?? "Ask"}).
+                </p>
+                {!serverId ? (
+                  <p className="text-muted-foreground text-xs">
+                    The list appears once the server is added.
+                  </p>
+                ) : (
+                  <McpToolPolicyRows
+                    server={{ name: name || "this server", toolPolicy }}
+                    state={toolsState ?? { kind: "loading" }}
+                    toolPolicies={toolPolicies}
+                    probing={probingTools}
+                    onProbe={() => void probeTools()}
+                    onToolPolicyChange={(toolName, policy) =>
+                      onToolPolicyChange?.(toolName, policy)
+                    }
+                  />
+                )}
+              </div>
+            </div>
           ) : (
             <div className="space-y-2">
               {oauthPhase === "pending" ? (
@@ -1100,7 +1232,7 @@ export function McpServerDialog({
         </div>
 
         <DialogFooter className="sm:justify-between">
-          {current === 1 ? (
+          {currentKey === "connect" ? (
             <>
               <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
                 Cancel
@@ -1109,9 +1241,9 @@ export function McpServerDialog({
                 Continue
               </Button>
             </>
-          ) : current === 2 ? (
+          ) : currentKey === "access" ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => setStep(1)}>
+              <Button variant="outline" size="sm" onClick={() => setStep("connect")}>
                 Back
               </Button>
               <div className="flex gap-2">
@@ -1149,13 +1281,27 @@ export function McpServerDialog({
                 </Button>
               </div>
             </>
+          ) : currentKey === "tools" ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setStep("access")}>
+                Back
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => (offersSignIn ? setStep("signin") : onOpenChange(false))}
+              >
+                {offersSignIn ? "Continue" : "Done"}
+              </Button>
+            </>
           ) : (
             <>
-              {isEditing && (
-                <Button variant="outline" size="sm" onClick={() => setStep(2)}>
-                  Back
-                </Button>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStep(offersTools ? "tools" : "access")}
+              >
+                Back
+              </Button>
               <Button size="sm" onClick={() => onOpenChange(false)}>
                 Done
               </Button>

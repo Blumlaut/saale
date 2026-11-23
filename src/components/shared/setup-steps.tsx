@@ -31,7 +31,8 @@ export function SetupSteps({
             <span
               className={[
                 "truncate text-[11px]",
-                number === current ? "text-foreground" : "text-muted-foreground",
+                // A phone has room for the dots and the step it is on, not four labels.
+                number === current ? "text-foreground" : "text-muted-foreground hidden sm:inline",
               ].join(" ")}
             >
               {label}
