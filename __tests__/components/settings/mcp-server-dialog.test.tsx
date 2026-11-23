@@ -311,8 +311,9 @@ describe("McpServerDialog OAuth sign-in", () => {
 
     const forTool = await screen.findByRole("combobox", { name: "Approval for create_issue" });
     expect(loadTools).toHaveBeenCalledWith("srv-1");
-    // A tool without a policy of its own follows the server.
-    expect(forTool).toHaveTextContent("Ask");
+    // A tool without a policy of its own says so, and the row says what it does.
+    expect(forTool).toHaveTextContent("Follow server");
+    expect(screen.getByText("Open an issue")).toBeInTheDocument();
 
     chooseOption(forTool, "Block");
     expect(onToolPolicyChange).toHaveBeenCalledWith("mcp__linear__create_issue", "off");

@@ -405,8 +405,8 @@ describe("Tools MCP servers", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show the tools of homeassistant" }));
 
     const forTool = await screen.findByRole("combobox", { name: "Approval for HassTurnOn" });
-    // A tool without a policy of its own follows its server.
-    expect(forTool).toHaveTextContent("Allow");
+    // A tool without a policy of its own says so.
+    expect(forTool).toHaveTextContent("Follow server");
 
     fireEvent.click(forTool);
     const off = screen.getByRole("option", { name: "Block" });

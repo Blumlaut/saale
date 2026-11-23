@@ -16,11 +16,12 @@ export const MCP_POLICY_OPTIONS: readonly {
   { value: "off", label: "Block", hint: "Never run tools from this server" },
 ];
 
-/** The same setting as a row names it: a policy has one word per place. */
+/** A stored answer as its row names it, including "no answer of its own". */
 export const MCP_POLICY_LABELS: Record<string, string> = {
   ask: "Ask",
   allow: "Allow",
   off: "Blocked",
+  clear: "Follow server",
 };
 
 /** The hint under a policy control, for the value it holds. */

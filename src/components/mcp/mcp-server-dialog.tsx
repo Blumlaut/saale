@@ -1077,7 +1077,6 @@ export function McpServerDialog({
                   </p>
                 ) : (
                   <McpToolPolicyRows
-                    server={{ name: name || "this server", toolPolicy }}
                     state={toolsState ?? { kind: "loading" }}
                     toolPolicies={toolPolicies}
                     probing={probingTools}
