@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026.11.22 - 2026-11-24
+
+- cover the mcp tools step in the modal guard (93fa0e1c)
+- name the setup stepper for a screen reader (c4d728b8)
+- keep a shared server's approval on the instance (34e4d89b)
+- fix the mcp dialog's tools step and probe errors (89419028)
+- give the mcp tool summary one home (17d059f1)
+- scope stfu mode to the chat it was set in (226062db)
+- name the stored policy and describe each mcp tool (4d1eaee5)
+- rebuild sessions when an mcp tool policy changes (98994dac)
+- keep a policy stored for an mcp tool (94e5a61c)
+- pin the callback base url in the oauth route test (040309d5)
+- give the mcp setup a tools step and one column per row (63d034cd)
+- give the mcp server row its own line on a phone (94b5ac00)
+- open the mcp setup as a stepped dialog (8254b793)
+- set mcp approval per server and per tool in tools (1093caf3)
+- sign mcp in over the host the request came from (232474b4)
+- let telegram_send carry workspace files (e744dee6)
+
 ## 2026.11.21 - 2026-11-23
 
 - confirm every delete with the shared dialog (7b6305b2)
