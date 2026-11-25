@@ -15,6 +15,7 @@
 
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createAgentIdleTimeout, DEFAULT_AGENT_IDLE_TIMEOUT_MS } from "@/lib/pi/agent-idle-timeout";
+import { continueInterruptedTurn } from "@/lib/pi/interrupted-turn";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { createAndPool, get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import {
@@ -26,7 +27,11 @@ import { createChatApprovalEmitter } from "@/lib/pi/tool-approval-gate";
 import { ensureWorktree } from "@/lib/coder/worktrees";
 import { clearAgentBuilding, markAgentBuilding, registerActiveSession } from "@/lib/redis";
 import { publishSessionEvent, resetSessionEvents } from "@/lib/pi/session-events";
-import { waitForPersistenceTeardown, wireSessionPersistence } from "@/lib/pi/session-persistence";
+import {
+  waitForPersistenceTeardown,
+  wireSessionPersistence,
+  unwireSessionPersistence,
+} from "@/lib/pi/session-persistence";
 import { submitDeferringToCompaction } from "@/lib/pi/compaction-defer";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import { endChatRun, markChatRunInFlight } from "@/lib/chat/run-record";
@@ -38,6 +43,14 @@ export type PooledChatSession = Awaited<ReturnType<typeof createAndPool>>;
 
 /** Optional debug logger (the stream route prefixes it with the session id). */
 export type ChatRunLog = (tag: string, ...args: unknown[]) => void;
+
+/**
+ * How a run hands its work to the agent.
+ *
+ * `continue` picks up a turn the transcript already holds, which is how a run a
+ * restart cut off carries on from where it stopped; `prompt` sends the message.
+ */
+export type ChatRunMode = "prompt" | "continue";
 
 /**
  * Ensure this process has the chat's agent, building it with the chat's own
@@ -159,13 +172,15 @@ export async function dispatchChatRun(options: {
   sessionId: string;
   entry: PooledChatSession;
   content: string;
+  mode?: ChatRunMode | undefined;
   images?: ImageContent[] | undefined;
   /** Runs after a failed run was unregistered and published. */
   onRunFailed?: ((error: unknown) => void) | undefined;
   log?: ChatRunLog | undefined;
 }): Promise<boolean> {
   const { entry } = options;
-  options.log?.("prompt", "sending prompt");
+  const mode = options.mode ?? "prompt";
+  options.log?.("prompt", mode === "continue" ? "continuing the turn in flight" : "sending prompt");
 
   // A run can go completely silent. a provider whose stream never closes after
   // the server it was talking to went away, or a tool that never returns. and
@@ -198,11 +213,12 @@ export async function dispatchChatRun(options: {
   try {
     const images = options.images ?? [];
     await Promise.race([
-      submitDeferringToCompaction(entry.session, () =>
-        images.length > 0
+      submitDeferringToCompaction(entry.session, () => {
+        if (mode === "continue") return continueInterruptedTurn(entry.session);
+        return images.length > 0
           ? entry.session.prompt(options.content, { images })
-          : entry.session.prompt(options.content),
-      ),
+          : entry.session.prompt(options.content);
+      }),
       stalled,
     ]);
     entry.promptInFlight = false;
@@ -216,6 +232,10 @@ export async function dispatchChatRun(options: {
     entry.promptInFlight = false;
     entry.lastPromptedMessageId = null;
     console.error("session.prompt() failed:", err);
+    // Nothing is running any more, so nothing may keep saying it is: the
+    // tracker's heartbeat would go on marking the chat active (and its run
+    // record alive) between this failure and the next run.
+    unwireSessionPersistence(options.sessionId);
     endChatRun(options.userId, options.sessionId).catch(console.error);
     publishSessionEvent(options.sessionId, "error", {
       message: err instanceof Error ? err.message : String(err),

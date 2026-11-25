@@ -91,8 +91,13 @@ export function findRewindEntry(
 
 /**
  * Move the transcript's leaf so the next prompt replaces `entry`.
+ * `navigateTree` on a user message puts the leaf at its parent, so the message
+ * drops off the active branch and the prompt takes its place.
  */
-async function rewindLeafBefore(session: AgentSession, entry: SessionMessageEntry): Promise<void> {
+export async function rewindLeafBefore(
+  session: AgentSession,
+  entry: SessionMessageEntry,
+): Promise<void> {
   const { sessionManager } = session;
 
   if (sessionManager.getLeafId() !== entry.id) {

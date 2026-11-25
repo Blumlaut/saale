@@ -19,6 +19,17 @@ vi.mock("@/lib/pi/message-rewind", () => ({
   applyPendingHistoryRewind: (...args: unknown[]) => mockApplyPendingRewind(...args),
 }));
 
+const mockPlanTurn = vi.fn();
+const mockApplyTurn = vi.fn();
+const mockOrphans = vi.fn();
+const mockAnswerOrphans = vi.fn();
+vi.mock("@/lib/pi/interrupted-turn", () => ({
+  planInterruptedTurn: (...args: unknown[]) => mockPlanTurn(...args),
+  applyInterruptedTurn: (...args: unknown[]) => mockApplyTurn(...args),
+  orphanedCallsOnBranch: (...args: unknown[]) => mockOrphans(...args),
+  answerOrphanedCalls: (...args: unknown[]) => mockAnswerOrphans(...args),
+}));
+
 const mockReadImage = vi.fn();
 vi.mock("@/lib/image-attachment", () => ({
   readImageAsBase64: (...args: unknown[]) => mockReadImage(...args),
@@ -54,6 +65,9 @@ describe("prepareChatRun", () => {
     mockEnsureAgent.mockResolvedValue({ entry: pooled, existedAlready: true });
     mockRewindDuplicate.mockResolvedValue(false);
     mockApplyPendingRewind.mockResolvedValue("nothing-pending");
+    mockPlanTurn.mockReturnValue({ kind: "prompt" });
+    mockApplyTurn.mockResolvedValue(false);
+    mockOrphans.mockReturnValue([]);
     mockBeginRun.mockResolvedValue(undefined);
   });
 
@@ -104,5 +118,61 @@ describe("prepareChatRun", () => {
 
     expect(mockReadImage).toHaveBeenCalledWith("user-1", "shots/a.webp");
     expect(prepared?.images).toEqual([{ type: "image", data: "base64", mimeType: "image/webp" }]);
+  });
+
+  it("sends the message when the run is not a resume", async () => {
+    const prepared = await prepareChatRun({ userId: "user-1", chatSession: CHAT, target: TARGET });
+
+    expect(prepared?.mode).toBe("prompt");
+    expect(mockPlanTurn).not.toHaveBeenCalled();
+    expect(mockRewindDuplicate).toHaveBeenCalled();
+  });
+
+  it("continues the interrupted turn the transcript still holds", async () => {
+    mockPlanTurn.mockReturnValue({ kind: "continue", orphanedCalls: [{ id: "c1", name: "bash" }] });
+    mockApplyTurn.mockResolvedValue(true);
+
+    const prepared = await prepareChatRun({
+      userId: "user-1",
+      chatSession: CHAT,
+      target: TARGET,
+      resume: true,
+    });
+
+    expect(prepared?.mode).toBe("continue");
+    expect(mockPlanTurn).toHaveBeenCalledWith(expect.anything(), { content: TARGET.content });
+    expect(mockApplyTurn).toHaveBeenCalledWith(expect.anything(), {
+      kind: "continue",
+      orphanedCalls: [{ id: "c1", name: "bash" }],
+    });
+    // The message is already in the transcript, so it is not sent again.
+    expect(mockRewindDuplicate).not.toHaveBeenCalled();
+    // And its images went with it the first time.
+    expect(mockReadImage).not.toHaveBeenCalled();
+  });
+
+  it("answers a call a dead run left open before sending a new message", async () => {
+    // Otherwise the message answers a tool call, which every provider rejects.
+    mockOrphans.mockReturnValue([{ id: "c1", name: "bash" }]);
+
+    await prepareChatRun({ userId: "user-1", chatSession: CHAT, target: TARGET });
+
+    expect(mockAnswerOrphans).toHaveBeenCalledWith(expect.anything(), [{ id: "c1", name: "bash" }]);
+  });
+
+  it("falls back to sending the message when there is no turn to continue", async () => {
+    mockPlanTurn.mockReturnValue({ kind: "prompt" });
+    mockApplyTurn.mockResolvedValue(false);
+    mockOrphans.mockReturnValue([]);
+
+    const prepared = await prepareChatRun({
+      userId: "user-1",
+      chatSession: CHAT,
+      target: TARGET,
+      resume: true,
+    });
+
+    expect(prepared?.mode).toBe("prompt");
+    expect(mockRewindDuplicate).toHaveBeenCalled();
   });
 });

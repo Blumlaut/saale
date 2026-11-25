@@ -32,6 +32,7 @@ vi.mock("@/lib/redis", async () => {
 const mockChatSessionUpdate = vi.fn();
 const mockChatMessageDeleteMany = vi.fn();
 const mockChatRunDeleteMany = vi.fn();
+const mockChatRunUpdateMany = vi.fn();
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatSession: {
@@ -42,6 +43,7 @@ vi.mock("@/lib/db", () => ({
     },
     chatRun: {
       deleteMany: (...args: unknown[]) => mockChatRunDeleteMany(...args),
+      updateMany: (...args: unknown[]) => mockChatRunUpdateMany(...args),
     },
   },
 }));
@@ -288,36 +290,37 @@ describe("createSessionEventTracker", () => {
     }
   });
 
-  it("keeps the active-session flag fresh while Pi is streaming (no drift)", async () => {
+  it("keeps the active-session flag fresh for as long as the run lasts", async () => {
     vi.useFakeTimers();
     try {
       setup();
       mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
 
       const session = createFakeSession();
-      (session as unknown as { isStreaming: boolean }).isStreaming = true;
       createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
 
-      session.emit({ type: "agent_start" });
-      // The caller (POST /messages or the Telegram processor) registers the
-      // flag before prompting; the tracker's heartbeat only keeps it fresh.
-      expect(mockRegisterActiveSession).not.toHaveBeenCalled();
-
-      // A long silent tool call emits no events; the heartbeat (driven by
-      // Pi's session.isStreaming) must keep refreshing the flag, several times
-      // inside the liveness TTL so a live run can never look dead.
+      // A long silent tool call emits no events, so the heartbeat. not the
+      // events. has to keep the flag fresh, several times inside the liveness
+      // TTL, or a live run would look dead.
       const beats = Math.floor(
         (ACTIVE_SESSION_TTL_SECONDS * 1000 - 1) / ACTIVE_SESSION_HEARTBEAT_MS,
       );
       expect(beats).toBeGreaterThanOrEqual(2);
-      vi.advanceTimersByTime(ACTIVE_SESSION_HEARTBEAT_MS * (beats + 1));
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * (beats + 1));
       expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
       expect(mockRegisterActiveSession).toHaveBeenCalledTimes(beats + 1);
 
-      // Once Pi actually stops streaming, the flag stops being refreshed.
-      (session as unknown as { isStreaming: boolean }).isStreaming = false;
-      vi.advanceTimersByTime(ACTIVE_SESSION_HEARTBEAT_MS * 6);
-      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(beats + 1);
+      // Pi not streaming does not end the run. a prompt deferred to a
+      // compaction holds the chat while isStreaming is false.
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * 2);
+      expect(mockRegisterActiveSession).toHaveBeenCalledTimes(beats + 3);
+
+      // The settle does.
+      session.emit({ type: "agent_start" });
+      session.emit({ type: "agent_settled" });
+      const after = mockRegisterActiveSession.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * 6);
+      expect(mockRegisterActiveSession.mock.calls.length).toBe(after);
     } finally {
       vi.useRealTimers();
     }
@@ -813,6 +816,71 @@ describe("createSessionEventTracker", () => {
     expect(
       (agentEndUpdate![0] as { data: Record<string, unknown> }).data.lastActivityAt,
     ).toBeInstanceOf(Date);
+  });
+
+  it("refreshes the run record's heartbeat for as long as the run lasts", async () => {
+    vi.useFakeTimers();
+    try {
+      const { published } = setup();
+      mockSaveAssistantMessage.mockResolvedValue({ id: "msg-1" });
+
+      const session = createFakeSession();
+      createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+      // A run whose agent is not streaming (a prompt deferred to a compaction)
+      // is still the chat's run: a heartbeat that stopped would hand it to the
+      // recovery pass, which would run the turn a second time.
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * 2);
+
+      expect(mockRegisterActiveSession).toHaveBeenCalledWith("u1", "s1");
+      expect(mockChatRunUpdateMany).toHaveBeenCalledWith({
+        where: { sessionId: "s1" },
+        data: { heartbeatAt: expect.any(Date) },
+      });
+
+      session.emit({ type: "agent_start" });
+      session.emit({ type: "turn_start" });
+      session.emit({ type: "agent_settled" });
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * 2);
+
+      // Settled: nothing may keep saying the chat is running.
+      const after = mockChatRunUpdateMany.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(ACTIVE_SESSION_HEARTBEAT_MS * 2);
+      expect(mockChatRunUpdateMany.mock.calls.length).toBe(after);
+      expect(published.map((event) => event.event)).toContain("done");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops the run record only after the run's saves have landed", async () => {
+    setup();
+    const resolvers: Array<(value: { id: string }) => void> = [];
+    mockSaveAssistantMessage.mockImplementation(
+      () => new Promise<{ id: string }>((resolve) => resolvers.push(resolve)),
+    );
+
+    const session = createFakeSession();
+    createSessionEventTracker({ sessionId: "s1", userId: "u1", session });
+
+    emitRun(session, "Hi");
+    session.emit({ type: "agent_settled" });
+    await flush();
+
+    // The reply is still being written: the record has to outlive it, or a
+    // restart here resumes a run whose answer is already saved.
+    expect(mockChatRunDeleteMany).not.toHaveBeenCalled();
+
+    // The agent_end save chains off the turn's, so each one appears only once
+    // the previous resolves.
+    for (let i = 0; i < 6; i++) {
+      for (const resolve of resolvers.splice(0)) resolve({ id: "msg-1" });
+      await flush();
+    }
+
+    expect(mockChatRunDeleteMany).toHaveBeenCalledWith({
+      where: { sessionId: "s1", userId: "u1" },
+    });
   });
 
   it("dispose() stops listening for events", async () => {

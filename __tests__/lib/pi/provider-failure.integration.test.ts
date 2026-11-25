@@ -75,10 +75,24 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("@/lib/redis", () => ({
-  registerActiveSession: async () => {},
-  unregisterActiveSession: async () => {},
-}));
+vi.mock("@/lib/redis", async () => {
+  // The heartbeat cadence is the real module's contract; only the Redis calls
+  // are stubbed.
+  const actual = await vi.importActual<typeof import("@/lib/redis")>("@/lib/redis");
+  return {
+    ACTIVE_SESSION_HEARTBEAT_MS: actual.ACTIVE_SESSION_HEARTBEAT_MS,
+    ACTIVE_SESSION_TTL_SECONDS: actual.ACTIVE_SESSION_TTL_SECONDS,
+    registerActiveSession: async () => {},
+    unregisterActiveSession: async () => {},
+  };
+});
+
+vi.mock("@/lib/chat/run-record", async () => {
+  // The tracker's run record writes go to a database these tests do not have.
+  const actual =
+    await vi.importActual<typeof import("@/lib/chat/run-record")>("@/lib/chat/run-record");
+  return { ...actual, touchChatRun: async () => {}, endChatRun: async () => {} };
+});
 
 vi.mock("@/lib/pi/session-events", () => ({
   publishSessionEvent: async () => {},

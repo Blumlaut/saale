@@ -1,20 +1,28 @@
 /**
- * One chat run: claim the chat's agent, prompt it, and deliver whatever the user
- * queued behind it. No connection involved.
+ * One chat run: claim the chat's agent, hand it the message, and deliver
+ * whatever the user queued behind it. No connection involved.
  *
- * Two callers prompt a chat without owning a client request: the SSE route, for
- * the message a POST claimed and for every run it recovers, and the boot pass,
- * which resumes the runs a restart killed (`resume-interrupted-runs.ts`). Both
- * have to build, claim and persist identically. a step missing on one shows up
- * as a run that never reaches the DB, a duplicate prompt in the transcript, or a
- * generation Stop cannot find.
+ * Three callers run a chat without owning a client request: the SSE route, for
+ * the message a POST claimed, for a run it recovers and for every run it drains
+ * from the queue; the boot pass, which resumes the runs a restart killed
+ * (`resume-interrupted-runs.ts`); and `chat_respond`, for a message an agent
+ * posts into another chat. All of them have to build, claim and persist
+ * identically. a step missing on one shows up as a run that never reaches the
+ * DB, a duplicate prompt in the transcript, or a generation Stop cannot find.
  */
 
 import { claimNextQueuedMessage, publishQueueUpdate, restoreQueuedMessage } from "@/lib/chat/queue";
 import { drainSendQueue } from "@/lib/chat/drain-queue";
+import { RUN_HEARTBEAT_STALE_MS, touchChatRun } from "@/lib/chat/run-record";
 import { readImageAsBase64 } from "@/lib/image-attachment";
 import { get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import type { ChatSessionModelConfig } from "@/lib/pi/chat-session-factory";
+import {
+  answerOrphanedCalls,
+  applyInterruptedTurn,
+  orphanedCallsOnBranch,
+  planInterruptedTurn,
+} from "@/lib/pi/interrupted-turn";
 import type { ImageContent } from "@/lib/pi/message-replay";
 import { applyPendingHistoryRewind, rewindDuplicatePrompt } from "@/lib/pi/message-rewind";
 import { isSendQueueHeld } from "@/lib/redis";
@@ -24,6 +32,7 @@ import {
   dispatchChatRun,
   ensureChatAgent,
   type ChatRunLog,
+  type ChatRunMode,
   type PooledChatSession,
 } from "./agent-run";
 
@@ -34,9 +43,15 @@ export interface ChatPromptTarget {
   attachments: { storagePath: string; mimeType: string }[];
 }
 
+/** A claimed chat, waiting to be handed its run. */
 export interface PreparedChatRun {
   entry: PooledChatSession;
   target: ChatPromptTarget;
+  /**
+   * `continue` picks up the turn the transcript already holds (a run a restart
+   * cut off); `prompt` sends the message.
+   */
+  mode: ChatRunMode;
   images: ImageContent[];
 }
 
@@ -70,10 +85,10 @@ async function loadPromptImages(
 
 /**
  * Claim this process's pooled agent for a message and make it runnable: guard
- * against a double prompt, rewind a transcript the dead or edited run left
- * behind, register the generation, and pre-load images.
+ * against a double prompt, put the transcript in the state the run needs,
+ * register the generation, and pre-load images.
  *
- * Returns null when a prompt is already in flight in this process. the caller
+ * Returns `busy` when a prompt is already in flight in this process: the caller
  * must not claim work it cannot deliver.
  */
 export async function prepareChatRun(options: {
@@ -82,16 +97,34 @@ export async function prepareChatRun(options: {
   /** Resolved model; the chat's own, or the user's default when omitted. */
   model?: { provider: string; name: string } | undefined;
   target: ChatPromptTarget;
+  /**
+   * This message's run was interrupted, so its turn may already be in the
+   * transcript. Continue it there when it can be, instead of sending the
+   * message again.
+   */
+  resume?: boolean | undefined;
   log?: ChatRunLog | undefined;
 }): Promise<PreparedChatRun | null> {
   const { userId, chatSession, target, log } = options;
-  const { entry, existedAlready } = await ensureChatAgent({
-    userId,
-    sessionId: chatSession.id,
-    chatSession,
-    ...(options.model ? { model: options.model } : {}),
-    log,
-  });
+
+  // Building an agent is slow (a coder chat checks out a worktree, fetches and
+  // installs: minutes), and nothing else refreshes the run record meanwhile. A
+  // resumed run that stopped saying so would look dead to another process, which
+  // would start the same turn over the same transcript.
+  const keepClaimFresh = options.resume ? startClaimHeartbeat(chatSession.id) : null;
+  let claimed: { entry: PooledChatSession; existedAlready: boolean };
+  try {
+    claimed = await ensureChatAgent({
+      userId,
+      sessionId: chatSession.id,
+      chatSession,
+      ...(options.model ? { model: options.model } : {}),
+      log,
+    });
+  } finally {
+    keepClaimFresh?.();
+  }
+  const { entry, existedAlready } = claimed;
 
   if (existedAlready) {
     log?.("pool", `hit. lastPromptedMessageId=${entry.lastPromptedMessageId}`);
@@ -105,24 +138,16 @@ export async function prepareChatRun(options: {
   entry.lastPromptedMessageId = target.id;
 
   try {
-    // A run that died mid-flight (restart, crash) left its prompt in the
-    // transcript with no reply, and this recovery is about to re-prompt it:
-    // rewind first so the prompt replaces that entry instead of appending a
-    // second copy of the same message (see message-rewind.ts).
-    if (await rewindDuplicatePrompt(entry.session, { content: target.content })) {
-      log?.("rewind", `transcript already held message ${target.id}. rewound before it`);
-    }
+    const mode = await prepareTranscript({
+      sessionId: chatSession.id,
+      entry,
+      target,
+      resume: options.resume === true,
+      log,
+    });
 
-    // An edited message still has the history its edit deleted in the agent
-    // transcript. rewind it, or the prompt lands as a brand new message after
-    // the old conversation (see message-rewind.ts).
-    const rewind = await applyPendingHistoryRewind(chatSession.id, entry.session, target.id);
-    if (rewind !== "nothing-pending") {
-      log?.("rewind", `${rewind} for message ${target.id}`);
-    }
-
-    // Publish the generation, record it for the boot pass, clear stale buffered
-    // events, and wire DB persistence.
+    // Publish the generation, record it for the recovery pass, clear stale
+    // buffered events, and wire DB persistence.
     await beginChatRun({
       userId,
       sessionId: chatSession.id,
@@ -131,9 +156,10 @@ export async function prepareChatRun(options: {
       messageId: target.id,
     });
 
-    const images = await loadPromptImages(userId, target.attachments);
-    log?.("prompt", `claimed prompt for message ${target.id}`);
-    return { entry, target, images };
+    // A continued turn already carries its message's images.
+    const images = mode === "prompt" ? await loadPromptImages(userId, target.attachments) : [];
+    log?.("prompt", `claimed ${mode} for message ${target.id}`);
+    return { entry, target, mode, images };
   } catch (err) {
     // Nothing was dispatched, so nothing will settle and release the chat. a
     // stuck `promptInFlight` would 409 every message the chat gets after this.
@@ -141,6 +167,69 @@ export async function prepareChatRun(options: {
     entry.lastPromptedMessageId = null;
     throw err;
   }
+}
+
+/**
+ * Keep a claimed run's record fresh until the run itself takes over.
+ *
+ * @returns a function that stops the heartbeat.
+ */
+function startClaimHeartbeat(sessionId: string): () => void {
+  const timer = setInterval(() => {
+    touchChatRun(sessionId).catch((err) => {
+      console.error(`Failed to refresh the claimed run of chat ${sessionId}:`, err);
+    });
+  }, RUN_HEARTBEAT_STALE_MS / 2);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+/**
+ * Put the agent's transcript in the state this run needs.
+ *
+ * @returns whether the run continues the turn already in the transcript.
+ */
+async function prepareTranscript(options: {
+  sessionId: string;
+  entry: PooledChatSession;
+  target: ChatPromptTarget;
+  resume: boolean;
+  log: ChatRunLog | undefined;
+}): Promise<ChatRunMode> {
+  const { sessionId, entry, target, resume, log } = options;
+  if (resume) {
+    const plan = planInterruptedTurn(entry.session, { content: target.content });
+    if (await applyInterruptedTurn(entry.session, plan)) {
+      log?.("resume", `continuing the interrupted turn of message ${target.id}`);
+      return "continue";
+    }
+    log?.("resume", `the transcript has no turn to continue (${plan.kind})`);
+  }
+
+  // A run that died mid-flight (restart, crash) left its prompt in the
+  // transcript with no reply, and this prompt is about to replace it: rewind
+  // first so the message is not appended twice (see message-rewind.ts).
+  if (await rewindDuplicatePrompt(entry.session, { content: target.content })) {
+    log?.("rewind", `transcript already held message ${target.id}. rewound before it`);
+  }
+
+  // An edited message still has the history its edit deleted in the agent
+  // transcript. rewind it, or the prompt lands as a brand new message after
+  // the old conversation (see message-rewind.ts).
+  const rewind = await applyPendingHistoryRewind(sessionId, entry.session, target.id);
+  if (rewind !== "nothing-pending") {
+    log?.("rewind", `${rewind} for message ${target.id}`);
+  }
+
+  // A run that died mid-tool leaves a call with no result on the branch, and the
+  // message about to be sent would answer a tool call. whatever got us here.
+  const orphaned = orphanedCallsOnBranch(entry.session);
+  if (orphaned.length > 0) {
+    log?.("resume", `answering ${orphaned.length} call(s) a dead run left open`);
+    answerOrphanedCalls(entry.session, orphaned);
+  }
+
+  return "prompt";
 }
 
 /**
@@ -161,6 +250,7 @@ export async function dispatchPreparedChatRun(options: {
     sessionId: options.chatSession.id,
     entry: options.run.entry,
     content: options.run.target.content,
+    mode: options.run.mode,
     images: options.run.images,
     log: options.log,
     onRunFailed: options.onRunFailed,

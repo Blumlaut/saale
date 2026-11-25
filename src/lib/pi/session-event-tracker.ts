@@ -51,7 +51,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { saveCompactionMessage } from "@/lib/chat/compaction";
 import { publishQueueUpdate } from "@/lib/chat/queue";
-import { endChatRun } from "@/lib/chat/run-record";
+import { endChatRun, touchChatRun } from "@/lib/chat/run-record";
 import { ACTIVE_SESSION_HEARTBEAT_MS, registerActiveSession } from "@/lib/redis";
 import { clearSessionAbort, wasSessionAbortRequested } from "./abort-request";
 import { readContextUsage } from "./context-usage";
@@ -291,21 +291,27 @@ export function createSessionEventTracker(
     }
   });
 
-  // ── Activity heartbeat: align the Redis active-flag with Pi's REAL state ──
-  // `session.isStreaming` is Pi's ground truth. Events are only a proxy for
-  // it, and a long tool call that emits nothing would let the flag's short
-  // liveness TTL expire mid-run. the 409 guard would stop blocking sends
-  // while Pi is genuinely busy, and a watcher would take the session for dead.
-  // While Pi streams, refresh the flag on a cadence well inside that TTL.
+  // ── Activity heartbeat: say this run is still here, twice over ──────────
+  // The run's liveness lives in two places: the Redis flag every connection
+  // and process reads, and the run record's own heartbeat, which the recovery
+  // pass trusts when the keyspace cannot be asked. Both have a short window
+  // because a dead process stops refreshing them. A long tool call emits
+  // nothing for minutes, so a run that only refreshed on events would look
+  // dead mid-run. The tracker's lifetime IS the run's, so both are refreshed
+  // on a cadence, whatever Pi is streaming. That includes a run deferred to a
+  // compaction, which a stopped heartbeat would hand to the recovery pass.
   let activityTimer: ReturnType<typeof setInterval> | null = null;
+  const refreshHeartbeat = () => {
+    registerActiveSession(userId, sessionId).catch((err) => {
+      console.error("Failed to refresh active session flag:", err);
+    });
+    touchChatRun(sessionId).catch((err) => {
+      console.error("Failed to refresh the run record:", err);
+    });
+  };
   const startActivityHeartbeat = () => {
     if (activityTimer) return;
-    activityTimer = setInterval(() => {
-      if (!session.isStreaming) return;
-      registerActiveSession(userId, sessionId).catch((err) => {
-        console.error("Failed to refresh active session flag:", err);
-      });
-    }, ACTIVE_SESSION_HEARTBEAT_MS);
+    activityTimer = setInterval(refreshHeartbeat, ACTIVE_SESSION_HEARTBEAT_MS);
     activityTimer.unref?.();
   };
   const stopActivityHeartbeat = () => {
@@ -314,6 +320,9 @@ export function createSessionEventTracker(
       activityTimer = null;
     }
   };
+  // The tracker is created with the run, so this is where the run takes
+  // responsibility for its own liveness.
+  startActivityHeartbeat();
 
   /**
    * Publish one step of a streamed text field (the turn's text or thinking).
@@ -892,7 +901,6 @@ export function createSessionEventTracker(
         }
         break;
       }
-
       // ── Agent settled: completely finished ───────────────────────────────
       // Emitted by the SDK after the run AND all post-run processing (error
       // retries, auto-compaction, queued continuations) are done. This is
@@ -904,32 +912,39 @@ export function createSessionEventTracker(
         if (settledFinalized) break;
         settledFinalized = true;
         clearSessionAbort(userId, sessionId);
+        stopActivityHeartbeat();
 
         // End the run (liveness flag and run record) and bump the message count
         // once. Assistant output is real chat activity. advance lastActivityAt
         // too (the UI's sort/display timestamp). Note: tool_execution_
         // start/end do NOT touch it, so tool calls alone never move a chat
         // to the top of the list.
-        void Promise.all([
-          endChatRun(userId, sessionId),
-          prisma.chatSession.update({
-            where: { id: sessionId },
-            data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },
-          }),
-        ]).catch((err) => {
-          console.error("Failed to finalize session bookkeeping:", err);
-        });
-
-        // Wait for all DB saves (turn saves, agent_end finalization,
-        // compaction messages) to complete before emitting "done".
-        stopActivityHeartbeat();
-        void Promise.allSettled(pendingSaves).then(() => {
-          publishSessionEvent(sessionId, "done", {}).catch((err) => {
-            console.error("Failed to publish done:", err);
+        //
+        // Every DB save of this run lands first: the record is what says "nobody
+        // answered this", so a restart in the window between the two must find
+        // the reply, not an unanswered message.
+        void Promise.allSettled(pendingSaves)
+          .then(() =>
+            Promise.all([
+              endChatRun(userId, sessionId),
+              prisma.chatSession.update({
+                where: { id: sessionId },
+                data: { messageCount: { increment: turnIndex || 1 }, lastActivityAt: new Date() },
+              }),
+            ]),
+          )
+          .catch((err) => {
+            console.error("Failed to finalize session bookkeeping:", err);
+          })
+          .then(() => {
+            // `done` after the saves and the record, so a client that reloads on
+            // it reads the whole reply.
+            publishSessionEvent(sessionId, "done", {}).catch((err) => {
+              console.error("Failed to publish done:", err);
+            });
+            options.onDone?.();
+            unsubscribe();
           });
-          options.onDone?.();
-          unsubscribe();
-        });
         break;
       }
     }

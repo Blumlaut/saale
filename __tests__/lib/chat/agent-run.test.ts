@@ -51,9 +51,11 @@ vi.mock("@/lib/pi/session-events", () => ({
 
 const mockWaitTeardown = vi.fn();
 const mockWirePersistence = vi.fn();
+const mockUnwirePersistence = vi.fn();
 vi.mock("@/lib/pi/session-persistence", () => ({
   waitForPersistenceTeardown: (...args: unknown[]) => mockWaitTeardown(...args),
   wireSessionPersistence: (...args: unknown[]) => mockWirePersistence(...args),
+  unwireSessionPersistence: (...args: unknown[]) => mockUnwirePersistence(...args),
 }));
 
 const mockSubmitDeferring = vi.fn();
@@ -355,6 +357,7 @@ describe("dispatchChatRun", () => {
     expect(ok).toBe(false);
     expect(entry.promptInFlight).toBe(false);
     expect(entry.lastPromptedMessageId).toBeNull();
+    expect(mockUnwirePersistence).toHaveBeenCalledWith(SESSION_ID);
     expect(mockEndChatRun).toHaveBeenCalledWith(USER_ID, SESSION_ID);
     expect(mockPublish).toHaveBeenCalledWith(
       SESSION_ID,
@@ -364,6 +367,29 @@ describe("dispatchChatRun", () => {
     expect(mockPublish).toHaveBeenCalledWith(SESSION_ID, "done", {});
     expect(mockResetEvents).toHaveBeenCalledWith(SESSION_ID);
     expect(onRunFailed).toHaveBeenCalled();
+  });
+
+  it("continues the turn in the transcript instead of sending the message", async () => {
+    const sendCustomMessage = vi.fn().mockResolvedValue(undefined);
+    const entry = makeEntry();
+    (entry.session as unknown as Record<string, unknown>).sendCustomMessage = sendCustomMessage;
+
+    const ok = await dispatchChatRun({
+      userId: USER_ID,
+      sessionId: SESSION_ID,
+      entry,
+      content: "hello",
+      mode: "continue",
+    });
+
+    expect(ok).toBe(true);
+    expect(sendCustomMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ customType: "saale:interrupted-turn" }),
+      { triggerTurn: true },
+    );
+    // The message is already in the transcript: sending it again would be a
+    // second user turn.
+    expect(entry.session.prompt).not.toHaveBeenCalled();
   });
 
   it("ends a silent run on the idle timeout and releases the claim", async () => {
