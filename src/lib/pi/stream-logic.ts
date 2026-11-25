@@ -15,9 +15,28 @@ export interface DbMessage {
 
 /** What a new SSE connection should do. */
 export type StreamAction =
-  | { type: "prompt"; reason: string }
+  | {
+      type: "prompt";
+      reason: string;
+      /**
+       * The message to prompt. Absent means the conversation's last one; a
+       * resume names the message its run was answering, which may sit before
+       * the turns the dead run had already saved.
+       */
+      messageId?: string;
+      /** The message's run was interrupted: pick its turn up again. */
+      resume?: boolean;
+    }
   | { type: "observe"; reason: string }
   | { type: "done"; reason: string };
+
+/** A run record this chat still carries: a run nobody settled. */
+export interface InterruptedRun {
+  /** The user message the dead run was answering. */
+  messageId: string;
+  /** Whether nobody is refreshing it any more (see `isRunHeartbeatStale`). */
+  stale: boolean;
+}
 
 /**
  * Decide what a new SSE connection should do.
@@ -39,6 +58,9 @@ export type StreamAction =
  *   anything since (see redis.ts). Stop means "nothing more until I say so",
  *   so an unanswered message must not be re-prompted by a reconnect. that
  *   would silently restart the run the user just cancelled.
+ * - `interruptedRun`. the run record this chat still carries, when its answer is
+ *   not in the DB. it is the strongest statement about the chat: a run claimed
+ *   a message and nothing settled it.
  */
 export function decideStreamAction(params: {
   lastMessage: DbMessage | undefined;
@@ -48,8 +70,10 @@ export function decideStreamAction(params: {
   pendingPromptMessageId: string | null;
   bufferHasDone: boolean;
   queueHeld: boolean;
+  interruptedRun?: InterruptedRun | null;
 }): StreamAction {
   const generationActive = params.isGenerating;
+  const interrupted = params.interruptedRun ?? null;
 
   const last = params.lastMessage;
 
@@ -82,6 +106,9 @@ export function decideStreamAction(params: {
     if (params.bufferHasDone) {
       return { type: "done", reason: "buffered run already finished" };
     }
+    // A record for this message means its run got further than the prompt:
+    // pick the turn up where it stopped rather than sending the message again.
+    if (interrupted) return resumeAction(interrupted, params);
     // Unanswered user message and nothing running: we own the prompt. This
     // covers recovery. a message whose run never started (the client died
     // right after POST /messages) and one whose run died mid-flight, which
@@ -94,7 +121,35 @@ export function decideStreamAction(params: {
   if (generationActive) {
     return { type: "observe", reason: "generation in progress" };
   }
+
+  // A run that saved a turn and then died stops here: the conversation ends
+  // with the model's own turn, so every check above reads the chat as idle.
+  // The record is what says otherwise.
+  if (interrupted) return resumeAction(interrupted, params);
+
   return { type: "done", reason: "idle conversation" };
+}
+
+/** Pick up the run a chat's record still carries, or wait for whoever has it. */
+function resumeAction(
+  run: InterruptedRun,
+  params: { poolLastPromptedMessageId: string | null },
+): StreamAction {
+  // This process is already running it: nothing to do on this connection.
+  if (params.poolLastPromptedMessageId === run.messageId) {
+    return { type: "observe", reason: "already prompted in this process" };
+  }
+  // Claimed moments ago. either a process is running it, or a recovery pass is
+  // still building its agent, and prompting here would run the turn twice.
+  if (!run.stale) {
+    return { type: "observe", reason: "interrupted run claimed moments ago" };
+  }
+  return {
+    type: "prompt",
+    reason: "interrupted run",
+    messageId: run.messageId,
+    resume: true,
+  };
 }
 
 /**

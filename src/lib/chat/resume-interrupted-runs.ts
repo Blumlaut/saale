@@ -7,24 +7,35 @@
  * unanswered until they notice and ask again.
  *
  * Which runs died is the `ChatRun` record's job (see run-record.ts): it exists
- * only while a run is in flight, so whatever is left at boot is exactly what the
- * restart interrupted. A run that finished, failed or was stopped cleared its
- * own record, and the two checks below (answered, stopped) keep a run that died
- * on its way out of the door from being resumed twice.
+ * only while a run is unsettled, and its heartbeat is refreshed by the process
+ * working on it. A record nobody is refreshing is exactly what a restart
+ * leaves behind. The checks below keep a run that is still alive somewhere out
+ * of the pass: its heartbeat is fresh, its liveness flag is set, or its message
+ * already has the answer that ended it.
  *
- * Resuming means prompting the user's message again on a freshly built agent:
- * the transcript is replayed from the DB and the Pi session file, and the turn
- * the restart cut off is rewound so the message is not appended twice. The model
- * answers from scratch; the partial answer a reboot swallowed is gone.
+ * Resuming continues the turn the transcript still holds, so the model reads the
+ * calls whose results never arrived (see interrupted-turn.ts) and carries on from
+ * there. The partial answer that was streaming is gone. the DB only ever held
+ * finished turns.
  *
- * A resumed turn is at-least-once, like any re-prompt: tools the interrupted
- * turn had already run before it could save a reply run again.
+ * A resumed turn is at-least-once, like any re-run: a tool the restart killed
+ * may have to run again, which is what the note tells the model to watch for.
+ *
+ * This is the second of the two ways back to an interrupted run. The first is
+ * the user's own reconnect, which the stream route decides on (see
+ * `decideStreamAction`): this pass is for the chats nobody came back to, and it
+ * sweeps on an interval so a run a failed resume left behind is not stranded
+ * either.
  */
 
 import { prisma } from "@/lib/db";
-import { isSessionActive, isSendQueueHeld } from "@/lib/redis";
+import { isSendQueueHeld, isSessionActive } from "@/lib/redis";
+import { hasFinalAnswer } from "@/lib/chat/run-answer";
 import {
   claimInterruptedChatRun,
+  dropInterruptedChatRun,
+  endChatRun,
+  isRunHeartbeatStale,
   listInterruptedChatRuns,
   type InflightChatRun,
 } from "@/lib/chat/run-record";
@@ -41,13 +52,22 @@ import type { ChatRunLog } from "@/lib/chat/agent-run";
  */
 const RECOVERY_DELAY_MS = 60_000;
 
+/**
+ * How often to look again.
+ *
+ * A resumed run can die too, and a boot is not the only way a run loses its
+ * process (an evicted session, a killed worker). Once a minute is what a chat
+ * nobody is watching can wait for without the pass costing anything.
+ */
+const RECOVERY_SWEEP_MS = 60_000;
+
 /** What the pass did, for the boot log and for tests. */
 export interface ChatRecoveryReport {
-  /** Chats whose message was prompted again. */
+  /** Chats whose message was picked back up. */
   resumed: string[];
   /** Records that were dropped: the run was answered, stopped or unrecoverable. */
   dropped: string[];
-  /** Chats left alone because a run is still live somewhere else. */
+  /** Chats left alone because a run still looks live somewhere. */
   live: string[];
 }
 
@@ -87,12 +107,11 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
     // eslint-disable-next-line no-console
     console.log(`[chat-recovery:${sessionId}] ${tag}`, ...args);
 
-  // A run that is still alive somewhere (the worker running a Telegram reply)
-  // owns this chat. leave its record exactly as it is.
+  // Someone is still working on it. leave its record exactly as it is.
   if (await isSessionActive(userId, sessionId)) return "live";
-
-  // Take the record: two processes booting together must not both resume.
-  if (!(await claimInterruptedChatRun(run))) return "dropped";
+  // Or said so a moment ago, before its liveness flag existed (the build a
+  // resume starts with takes minutes). Two guesses are one guess too many.
+  if (!isRunHeartbeatStale(run)) return "live";
 
   const chatSession = await prisma.chatSession.findFirst({
     where: { id: sessionId, userId },
@@ -109,28 +128,41 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
   if (!chatSession) return "dropped";
 
   // The user stopped this chat by hand, so there is nothing to continue.
-  if (await isSendQueueHeld(sessionId)) return "dropped";
+  if (await isSendQueueHeld(sessionId)) {
+    await dropInterruptedChatRun(run);
+    return "dropped";
+  }
 
   const target = await prisma.chatMessage.findFirst({
     where: { id: messageId, sessionId },
     include: { attachments: { select: { storagePath: true, mimeType: true } } },
   });
-  if (!target || target.role !== "user") return "dropped";
+  if (!target || target.role !== "user") {
+    await dropInterruptedChatRun(run);
+    return "dropped";
+  }
 
-  // A saved turn with text after the claim is a reply the user already has: the
-  // run did its job, and prompting the message again would answer it twice.
-  // Tool-only turns are not, so a run that died between tool calls is resumed
-  // and the model picks the work back up.
-  const reply = await prisma.chatMessage.findFirst({
-    where: {
-      sessionId,
-      role: "assistant",
-      createdAt: { gt: startedAt },
-      content: { not: "" },
-    },
+  // A later message owns the conversation now: resuming this one would answer
+  // it after the newer turn, in the wrong place. The newer run writes its own
+  // record, so this one is simply behind the times.
+  const newestUserMessage = await prisma.chatMessage.findFirst({
+    where: { sessionId, role: "user", queuedAt: null },
+    orderBy: { createdAt: "desc" },
     select: { id: true },
   });
-  if (reply) return "dropped";
+  if (newestUserMessage?.id !== target.id) {
+    await dropInterruptedChatRun(run);
+    return "dropped";
+  }
+
+  // A saved answer is a run that did its job: only its record is left over.
+  if (await hasFinalAnswer(sessionId, startedAt)) {
+    await dropInterruptedChatRun(run);
+    return "dropped";
+  }
+
+  // Take the run: two processes sweeping together must not both resume.
+  if (!(await claimInterruptedChatRun(run))) return "live";
 
   // Loaded here, not at the top of the file: this pulls in Pi and the whole
   // tool registry, which must not sit in front of the boot's first request.
@@ -140,6 +172,9 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
   const model = await resolveChatModel(userId, chatSession);
   if (!model) {
     console.warn(`[chat-recovery:${sessionId}] the chat has no model, nothing to resume with`);
+    await endChatRun(userId, sessionId).catch((err) => {
+      console.error(`Failed to drop the unresumable run of chat ${sessionId}:`, err);
+    });
     return "dropped";
   }
 
@@ -148,11 +183,12 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
     chatSession,
     model,
     target: { id: target.id, content: target.content, attachments: target.attachments },
+    resume: true,
     log,
   });
   // A run claimed this chat in this process while the pass was deciding. It is
   // running, so there is nothing to resume.
-  if (!prepared) return "dropped";
+  if (!prepared) return "live";
 
   const settled = await dispatchPreparedChatRun({
     userId,
@@ -166,16 +202,20 @@ async function resumeRun(run: InflightChatRun): Promise<ResumeOutcome> {
 }
 
 /**
- * Run the recovery pass once, a little after boot.
+ * Run the recovery pass at boot, then keep sweeping.
  *
  * Called by the server's one boot hook (`src/instrumentation.ts`), which is the
  * only thing that knows a new process has started.
  */
 export function scheduleInterruptedRunRecovery(): void {
-  const timer = setTimeout(() => {
+  const sweep = () => {
     void resumeInterruptedChatRuns().catch((err) => {
       console.error("[chat-recovery] the pass failed:", err);
     });
-  }, RECOVERY_DELAY_MS);
-  timer.unref?.();
+  };
+
+  const first = setTimeout(sweep, RECOVERY_DELAY_MS);
+  first.unref?.();
+  const interval = setInterval(sweep, RECOVERY_SWEEP_MS);
+  interval.unref?.();
 }

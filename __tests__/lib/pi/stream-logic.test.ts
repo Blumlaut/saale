@@ -151,6 +151,75 @@ describe("decideStreamAction", () => {
     });
   });
 
+  describe("a run record nobody settled", () => {
+    const run = { messageId: "msg-1", stale: true };
+
+    it("picks the interrupted turn up instead of sending the message again", () => {
+      const action = decideStreamAction({ ...base, lastMessage: userMsg, interruptedRun: run });
+
+      expect(action).toEqual({
+        type: "prompt",
+        reason: "interrupted run",
+        messageId: "msg-1",
+        resume: true,
+      });
+    });
+
+    it("resumes a run that already saved a turn of its own", () => {
+      // The dead run got as far as saving an assistant turn, so the last message
+      // is not the user's: every other check reads the chat as idle.
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: assistantMsg,
+        interruptedRun: run,
+      });
+
+      expect(action).toEqual({
+        type: "prompt",
+        reason: "interrupted run",
+        messageId: "msg-1",
+        resume: true,
+      });
+    });
+
+    it("waits for a run claimed moments ago", () => {
+      // A recovery pass claimed the record and is still building its agent.
+      // Prompting here would run the same turn twice.
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        interruptedRun: { ...run, stale: false },
+      });
+
+      expect(action.type).toBe("observe");
+      expect(action.reason).toBe("interrupted run claimed moments ago");
+    });
+
+    it("observes a run this process is already carrying on", () => {
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        poolLastPromptedMessageId: "msg-1",
+        interruptedRun: run,
+      });
+
+      expect(action.type).toBe("observe");
+      expect(action.reason).toBe("already prompted in this process");
+    });
+
+    it("leaves a stopped chat stopped, record or not", () => {
+      const action = decideStreamAction({
+        ...base,
+        lastMessage: userMsg,
+        queueHeld: true,
+        interruptedRun: run,
+      });
+
+      expect(action.type).toBe("done");
+      expect(action.reason).toBe("session stopped by user");
+    });
+  });
+
   describe("no pending user message", () => {
     it("reports done for an empty chat", () => {
       const action = decideStreamAction({ ...base, lastMessage: undefined });

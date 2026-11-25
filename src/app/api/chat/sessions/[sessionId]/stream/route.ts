@@ -13,6 +13,7 @@ import {
   decideStaleGenerationAction,
   decideStreamAction,
   type DbMessage,
+  type InterruptedRun,
   type StreamAction,
 } from "@/lib/pi/stream-logic";
 import { getLastBufferedEvent, isTerminalBufferedEvent } from "@/lib/pi/sse-buffer";
@@ -20,7 +21,14 @@ import { createSseHeartbeat, type SseHeartbeat } from "@/lib/pi/sse-heartbeat";
 import { isClosedControllerError } from "@/lib/pi/sse-controller";
 import { clearActiveToolState } from "@/lib/chat/active-tool-state";
 import { countQueuedMessages, publishQueueUpdate, queueMessage } from "@/lib/chat/queue";
-import { endChatRun } from "@/lib/chat/run-record";
+import { hasFinalAnswer } from "@/lib/chat/run-answer";
+import {
+  claimInterruptedChatRun,
+  dropInterruptedChatRun,
+  endChatRun,
+  getChatRun,
+  isRunHeartbeatStale,
+} from "@/lib/chat/run-record";
 import {
   createChatQueueDrain,
   dispatchPreparedChatRun,
@@ -62,6 +70,25 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
  * freeze to well under a minute.
  */
 const STALE_GENERATION_POLL_MS = 10_000;
+
+/** The newest message of the conversation (queued ones are not part of it). */
+async function findNewestUserMessageId(sessionId: string): Promise<string | null> {
+  const message = await prisma.chatMessage.findFirst({
+    where: { sessionId, role: "user", queuedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return message?.id ?? null;
+}
+
+/** A message a run is about to hand to the agent, with its attachments. */
+async function findPromptTarget(sessionId: string, messageId: string | undefined) {
+  if (!messageId) return null;
+  return prisma.chatMessage.findFirst({
+    where: { id: messageId, sessionId, role: "user" },
+    include: { attachments: { select: { storagePath: true, mimeType: true } } },
+  });
+}
 
 /**
  * GET /api/chat/sessions/:sessionId/stream. SSE streaming endpoint
@@ -133,31 +160,65 @@ export async function GET(
     },
   });
 
-  const [isGenerating, pendingPromptMessageId, bufferedTail, queuedCount, queueHeld] =
+  const poolKey = getPoolKey(authResult.userId, sessionId);
+  const pooled = getPoolEntry(poolKey);
+
+  const [isGenerating, pendingPromptMessageId, bufferedTail, queuedCount, queueHeld, runRecord] =
     await Promise.all([
       isSessionActive(authResult.userId, sessionId),
       getPendingPrompt(sessionId),
       getLastBufferedEvent(sessionId),
       countQueuedMessages(sessionId),
       isSendQueueHeld(sessionId),
+      getChatRun(sessionId),
     ]);
   // A finished run stays marked in the buffer so a reconnect cannot re-prompt
   // it. It is never replayed (see `liveRunEvents`), so the decision has to
   // settle the client itself.
   const bufferHasDone = bufferedTail !== null && isTerminalBufferedEvent(bufferedTail);
 
-  // Did the last user message already receive a response?
+  // ── What the run record still owes the chat ───────────────────────────
+  // A record means a run claimed a message and nothing settled it. It speaks
+  // only for the newest message (a later turn overtakes an older run), and only
+  // while no answer is saved: the record of a run that did answer is a leftover
+  // whose delete did not land, and resuming it would answer the message twice.
+  let interruptedRun: InterruptedRun | null = null;
   let hasAssistantAfterLastUser = false;
-  if (lastMessage && lastMessage.role === "user") {
-    const response = await prisma.chatMessage.findFirst({
-      where: { sessionId, role: "assistant", createdAt: { gt: lastMessage.createdAt } },
-      select: { id: true },
-    });
-    hasAssistantAfterLastUser = !!response;
+  // Anchored where this run's or this message's own turns begin. An assistant
+  // turn that called tools is work in progress, so only a turn without calls
+  // counts as the answer (see `hasFinalAnswer`).
+  const answerAnchor =
+    lastMessage?.role === "user" ? lastMessage.createdAt : (runRecord?.startedAt ?? null);
+  if (answerAnchor && !isGenerating) {
+    const answered = await hasFinalAnswer(sessionId, answerAnchor);
+    if (lastMessage?.role === "user") hasAssistantAfterLastUser = answered;
+    if (runRecord && answered) {
+      // Nobody will ever settle this run: drop what it left behind, or the chat
+      // carries a record that every later connection has to reason about.
+      log("run", `dropping the record of an answered run (${runRecord.messageId})`);
+      dropInterruptedChatRun(runRecord).catch((err) => {
+        console.error(`Failed to drop the answered run of chat ${sessionId}:`, err);
+      });
+    }
+    if (runRecord && !answered) {
+      const newestUserMessageId =
+        lastMessage?.role === "user" ? lastMessage.id : await findNewestUserMessageId(sessionId);
+      if (newestUserMessageId === runRecord.messageId) {
+        interruptedRun = {
+          messageId: runRecord.messageId,
+          stale: isRunHeartbeatStale(runRecord),
+        };
+      } else {
+        log(
+          "run",
+          `dropping the record of run ${runRecord.messageId}: a later message owns the chat`,
+        );
+        dropInterruptedChatRun(runRecord).catch((err) => {
+          console.error(`Failed to drop the overtaken run of chat ${sessionId}:`, err);
+        });
+      }
+    }
   }
-
-  const poolKey = getPoolKey(authResult.userId, sessionId);
-  const pooled = getPoolEntry(poolKey);
 
   const lastMessageForDecision: DbMessage | undefined = lastMessage
     ? {
@@ -175,6 +236,7 @@ export async function GET(
     pendingPromptMessageId,
     bufferHasDone,
     queueHeld,
+    interruptedRun,
   });
   log("decision", `${action.type} (${action.reason}), lastEventId=${lastEventId}`);
 
@@ -265,8 +327,8 @@ export async function GET(
   const model =
     modelProvider && modelName ? { provider: modelProvider, name: modelName } : undefined;
 
-  const prepareRun = (target: ChatPromptTarget): Promise<PreparedChatRun | null> =>
-    prepareChatRun({ userId: authResult.userId, chatSession, model, target, log });
+  const prepareRun = (target: ChatPromptTarget, resume: boolean): Promise<PreparedChatRun | null> =>
+    prepareChatRun({ userId: authResult.userId, chatSession, model, target, resume, log });
 
   const dispatchRun = (run: PreparedChatRun): Promise<boolean> =>
     dispatchPreparedChatRun({
@@ -292,30 +354,52 @@ export async function GET(
   // entry guards the recovery path (no pending key) within this process.
   let pendingRun: PreparedChatRun | null = null;
 
-  if (action.type === "prompt" && lastMessage && lastMessage.role === "user") {
-    const claim = await claimPendingPrompt(sessionId);
-    if (pendingPromptMessageId === lastMessage.id && claim !== lastMessage.id) {
-      // We raced another connection for the POST's pending prompt and lost.
-      action = { type: "observe", reason: "prompt claim lost to another connection" };
-      log("decision", `revised to observe (lost prompt claim)`);
+  if (action.type === "prompt") {
+    // A resume names its message (the one whose run died, which may sit before
+    // the turns that run had saved); a fresh prompt takes the last one.
+    const resume = action.resume === true;
+    const target = resume
+      ? await findPromptTarget(sessionId, action.messageId ?? lastMessage?.id)
+      : lastMessage && lastMessage.role === "user"
+        ? lastMessage
+        : null;
+
+    if (!target) {
+      action = { type: "done", reason: "the message to prompt is gone" };
+      log("decision", "revised to done (prompt target is gone)");
     } else {
-      pendingRun = await prepareRun({
-        id: lastMessage.id,
-        content: lastMessage.content,
-        attachments: lastMessage.attachments,
-      });
-      if (!pendingRun) {
-        // Another connection got the run, so this one cannot hand its message
-        // over. Queue it behind that run, or it sits in the conversation with
-        // nothing left to answer it. Unless that run is prompting this very
-        // message: then queuing it would deliver it a second time.
-        const ownedElsewhere = getPoolEntry(poolKey)?.lastPromptedMessageId === lastMessage.id;
-        if (!ownedElsewhere && (await queueMessage(sessionId, lastMessage.id))) {
-          log("queue", `queued message ${lastMessage.id} behind the run in flight`);
-          await publishQueueUpdate(sessionId);
+      const claim = await claimPendingPrompt(sessionId);
+      // The record is claimed before a resume for the same reason a POST claims
+      // its prompt: two connections in different processes must not both carry
+      // the turn on, each with an agent over the same transcript.
+      const ownsRun = !resume || (runRecord ? await claimInterruptedChatRun(runRecord) : false);
+      if (pendingPromptMessageId === target.id && claim !== target.id) {
+        // We raced another connection for the POST's pending prompt and lost.
+        action = { type: "observe", reason: "prompt claim lost to another connection" };
+        log("decision", `revised to observe (lost prompt claim)`);
+      } else if (!ownsRun) {
+        action = { type: "observe", reason: "interrupted run claimed elsewhere" };
+        log("decision", "revised to observe (interrupted run claimed elsewhere)");
+      } else {
+        pendingRun = await prepareRun(
+          { id: target.id, content: target.content, attachments: target.attachments },
+          resume,
+        );
+        if (!pendingRun) {
+          // Another connection got the run, so this one cannot hand its message
+          // over. Queue it behind that run, or it sits in the conversation with
+          // nothing left to answer it. Unless that run is prompting this very
+          // message: then queuing it would deliver it a second time. A resume
+          // is never queued either: its turn is already in the transcript, and
+          // the run that holds the chat now will carry it on.
+          const ownedElsewhere = getPoolEntry(poolKey)?.lastPromptedMessageId === target.id;
+          if (!ownedElsewhere && !resume && (await queueMessage(sessionId, target.id))) {
+            log("queue", `queued message ${target.id} behind the run in flight`);
+            await publishQueueUpdate(sessionId);
+          }
+          action = { type: "observe", reason: "prompt already in flight" };
+          log("decision", "revised to observe (prompt already in flight)");
         }
-        action = { type: "observe", reason: "prompt already in flight" };
-        log("decision", "revised to observe (prompt already in flight)");
       }
     }
   }
