@@ -314,16 +314,22 @@ model ChatMessage {
 }
 
 /// A prompt that has not settled yet: written when a run claims its chat and
-/// deleted when the run does. A row is therefore a run that never finished, and
-/// the boot pass resumes it. Stopped and answered runs leave none behind.
+/// deleted once the run's reply is saved. A row is therefore a run that never
+/// finished, and the recovery pass resumes it. Stopped and answered runs leave
+/// none behind.
 model ChatRun {
-  sessionId String      @id
-  userId    String
+  sessionId   String      @id
+  userId      String
   /// The user message the run is answering.
-  messageId String
-  startedAt DateTime    @default(now())
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  messageId   String
+  startedAt   DateTime    @default(now())
+  /// Refreshed by the process running it, every heartbeat, and again when a
+  /// recovery pass claims the row. An old value is what tells a dead run apart
+  /// from one another process is still working on.
+  heartbeatAt DateTime    @default(now())
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
+  @@index([heartbeatAt])
   @@map("ChatRun")
 }
 
