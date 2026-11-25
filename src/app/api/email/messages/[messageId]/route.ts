@@ -2,7 +2,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireEmailMessageOwner } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { fetchMessageBody, syncMessageFlags, deleteMessage, moveMessage } from "@/lib/email/imap";
+import { fetchMessageBody, syncMessageFlags, deleteMessage } from "@/lib/email/imap";
+import { archiveFolder, folderTargetFrom, specialFolder } from "@/lib/email/folders";
+import { fileMessage } from "@/lib/email/file-message";
 import { sanitizeEmailHtml } from "@/lib/email/sanitize-html";
 
 /**
@@ -66,49 +68,57 @@ export async function PATCH(
 
   // ── Trash action ──────────────────────────────────────────────
   if (body.action === "trash") {
-    // Delete on IMAP server (best-effort, non-blocking)
-    deleteMessage(message.accountId, message.folder, message.uid).catch(() => {
-      // Already logged inside deleteMessage
+    const account = await prisma.emailAccount.findUnique({
+      where: { id: message.accountId },
+      select: { specialFolders: true, cachedFolders: true },
     });
+    const trashFolder = specialFolder(folderTargetFrom(account ?? {}), "\\Trash");
 
-    // Remove from local DB
-    await prisma.emailMessage.delete({ where: { id: messageId } });
-    return NextResponse.json({ trashed: true });
+    // No trash folder to wait in, or the message already waits there: emptying
+    // it is what the click means.
+    if (!trashFolder || trashFolder === message.folder) {
+      deleteMessage(message.accountId, message.folder, message.uid).catch(() => {
+        // Already logged inside deleteMessage
+      });
+      await prisma.emailMessage.delete({ where: { id: messageId } });
+      return NextResponse.json({ trashed: true, folder: trashFolder });
+    }
+
+    const { moved } = await fileMessage({ message, destination: trashFolder });
+    if (!moved) {
+      return NextResponse.json(
+        { error: "The mail server did not move the message to its trash folder" },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({ trashed: true, folder: trashFolder });
   }
 
   // ── Archive action ────────────────────────────────────────────
   if (body.action === "archive") {
-    // Determine archive folder from the account's cached folders
     const account = await prisma.emailAccount.findUnique({
       where: { id: message.accountId },
-      select: { cachedFolders: true },
+      select: { specialFolders: true, cachedFolders: true },
     });
+    const destination = archiveFolder(folderTargetFrom(account ?? {}));
 
-    // Find the archive folder name
-    let archiveFolder = "Archive";
-    if (account?.cachedFolders && Array.isArray(account.cachedFolders)) {
-      const folders = account.cachedFolders as string[];
-      const archiveMatch = folders.find(
-        (f) =>
-          f.toUpperCase() === "ARCHIVE" ||
-          f.toUpperCase() === "ALL MAIL" ||
-          f.toLowerCase() === "all mail",
+    if (!destination) {
+      return NextResponse.json(
+        { error: "This account has no archive folder on its mail server" },
+        { status: 409 },
       );
-      if (archiveMatch) archiveFolder = archiveMatch;
     }
 
-    // Move on IMAP server (best-effort, non-blocking)
-    moveMessage(message.accountId, message.folder, message.uid, archiveFolder).catch(() => {
-      // Already logged inside moveMessage
-    });
+    const { moved } = await fileMessage({ message, destination });
+    if (!moved) {
+      return NextResponse.json(
+        { error: "The mail server did not move the message to its archive folder" },
+        { status: 502 },
+      );
+    }
 
-    // Update local DB
-    await prisma.emailMessage.update({
-      where: { id: messageId },
-      data: { folder: archiveFolder },
-    });
-
-    return NextResponse.json({ archived: true, folder: archiveFolder });
+    return NextResponse.json({ archived: true, folder: destination });
   }
 
   // ── Standard field updates ────────────────────────────────────

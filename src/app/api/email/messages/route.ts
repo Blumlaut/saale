@@ -3,40 +3,19 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { searchUserMail } from "@/lib/search/sources";
-
-/** Fallback trash folder names for accounts that haven't synced yet */
-const KNOWN_TRASH_FOLDERS = [
-  "Trash",
-  "Deleted Messages",
-  "Deleted Items",
-  "Gelöscht",
-  "Papierkorb",
-];
+import { trashFolderNames } from "@/lib/email/folders";
 
 /**
- * Collect the actual trash folder names for a user's accounts from the
- * IMAP SPECIAL-USE discovery (`\\Trash` attribute). Falls back to
- * well-known names for accounts that haven't synced yet.
+ * The trash folder names of a user's accounts, as the servers named them. An
+ * account that has never synced has no mapping yet, so the known names stand
+ * in until the first sync answers.
  */
 async function collectTrashFolders(userId: string, accountId?: string): Promise<string[]> {
   const accounts = await prisma.emailAccount.findMany({
     where: { userId, ...(accountId ? { id: accountId } : {}) },
-    select: { specialFolders: true },
+    select: { specialFolders: true, cachedFolders: true },
   });
-  const trashNames = new Set<string>();
-  for (const acc of accounts) {
-    const special = acc.specialFolders as Record<string, string | null> | null;
-    const trashFolder = special?.["\\Trash"];
-    if (trashFolder) {
-      trashNames.add(trashFolder);
-    } else {
-      // Account hasn't synced yet. use fallback names
-      for (const name of KNOWN_TRASH_FOLDERS) {
-        trashNames.add(name);
-      }
-    }
-  }
-  return Array.from(trashNames);
+  return trashFolderNames(accounts);
 }
 
 /** A query-string date, or undefined when it is missing or unparseable. */

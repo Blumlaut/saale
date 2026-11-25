@@ -270,7 +270,9 @@ describe("syncEmailAccount folder-scoped messages", () => {
           "\\Sent": "INBOX/Sent",
           "\\Drafts": null,
           "\\Trash": null,
+          "\\Junk": null,
           "\\Archive": null,
+          "\\All": null,
         },
       },
     });

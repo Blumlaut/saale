@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ImapFlow, ListResponse } from "imapflow";
-import { discoverFolders, resolveSentFolder } from "@/lib/email/folders";
+import {
+  archiveFolder,
+  discoverFolders,
+  folderTargetFrom,
+  resolveFolderRef,
+  resolveSentFolder,
+  specialFolder,
+  trashFolderNames,
+} from "@/lib/email/folders";
 
 /** A LIST response with the defaults filled in, so each test states only what it means. */
 function mailbox(path: string, flags: string[] = [], specialUse?: string): ListResponse {
@@ -62,6 +70,51 @@ describe("discoverFolders", () => {
     expect(special["\\Trash"]).toBe("Papierkorb");
   });
 
+  it("prefers a folder the server flags over a same-named folder it does not", async () => {
+    const { mailbox: imap } = fakeMailbox([
+      mailbox("Gesendet", ["\\HasNoChildren"], "\\Sent"),
+      mailbox("Sent", ["\\Sent"], "\\Sent"),
+    ]);
+
+    const { special } = await discoverFolders(imap);
+
+    expect(special["\\Sent"]).toBe("Sent");
+  });
+
+  it("follows the flag when it sits on the localized folder name", async () => {
+    const { mailbox: imap } = fakeMailbox([
+      mailbox("Sent", ["\\HasNoChildren"]),
+      mailbox("Gesendet", ["\\Sent"], "\\Sent"),
+    ]);
+
+    const { special } = await discoverFolders(imap);
+
+    expect(special["\\Sent"]).toBe("Gesendet");
+  });
+
+  it("files into the standard name when the server flags no sent folder", async () => {
+    // imapflow guesses \Sent from the name and ranks guesses alphabetically.
+    const { mailbox: imap } = fakeMailbox([
+      mailbox("Gesendet", ["\\HasNoChildren"], "\\Sent"),
+      mailbox("Sent", ["\\HasNoChildren"]),
+    ]);
+
+    const { special } = await discoverFolders(imap);
+
+    expect(special["\\Sent"]).toBe("Sent");
+  });
+
+  it("skips a folder the server cannot append into", async () => {
+    const { mailbox: imap } = fakeMailbox([
+      mailbox("Sent", ["\\Sent", "\\Noselect"], "\\Sent"),
+      mailbox("Gesendet", ["\\Sent"], "\\Sent"),
+    ]);
+
+    const { special } = await discoverFolders(imap);
+
+    expect(special["\\Sent"]).toBe("Gesendet");
+  });
+
   it("lists every selectable mailbox except INBOX", async () => {
     const { mailbox: imap } = fakeMailbox([
       mailbox("INBOX", []),
@@ -91,6 +144,7 @@ describe("discoverFolders", () => {
 
     expect(allFolders).toEqual([]);
     expect(special["\\Sent"]).toBe("Sent");
+    expect(special["\\All"]).toBeNull();
     expect(console.error).toHaveBeenCalledWith(
       "[email-folders] Folder list failed, falling back to default names:",
       expect.any(Error),
@@ -123,5 +177,122 @@ describe("resolveSentFolder", () => {
     const folder = await resolveSentFolder(imap, { "\\Sent": null });
 
     expect(folder).toBeNull();
+  });
+});
+
+describe("folderTargetFrom", () => {
+  it("reads the mailbox facts off an account row", () => {
+    const target = folderTargetFrom({
+      specialFolders: { "\\Sent": "Sent" },
+      cachedFolders: ["Sent", "Gesendet"],
+    });
+
+    expect(target.special["\\Sent"]).toBe("Sent");
+    expect(target.folders).toEqual(["Sent", "Gesendet"]);
+  });
+
+  it("answers for an account that has never synced", () => {
+    const target = folderTargetFrom({ specialFolders: null, cachedFolders: null });
+
+    expect(target.special).toEqual({});
+    expect(target.folders).toEqual([]);
+  });
+});
+
+describe("specialFolder", () => {
+  it("prefers the mapping the sync resolved", () => {
+    const target = folderTargetFrom({
+      specialFolders: { "\\Trash": "Papierkorb" },
+      cachedFolders: ["Trash", "Papierkorb"],
+    });
+
+    expect(specialFolder(target, "\\Trash")).toBe("Papierkorb");
+  });
+
+  it("falls back to the known names in their order", () => {
+    const target = folderTargetFrom({ cachedFolders: ["Gesendet", "Sent"] });
+
+    expect(specialFolder(target, "\\Sent")).toBe("Sent");
+  });
+
+  it("matches a nested path whatever the delimiter", () => {
+    const target = folderTargetFrom({ cachedFolders: ["INBOX.Gesendet"] });
+
+    expect(specialFolder(target, "\\Sent")).toBe("INBOX.Gesendet");
+  });
+
+  it("does not mistake a user folder for a special one", () => {
+    const target = folderTargetFrom({ cachedFolders: ["MySent", "Invoices"] });
+
+    expect(specialFolder(target, "\\Sent")).toBeNull();
+  });
+
+  it("answers INBOX without any discovery", () => {
+    expect(specialFolder(folderTargetFrom({}), "\\Inbox")).toBe("INBOX");
+  });
+});
+
+describe("resolveFolderRef", () => {
+  const target = folderTargetFrom({
+    specialFolders: { "\\Sent": "Gesendet", "\\Trash": "Gelöscht" },
+    cachedFolders: ["Gesendet", "Gelöscht", "Projekte"],
+  });
+
+  it("resolves a special-use attribute", () => {
+    expect(resolveFolderRef(target, "\\Sent")).toBe("Gesendet");
+    expect(resolveFolderRef(target, "\\sent")).toBe("Gesendet");
+  });
+
+  it("resolves a path the server listed, in any case", () => {
+    expect(resolveFolderRef(target, "projekte")).toBe("Projekte");
+  });
+
+  it("resolves a well-known name to the folder that account uses", () => {
+    expect(resolveFolderRef(target, "Trash")).toBe("Gelöscht");
+    expect(resolveFolderRef(target, "Sent")).toBe("Gesendet");
+  });
+
+  it("resolves INBOX", () => {
+    expect(resolveFolderRef(target, "inbox")).toBe("INBOX");
+  });
+
+  it("returns null for a folder the account does not have", () => {
+    expect(resolveFolderRef(target, "Archive")).toBeNull();
+  });
+});
+
+describe("archiveFolder", () => {
+  it("uses the archive folder", () => {
+    const target = folderTargetFrom({ specialFolders: { "\\Archive": "Archiv" } });
+
+    expect(archiveFolder(target)).toBe("Archiv");
+  });
+
+  it("falls back to the all-mail folder, which is where Gmail archives to", () => {
+    const target = folderTargetFrom({ specialFolders: { "\\All": "All Mail" } });
+
+    expect(archiveFolder(target)).toBe("All Mail");
+  });
+
+  it("reports no archive folder when the server offers neither", () => {
+    expect(archiveFolder(folderTargetFrom({ cachedFolders: ["Sent"] }))).toBeNull();
+  });
+});
+
+describe("trashFolderNames", () => {
+  it("names each account's own trash folder", () => {
+    const names = trashFolderNames([
+      { specialFolders: { "\\Trash": "Gelöscht" } },
+      { specialFolders: { "\\Trash": "Trash" } },
+    ]);
+
+    expect(names).toEqual(["Gelöscht", "Trash"]);
+  });
+
+  it("stands in the known names for an account that never synced", () => {
+    const names = trashFolderNames([{ specialFolders: null }]);
+
+    expect(names).toContain("Trash");
+    expect(names).toContain("Papierkorb");
   });
 });

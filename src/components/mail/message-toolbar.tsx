@@ -47,7 +47,7 @@ export function MessageToolbar({
       onRefresh();
     } catch (err) {
       console.error("Failed to trash the email:", err);
-      toast.error("Failed to trash email");
+      toast.error(err instanceof Error ? err.message : "Failed to trash email");
     }
   };
 
@@ -58,7 +58,7 @@ export function MessageToolbar({
       onRefresh();
     } catch (err) {
       console.error("Failed to archive the email:", err);
-      toast.error("Failed to archive email");
+      toast.error(err instanceof Error ? err.message : "Failed to archive email");
     }
   };
 

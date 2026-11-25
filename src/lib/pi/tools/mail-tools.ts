@@ -9,8 +9,10 @@ import { learnContactsFromSend } from "@/lib/contacts/contacts";
 import { searchMail } from "@/lib/search/sources";
 import { snippetAround } from "@/lib/search/snippet";
 import { syncEmailAccount } from "@/lib/email/sync";
-import { fetchMessageBody, moveMessage, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
+import { fetchMessageBody, deleteMessage, syncMessageFlags } from "@/lib/email/imap";
 import { emailBodyText } from "@/lib/email/body-text";
+import { folderTargetFrom, resolveFolderRef, specialFolder } from "@/lib/email/folders";
+import { fileMessage } from "@/lib/email/file-message";
 import { getUploadsDir } from "@/lib/uploads";
 
 function getUserDir(userId: string): string {
@@ -44,13 +46,12 @@ const MAIL_MESSAGE_SCHEMA = Type.Object({
   read: Type.Boolean(),
   folder: Type.String(),
   // mail_list and mail_read
+  uid: Type.Optional(Type.String()),
   to: Type.Optional(Type.String()),
   starred: Type.Optional(Type.Boolean()),
   tags: Type.Optional(Type.Array(Type.String())),
   // mail_list and mail_search
   preview: Type.Optional(Type.String()),
-  // mail_list only
-  uid: Type.Optional(Type.String()),
   // mail_read only
   bodyText: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   aiSummary: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -77,6 +78,8 @@ const MAIL_FOLDERS_SCHEMA = Type.Object({
   accountId: Type.String(),
   email: Type.String(),
   remoteFolders: Type.Array(Type.String()),
+  /** Folder a sent copy is appended to on the server; null when none was resolved yet. */
+  sentFolder: Type.Union([Type.String(), Type.Null()]),
   folders: Type.Array(
     Type.Object({
       name: Type.String(),
@@ -217,7 +220,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
       execute: async (_toolCallId, params) => {
         const account = await prisma.emailAccount.findFirst({
           where: { id: params.accountId, userId },
-          select: { id: true, email: true, cachedFolders: true },
+          select: { id: true, email: true, cachedFolders: true, specialFolders: true },
         });
 
         if (!account) {
@@ -254,6 +257,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             accountId: account.id,
             email: account.email,
             remoteFolders: (account.cachedFolders as string[] | null) ?? [],
+            sentFolder: specialFolder(folderTargetFrom(account), "\\Sent"),
             folders: folderDetails,
           },
           details: { count: folderDetails.length },
@@ -364,8 +368,26 @@ export function createMailTools(userId: string): ToolDefinition[] {
           }
           where.accountId = params.accountId;
         }
-        if (params.folder) {
-          where.folder = params.folder;
+        const folderRef = params.folder;
+        if (folderRef) {
+          // Each server names its folders its own way, so the reference is
+          // resolved per account rather than matched literally.
+          const accounts = await prisma.emailAccount.findMany({
+            where: { id: { in: params.accountId ? [params.accountId] : accountIds } },
+            select: { id: true, specialFolders: true, cachedFolders: true },
+          });
+          const folders = accounts.flatMap((account) => {
+            const resolved = resolveFolderRef(folderTargetFrom(account), folderRef);
+            return resolved ? [{ accountId: account.id, folder: resolved }] : [];
+          });
+
+          if (folders.length === 0) {
+            const known = [...new Set(accounts.flatMap((a) => folderTargetFrom(a).folders))];
+            throw new Error(
+              `No folder "${folderRef}" on this account. Folders: INBOX${known.length > 0 ? `, ${known.join(", ")}` : " (none synced yet)"}`,
+            );
+          }
+          where.OR = folders;
         }
         if (params.unread !== undefined) {
           where.isRead = !params.unread;
@@ -548,6 +570,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
         const emailData = emails.map(
           (e: {
             id: string;
+            uid: string;
             fromName: string | null;
             fromEmail: string;
             to: string;
@@ -564,6 +587,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
             spamScore: number | null;
           }) => ({
             id: e.id,
+            uid: e.uid,
             from: formatFrom(e.fromName, e.fromEmail),
             to: e.to,
             subject: e.subject,
@@ -851,37 +875,56 @@ export function createMailTools(userId: string): ToolDefinition[] {
           { minItems: 1, maxItems: 50 },
         ),
         folder: Type.String({
-          description: 'Target folder (e.g. "INBOX", "Archive", "Trash", "Spam").',
+          description:
+            'Target folder. Accepts the special-use name ("Sent", "Trash", "Archive", "Drafts") or a folder path from mail_folders.',
         }),
       }),
       outputSchema: MAIL_MOVE_SCHEMA,
       execute: async (_toolCallId, params) => {
         const accountIds = await getUserAccountIds(userId);
 
-        // Fetch messages before updating so we have uid + folder for IMAP sync
+        // Fetch messages before moving so we have uid + folder for IMAP sync
         const messages = await prisma.emailMessage.findMany({
           where: { id: { in: params.ids }, accountId: { in: accountIds } },
           select: { id: true, uid: true, folder: true, accountId: true },
         });
-
-        const result = await prisma.emailMessage.updateMany({
-          where: { id: { in: params.ids }, accountId: { in: accountIds } },
-          data: { folder: params.folder },
-        });
-
-        // Push moves to IMAP server (best-effort, fire-and-forget)
-        for (const msg of messages) {
-          moveMessage(msg.accountId, msg.folder, msg.uid, params.folder).catch(() => {
-            // Already logged inside moveMessage
-          });
+        if (messages.length === 0) {
+          return { value: { moved: 0, folder: params.folder }, details: { moved: 0 } };
         }
 
+        const accounts = await prisma.emailAccount.findMany({
+          where: { id: { in: [...new Set(messages.map((m) => m.accountId))] }, userId },
+          select: { id: true, email: true, specialFolders: true, cachedFolders: true },
+        });
+
+        // One resolution per account: the same name can be a different path.
+        const destinations = new Map<string, string>();
+        for (const account of accounts) {
+          const destination = resolveFolderRef(folderTargetFrom(account), params.folder);
+          if (!destination) {
+            const known = folderTargetFrom(account).folders;
+            throw new Error(
+              `Account ${account.email} has no folder "${params.folder}". Its folders: ${known.length > 0 ? known.join(", ") : "none synced yet"}`,
+            );
+          }
+          destinations.set(account.id, destination);
+        }
+
+        let moved = 0;
+        for (const message of messages) {
+          const destination = destinations.get(message.accountId);
+          if (!destination) continue;
+          const outcome = await fileMessage({ message, destination });
+          if (outcome.moved) moved++;
+        }
+
+        const [onlyDestination] = [...new Set(destinations.values())];
         return {
           value: {
-            moved: result.count,
-            folder: params.folder,
+            moved,
+            folder: destinations.size === 1 && onlyDestination ? onlyDestination : params.folder,
           },
-          details: { moved: result.count },
+          details: { moved },
         };
       },
     }),
@@ -892,7 +935,7 @@ export function createMailTools(userId: string): ToolDefinition[] {
       name: "mail_delete",
       label: "Delete Email(s)",
       description:
-        "Delete one or more emails. Syncs to the IMAP server (sets \Deleted flag). Accepts an array of email IDs.",
+        "Move one or more emails to the account's trash folder. A server without one deletes them outright. Accepts an array of email IDs.",
       parameters: Type.Object({
         ids: Type.Array(
           Type.String({
@@ -911,22 +954,38 @@ export function createMailTools(userId: string): ToolDefinition[] {
           select: { id: true, uid: true, folder: true, accountId: true },
         });
 
-        // Push deletes to IMAP server first (best-effort)
-        for (const msg of messages) {
-          deleteMessage(msg.accountId, msg.folder, msg.uid).catch(() => {
+        const accounts = await prisma.emailAccount.findMany({
+          where: { id: { in: [...new Set(messages.map((m) => m.accountId))] }, userId },
+          select: { id: true, specialFolders: true, cachedFolders: true },
+        });
+        const trashFolders = new Map(
+          accounts.map((account) => [
+            account.id,
+            specialFolder(folderTargetFrom(account), "\\Trash"),
+          ]),
+        );
+
+        let deleted = 0;
+        for (const message of messages) {
+          const trashFolder = trashFolders.get(message.accountId);
+          if (trashFolder && trashFolder !== message.folder) {
+            const outcome = await fileMessage({ message, destination: trashFolder });
+            if (outcome.moved) deleted++;
+            continue;
+          }
+
+          deleteMessage(message.accountId, message.folder, message.uid).catch(() => {
             // Already logged inside deleteMessage
           });
+          await prisma.emailMessage.delete({ where: { id: message.id } });
+          deleted++;
         }
-
-        const result = await prisma.emailMessage.deleteMany({
-          where: { id: { in: params.ids }, accountId: { in: accountIds } },
-        });
 
         return {
           value: {
-            deleted: result.count,
+            deleted,
           },
-          details: { deleted: result.count },
+          details: { deleted },
         };
       },
     }),

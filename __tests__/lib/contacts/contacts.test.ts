@@ -333,7 +333,9 @@ describe("getRecentRecipients", () => {
   });
 
   it("deduplicates emails in send order and honours the limit", async () => {
-    mockAccount.findMany.mockResolvedValue([{ id: "acct-1" }]);
+    mockAccount.findMany.mockResolvedValue([
+      { id: "acct-1", specialFolders: { "\\Sent": "Sent" }, cachedFolders: ["Sent"] },
+    ]);
     mockMessage.findMany.mockResolvedValue([
       { to: '["a@x.co", "b@x.co"]' },
       { to: '["a@x.co", "c@x.co"]' },
@@ -344,5 +346,36 @@ describe("getRecentRecipients", () => {
       { name: null, email: "a@x.co" },
       { name: null, email: "b@x.co" },
     ]);
+  });
+
+  it("reads the sent folder each server named", async () => {
+    mockAccount.findMany.mockResolvedValue([
+      { id: "acct-1", specialFolders: { "\\Sent": "Gesendet" }, cachedFolders: ["Gesendet"] },
+      { id: "acct-2", specialFolders: { "\\Sent": "Sent Items" }, cachedFolders: ["Sent Items"] },
+    ]);
+    mockMessage.findMany.mockResolvedValue([]);
+
+    await getRecentRecipients("user-1");
+
+    expect(mockMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          accountId: { in: ["acct-1", "acct-2"] },
+          OR: [
+            { accountId: "acct-1", folder: "Gesendet" },
+            { accountId: "acct-2", folder: "Sent Items" },
+          ],
+        },
+      }),
+    );
+  });
+
+  it("asks for nothing when no account has a sent folder yet", async () => {
+    mockAccount.findMany.mockResolvedValue([
+      { id: "acct-1", specialFolders: null, cachedFolders: null },
+    ]);
+
+    await expect(getRecentRecipients("user-1")).resolves.toEqual([]);
+    expect(mockMessage.findMany).not.toHaveBeenCalled();
   });
 });

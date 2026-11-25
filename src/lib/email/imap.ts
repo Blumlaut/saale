@@ -174,27 +174,44 @@ export async function appendSentCopy(params: {
   }
 }
 
+/** What the server did with a move. */
+export type MoveOutcome = { moved: true; uid: string | null } | { moved: false };
+
 /**
  * Move a message to a different folder on the IMAP server.
  *
- * Best-effort: does not throw if the server is unreachable.
+ * Reports the UID the message carries in its new folder when the server sends
+ * one (UIDPLUS), so a caller can keep its own row pointing at the message. A
+ * server that refuses the move answers `moved: false`; the connection's
+ * troubles never reach the caller as a throw.
  */
 export async function moveMessage(
   accountId: string,
   folder: string,
   uid: string | number,
   destination: string,
-): Promise<void> {
+): Promise<MoveOutcome> {
   const { mailbox } = await connectImap(accountId);
   const numericUid = toUid(uid);
 
   try {
     await mailbox.mailboxOpen(folder);
-    await mailbox.messageMove([numericUid], destination, { uid: true });
-  } catch {
+    const result = await mailbox.messageMove([numericUid], destination, { uid: true });
+    if (!result) {
+      console.warn(
+        `[imap] Server did not move UID ${uid} from ${folder} to ${destination} (account ${accountId})`,
+      );
+      return { moved: false };
+    }
+
+    const newUid = result.uidMap?.get(numericUid);
+    return { moved: true, uid: newUid === undefined ? null : String(newUid) };
+  } catch (err) {
     console.warn(
-      `[imap] Failed to move UID ${uid} from ${folder} to ${destination} (account ${accountId})`,
+      `[imap] Failed to move UID ${uid} from ${folder} to ${destination} (account ${accountId}):`,
+      err,
     );
+    return { moved: false };
   } finally {
     try {
       await mailbox.mailboxClose();

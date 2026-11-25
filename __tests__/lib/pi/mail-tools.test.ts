@@ -17,6 +17,8 @@ vi.mock("@/lib/db", () => ({
       groupBy: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
   },
 }));
@@ -41,7 +43,7 @@ vi.mock("@/lib/email/sync", () => ({
 
 vi.mock("@/lib/email/imap", () => ({
   fetchMessageBody: vi.fn().mockResolvedValue(null),
-  moveMessage: vi.fn().mockResolvedValue(undefined),
+  moveMessage: vi.fn().mockResolvedValue({ moved: true, uid: "77" }),
   deleteMessage: vi.fn().mockResolvedValue(undefined),
   syncMessageFlags: vi.fn().mockResolvedValue(undefined),
 }));
@@ -51,7 +53,7 @@ vi.mock("@/lib/search/sources", () => ({ searchMail: vi.fn() }));
 // Import mocks for assertions
 import * as db from "@/lib/db";
 import { searchMail } from "@/lib/search/sources";
-import { fetchMessageBody } from "@/lib/email/imap";
+import { fetchMessageBody, moveMessage, deleteMessage } from "@/lib/email/imap";
 import { sendMailForAccount } from "@/lib/email/send-mail";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +62,8 @@ const mockEmailAccount = db.prisma.emailAccount as any;
 const mockEmailMessage = db.prisma.emailMessage as any;
 const mockSearchMail = searchMail as unknown as ReturnType<typeof vi.fn>;
 const mockFetchMessageBody = fetchMessageBody as unknown as ReturnType<typeof vi.fn>;
+const mockMoveMessage = moveMessage as unknown as ReturnType<typeof vi.fn>;
+const mockDeleteMessage = deleteMessage as unknown as ReturnType<typeof vi.fn>;
 
 // Import after mocks
 import { getUserAccountIds, formatFrom, createMailTools } from "@/lib/pi/tools/mail-tools";
@@ -156,6 +160,48 @@ describe("createMailTools", () => {
     expect(names).toContain("mail_delete");
   });
 
+  describe("mail_folders", () => {
+    it("reports the folder sent copies are filed in", async () => {
+      mockEmailAccount.findFirst.mockResolvedValue({
+        id: "acc-1",
+        email: "me@gmx.de",
+        cachedFolders: ["Sent", "Gesendet", "Trash"],
+        specialFolders: { "\\Sent": "Sent", "\\Trash": "Trash" },
+      });
+      mockEmailMessage.groupBy.mockResolvedValue([]);
+
+      const tools = createMailTools(userId);
+      const mailFolders = tools.find((t) => t.name === "mail_folders")!;
+
+      const result = await callExecute(mailFolders.execute, { accountId: "acc-1" });
+      const value = result.structuredContent as {
+        remoteFolders: string[];
+        sentFolder: string | null;
+      };
+
+      expect(value.sentFolder).toBe("Sent");
+      expect(value.remoteFolders).toContain("Gesendet");
+    });
+
+    it("reports no sent folder for an account that has never synced", async () => {
+      mockEmailAccount.findFirst.mockResolvedValue({
+        id: "acc-1",
+        email: "me@gmx.de",
+        cachedFolders: null,
+        specialFolders: null,
+      });
+      mockEmailMessage.groupBy.mockResolvedValue([]);
+
+      const tools = createMailTools(userId);
+      const mailFolders = tools.find((t) => t.name === "mail_folders")!;
+
+      const result = await callExecute(mailFolders.execute, { accountId: "acc-1" });
+      const value = result.structuredContent as { sentFolder: string | null };
+
+      expect(value.sentFolder).toBeNull();
+    });
+  });
+
   describe("mail_list", () => {
     it("uses getUserAccountIds for user isolation", async () => {
       mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
@@ -175,6 +221,50 @@ describe("createMailTools", () => {
         where: { userId: "user-123" },
         select: { id: true },
       });
+    });
+
+    it("filters by the folder each account actually calls that", async () => {
+      mockEmailAccount.findMany
+        .mockResolvedValueOnce([{ id: "acc-1" }, { id: "acc-2" }])
+        .mockResolvedValueOnce([
+          { id: "acc-1", specialFolders: { "\\Sent": "Gesendet" }, cachedFolders: ["Gesendet"] },
+          {
+            id: "acc-2",
+            specialFolders: { "\\Sent": "Sent Items" },
+            cachedFolders: ["Sent Items"],
+          },
+        ]);
+      mockEmailMessage.findMany.mockResolvedValue([]);
+      mockEmailMessage.count.mockResolvedValue(0);
+
+      const tools = createMailTools(userId);
+      const mailList = tools.find((t) => t.name === "mail_list")!;
+
+      await callExecute(mailList.execute, { folder: "Sent" });
+
+      expect(mockEmailMessage.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { accountId: "acc-1", folder: "Gesendet" },
+              { accountId: "acc-2", folder: "Sent Items" },
+            ],
+          }),
+        }),
+      );
+    });
+
+    it("lists the folders that exist when the requested one does not", async () => {
+      mockEmailAccount.findMany
+        .mockResolvedValueOnce([{ id: "acc-1" }])
+        .mockResolvedValueOnce([{ id: "acc-1", specialFolders: {}, cachedFolders: ["Projekte"] }]);
+
+      const tools = createMailTools(userId);
+      const mailList = tools.find((t) => t.name === "mail_list")!;
+
+      await expect(callExecute(mailList.execute, { folder: "Sent" })).rejects.toThrow(
+        /No folder "Sent".*Projekte/,
+      );
     });
 
     it("formats from field using formatFrom helper", async () => {
@@ -397,6 +487,39 @@ describe("createMailTools", () => {
       expect(mockFetchMessageBody).toHaveBeenCalledWith("msg-1");
       expect(value.emails[0]?.bodyText).toBe("Ab Januar 12,99 Euro.");
     });
+
+    it("carries the IMAP UID so a local row is distinguishable from a server copy", async () => {
+      mockEmailAccount.findMany.mockResolvedValue([{ id: "acc-1" }]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        {
+          id: "msg-1",
+          uid: "4211",
+          fromName: null,
+          fromEmail: "me@gmx.de",
+          to: "you@example.com",
+          subject: "Rechnung",
+          date: new Date("2025-01-01"),
+          bodyHtml: null,
+          bodyText: "Hi",
+          bodyPreview: "Hi",
+          isRead: true,
+          isStarred: false,
+          folder: "Sent",
+          tags: [],
+          aiSummary: null,
+          spamScore: null,
+          accountId: "acc-1",
+        },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailRead = tools.find((t) => t.name === "mail_read")!;
+
+      const result = await callExecute(mailRead.execute, { ids: ["msg-1"] });
+      const value = result.structuredContent as { emails: Array<{ uid?: string }> };
+
+      expect(value.emails[0]?.uid).toBe("4211");
+    });
   });
 
   describe("mail_search", () => {
@@ -506,6 +629,47 @@ describe("createMailTools", () => {
         select: { id: true },
       });
     });
+
+    it("moves into the folder the account actually calls that", async () => {
+      mockEmailAccount.findMany.mockResolvedValueOnce([{ id: "acc-1" }]).mockResolvedValueOnce([
+        {
+          id: "acc-1",
+          email: "me@gmx.de",
+          specialFolders: { "\\Sent": "Gesendet" },
+          cachedFolders: ["Gesendet", "Gelöscht"],
+        },
+      ]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        { id: "msg-1", uid: "42", folder: "INBOX", accountId: "acc-1" },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailMove = tools.find((t) => t.name === "mail_move")!;
+
+      const result = await callExecute(mailMove.execute, { ids: ["msg-1"], folder: "Sent" });
+      const value = result.structuredContent as { moved: number; folder: string };
+
+      expect(mockMoveMessage).toHaveBeenCalledWith("acc-1", "INBOX", "42", "Gesendet");
+      expect(value).toEqual({ moved: 1, folder: "Gesendet" });
+    });
+
+    it("names the folders it does have when the target is unknown", async () => {
+      mockEmailAccount.findMany
+        .mockResolvedValueOnce([{ id: "acc-1" }])
+        .mockResolvedValueOnce([
+          { id: "acc-1", email: "me@gmx.de", specialFolders: {}, cachedFolders: ["Projekte"] },
+        ]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        { id: "msg-1", uid: "42", folder: "INBOX", accountId: "acc-1" },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailMove = tools.find((t) => t.name === "mail_move")!;
+
+      await expect(
+        callExecute(mailMove.execute, { ids: ["msg-1"], folder: "Nirgendwo" }),
+      ).rejects.toThrow(/has no folder "Nirgendwo".*Projekte/);
+    });
   });
 
   describe("mail_delete", () => {
@@ -523,6 +687,27 @@ describe("createMailTools", () => {
         where: { userId: "user-123" },
         select: { id: true },
       });
+    });
+
+    it("moves the message to the account's trash folder instead of expunging it", async () => {
+      mockEmailAccount.findMany.mockResolvedValueOnce([{ id: "acc-1" }]).mockResolvedValueOnce([
+        {
+          id: "acc-1",
+          specialFolders: { "\\Trash": "Gelöscht" },
+          cachedFolders: ["Gelöscht"],
+        },
+      ]);
+      mockEmailMessage.findMany.mockResolvedValue([
+        { id: "msg-1", uid: "42", folder: "INBOX", accountId: "acc-1" },
+      ]);
+
+      const tools = createMailTools(userId);
+      const mailDelete = tools.find((t) => t.name === "mail_delete")!;
+
+      await callExecute(mailDelete.execute, { ids: ["msg-1"] });
+
+      expect(mockMoveMessage).toHaveBeenCalledWith("acc-1", "INBOX", "42", "Gelöscht");
+      expect(mockDeleteMessage).not.toHaveBeenCalled();
     });
   });
 

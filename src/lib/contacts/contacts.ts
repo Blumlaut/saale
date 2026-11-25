@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { splitEmailAddresses } from "@/lib/email/utils";
+import { folderTargetFrom, specialFolder } from "@/lib/email/folders";
 import { searchContacts } from "@/lib/search/sources";
 
 // ─── Address parsing ─────────────────────────────────────────────────────────
@@ -294,12 +295,19 @@ export async function getRecentRecipients(
 ): Promise<Array<{ name: string | null; email: string }>> {
   const accounts = await prisma.emailAccount.findMany({
     where: { userId },
-    select: { id: true },
+    select: { id: true, specialFolders: true, cachedFolders: true },
   });
   if (accounts.length === 0) return [];
 
+  // Each server names its own sent folder.
+  const sentFolders = accounts.flatMap((account) => {
+    const sent = specialFolder(folderTargetFrom(account), "\\Sent");
+    return sent ? [{ accountId: account.id, folder: sent }] : [];
+  });
+  if (sentFolders.length === 0) return [];
+
   const messages = await prisma.emailMessage.findMany({
-    where: { accountId: { in: accounts.map((a) => a.id) }, folder: "Sent" },
+    where: { accountId: { in: accounts.map((a) => a.id) }, OR: sentFolders },
     orderBy: { date: "desc" },
     take: 300,
     select: { to: true },

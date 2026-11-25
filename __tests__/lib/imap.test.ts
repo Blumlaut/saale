@@ -13,18 +13,20 @@ vi.mock("@/lib/crypto", () => ({
   decrypt: vi.fn(() => "test-password"),
 }));
 
-vi.mock("imapflow", () => {
-  const mockMailbox = {
+const { mockMailbox } = vi.hoisted(() => ({
+  mockMailbox: {
     connect: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
     mailboxOpen: vi.fn().mockResolvedValue(undefined),
     mailboxClose: vi.fn().mockResolvedValue(undefined),
     messageFlagsAdd: vi.fn().mockResolvedValue(true),
     messageFlagsRemove: vi.fn().mockResolvedValue(true),
-    messageMove: vi.fn().mockResolvedValue({ copied: 1 }),
+    messageMove: vi.fn().mockResolvedValue({ path: "INBOX", destination: "Archive" }),
     messageDelete: vi.fn().mockResolvedValue(true),
-  };
+  },
+}));
 
+vi.mock("imapflow", () => {
   class MockImapFlow {
     constructor(_options: unknown) {
       // Store options for test assertions
@@ -182,25 +184,47 @@ describe("syncMessageFlags", () => {
 });
 
 describe("moveMessage", () => {
-  it("moves a message to a different folder", async () => {
-    await moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive");
+  it("moves a message and reports the UID it carries in the new folder", async () => {
+    mockMailbox.messageMove.mockResolvedValueOnce({
+      path: "INBOX",
+      destination: "Archive",
+      uidMap: new Map([[12345, 777]]),
+    });
+
+    const outcome = await moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive");
 
     expect(prisma.emailAccount.findUnique).toHaveBeenCalledWith({
       where: { id: mockAccount.id },
     });
+    expect(outcome).toEqual({ moved: true, uid: "777" });
+  });
+
+  it("reports a move the server made without a UID for the copy", async () => {
+    const outcome = await moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive");
+
+    expect(outcome).toEqual({ moved: true, uid: null });
   });
 
   it("converts string UID to number", async () => {
     await moveMessage(mockAccount.id, "INBOX", "99999", "Trash");
 
-    expect(prisma.emailAccount.findUnique).toHaveBeenCalled();
+    expect(mockMailbox.messageMove).toHaveBeenCalledWith([99999], "Trash", { uid: true });
   });
 
-  it("does not fail if IMAP server is unreachable", async () => {
-    // Best-effort: should not throw
-    await expect(
-      moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive"),
-    ).resolves.toBeUndefined();
+  it("reports a move the server refused", async () => {
+    mockMailbox.messageMove.mockResolvedValueOnce(false);
+
+    const outcome = await moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive");
+
+    expect(outcome).toEqual({ moved: false });
+  });
+
+  it("does not throw when the server drops the connection mid-move", async () => {
+    mockMailbox.messageMove.mockRejectedValueOnce(new Error("Connection closed"));
+
+    await expect(moveMessage(mockAccount.id, "INBOX", mockMessage.uid, "Archive")).resolves.toEqual(
+      { moved: false },
+    );
   });
 });
 
