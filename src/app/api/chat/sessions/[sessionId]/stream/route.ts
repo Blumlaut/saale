@@ -416,11 +416,11 @@ export async function GET(
    * looks perfectly healthy. Once the generation's liveness heartbeat is gone
    * and this process has no run of its own, settle every client and close the
    * stream: the browser reconnects, the fresh request re-decides with the dead
-   * generation off the books, and the unanswered message is prompted again.
+   * generation off the books, and the run record resumes the turn where it
+   * stopped (see `decideStreamAction`).
    *
-   * A reconnecting client is one way back to an interrupted run; the boot pass
-   * is the other, for the chats nobody came back to
-   * (see resume-interrupted-runs.ts).
+   * A reconnecting client is one way back to an interrupted run; the pass in
+   * resume-interrupted-runs.ts is the other, for the chats nobody came back to.
    *
    * The buffered `done` check keeps a normally finished run from looking dead
    *. its client already settled from the `done` the decision emits.
