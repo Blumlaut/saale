@@ -506,6 +506,59 @@ composer's queue strip (`src/components/chat/queued-messages.tsx`).
 - **Transcript queries must exclude queued rows** (`queuedAt: null`) — the
   conversation, shared chats, title generation and memory extraction all do.
 
+## Restart Recovery
+
+A chat's agent lives in the web process, so a restart (deploy, crash, reboot)
+ends every run in flight. The `ChatRun` row is how a restart finds them
+(`src/lib/chat/run-record.ts`):
+
+- **A row means a run nobody settled.** It is written when a run claims its
+  message and deleted when the run is over, after the run's DB saves have landed
+  (`agent_settled` in `session-event-tracker.ts`). Deleting it earlier turns a
+  finished run into an unanswered message.
+- **Its `heartbeatAt` says whether anyone is still working on it.** The tracker
+  refreshes it with the run's liveness every `ACTIVE_SESSION_HEARTBEAT_MS`,
+  whatever Pi is streaming; `RUN_HEARTBEAT_STALE_MS` is the window. A resume that
+  is still building its agent keeps refreshing it (`startClaimHeartbeat`), or
+  another process takes the claim for a dead one.
+- **Claiming rewrites the heartbeat and the row stays.** The update matches the
+  value that was read, so one of two processes booting together wins, and a resume
+  that dies before it settles is still the run a later pass resumes.
+  `dropInterruptedChatRun` removes a record that will never be resumed (answered,
+  stopped, overtaken by a newer message), matched on the whole row so it can never
+  take a new run's record.
+
+Two paths resume a run, and both go through `prepareChatRun({ resume: true })`:
+
+1. **The user's reconnect.** `decideStreamAction` resumes from the record before
+   any guess based on the messages, which is what makes a run that already saved a
+   turn of its own resumable at all: the conversation ends on the model's turn, so
+   every message-based check reads the chat as idle.
+2. **The sweep** (`resume-interrupted-runs.ts`), a minute after boot and every
+   minute after, for chats nobody came back to and for resumes that died too.
+
+Resuming continues the turn the transcript still holds (`interrupted-turn.ts`),
+so the model reads what it already did instead of starting over:
+
+- **An orphaned tool call is answered, not dropped.** The assistant message with
+  its call is in the transcript already (persisted at `message_end`, before the
+  tool runs), and a request that answers a call with a user message is rejected by
+  every provider. The call gets a result saying the instance stopped, so the model
+  checks the state before repeating a command that may already have landed. The
+  same repair runs on the plain prompt path, since any prompt appends after the
+  branch's last entry.
+- **A finished turn with no calls is abandoned** (`rewindLeafBefore`) and the
+  message asked again: a new message may not follow an assistant turn.
+- **The run itself is a `sendCustomMessage` with `triggerTurn: true`**, so Pi runs
+  it as a normal turn with compaction, retries and `agent_settled`. The note is
+  context (`display: false`), and the answer lands as new assistant rows.
+- **Only a transcript in place is continued.** A prompt that was edited since, or
+  one a later message overtook, falls back to prompting the message.
+
+`hasFinalAnswer` (`src/lib/chat/run-answer.ts`) is the backstop: a record whose
+message already has a reply without tool calls is a leftover, and resuming it
+would answer the message twice.
+
 ## Message Editing (History Rewind)
 
 `PATCH /messages/:messageId` rewrites the DB history: the message is updated in
@@ -571,6 +624,8 @@ codemode exposure derive it. A new _category_ or _purpose_ is likewise derived.
 | Storing a provider's API key in a field Saale invents                              | Pi's credential is not always one key — Cloudflare needs an account and gateway id, Bedrock and Azure resolve ambient config, OAuth stores tokens that Pi refreshes                                                                                       | Let Pi produce the credential and store it whole (`encryptedCredential`, one encrypted `Credential` per provider)                           |
 | `session.agent.prompt()` for chat/Telegram                                         | Bypasses SDK compaction, retry, `agent_settled` — treats a stopped run as finished                                                                                                                                                                        | Use `session.prompt()` (with a system-prompt resource loader)                                                                               |
 | Re-prompting an edited message without rewinding the transcript                    | The append-only transcript still holds the deleted history, so the model reads the edit as a new message                                                                                                                                                  | Rewind first — see "Message Editing (History Rewind)"                                                                                       |
+| Re-prompting a message a restart interrupted                                       | Its turn is already in the transcript: the model reads the request twice, and an orphaned tool call makes the request one every provider rejects                                                                                                          | `prepareChatRun({ resume: true })`. see "Restart Recovery"                                                                                  |
+| Deleting the `ChatRun` row before the run's saves land                             | A restart in that window resumes a run whose answer is already written                                                                                                                                                                                    | `endChatRun` after `Promise.allSettled(pendingSaves)`                                                                                       |
 | Calling `session.compact()` on token thresholds / mid-run                          | Aborts the in-flight run; no in-flight guard → double compaction                                                                                                                                                                                          | Let the SDK auto-compact at run boundaries; only observe `compaction_*` events                                                              |
 | Treating `agent_end` as "done"                                                     | Run may continue after compaction/error retry                                                                                                                                                                                                             | Emit `done` on `agent_settled`                                                                                                              |
 | `getAvailable()[0]` for model                                                      | Grabs first model (could be an embedding model)                                                                                                                                                                                                           | Use user's `defaultModelProvider`/`defaultModelName` from AppSettings                                                                       |
