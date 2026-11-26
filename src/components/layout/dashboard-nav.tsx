@@ -11,7 +11,11 @@ import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
-import { PALETTE_KIND_LABELS, type PaletteResult } from "@/lib/search/palette-result";
+import {
+  DEFAULT_PALETTE_LIMIT,
+  PALETTE_KIND_LABELS,
+  type PaletteResult,
+} from "@/lib/search/palette-result";
 import {
   SETTINGS_GROUPS,
   SETTINGS_GROUP_LABELS,
@@ -59,6 +63,9 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
   const [emailLoading, setEmailLoading] = useState(true);
   const isAdmin = useIsAdmin();
   const searchRef = useRef<HTMLDivElement>(null);
+  // The results are portalled out of the sidebar, so a click in them is still a
+  // click in the palette.
+  const paletteRef = useRef<HTMLDivElement>(null);
   const [searchPosition, setSearchPosition] = useState<{ top: number; left: number } | null>(null);
 
   // Update portal position on open, scroll, and resize
@@ -116,7 +123,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
   }, []);
 
   // Close search on outside click
-  useClickOutside(searchRef, () => setSearchOpen(false));
+  useClickOutside([searchRef, paletteRef], () => setSearchOpen(false));
 
   // Search handler
   useEffect(() => {
@@ -129,7 +136,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
       setSearchLoading(true);
       try {
         const data = await fetchJson<{ results: PaletteResult[] }>(
-          `/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`,
+          `/api/search?q=${encodeURIComponent(searchQuery)}&limit=${DEFAULT_PALETTE_LIMIT}`,
         );
         setSearchResults(data.results);
       } catch (err) {
@@ -296,6 +303,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
             searchPosition &&
             createPortal(
               <div
+                ref={paletteRef}
                 className="bg-popover border-border fixed z-50 mt-1 w-72 rounded-xl border shadow-2xl"
                 style={{
                   top: searchPosition.top,
@@ -336,7 +344,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
                   ) : (
                     searchResults.map((result) => (
                       <button
-                        key={result.id}
+                        key={`${result.kind}:${result.id}`}
                         onClick={() => handleResultClick(result)}
                         className="hover:bg-muted/50 flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors"
                       >

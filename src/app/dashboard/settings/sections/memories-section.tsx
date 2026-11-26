@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,8 +89,9 @@ export function MemoriesSection() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Filter state
-  const [searchQuery, setSearchQuery] = useState("");
+  // Filter state. A ⌘K row for a memory opens the list already searching for it.
+  const linkedSearch = useSearchParams().get("q") ?? "";
+  const [searchQuery, setSearchQuery] = useState(linkedSearch);
   const [filterCollection, setFilterCollection] = useState<string>("all");
 
   // Edit dialog state

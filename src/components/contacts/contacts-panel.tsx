@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchJson, deleteJson } from "@/lib/http";
 import { toast } from "sonner";
+import { useLinkedRow } from "@/hooks/use-linked-row";
 import { ContactList } from "@/components/contacts/contact-list";
 import { ContactSheet } from "@/components/contacts/contact-sheet";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -18,6 +20,8 @@ export function ContactsPanel() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState<Contact | null>(null);
+  // A ⌘K row for one contact opens the page with that contact's sheet up.
+  const linkedContactId = useSearchParams().get("id");
 
   const load = useCallback(async () => {
     try {
@@ -43,6 +47,10 @@ export function ContactsPanel() {
     setEditing(contact);
     setSheetOpen(true);
   }, []);
+
+  const matchesContact = useCallback((contact: Contact, id: string) => contact.id === id, []);
+
+  useLinkedRow(linkedContactId, contacts, matchesContact, handleEdit);
 
   const handleSaved = useCallback((saved: Contact) => {
     setContacts((prev) => {

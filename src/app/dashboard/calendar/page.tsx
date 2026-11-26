@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { GlassPanel, GlassPanelContent } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,13 +21,21 @@ import { DayView } from "@/components/calendar/day-view";
 import { EventDialog } from "@/components/calendar/event-dialog";
 import { EventViewSheet } from "@/components/calendar/event-view-sheet";
 
+/** The day a `?date=` link names, or today when it names none or nonsense. */
+function startDay(date: string | null): Date {
+  const parsed = date ? new Date(`${date}T00:00:00Z`) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+}
+
 export default function CalendarPage() {
   const [view, setView, viewRestored] = usePersistedState<"month" | "week" | "day">(
     "calendar:view",
     "month",
     { validate: oneOf("month", "week", "day") },
   );
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // A ⌘K row for an event opens the calendar on the day it is on.
+  const linkedDate = useSearchParams().get("date");
+  const [currentDate, setCurrentDate] = useState(() => startDay(linkedDate));
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [accounts, setAccounts] = useState<CalendarAccountSummary[]>([]);
   const [loading, setLoading] = useState(true);

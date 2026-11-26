@@ -8,6 +8,12 @@
 /** Everything the palette can find. */
 export const PALETTE_KINDS = ["chat", "email", "contact", "task", "event", "memory"] as const;
 
+/** Rows the palette shows when the caller names no limit. */
+export const DEFAULT_PALETTE_LIMIT = 12;
+
+/** Ceiling on one palette answer, however many sources it asked. */
+export const MAX_PALETTE_LIMIT = 50;
+
 export type PaletteKind = (typeof PALETTE_KINDS)[number];
 
 export interface PaletteResult {

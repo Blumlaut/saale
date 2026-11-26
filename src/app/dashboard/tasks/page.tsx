@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchJson, postJson, patchJson, deleteJson } from "@/lib/http";
+import { useLinkedRow } from "@/hooks/use-linked-row";
 import { Page } from "@/components/layout/page";
 import { TaskList } from "@/components/tasks/task-list";
 import { TaskForm } from "@/components/tasks/task-form";
@@ -16,6 +18,8 @@ export default function TasksPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deleteTask, setDeleteTask] = useState<Task | null>(null);
   const [chatTask, setChatTask] = useState<Task | null>(null);
+  // A ⌘K row for one task opens the page with that task's form up.
+  const linkedTaskId = useSearchParams().get("id");
 
   const loadTasks = useCallback(async () => {
     try {
@@ -91,10 +95,15 @@ export default function TasksPage() {
     [editingTask, loadTasks],
   );
 
+  /** The row a `?id=` link names, matched once the list has it. */
+  const matchesTask = useCallback((task: Task, id: string) => task.id === id, []);
+
   const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
     setShowForm(true);
   }, []);
+
+  useLinkedRow(linkedTaskId, tasks, matchesTask, handleEdit);
 
   const handleChat = useCallback((task: Task) => {
     setChatTask(task);

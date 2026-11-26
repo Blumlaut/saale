@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { DEFAULT_PALETTE_LIMIT, searchPalette } from "@/lib/search/palette";
-import { paletteKindsFrom } from "@/lib/search/palette-result";
+import { searchPalette } from "@/lib/search/palette";
+import { DEFAULT_PALETTE_LIMIT, paletteKindsFrom } from "@/lib/search/palette-result";
 
 /**
  * GET /api/search. The ⌘K palette, across everything the agent can search:
@@ -26,5 +26,5 @@ export async function GET(request: NextRequest) {
     limit: Number(url.searchParams.get("limit") ?? DEFAULT_PALETTE_LIMIT),
   });
 
-  return NextResponse.json({ query, results, total: results.length });
+  return NextResponse.json({ query, results });
 }

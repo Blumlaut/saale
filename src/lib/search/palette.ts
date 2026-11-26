@@ -2,15 +2,20 @@
  * The ⌘K palette's search: every source the agent can reach, answered as one
  * ranked list.
  *
- * The sources live in `sources.ts` and each one returns its own row type. That
- * is right for a page that renders one table (the memories list) and wrong for a
- * palette, which shows a single list where a to-do and an email compete for the
- * same slot. So the mapping from a hit to a row lives here, once, and the route
- * only authenticates and responds.
+ * The sources live in `sources.ts` and each one returns its own hit type, which
+ * suits the page that renders one table. A palette shows a single list, where a
+ * to-do and an email compete for the same slot, so the mapping from a hit to a
+ * row lives here, once, and the route only authenticates and responds.
  */
 
 import { snippetAround } from "./snippet";
-import { PALETTE_KINDS, type PaletteKind, type PaletteResult } from "./palette-result";
+import {
+  DEFAULT_PALETTE_LIMIT,
+  MAX_PALETTE_LIMIT,
+  PALETTE_KINDS,
+  type PaletteKind,
+  type PaletteResult,
+} from "./palette-result";
 import {
   searchCalendarEvents,
   searchChatMessages,
@@ -23,12 +28,6 @@ import {
   type ContactHit,
   type TaskHit,
 } from "./sources";
-
-/** Rows the palette shows when the caller names no limit. */
-export const DEFAULT_PALETTE_LIMIT = 12;
-
-/** Ceiling on one palette answer, however many sources it asked. */
-export const MAX_PALETTE_LIMIT = 50;
 
 /** How much of a matched body a row shows. */
 const SNIPPET_LENGTH = 100;
@@ -127,7 +126,7 @@ async function contactRows(userId: string, query: string, limit: number): Promis
     title: contact.name,
     snippet: contactSnippet(contact, query),
     score: contact.score,
-    href: "/dashboard/contacts",
+    href: `/dashboard/contacts?id=${encodeURIComponent(contact.id)}`,
   }));
 }
 
@@ -140,7 +139,7 @@ async function taskRows(userId: string, query: string, limit: number): Promise<P
     title: task.title,
     snippet: taskSnippet(task, query),
     score: task.score,
-    href: "/dashboard/tasks",
+    href: `/dashboard/tasks?id=${encodeURIComponent(task.id)}`,
   }));
 }
 
@@ -153,7 +152,8 @@ async function eventRows(userId: string, query: string, limit: number): Promise<
     title: event.summary || "(no title)",
     snippet: eventSnippet(event),
     score: event.score,
-    href: "/dashboard/calendar",
+    // The calendar has no per-event page: it opens on the day the event is on.
+    href: `/dashboard/calendar?date=${event.dtStart.toISOString().slice(0, 10)}`,
   }));
 }
 
@@ -166,7 +166,8 @@ async function memoryRows(userId: string, query: string, limit: number): Promise
     title: memory.title,
     snippet: snippetAround(memory.content, query, SNIPPET_LENGTH),
     score: memory.score,
-    href: "/dashboard/settings/memories",
+    // The list opens with this search already typed, so the row is on screen.
+    href: `/dashboard/settings/memories?q=${encodeURIComponent(query)}`,
   }));
 }
 

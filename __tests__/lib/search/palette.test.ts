@@ -160,8 +160,33 @@ describe("searchPalette", () => {
     expect(results[0]?.snippet).toBe("pending · 2026-01-05");
     expect(results[1]).toMatchObject({
       kind: "contact",
-      href: "/dashboard/contacts",
+      href: "/dashboard/contacts?id=c-1",
       snippet: "Analytical · ada@example.com",
     });
+  });
+
+  it("sends every kind to the row it found", async () => {
+    tasks.mockResolvedValue([{ id: "t-1", title: "Plan the week", status: "pending", score: 3 }]);
+    events.mockResolvedValue([
+      {
+        id: "e-1",
+        summary: "Week kickoff",
+        location: null,
+        dtStart: new Date("2026-01-05T09:00:00.000Z"),
+        score: 3,
+      },
+    ]);
+    memories.mockResolvedValue([
+      { id: "m-1", title: "Week rhythm", content: "the week starts on monday", score: 3 },
+    ]);
+
+    const results = await searchPalette("user-1", "week", {
+      kinds: ["task", "event", "memory"],
+    });
+    const hrefs = results.map((result) => result.href);
+
+    expect(hrefs).toContain("/dashboard/tasks?id=t-1");
+    expect(hrefs).toContain("/dashboard/calendar?date=2026-01-05");
+    expect(hrefs).toContain(`/dashboard/settings/memories?q=${encodeURIComponent("week")}`);
   });
 });
