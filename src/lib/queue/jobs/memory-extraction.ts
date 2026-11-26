@@ -106,6 +106,8 @@ export async function handler(params: {
       where: {
         sessionId: session.id,
         queuedAt: null,
+        // The app's own notices are not something the user said.
+        role: { not: "system" },
         ...(session.lastSummarizedAt ? { createdAt: { gt: session.lastSummarizedAt } } : {}),
       },
       orderBy: { createdAt: "asc" },

@@ -62,7 +62,8 @@ export async function handler(params: {
   // Fetch messages for all sessions in one query
   const sessionIds = sessions.map((s) => s.id);
   const allMessages = await prisma.chatMessage.findMany({
-    where: { sessionId: { in: sessionIds }, queuedAt: null },
+    // System rows are the app's own notices: a title describes the conversation.
+    where: { sessionId: { in: sessionIds }, queuedAt: null, role: { not: "system" } },
     orderBy: { createdAt: "asc" },
     select: { sessionId: true, role: true, content: true },
   });
