@@ -2,7 +2,8 @@ import type { Message } from "@/components/chat/types";
 
 /**
  * Group a flat message list into renderable units:
- * - user/system messages → standalone user bubbles
+ * - user messages → standalone user bubbles
+ * - system messages → standalone notices. the app wrote them, not the user
  * - compaction messages → standalone compaction cards
  * - assistant messages → one group per generation turn: the root turn plus
  *   every consecutive child turn sharing its `parentMessageId` (multi-turn
@@ -11,6 +12,7 @@ import type { Message } from "@/components/chat/types";
 
 export type MessageGroup =
   | { type: "user"; message: Message }
+  | { type: "notice"; message: Message }
   | { type: "assistant-group"; messages: Message[] }
   | { type: "compaction"; message: Message };
 
@@ -21,7 +23,7 @@ export function groupMessages(messages: Message[]): MessageGroup[] {
   while (i < messages.length) {
     const msg = messages[i]!;
     if (msg.role === "user" || msg.role === "system") {
-      groups.push({ type: "user", message: msg });
+      groups.push({ type: msg.role === "system" ? "notice" : "user", message: msg });
       i++;
     } else if (msg.role === "compaction") {
       groups.push({ type: "compaction", message: msg });

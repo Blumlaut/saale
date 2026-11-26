@@ -36,15 +36,24 @@ vi.mock("@/lib/watchers/access", () => ({
 
 vi.mock("@/lib/watchers/wake", () => ({
   deliverWake: vi.fn(),
+  WakeDeferredError: class WakeDeferredError extends Error {},
 }));
 
 vi.mock("@/lib/queue", () => ({
   unscheduleWatcher: vi.fn(async () => {}),
 }));
 
+vi.mock("@/lib/watchers/failure", () => ({
+  announceTickFailure: vi.fn(async () => {}),
+  failureNoticeEarned: (_previous: string | null, outcome: { status: string; reason?: string }) =>
+    (outcome.status === "error" || outcome.status === "blocked") &&
+    (outcome.reason ?? "It failed without saying why") !== _previous,
+}));
+
 import { prisma } from "@/lib/db";
 import { loadWatcherToolAccess } from "@/lib/watchers/access";
-import { deliverWake } from "@/lib/watchers/wake";
+import { announceTickFailure } from "@/lib/watchers/failure";
+import { deliverWake, WakeDeferredError } from "@/lib/watchers/wake";
 import { runWatcherTick, previewScript } from "@/lib/watchers/tick";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -54,6 +63,7 @@ const createTick = vi.mocked(prisma.scriptWatcherTick.create as any);
 const findTicks = vi.mocked(prisma.scriptWatcherTick.findMany as any);
 const access = vi.mocked(loadWatcherToolAccess as any);
 const wake = vi.mocked(deliverWake as any);
+const announce = vi.mocked(announceTickFailure as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** A stored watcher. */
@@ -224,6 +234,37 @@ describe("runWatcherTick", () => {
     expect(writtenUpdate()?.lastError).toContain("boom");
   });
 
+  it("tells the chat and the user when a script starts failing", async () => {
+    findWatcher.mockResolvedValue(watcher({ script: "throw new Error('boom');" }));
+
+    await runWatcherTick("w-1");
+
+    expect(announce).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watcher: expect.objectContaining({ id: "w-1", userId: "u-1", sessionId: "chat-1" }),
+        outcome: expect.objectContaining({ status: "error" }),
+      }),
+    );
+  });
+
+  it("stays quiet while the same failure stands", async () => {
+    findWatcher.mockResolvedValue(watcher({ script: "throw new Error('boom');" }));
+
+    const first = await runWatcherTick("w-1");
+    expect(announce).toHaveBeenCalledTimes(1);
+
+    // The stored error is what the last tick recorded: the same sentence twice
+    // is one problem, and a notice per tick would bury the bell.
+    findWatcher.mockResolvedValue(
+      watcher({ script: "throw new Error('boom');", lastError: first.reason ?? null }),
+    );
+    announce.mockClear();
+
+    await runWatcherTick("w-1");
+
+    expect(announce).not.toHaveBeenCalled();
+  });
+
   it("drops a fire that lands inside the cooldown, keeping the ledger moving", async () => {
     const script = "store('last', 'news');\nreturn 'news';";
     const lastFiredAt = new Date(Date.now() - 60_000);
@@ -265,6 +306,24 @@ describe("runWatcherTick", () => {
     // user never received, so the next tick reports it again.
     expect(writtenUpdate()?.fireCount).toBeUndefined();
     expect(writtenUpdate()?.store).toBeUndefined();
+    // A fire that could not be delivered is exactly what the user has to hear.
+    expect(announce).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watcher: expect.objectContaining({ id: "w-1" }),
+        outcome: expect.objectContaining({ status: "blocked" }),
+      }),
+    );
+  });
+
+  it("waits quietly while the chat it reports into is mid-turn", async () => {
+    findWatcher.mockResolvedValue(watcher());
+    wake.mockRejectedValue(new WakeDeferredError('Chat "Inbox" is busy'));
+
+    const outcome = await runWatcherTick("w-1");
+
+    expect(outcome.status).toBe("blocked");
+    // Nothing broke: the user is in that conversation and the next tick delivers.
+    expect(announce).not.toHaveBeenCalled();
   });
 
   it("fires every tick when there is no script to gate it", async () => {

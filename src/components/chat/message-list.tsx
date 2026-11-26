@@ -32,6 +32,7 @@ import { toolMark } from "./tool-marks";
 import { ProviderErrorNotice } from "./provider-error-notice";
 import { formatProviderError } from "@/lib/pi/provider-error";
 import { groupMessages, type MessageGroup } from "@/lib/chat/group-messages";
+import { ChatNotice } from "./chat-notice";
 import {
   STEP_REVEAL_ROWS,
   WINDOW_ROW_BUDGET,
@@ -652,6 +653,8 @@ export const MessageList = memo(
                   message={group.message}
                   {...(onEditMessage && { onEdit: onEditMessage })}
                 />
+              ) : group.type === "notice" ? (
+                <ChatNotice key={group.message.id} text={group.message.content} />
               ) : (
                 /* Keyed by the turn's root message: a positional key would remount
                every group whenever the window slides. */

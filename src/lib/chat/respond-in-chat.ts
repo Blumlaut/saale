@@ -30,6 +30,14 @@ import { waitForPersistenceTeardown } from "@/lib/pi/session-persistence";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "./agent-run";
 import { chatUsageKind } from "@/lib/usage/record";
 
+/**
+ * The target chat is mid-turn.
+ *
+ * Its own error, because a caller that can wait (a scheduled fire) has to tell
+ * "come back later" apart from "this chat cannot answer at all".
+ */
+export class ChatBusyError extends Error {}
+
 export interface RespondInChatOptions {
   userId: string;
   /** The chat to post into. */
@@ -89,7 +97,7 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   // lookup; the pool entry's own flag is the authoritative same-process guard.
   // Claim before writing anything, so a refused call leaves no stray message.
   if (entry.promptInFlight) {
-    throw new Error(`Chat "${chatSession.title}" is busy. try again once it is idle`);
+    throw new ChatBusyError(`Chat "${chatSession.title}" is busy. try again once it is idle`);
   }
   entry.promptInFlight = true;
 
@@ -172,10 +180,10 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
 async function assertIdle(userId: string, sessionId: string, title: string): Promise<void> {
   const pooled = getPoolEntry(getPoolKey(userId, sessionId));
   if (pooled?.promptInFlight || pooled?.session.isStreaming === true) {
-    throw new Error(`Chat "${title}" is busy. try again once it is idle`);
+    throw new ChatBusyError(`Chat "${title}" is busy. try again once it is idle`);
   }
   if (await isSessionActive(userId, sessionId)) {
-    throw new Error(`Chat "${title}" is busy. try again once it is idle`);
+    throw new ChatBusyError(`Chat "${title}" is busy. try again once it is idle`);
   }
 }
 

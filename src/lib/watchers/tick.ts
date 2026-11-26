@@ -14,8 +14,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { unscheduleWatcher } from "@/lib/queue";
 import { loadWatcherToolAccess } from "./access";
+import { announceTickFailure, failureNoticeEarned } from "./failure";
 import { applyStoreWrites, isFiring, runWatcherScript } from "./runner";
-import { deliverWake } from "./wake";
+import { deliverWake, WakeDeferredError } from "./wake";
 
 /** Ticks kept per automation. Older rows are pruned after each tick. */
 export const TICK_HISTORY_LIMIT = 50;
@@ -167,6 +168,42 @@ async function evaluate(watcher: WatcherRow): Promise<Evaluation> {
 }
 
 /**
+ * Record a failed tick, then tell the chat and the user, once per failure.
+ *
+ * `previousError` is the automation's stored failure from before this tick: the
+ * same message twice is the same problem still standing.
+ */
+async function recordFailure(options: {
+  watcher: WatcherRow;
+  outcome: TickOutcome;
+  previousError: string | null;
+  store?: Record<string, unknown>;
+  fired: boolean;
+}): Promise<TickOutcome> {
+  const recorded = await recordTick({
+    watcherId: options.watcher.id,
+    outcome: options.outcome,
+    ...(options.store === undefined ? {} : { store: options.store }),
+    fired: options.fired,
+  });
+
+  if (failureNoticeEarned(options.previousError, recorded)) {
+    await announceTickFailure({
+      watcher: {
+        id: options.watcher.id,
+        userId: options.watcher.userId,
+        name: options.watcher.name,
+        sessionId: options.watcher.sessionId,
+        originSessionId: options.watcher.originSessionId,
+      },
+      outcome: recorded,
+    });
+  }
+
+  return recorded;
+}
+
+/**
  * Record a tick and advance the automation's counters.
  *
  * `store` is passed only when the tick's work is finished with the state it
@@ -302,6 +339,16 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
   const { outcome } = evaluation;
 
   if (!evaluation.firing) {
+    if (outcome.status === "error") {
+      return recordFailure({
+        watcher,
+        outcome,
+        previousError: watcher.lastError,
+        store: evaluation.nextStore,
+        fired: false,
+      });
+    }
+
     return recordTick({
       watcherId: watcher.id,
       outcome,
@@ -352,11 +399,20 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // The ledger must not move past a report the user never received.
+    const blocked: TickOutcome = { ...outcome, status: "blocked", reason };
+
+    // A chat that is mid-turn is a wait, not a failure: the user is in that
+    // conversation, and the next tick delivers.
+    if (err instanceof WakeDeferredError) {
+      return recordTick({ watcherId: watcher.id, outcome: blocked, fired: false });
+    }
+
     console.error(`[automation:${watcher.id}] Wake failed:`, err);
-    return recordTick({
-      watcherId: watcher.id,
-      outcome: { ...outcome, status: "blocked", reason },
-      // The ledger must not move past a report the user never received.
+    return recordFailure({
+      watcher,
+      outcome: blocked,
+      previousError: watcher.lastError,
       fired: false,
     });
   }

@@ -1,6 +1,6 @@
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import type { SessionManager } from "@earendil-works/pi-coding-agent";
 import { prisma } from "@/lib/db";
-import { get as getPooledSession, getPoolKey, getSessionDir } from "./agent-pool";
+import { appendSessionNote } from "./session-notes";
 
 /**
  * A render a slash command made, noted in the chat's Pi transcript.
@@ -37,21 +37,12 @@ export function renderNoteText(note: RenderNote): string {
 export async function appendRenderNote(
   note: RenderNote & { userId: string; sessionId: string },
 ): Promise<void> {
-  const text = renderNoteText(note);
-  const pooled = getPooledSession(getPoolKey(note.userId, note.sessionId));
-
-  if (pooled) {
-    // The session's own queue defers a note from a running turn to its end. A
-    // note written now could land between a tool call and its result.
-    await pooled.session.sendCustomMessage(
-      { customType: RENDER_NOTE_TYPE, content: text, display: false },
-      { triggerTurn: false },
-    );
-    return;
-  }
-
-  const sessionDir = getSessionDir(note.userId, note.sessionId);
-  appendNote(SessionManager.continueRecent(sessionDir, sessionDir), text);
+  await appendSessionNote({
+    userId: note.userId,
+    sessionId: note.sessionId,
+    type: RENDER_NOTE_TYPE,
+    text: renderNoteText(note),
+  });
 }
 
 /**

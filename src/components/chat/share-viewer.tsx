@@ -14,6 +14,7 @@ import { CollapsedToolCalls } from "./collapsed-tool-calls";
 import { RedactedToolCall } from "./redacted-tool-call";
 import { categoryToolMark, type ToolMark } from "./tool-mark-model";
 import { ProviderErrorNotice } from "./provider-error-notice";
+import { ChatNotice } from "./chat-notice";
 import { groupMessages } from "@/lib/chat/group-messages";
 import { loginPath } from "@/lib/auth/redirect";
 import { stripAttachmentPromptText } from "@/lib/strip-attachment-prompt";
@@ -164,6 +165,8 @@ function ShareMessageList({ messages }: { messages: Message[] }) {
           <CompactionMessage key={group.message.id} message={group.message} />
         ) : group.type === "user" ? (
           <ShareUserMessage key={group.message.id} message={group.message} />
+        ) : group.type === "notice" ? (
+          <ChatNotice key={group.message.id} text={group.message.content} />
         ) : (
           <ShareAssistantGroup key={groupIndex} messages={group.messages} />
         ),

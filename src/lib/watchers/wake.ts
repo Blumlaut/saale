@@ -15,9 +15,17 @@
  *   here, because a wake that would run an agent is the whole thing it declines.
  */
 
-import { respondInChat } from "@/lib/chat/respond-in-chat";
+import { respondInChat, ChatBusyError } from "@/lib/chat/respond-in-chat";
 import { dispatchWatcherRun } from "@/lib/coder/dispatch";
 import { runStandaloneWake } from "./standalone";
+
+/**
+ * The chat a fire reports into is mid-turn, so this tick waits for the next one.
+ *
+ * Told apart from a real failure because nothing is broken: the user is typing
+ * in that conversation, and the next tick delivers.
+ */
+export class WakeDeferredError extends Error {}
 
 /** What a fire produced that is worth telling the tick log about. */
 export interface WakeDelivery {
@@ -89,7 +97,9 @@ export interface WakeTarget {
  * shares a chat with the one before it.
  *
  * @throws when the delivery could not happen, so the caller records a blocked
- * tick and leaves the script's ledger where it was.
+ * tick and leaves the script's ledger where it was. A chat that is mid-turn
+ * throws `WakeDeferredError`, which the caller keeps quiet about: nothing broke,
+ * the next tick delivers.
  */
 export async function deliverWake(options: {
   watcher: WakeTarget;
@@ -107,6 +117,21 @@ export async function deliverWake(options: {
     value: options.value,
     gated: options.gated,
   });
+
+  try {
+    return await deliver(message, options);
+  } catch (err) {
+    if (err instanceof ChatBusyError) throw new WakeDeferredError(err.message);
+    throw err;
+  }
+}
+
+/** Where the message goes, once it is built. */
+async function deliver(
+  message: string,
+  options: { watcher: WakeTarget; value: unknown },
+): Promise<WakeDelivery> {
+  const { watcher } = options;
 
   if (watcher.deliver === "coder") {
     const dispatched = await dispatchWatcherRun({

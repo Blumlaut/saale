@@ -10,14 +10,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  */
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
-vi.mock("@/lib/chat/respond-in-chat", () => ({ respondInChat: vi.fn() }));
+vi.mock("@/lib/chat/respond-in-chat", () => ({
+  respondInChat: vi.fn(),
+  ChatBusyError: class ChatBusyError extends Error {},
+}));
 vi.mock("@/lib/coder/dispatch", () => ({ dispatchWatcherRun: vi.fn() }));
 vi.mock("@/lib/watchers/standalone", () => ({ runStandaloneWake: vi.fn() }));
 
-import { respondInChat } from "@/lib/chat/respond-in-chat";
+import { ChatBusyError, respondInChat } from "@/lib/chat/respond-in-chat";
 import { dispatchWatcherRun } from "@/lib/coder/dispatch";
 import { runStandaloneWake } from "@/lib/watchers/standalone";
-import { buildWakeMessage, deliverWake, type WakeTarget } from "@/lib/watchers/wake";
+import {
+  buildWakeMessage,
+  deliverWake,
+  WakeDeferredError,
+  type WakeTarget,
+} from "@/lib/watchers/wake";
 
 function target(overrides: Partial<WakeTarget> = {}): WakeTarget {
   return {
@@ -204,11 +212,21 @@ describe("deliverWake", () => {
     ).rejects.toThrow(/no conversation/);
   });
 
-  it("surfaces a busy conversation so the tick can retry it", async () => {
-    vi.mocked(respondInChat).mockRejectedValue(new Error('Chat "Trip planning" is busy'));
+  it("tells a busy conversation apart from a failed one", async () => {
+    // A user typing in that chat is not a broken automation: the tick records a
+    // wait and the notice stays quiet.
+    vi.mocked(respondInChat).mockRejectedValue(new ChatBusyError('Chat "Trip planning" is busy'));
 
     await expect(
       deliverWake({ watcher: target(), value: { count: 2 }, gated: true }),
-    ).rejects.toThrow(/busy/);
+    ).rejects.toBeInstanceOf(WakeDeferredError);
+  });
+
+  it("surfaces a conversation that could not answer at all", async () => {
+    vi.mocked(respondInChat).mockRejectedValue(new Error('Chat "Trip planning" failed to respond'));
+
+    await expect(
+      deliverWake({ watcher: target(), value: { count: 2 }, gated: true }),
+    ).rejects.toThrow(/failed to respond/);
   });
 });

@@ -73,9 +73,9 @@ describe("groupMessages", () => {
     });
   });
 
-  it("treats system messages like user messages (standalone bubble)", () => {
+  it("renders system messages as notices of their own", () => {
     const groups = groupMessages([msg({ id: "s1", role: "system" })]);
-    expect(groups[0]).toEqual({ type: "user", message: expect.objectContaining({ id: "s1" }) });
+    expect(groups[0]).toEqual({ type: "notice", message: expect.objectContaining({ id: "s1" }) });
   });
 
   it("renders compaction messages as standalone cards", () => {
