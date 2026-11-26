@@ -11,6 +11,7 @@ import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { isSidebarNavActive, type SidebarNavItem } from "@/lib/navigation/sidebar-nav";
+import { PALETTE_KIND_LABELS, type PaletteResult } from "@/lib/search/palette-result";
 import {
   SETTINGS_GROUPS,
   SETTINGS_GROUP_LABELS,
@@ -36,15 +37,6 @@ import { Mail, Shield, Search, X, Loader2 } from "lucide-react";
 
 const adminNavItem = { href: "/admin/models", label: "Admin", icon: Shield };
 
-interface SearchResult {
-  type: "chat" | "email";
-  id: string;
-  title: string;
-  snippet: string;
-  date: string;
-  metadata?: { accountId?: string } | undefined;
-}
-
 export function DashboardNav({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -55,7 +47,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
     pathname === "/dashboard/mail" && activeAccountId === accountId;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<PaletteResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [mailExpanded, setMailExpanded] = usePersistedState("nav:mailExpanded", false, {
     validate: isBoolean,
@@ -136,7 +128,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
     const timer = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const data = await fetchJson<{ results: SearchResult[] }>(
+        const data = await fetchJson<{ results: PaletteResult[] }>(
           `/api/search?q=${encodeURIComponent(searchQuery)}&limit=10`,
         );
         setSearchResults(data.results);
@@ -150,17 +142,10 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleResultClick = (result: SearchResult) => {
+  const handleResultClick = (result: PaletteResult) => {
     setSearchOpen(false);
     setSearchQuery("");
-    if (result.type === "chat") {
-      router.push(`/dashboard/chat/${result.id}`);
-    } else if (result.type === "email") {
-      const accountId = result.metadata?.accountId;
-      const params = new URLSearchParams({ msg: result.id });
-      if (typeof accountId === "string") params.set("accountId", accountId);
-      router.push(`/dashboard/mail?${params.toString()}`);
-    }
+    router.push(result.href);
   };
 
   /* Mail carries the user's accounts: the row goes to the inbox, the toggle opens them. */
@@ -322,7 +307,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
                   <Input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search chats, emails..."
+                    placeholder="Search chats, mail, tasks..."
                     className="h-8 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
                     autoFocus
                   />
@@ -359,7 +344,7 @@ export function DashboardNav({ workspaceName }: { workspaceName: string }) {
                           variant="secondary"
                           className="console-label shrink-0 rounded px-1.5 py-0"
                         >
-                          {result.type}
+                          {PALETTE_KIND_LABELS[result.kind]}
                         </Badge>
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium">{result.title}</div>

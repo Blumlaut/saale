@@ -1,0 +1,167 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/search/sources", () => ({
+  searchChatSessions: vi.fn(),
+  searchChatMessages: vi.fn(),
+  searchUserMail: vi.fn(),
+  searchContacts: vi.fn(),
+  searchTasks: vi.fn(),
+  searchCalendarEvents: vi.fn(),
+  searchMemories: vi.fn(),
+}));
+
+import {
+  searchCalendarEvents,
+  searchChatMessages,
+  searchChatSessions,
+  searchContacts,
+  searchMemories,
+  searchTasks,
+  searchUserMail,
+} from "@/lib/search/sources";
+import { searchPalette } from "@/lib/search/palette";
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const sessions = vi.mocked(searchChatSessions as any);
+const messages = vi.mocked(searchChatMessages as any);
+const mail = vi.mocked(searchUserMail as any);
+const contacts = vi.mocked(searchContacts as any);
+const tasks = vi.mocked(searchTasks as any);
+const events = vi.mocked(searchCalendarEvents as any);
+const memories = vi.mocked(searchMemories as any);
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function nothingFound(): void {
+  sessions.mockResolvedValue([]);
+  messages.mockResolvedValue([]);
+  mail.mockResolvedValue([]);
+  contacts.mockResolvedValue([]);
+  tasks.mockResolvedValue([]);
+  events.mockResolvedValue([]);
+  memories.mockResolvedValue([]);
+}
+
+describe("searchPalette", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    nothingFound();
+  });
+
+  it("asks nothing for a blank query", async () => {
+    expect(await searchPalette("user-1", "   ")).toEqual([]);
+    expect(sessions).not.toHaveBeenCalled();
+  });
+
+  it("ranks every source together and trims to the limit", async () => {
+    sessions.mockResolvedValue([{ id: "s-1", title: "Weekly planning", score: 2 }]);
+    tasks.mockResolvedValue([{ id: "t-1", title: "Plan the week", status: "pending", score: 5 }]);
+
+    const results = await searchPalette("user-1", "week", { limit: 1 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ kind: "task", id: "t-1", title: "Plan the week" });
+  });
+
+  it("asks only the kinds it was given", async () => {
+    await searchPalette("user-1", "week", { kinds: ["task"] });
+
+    expect(tasks).toHaveBeenCalled();
+    expect(sessions).not.toHaveBeenCalled();
+    expect(mail).not.toHaveBeenCalled();
+    expect(memories).not.toHaveBeenCalled();
+  });
+
+  it("collapses a chat's title hit and message hit into one row", async () => {
+    sessions.mockResolvedValue([
+      { id: "s-1", title: "Weekly planning", lastActivityAt: new Date(), score: 2 },
+    ]);
+    messages.mockResolvedValue([
+      {
+        id: "m-1",
+        sessionId: "s-1",
+        sessionTitle: "Weekly planning",
+        role: "assistant",
+        content: "the week is already planned",
+        createdAt: new Date(),
+        score: 9,
+      },
+    ]);
+
+    const results = await searchPalette("user-1", "week");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ kind: "chat", id: "s-1", score: 9 });
+    expect(results[0]?.snippet).toContain("already planned");
+  });
+
+  it("keeps the title hit when it outranks the message", async () => {
+    sessions.mockResolvedValue([{ id: "s-1", title: "Weekly planning", score: 9 }]);
+    messages.mockResolvedValue([
+      {
+        id: "m-1",
+        sessionId: "s-1",
+        sessionTitle: "Weekly planning",
+        role: "user",
+        content: "plan the week",
+        createdAt: new Date(),
+        score: 1,
+      },
+    ]);
+
+    const [result] = await searchPalette("user-1", "week");
+
+    expect(result?.snippet).toBe("Weekly planning");
+  });
+
+  it("sends a mail row to the message in its own account", async () => {
+    mail.mockResolvedValue([
+      {
+        id: "mail-1",
+        subject: "Week ahead",
+        fromName: "Ada",
+        fromEmail: "ada@example.com",
+        bodyPreview: "the week looks busy",
+        date: new Date(),
+        accountId: "account-1",
+        score: 4,
+      },
+    ]);
+
+    const [result] = await searchPalette("user-1", "week", { kinds: ["email"] });
+
+    expect(result?.href).toBe("/dashboard/mail?msg=mail-1&accountId=account-1");
+    expect(result?.snippet).toContain("Ada");
+  });
+
+  it("says what a task's state and a contact's address are", async () => {
+    tasks.mockResolvedValue([
+      {
+        id: "t-1",
+        title: "Plan the week",
+        description: null,
+        status: "pending",
+        dueDate: new Date("2026-01-05T00:00:00.000Z"),
+        score: 3,
+      },
+    ]);
+    contacts.mockResolvedValue([
+      {
+        id: "c-1",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        company: "Analytical",
+        notes: null,
+        score: 2,
+      },
+    ]);
+
+    const results = await searchPalette("user-1", "week", { kinds: ["task", "contact"] });
+
+    expect(results[0]?.snippet).toBe("pending · 2026-01-05");
+    expect(results[1]).toMatchObject({
+      kind: "contact",
+      href: "/dashboard/contacts",
+      snippet: "Analytical · ada@example.com",
+    });
+  });
+});

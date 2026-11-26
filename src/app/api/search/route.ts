@@ -1,112 +1,30 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { snippetAround } from "@/lib/search/snippet";
-import { searchChatMessages, searchChatSessions, searchUserMail } from "@/lib/search/sources";
+import { DEFAULT_PALETTE_LIMIT, searchPalette } from "@/lib/search/palette";
+import { paletteKindsFrom } from "@/lib/search/palette-result";
 
 /**
- * GET /api/search. Fuzzy search for the ⌘K palette, across chats and email.
+ * GET /api/search. The ⌘K palette, across everything the agent can search:
+ * chats, email, contacts, tasks, calendar events and memories.
  *
- * Chats match by title or by anything said in them. Email matches subject,
- * sender, and body. Every word of the query has to match, and results come back
- * best first, so a long query narrows instead of flooding.
- *
- * Query params: q (required), type (optional: "all" | "chat" | "email"), limit
+ * Query params: q (required), type (optional: "all" or a comma-separated list of
+ * kinds), limit
  */
-
-interface PaletteResult {
-  type: "chat" | "email";
-  id: string;
-  title: string;
-  snippet: string;
-  date: string;
-  score: number;
-  metadata?: Record<string, unknown>;
-}
-
 export async function GET(request: NextRequest) {
   const authResult = await requireSession();
   if (!authResult.ok) return authResult.response;
 
   const url = new URL(request.url);
-  const query = url.searchParams.get("q");
-  const type = url.searchParams.get("type") ?? "all";
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "15", 10), 50);
-
-  if (!query || !query.trim()) {
+  const query = url.searchParams.get("q")?.trim();
+  if (!query) {
     return NextResponse.json({ error: "Query parameter 'q' is required" }, { status: 400 });
   }
 
-  const userId = authResult.user.id;
-  const trimmedQuery = query.trim();
-  const results: PaletteResult[] = [];
-
-  if (type === "all" || type === "chat") {
-    const [sessions, messages] = await Promise.all([
-      searchChatSessions(userId, trimmedQuery, { limit }),
-      searchChatMessages(userId, trimmedQuery, { limit }),
-    ]);
-
-    // One row per chat: the title match and any message hit collapse together.
-    const byId = new Map<string, PaletteResult>();
-
-    for (const session of sessions) {
-      byId.set(session.id, {
-        type: "chat",
-        id: session.id,
-        title: session.title,
-        snippet: session.title,
-        date: session.lastActivityAt.toISOString(),
-        score: session.score,
-        metadata: { messageCount: session.messageCount },
-      });
-    }
-
-    for (const message of messages) {
-      const existing = byId.get(message.sessionId);
-      if (existing && existing.score >= message.score) continue;
-
-      byId.set(message.sessionId, {
-        type: "chat",
-        id: message.sessionId,
-        title: message.sessionTitle,
-        snippet: snippetAround(message.content, trimmedQuery, 150),
-        date: message.createdAt.toISOString(),
-        score: message.score,
-        metadata: { messageCount: existing?.metadata?.messageCount },
-      });
-    }
-
-    results.push(...byId.values());
-  }
-
-  if (type === "all" || type === "email") {
-    const emails = await searchUserMail(userId, trimmedQuery, { limit });
-
-    for (const email of emails) {
-      const preview = email.bodyPreview ?? "";
-      results.push({
-        type: "email",
-        id: email.id,
-        title: email.subject || "(no subject)",
-        snippet: `${email.fromName || email.fromEmail}: ${snippetAround(preview, trimmedQuery, 150)}`,
-        date: email.date.toISOString(),
-        score: email.score,
-        metadata: {
-          from: email.fromName || email.fromEmail,
-          folder: email.folder,
-          read: email.isRead,
-          accountId: email.accountId,
-        },
-      });
-    }
-  }
-
-  results.sort((a, b) => b.score - a.score);
-
-  return NextResponse.json({
-    query: trimmedQuery,
-    results: results.slice(0, limit),
-    total: results.length,
+  const results = await searchPalette(authResult.user.id, query, {
+    kinds: paletteKindsFrom(url.searchParams.get("type")),
+    limit: Number(url.searchParams.get("limit") ?? DEFAULT_PALETTE_LIMIT),
   });
+
+  return NextResponse.json({ query, results, total: results.length });
 }
