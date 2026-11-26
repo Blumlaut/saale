@@ -10,9 +10,14 @@ import { gotoAndSettle } from "./utils";
  * just painted.
  */
 
-async function seedNotification(request: APIRequestContext): Promise<void> {
+async function seedNotification(request: APIRequestContext, data = {}): Promise<void> {
   const response = await request.post("/api/notifications", {
-    data: { type: "job_completed", title: "e2e notice", message: "seeded by the suite" },
+    data: {
+      type: "job_completed",
+      title: "e2e notice",
+      message: "seeded by the suite",
+      ...data,
+    },
   });
   expect(response.ok()).toBe(true);
 }
@@ -28,6 +33,9 @@ function unreadBadge(page: import("@playwright/test").Page) {
 }
 
 test.describe("notifications", () => {
+  // One bell, one user: a test that seeds while another clears would fight.
+  test.describe.configure({ mode: "serial" });
+
   test("marks every notification read, and the next load agrees", async ({ page, request }) => {
     await seedNotification(request);
 
@@ -46,5 +54,27 @@ test.describe("notifications", () => {
     await gotoAndSettle(page, "/dashboard/tasks");
     await expect(bell(page)).toBeVisible();
     await expect(unreadBadge(page)).toHaveCount(0);
+  });
+
+  test("opens the page a notification points at", async ({ page, request }) => {
+    const title = `e2e automation ${Date.now()}`;
+    await seedNotification(request, {
+      type: "automation",
+      title,
+      data: { url: "/dashboard/jobs/automations" },
+    });
+
+    try {
+      await gotoAndSettle(page, "/dashboard/tasks");
+      await bell(page).click();
+
+      await page.getByText(title, { exact: true }).click();
+
+      await page.waitForURL(/\/dashboard\/jobs\/automations/);
+      await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
+    } finally {
+      // The bell outlives the run: leave nothing unread behind.
+      await request.patch("/api/notifications", { data: { all: true } });
+    }
   });
 });

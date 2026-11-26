@@ -108,9 +108,13 @@ export async function markInboxNotifications(
   options: { ids?: readonly string[]; all?: boolean },
 ): Promise<void> {
   const entries = await listInboxNotifications(userId);
-  const marked = entries.map((entry) =>
-    options.all || options.ids?.includes(entry.id) ? { ...entry, read: true } : entry,
-  );
+  const wanted = (entry: StoredInboxNotification) =>
+    !entry.read && (options.all === true || options.ids?.includes(entry.id) === true);
+  const marked = entries.map((entry) => (wanted(entry) ? { ...entry, read: true } : entry));
+
+  // Nothing unread: writing the list back would only open a gap for an entry
+  // added between the read and the write.
+  if (marked.every((entry, index) => entry === entries[index])) return;
 
   await replaceInboxNotifications(userId, marked);
 }
