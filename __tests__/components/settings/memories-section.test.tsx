@@ -4,7 +4,12 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoriesSection } from "@/app/dashboard/settings/sections/memories-section";
 
-const { fetchJson } = vi.hoisted(() => ({ fetchJson: vi.fn() }));
+const { fetchJson, searchParams } = vi.hoisted(() => ({
+  fetchJson: vi.fn(),
+  searchParams: { current: new URLSearchParams() },
+}));
+
+vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams.current }));
 
 vi.mock("@/lib/http", () => ({
   fetchJson,
@@ -30,6 +35,7 @@ const MEMORY = {
 
 beforeEach(() => {
   fetchJson.mockReset();
+  searchParams.current = new URLSearchParams();
 });
 
 describe("settings · memories", () => {
@@ -55,5 +61,20 @@ describe("settings · memories", () => {
 
     expect(await screen.findByText("Prefers tabs")).toBeVisible();
     expect(screen.queryByText("Could not load your memories.")).not.toBeInTheDocument();
+  });
+
+  it("opens on the search a link brought", async () => {
+    // A ⌘K row for a memory names what it matched, so the list shows it.
+    searchParams.current = new URLSearchParams("q=tabs");
+    fetchJson.mockImplementation((url: string) =>
+      url.startsWith("/api/memories/collections")
+        ? Promise.resolve({ collections: [], total: 1 })
+        : Promise.resolve({ memories: [MEMORY], total: 1 }),
+    );
+
+    render(<MemoriesSection />);
+
+    expect(screen.getByPlaceholderText("Search memories...")).toHaveValue("tabs");
+    expect(await screen.findByText("Prefers tabs")).toBeVisible();
   });
 });
