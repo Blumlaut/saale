@@ -25,6 +25,16 @@ interface Notification {
   createdAt: string;
 }
 
+/** The two lines every entry carries, however it is opened. */
+function NotificationText({ notification }: { notification: Notification }) {
+  return (
+    <>
+      <div className="text-sm font-medium">{notification.title}</div>
+      <div className="text-muted-foreground text-xs">{notification.message}</div>
+    </>
+  );
+}
+
 /** Where a notification points, if it points anywhere. */
 function notificationHref(notification: Notification): string | null {
   const url = notification.data?.url;
@@ -126,57 +136,57 @@ export function NotificationBell() {
           ) : notifications.length === 0 ? (
             <div className="text-muted-foreground py-8 text-center text-sm">No notifications</div>
           ) : (
-            notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={cn(
-                  "border-border hover:bg-accent/60 dark:border-border dark:hover:bg-muted/50 flex items-start gap-3 border-b px-4 py-3 transition-colors",
-                  !notification.read && "bg-muted/50",
-                )}
-              >
+            notifications.map((notification) => {
+              const href = notificationHref(notification);
+
+              return (
                 <div
+                  key={notification.id}
                   className={cn(
-                    "mt-0.5 rounded-full p-1.5",
-                    !notification.read ? "bg-primary/10 text-primary" : "text-muted-foreground",
+                    "border-border hover:bg-accent/60 dark:border-border dark:hover:bg-muted/50 flex items-start gap-3 border-b px-4 py-3 transition-colors",
+                    !notification.read && "bg-muted/50",
                   )}
                 >
-                  {getIcon(notification.type)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  {notificationHref(notification) ? (
-                    <Link
-                      href={notificationHref(notification)!}
-                      className="block rounded-sm hover:underline"
-                      onClick={() => {
-                        setOpen(false);
-                        if (!notification.read) void markAsRead(notification.id);
-                      }}
-                    >
-                      <div className="text-sm font-medium">{notification.title}</div>
-                      <div className="text-muted-foreground text-xs">{notification.message}</div>
-                    </Link>
-                  ) : (
-                    <>
-                      <div className="text-sm font-medium">{notification.title}</div>
-                      <div className="text-muted-foreground text-xs">{notification.message}</div>
-                    </>
-                  )}
-                  <div className="text-muted-foreground/60 mt-1 text-xs">
-                    {formatRelativeDate(notification.createdAt)}
-                  </div>
-                </div>
-                {!notification.read && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 shrink-0"
-                    onClick={() => markAsRead(notification.id)}
+                  <div
+                    className={cn(
+                      "mt-0.5 rounded-full p-1.5",
+                      !notification.read ? "bg-primary/10 text-primary" : "text-muted-foreground",
+                    )}
                   >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            ))
+                    {getIcon(notification.type)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="block rounded-sm hover:underline"
+                        onClick={() => {
+                          setOpen(false);
+                          if (!notification.read) void markAsRead(notification.id);
+                        }}
+                      >
+                        <NotificationText notification={notification} />
+                      </Link>
+                    ) : (
+                      <NotificationText notification={notification} />
+                    )}
+                    <div className="text-muted-foreground/60 mt-1 text-xs">
+                      {formatRelativeDate(notification.createdAt)}
+                    </div>
+                  </div>
+                  {!notification.read && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => markAsRead(notification.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </PopoverContent>

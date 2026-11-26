@@ -118,7 +118,7 @@ describe("announceTickFailure", () => {
       category: "automation",
       title: 'Automation "Watch the inbox" failed',
       body: outcome().reason,
-      url: "/dashboard/jobs/automations",
+      url: "/dashboard/jobs/automations?id=w-1",
       tag: "automation-w-1",
       inApp: true,
     });

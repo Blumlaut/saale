@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { GlassPanel, GlassPanelContent, GlassPanelHeader } from "@/components/ui/glass-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -116,7 +116,8 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const router = useRouter();
   const [watchers, setWatchers] = useState<ScriptWatcher[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // A notification about one automation opens the page with it already selected.
+  const [selectedId, setSelectedId] = useState<string | null>(useSearchParams().get("id"));
   const [ticks, setTicks] = useState<ScriptWatcherTick[]>([]);
   const [loadingTicks, setLoadingTicks] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -169,10 +170,13 @@ export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
 
   const selected = watchers.find((w) => w.id === selectedId) ?? null;
 
-  const select = (watcher: ScriptWatcher) => {
-    setSelectedId(watcher.id);
-    void loadTicks(watcher.id);
-  };
+  // The open tick log follows the selection, including one the page was opened
+  // with (`?id=` from a notification).
+  useEffect(() => {
+    if (selectedId) void loadTicks(selectedId);
+  }, [selectedId, loadTicks]);
+
+  const select = (watcher: ScriptWatcher) => setSelectedId(watcher.id);
 
   const handleToggle = async (watcher: ScriptWatcher, enabled: boolean) => {
     try {

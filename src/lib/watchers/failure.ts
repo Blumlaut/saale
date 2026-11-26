@@ -75,7 +75,7 @@ export async function announceTickFailure(options: {
     category: "automation",
     title: `Automation "${watcher.name}" failed`,
     body: outcome.reason ?? UNSTATED_REASON,
-    url: "/dashboard/jobs/automations",
+    url: `/dashboard/jobs/automations?id=${watcher.id}`,
     // One tag per automation: a later failure replaces the earlier notice
     // instead of stacking on the lock screen.
     tag: `automation-${watcher.id}`,

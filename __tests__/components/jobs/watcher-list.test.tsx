@@ -6,7 +6,11 @@ import { WatcherList } from "@/components/jobs/watcher-list";
 import type { ScriptWatcher } from "@/types/shared";
 
 const mockPush = vi.fn();
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
+const mockSearchParams = vi.hoisted(() => ({ current: new URLSearchParams() }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => mockSearchParams.current,
+}));
 
 const mockFetchJson = vi.fn();
 vi.mock("@/lib/http", () => ({
@@ -62,6 +66,7 @@ describe("WatcherList chat link", () => {
   beforeEach(() => {
     mockPush.mockClear();
     mockFetchJson.mockReset();
+    mockSearchParams.current = new URLSearchParams();
   });
 
   it("links a watcher's session title into its chat", async () => {
@@ -134,5 +139,27 @@ describe("WatcherList chat link", () => {
     expect(
       await screen.findByRole("button", { name: "Open chat Price watch" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("WatcherList selection from the address", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+    mockFetchJson.mockReset();
+  });
+
+  it("opens the automation a notification pointed at", async () => {
+    // A failure notice links to `?id=`, so the page lands on the broken
+    // automation instead of the list.
+    mockSearchParams.current = new URLSearchParams("id=w-1");
+    mockFetchJson.mockImplementation(async (url: string) =>
+      url === "/api/automations" ? { watchers: [watcher()] } : { ticks: [] },
+    );
+
+    render(<WatcherList />);
+
+    await screen.findByText("Price watch");
+    expect(mockFetchJson).toHaveBeenCalledWith("/api/automations/w-1");
+    expect(await screen.findByText("Ticks · Price watch")).toBeInTheDocument();
   });
 });
