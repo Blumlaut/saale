@@ -56,12 +56,26 @@ describe("notifyUser", () => {
     expect(mockAddInbox).not.toHaveBeenCalled();
   });
 
-  it("sends nothing on an instance without VAPID keys", async () => {
+  it("keeps the bell working on an instance without VAPID keys", async () => {
+    mockPushConfigured.mockReturnValue(false);
+
+    await notifyUser({ ...NOTIFICATION, category: "email", inApp: true });
+
+    expect(mockAddInbox).toHaveBeenCalledWith("user-1", {
+      type: "email",
+      title: "Finished responding",
+      message: "Weekly planning",
+      data: { url: "/dashboard/chat/chat-1" },
+    });
+    expect(mockSendPush).not.toHaveBeenCalled();
+  });
+
+  it("sends no push on an instance without VAPID keys", async () => {
     mockPushConfigured.mockReturnValue(false);
 
     await notifyUser(NOTIFICATION);
 
-    expect(mockAppSettings.findUnique).not.toHaveBeenCalled();
+    expect(mockAddInbox).not.toHaveBeenCalled();
     expect(mockSendPush).not.toHaveBeenCalled();
   });
 
@@ -93,7 +107,9 @@ describe("notifyUser", () => {
     mockAppSettings.findUnique.mockResolvedValue({ pushNotifications: { email: false } });
     expect(await isNotificationWanted("user-1", "email")).toBe(false);
 
+    // A category's answer is the user's, whatever the instance's push setup.
     mockPushConfigured.mockReturnValue(false);
-    expect(await isNotificationWanted("user-1", "email")).toBe(false);
+    mockAppSettings.findUnique.mockResolvedValue({ pushNotifications: null });
+    expect(await isNotificationWanted("user-1", "email")).toBe(true);
   });
 });

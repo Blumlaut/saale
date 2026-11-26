@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 
 import {
   adminSettingsRow as adminRow,
@@ -288,6 +289,17 @@ describe("applyUserSettingsPatch", () => {
 
     expect(lastArgs(mocks.updateUserSettings).data).toEqual({
       pushNotifications: { email: false },
+    });
+  });
+
+  it("clears a notification entry when it is switched back to its default", async () => {
+    await applyUserSettingsPatch(USER_ID, {
+      pushNotifications: { chatDone: true, coderDone: true, calendar: true, email: true },
+    });
+
+    // Every category is on, which is what an empty column means.
+    expect(lastArgs(mocks.updateUserSettings).data).toEqual({
+      pushNotifications: Prisma.DbNull,
     });
   });
 

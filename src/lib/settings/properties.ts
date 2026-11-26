@@ -93,6 +93,7 @@ import { getAllPurposes } from "@/lib/pi/purposes";
 import { normalizeToolExposure } from "@/lib/pi/tool-exposure-rules";
 import { FEATURES, normalizeFeatureOverrides } from "@/lib/permissions/features";
 import {
+  DEFAULT_CATEGORY_ENABLED,
   isCategoryEnabled,
   normalizeNotificationPreferences,
   NOTIFICATION_CATEGORIES,
@@ -677,7 +678,7 @@ function notificationProperties(): UserProperty[] {
     read: (row) => isCategoryEnabled(row.pushNotifications, category.key),
     write: (row, value) => {
       const preferences = normalizeNotificationPreferences(row.pushNotifications);
-      if (value === null) {
+      if (value === null || Boolean(value) === DEFAULT_CATEGORY_ENABLED) {
         delete preferences[category.key];
       } else {
         preferences[category.key] = Boolean(value);

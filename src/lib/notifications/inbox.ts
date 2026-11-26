@@ -67,7 +67,7 @@ export async function addInboxNotification(
  * One round trip: the old copy goes, the new one arrives in the same order it
  * was read in, and the list keeps its cap.
  */
-export async function replaceInboxNotifications(
+async function replaceInboxNotifications(
   userId: string,
   entries: ReadonlyArray<StoredInboxNotification>,
 ): Promise<void> {
@@ -79,4 +79,38 @@ export async function replaceInboxNotifications(
     multi.ltrim(key, 0, MAX_ENTRIES - 1);
   }
   await multi.exec();
+}
+
+/** A stored entry, or null for a line Redis holds that is not one. */
+function parseEntry(raw: string): StoredInboxNotification | null {
+  try {
+    return JSON.parse(raw) as StoredInboxNotification;
+  } catch (err) {
+    console.error("Failed to parse a stored notification:", err);
+    return null;
+  }
+}
+
+/** A user's bell, newest first. */
+export async function listInboxNotifications(userId: string): Promise<StoredInboxNotification[]> {
+  const raw = await getRedis().lrange(`${NOTIFICATION_KEY}${userId}`, 0, MAX_ENTRIES - 1);
+  return raw.map((line) => parseEntry(line as string)).filter((entry) => entry !== null);
+}
+
+/**
+ * Mark entries read, or every entry with `all`.
+ *
+ * Redis lists are replaced whole rather than edited in place, so this reads the
+ * list and writes it back with the same order and cap.
+ */
+export async function markInboxNotifications(
+  userId: string,
+  options: { ids?: readonly string[]; all?: boolean },
+): Promise<void> {
+  const entries = await listInboxNotifications(userId);
+  const marked = entries.map((entry) =>
+    options.all || options.ids?.includes(entry.id) ? { ...entry, read: true } : entry,
+  );
+
+  await replaceInboxNotifications(userId, marked);
 }

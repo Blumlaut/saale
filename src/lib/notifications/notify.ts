@@ -6,6 +6,9 @@
  * carry it (push to every subscribed device, plus the in-app bell for events
  * that happened in the background).
  *
+ * The bell and push are separate channels on purpose: an instance with no VAPID
+ * keys still has notifications, they just stay in the app.
+ *
  * Nothing here throws: a notification is a side effect of work that already
  * completed, so a push service or Redis outage must not fail it.
  */
@@ -33,8 +36,6 @@ export async function isNotificationWanted(
   userId: string,
   category: NotificationCategory,
 ): Promise<boolean> {
-  if (!isPushConfigured()) return false;
-
   const settings = await prisma.appSettings.findUnique({
     where: { userId },
     select: { pushNotifications: true },
@@ -45,8 +46,7 @@ export async function isNotificationWanted(
 
 /**
  * Push a notification to the user's devices, and optionally list it in the
- * bell. Silently does nothing when the instance has no VAPID keys or the user
- * turned the category off.
+ * bell. The bell needs no VAPID keys; a push that cannot be sent is skipped.
  */
 export async function notifyUser(notification: UserNotification): Promise<void> {
   const { userId, category, title, body, url, tag, inApp = false } = notification;
@@ -65,6 +65,7 @@ export async function notifyUser(notification: UserNotification): Promise<void> 
       });
     }
 
+    if (!isPushConfigured()) return;
     await sendPushToUser(userId, { title, body, url, tag });
   } catch (err) {
     console.error(`Failed to notify user ${userId} (${category}):`, err);

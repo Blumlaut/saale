@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -8,14 +9,26 @@ import { Bell, CheckCircle, AlertCircle, Mail, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeDate } from "@/lib/format";
 import { fetchJson, patchJson } from "@/lib/http";
+import { usePolling } from "@/hooks/use-polling";
+
+/** How often the bell asks again: the work behind a notification finishes elsewhere. */
+export const NOTIFICATION_POLL_MS = 30_000;
 
 interface Notification {
   id: string;
   type: string;
   title: string;
   message: string;
+  /** What the notification opens, when it came from work that left a page behind. */
+  data?: Record<string, unknown>;
   read: boolean;
   createdAt: string;
+}
+
+/** Where a notification points, if it points anywhere. */
+function notificationHref(notification: Notification): string | null {
+  const url = notification.data?.url;
+  return typeof url === "string" && url.startsWith("/") ? url : null;
 }
 
 export function NotificationBell() {
@@ -37,6 +50,8 @@ export function NotificationBell() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
+
+  usePolling(loadNotifications, NOTIFICATION_POLL_MS);
 
   const markAsRead = async (id: string) => {
     try {
@@ -64,6 +79,7 @@ export function NotificationBell() {
         return <Mail className="h-3.5 w-3.5" />;
       case "job_completed":
         return <CheckCircle className="h-3.5 w-3.5" />;
+      case "automation":
       case "job_error":
         return <AlertCircle className="h-3.5 w-3.5" />;
       default:
@@ -127,8 +143,24 @@ export function NotificationBell() {
                   {getIcon(notification.type)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{notification.title}</div>
-                  <div className="text-muted-foreground text-xs">{notification.message}</div>
+                  {notificationHref(notification) ? (
+                    <Link
+                      href={notificationHref(notification)!}
+                      className="block rounded-sm hover:underline"
+                      onClick={() => {
+                        setOpen(false);
+                        if (!notification.read) void markAsRead(notification.id);
+                      }}
+                    >
+                      <div className="text-sm font-medium">{notification.title}</div>
+                      <div className="text-muted-foreground text-xs">{notification.message}</div>
+                    </Link>
+                  ) : (
+                    <>
+                      <div className="text-sm font-medium">{notification.title}</div>
+                      <div className="text-muted-foreground text-xs">{notification.message}</div>
+                    </>
+                  )}
                   <div className="text-muted-foreground/60 mt-1 text-xs">
                     {formatRelativeDate(notification.createdAt)}
                   </div>

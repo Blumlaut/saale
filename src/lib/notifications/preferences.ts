@@ -28,6 +28,11 @@ export const NOTIFICATION_CATEGORIES = [
     label: "New mail",
     description: "New mail arrived in one of your inboxes.",
   },
+  {
+    key: "automation",
+    label: "Automation failed",
+    description: "An automation's run failed or timed out, and what it found was lost.",
+  },
 ] as const;
 
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number]["key"];
@@ -35,13 +40,14 @@ export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number]["key
 export type NotificationPreferences = Record<NotificationCategory, boolean>;
 
 /** Everything is on until the user turns it off. */
-const DEFAULT_ENABLED = true;
+export const DEFAULT_CATEGORY_ENABLED = true;
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  chatDone: DEFAULT_ENABLED,
-  coderDone: DEFAULT_ENABLED,
-  calendar: DEFAULT_ENABLED,
-  email: DEFAULT_ENABLED,
+  chatDone: DEFAULT_CATEGORY_ENABLED,
+  coderDone: DEFAULT_CATEGORY_ENABLED,
+  calendar: DEFAULT_CATEGORY_ENABLED,
+  email: DEFAULT_CATEGORY_ENABLED,
+  automation: DEFAULT_CATEGORY_ENABLED,
 };
 
 function isCategory(value: string): value is NotificationCategory {
@@ -75,7 +81,7 @@ export function normalizeNotificationPreferences(value: unknown): Partial<Notifi
 
   for (const [key, entry] of Object.entries(stored as Record<string, unknown>)) {
     if (!isCategory(key) || typeof entry !== "boolean") continue;
-    if (entry === DEFAULT_ENABLED) continue;
+    if (entry === DEFAULT_CATEGORY_ENABLED) continue;
     result[key] = entry;
   }
 

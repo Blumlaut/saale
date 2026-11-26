@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { usePolling } from "@/hooks/use-polling";
 
 /** How often a list asks again while a row is on its way out. */
 export const DELETING_POLL_MS = 2_000;
@@ -12,9 +12,5 @@ export const DELETING_POLL_MS = 2_000;
  * soon as the last row is gone.
  */
 export function useDeletingPoll(deleting: boolean, refresh: () => void): void {
-  useEffect(() => {
-    if (!deleting) return;
-    const timer = setInterval(refresh, DELETING_POLL_MS);
-    return () => clearInterval(timer);
-  }, [deleting, refresh]);
+  usePolling(refresh, DELETING_POLL_MS, deleting);
 }

@@ -8,7 +8,7 @@ import {
 
 describe("notification preferences", () => {
   it("defaults every category on, so a new subscription reaches the user", () => {
-    expect(Object.values(DEFAULT_NOTIFICATION_PREFERENCES)).toEqual([true, true, true, true]);
+    expect(Object.values(DEFAULT_NOTIFICATION_PREFERENCES)).toEqual([true, true, true, true, true]);
     expect(readNotificationPreferences(null)).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
   });
 
@@ -18,6 +18,7 @@ describe("notification preferences", () => {
       coderDone: true,
       calendar: true,
       email: false,
+      automation: true,
     });
   });
 

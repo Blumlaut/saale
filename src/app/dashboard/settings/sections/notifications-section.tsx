@@ -163,7 +163,7 @@ export function NotificationsSection() {
                   {device === "unsupported" &&
                     "This browser cannot show notifications. On iPhone and iPad, add Saale to your home screen first."}
                   {device === "unconfigured" &&
-                    "Notifications are not set up on this instance. An administrator has to add the VAPID keys."}
+                    "This instance has no push keys, so notifications stay in the bell. An administrator has to add the VAPID keys to reach a device that is closed."}
                   {device === "denied" &&
                     "Notifications are blocked for Saale in this browser. Allow them in the browser's site settings, then reload."}
                   {device === "off" && "Notifications are off on this device."}
