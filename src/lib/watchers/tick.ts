@@ -216,6 +216,8 @@ async function recordTick(options: {
   outcome: TickOutcome;
   store?: Record<string, unknown>;
   fired: boolean;
+  /** Whether this outcome sets the automation's stored failure. A tick that only had to wait leaves it where it was. */
+  recordError?: boolean;
 }): Promise<TickOutcome> {
   const { outcome } = options;
 
@@ -242,10 +244,14 @@ async function recordTick(options: {
       tickCount: { increment: 1 },
       lastTickAt: new Date(),
       lastValue: encodeValue(outcome.value),
-      lastError:
-        outcome.status === "error" || outcome.status === "blocked"
-          ? (outcome.reason ?? null)
-          : null,
+      ...(options.recordError === false
+        ? {}
+        : {
+            lastError:
+              outcome.status === "error" || outcome.status === "blocked"
+                ? (outcome.reason ?? null)
+                : null,
+          }),
       ...(options.store !== undefined ? { store: options.store as Prisma.InputJsonValue } : {}),
       ...(options.fired ? { fireCount: { increment: 1 }, lastFiredAt: new Date() } : {}),
     },
@@ -403,9 +409,15 @@ export async function runWatcherTick(watcherId: string): Promise<TickOutcome> {
     const blocked: TickOutcome = { ...outcome, status: "blocked", reason };
 
     // A chat that is mid-turn is a wait, not a failure: the user is in that
-    // conversation, and the next tick delivers.
+    // conversation, and the next tick delivers. It is also not the automation's
+    // stored failure, so a real one from before keeps its place.
     if (err instanceof WakeDeferredError) {
-      return recordTick({ watcherId: watcher.id, outcome: blocked, fired: false });
+      return recordTick({
+        watcherId: watcher.id,
+        outcome: blocked,
+        fired: false,
+        recordError: false,
+      });
     }
 
     console.error(`[automation:${watcher.id}] Wake failed:`, err);

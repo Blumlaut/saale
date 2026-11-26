@@ -324,6 +324,8 @@ describe("runWatcherTick", () => {
     expect(outcome.status).toBe("blocked");
     // Nothing broke: the user is in that conversation and the next tick delivers.
     expect(announce).not.toHaveBeenCalled();
+    // And the wait is not the automation's stored failure.
+    expect(writtenUpdate()).not.toHaveProperty("lastError");
   });
 
   it("fires every tick when there is no script to gate it", async () => {
