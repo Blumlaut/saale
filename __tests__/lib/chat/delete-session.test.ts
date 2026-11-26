@@ -70,6 +70,11 @@ vi.mock("@/lib/coder/processes", () => ({
   stopChatProcesses: (...args: unknown[]) => mockStopChatProcesses(...args),
 }));
 
+const mockSweepUserOrphanProcesses = vi.fn();
+vi.mock("@/lib/coder/process-sweep", () => ({
+  sweepUserOrphanProcesses: (...args: unknown[]) => mockSweepUserOrphanProcesses(...args),
+}));
+
 import { autoDeleteChatSession, deleteChatSession } from "@/lib/chat/delete-session";
 
 const USER_ID = "user-1";
@@ -101,6 +106,7 @@ describe("deleteChatSession", () => {
     mockRemoveChatWorktree.mockResolvedValue({ path: null, removed: false });
     mockLoadChatCheckout.mockResolvedValue(null);
     mockStopChatProcesses.mockResolvedValue(undefined);
+    mockSweepUserOrphanProcesses.mockResolvedValue({ stopped: [], live: 0 });
   });
 
   it("deletes a chat the user owns and returns its title", async () => {
@@ -289,6 +295,32 @@ describe("deleteChatSession", () => {
 
     expect(mockRemoveChatWorktree).not.toHaveBeenCalled();
     expect(mockStopChatProcesses).not.toHaveBeenCalled();
+    expect(mockSweepUserOrphanProcesses).not.toHaveBeenCalled();
+  });
+
+  it("sweeps the account for what the deleted chat's id no longer claims", async () => {
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+    mockRemoveChatWorktree.mockResolvedValue({ path: "worktrees/saale/c-1a2b3c4d", removed: true });
+
+    await deleteChatSession(USER_ID, SESSION_ID);
+
+    // The row has to be gone, or the sweep still answers to the chat's id.
+    expect(mockSweepUserOrphanProcesses).toHaveBeenCalledWith(USER_ID);
+    expect(mockSweepUserOrphanProcesses.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      mockDeleteMany.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("finishes the delete when the sweep cannot run", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFindFirst.mockResolvedValue({ title: "Coder chat", projectId: "project-1" });
+    mockSweepUserOrphanProcesses.mockRejectedValue(new Error("sandbox is down"));
+
+    const result = await deleteChatSession(USER_ID, SESSION_ID);
+
+    expect(result).toEqual({ title: "Coder chat" });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });
 

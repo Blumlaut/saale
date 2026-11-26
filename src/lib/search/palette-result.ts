@@ -6,7 +6,16 @@
  */
 
 /** Everything the palette can find. */
-export const PALETTE_KINDS = ["chat", "email", "contact", "task", "event", "memory"] as const;
+export const PALETTE_KINDS = [
+  "chat",
+  "email",
+  "contact",
+  "task",
+  "event",
+  "memory",
+  "automation",
+  "server",
+] as const;
 
 /** Rows the palette shows when the caller names no limit. */
 export const DEFAULT_PALETTE_LIMIT = 12;
@@ -35,6 +44,20 @@ export const PALETTE_KIND_LABELS: Record<PaletteKind, string> = {
   task: "task",
   event: "event",
   memory: "memory",
+  automation: "automation",
+  server: "server",
+};
+
+/** The word the filter chip shows, where a plural reads better than a badge. */
+export const PALETTE_KIND_CHIP_LABELS: Record<PaletteKind, string> = {
+  chat: "Chats",
+  email: "Mail",
+  contact: "Contacts",
+  task: "Tasks",
+  event: "Events",
+  memory: "Memories",
+  automation: "Automations",
+  server: "Servers",
 };
 
 /** The kinds a `?type=` value asks for. An absent or "all" value asks for every one. */

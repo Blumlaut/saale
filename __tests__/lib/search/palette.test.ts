@@ -8,13 +8,17 @@ vi.mock("@/lib/search/sources", () => ({
   searchTasks: vi.fn(),
   searchCalendarEvents: vi.fn(),
   searchMemories: vi.fn(),
+  searchAutomations: vi.fn(),
+  searchMachines: vi.fn(),
 }));
 
 import {
+  searchAutomations,
   searchCalendarEvents,
   searchChatMessages,
   searchChatSessions,
   searchContacts,
+  searchMachines,
   searchMemories,
   searchTasks,
   searchUserMail,
@@ -29,6 +33,8 @@ const contacts = vi.mocked(searchContacts as any);
 const tasks = vi.mocked(searchTasks as any);
 const events = vi.mocked(searchCalendarEvents as any);
 const memories = vi.mocked(searchMemories as any);
+const automations = vi.mocked(searchAutomations as any);
+const machines = vi.mocked(searchMachines as any);
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function nothingFound(): void {
@@ -39,6 +45,8 @@ function nothingFound(): void {
   tasks.mockResolvedValue([]);
   events.mockResolvedValue([]);
   memories.mockResolvedValue([]);
+  automations.mockResolvedValue([]);
+  machines.mockResolvedValue([]);
 }
 
 describe("searchPalette", () => {
@@ -188,5 +196,36 @@ describe("searchPalette", () => {
     expect(hrefs).toContain("/dashboard/tasks?id=t-1");
     expect(hrefs).toContain("/dashboard/calendar?date=2026-01-05");
     expect(hrefs).toContain(`/dashboard/settings/memories?q=${encodeURIComponent("week")}`);
+  });
+
+  it("says which automation is paused and where a server logs in", async () => {
+    automations.mockResolvedValue([
+      {
+        id: "w-1",
+        name: "Nightly box watch",
+        description: "reads the box log",
+        enabled: false,
+        score: 5,
+      },
+    ]);
+    machines.mockResolvedValue([
+      { id: "s-1", name: "build box", host: "10.0.0.4", username: "deploy", score: 4 },
+    ]);
+
+    const results = await searchPalette("user-1", "box", {
+      kinds: ["automation", "server"],
+    });
+
+    expect(results[0]).toMatchObject({
+      kind: "automation",
+      href: "/dashboard/jobs/automations?id=w-1",
+      snippet: "paused · reads the box log",
+    });
+    expect(results[1]).toMatchObject({
+      kind: "server",
+      title: "build box",
+      href: "/dashboard/infra?id=s-1",
+      snippet: "deploy@10.0.0.4",
+    });
   });
 });

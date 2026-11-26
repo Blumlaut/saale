@@ -193,11 +193,11 @@ export async function removeChatWorktree(
 
   const { path, branch, repoPath, repoExists, checkoutExists } = checkout;
 
-  if (checkoutExists) {
-    // The checkout is about to go, so everything the chat left running goes
-    // first.
-    await stopChatProcesses(userId, sessionId, { ownCheckout: resolveCoderPath(userId, path) });
+  // Everything the chat left running goes first, whether or not the directory
+  // is still there: a dev server started before it went keeps its deleted cwd.
+  await stopChatProcesses(userId, sessionId, { ownCheckout: resolveCoderPath(userId, path) });
 
+  if (checkoutExists) {
     if (repoPath === null || !repoExists) {
       // Nothing left to compare the checkout against, so what is in it is all
       // that is left of the work done there.

@@ -28,6 +28,7 @@ import { keepAutoDeletedSession, type AutoDeleteKeepReason } from "./auto-delete
 import { getProvisioning } from "@/lib/coder/provisioning";
 import { loadChatCheckout } from "@/lib/coder/checkout";
 import { stopChatProcesses } from "@/lib/coder/processes";
+import { sweepUserOrphanProcesses } from "@/lib/coder/process-sweep";
 import { getPoolKey, getSessionDir, remove } from "@/lib/pi/agent-pool";
 import { removeChatWorktree } from "@/lib/coder/worktree-removal";
 
@@ -61,7 +62,8 @@ export async function deleteChatSession(
     const worktree = await removeChatWorktree(userId, sessionId, force);
     if (!worktree.removed) {
       // A chat in the project's own checkout has no worktree whose removal
-      // would have stopped it.
+      // would have stopped it. That checkout is shared with its siblings, so
+      // only the commands carrying this chat's id can be told apart.
       const checkout = await loadChatCheckout(userId, sessionId);
       if (checkout) await stopChatProcesses(userId, sessionId);
     }
@@ -98,6 +100,14 @@ export async function deleteChatSession(
 
   for (const watcherId of watcherIds) {
     await unscheduleWatcher(watcherId);
+  }
+
+  // The rows this chat's id belonged to are gone, so the pass can now see what
+  // the chat's own sweep cannot name: a dev env started without its id.
+  if (session.projectId) {
+    await sweepUserOrphanProcesses(userId).catch((err) => {
+      console.error(`Failed to sweep what the deleted chat ${sessionId} left running:`, err);
+    });
   }
 
   // Dispose the pooled agent, then remove Pi's JSONL transcript directory.

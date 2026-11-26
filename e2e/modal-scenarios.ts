@@ -1131,6 +1131,14 @@ async function mockGithubApp(page: Page) {
 }
 
 export const MODAL_SCENARIOS: ModalScenario[] = [
+  // ── Shell ─────────────────────────────────────────────────────────────────
+  {
+    name: "dashboard · command palette",
+    path: "/dashboard/chat",
+    sources: ["src/components/layout/command-palette.tsx"],
+    // The phone widths have no sidebar, so the bottom bar's search button is the way in.
+    open: (page) => click(page, 'nav button[aria-label="Search"]'),
+  },
   // ── Infrastructure ────────────────────────────────────────────────────────
   {
     name: "infra · add machine",

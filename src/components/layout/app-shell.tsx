@@ -1,5 +1,6 @@
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
+import { CommandPaletteProvider } from "@/components/providers/command-palette-provider";
 import { KeyboardShortcutsProvider } from "@/components/providers/keyboard-shortcuts-provider";
 import { PushSeenReporter } from "@/components/providers/push-seen-reporter";
 import { SidebarNavProvider } from "@/components/providers/sidebar-nav-provider";
@@ -28,27 +29,29 @@ interface AppShellProps {
  */
 export function AppShell({ nav, children, banner }: AppShellProps) {
   return (
-    <KeyboardShortcutsProvider>
-      <SidebarNavProvider>
-        <PushSeenReporter />
-        <DashboardLayout>
-          <div className="shell-frame">
-            {/* Desktop sidebar. on phones the bottom bar is the navigation */}
-            <div className="hidden shrink-0 md:flex">{nav}</div>
-            <main className="shell-main">
-              {banner}
-              {/* Page wrapper. flex-1 fills the remaining space */}
-              <div className="min-h-0 flex-1">
-                <div className="page-wrapper h-full">
-                  {/* Inner. h-full fills page-wrapper so child pages can flex-1 */}
-                  <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
+    <CommandPaletteProvider>
+      <KeyboardShortcutsProvider>
+        <SidebarNavProvider>
+          <PushSeenReporter />
+          <DashboardLayout>
+            <div className="shell-frame">
+              {/* Desktop sidebar. on phones the bottom bar is the navigation */}
+              <div className="hidden shrink-0 md:flex">{nav}</div>
+              <main className="shell-main">
+                {banner}
+                {/* Page wrapper. flex-1 fills the remaining space */}
+                <div className="min-h-0 flex-1">
+                  <div className="page-wrapper h-full">
+                    {/* Inner. h-full fills page-wrapper so child pages can flex-1 */}
+                    <div className="flex h-full flex-col gap-4 overflow-hidden">{children}</div>
+                  </div>
                 </div>
-              </div>
-            </main>
-          </div>
-          <MobileNav />
-        </DashboardLayout>
-      </SidebarNavProvider>
-    </KeyboardShortcutsProvider>
+              </main>
+            </div>
+            <MobileNav />
+          </DashboardLayout>
+        </SidebarNavProvider>
+      </KeyboardShortcutsProvider>
+    </CommandPaletteProvider>
   );
 }

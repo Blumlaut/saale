@@ -195,6 +195,20 @@ describe("removeChatWorktree", () => {
     });
   });
 
+  it("stops what the chat left running in a checkout that is already gone", async () => {
+    state.checkoutExists = false;
+
+    const result = await removeChatWorktree(USER, CHAT, true);
+
+    expect(result).toEqual({ path: "worktrees/saale/c-1", removed: true });
+    // The directory is gone; a dev server started before it went is not.
+    expect(mockStopChatProcesses).toHaveBeenCalledWith(USER, CHAT, {
+      ownCheckout: "/w/user/worktrees/worktrees/saale/c-1",
+    });
+    expect(mockDeleteDirectory).not.toHaveBeenCalled();
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+  });
+
   it("removes the directory outright when the repo is gone and the user confirmed", async () => {
     state.repoExists = false;
 

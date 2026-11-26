@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageActions, PageAction } from "@/components/layout/page";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,18 @@ interface MachineListProps {
 
 export function MachineList({ onAdd, onEdit, onOpenNotes, onRefresh }: MachineListProps) {
   const { machines, loading, error, forget } = useMachines();
+  // A palette result names one machine, so the page opens it already selected.
+  const linkedId = useSearchParams().get("id");
+  const [openedLinkedId, setOpenedLinkedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!linkedId || openedLinkedId === linkedId) return;
+    const machine = machines.find((candidate) => candidate.id === linkedId);
+    if (!machine) return;
+    setOpenedLinkedId(linkedId);
+    onEdit(machine);
+  }, [linkedId, openedLinkedId, machines, onEdit]);
+
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>(
     {},

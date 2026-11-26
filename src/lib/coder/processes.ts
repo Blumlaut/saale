@@ -59,7 +59,8 @@ export interface ProcessTargets {
     lines.push(
       `  cwd=$(readlink "$p/cwd" 2>/dev/null) || continue`,
       `  case "$cwd" in`,
-      `    "$root"|"$root"/*) kill -KILL "$pid" 2>/dev/null ;;`,
+      // A process whose checkout is already gone reads `/path (deleted)`.
+      `    "$root"|"$root"/*|"$root (deleted)"|"$root"/*" (deleted)") kill -KILL "$pid" 2>/dev/null ;;`,
       `  esac`,
     );
   }

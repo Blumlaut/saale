@@ -147,6 +147,24 @@ describe("the worktree sweep", () => {
     expect(exitSignal(unreadable)).toBeNull();
   });
 
+  it("kills what ran in a checkout that is already gone", async () => {
+    const wasRoot = spawnSleep();
+    const wasBelow = spawnSleep();
+    const sibling = spawnSleep();
+
+    // A process whose directory was removed keeps its deleted path as its cwd.
+    await observe(wasRoot, `${worktree} (deleted)`);
+    await observe(wasBelow, `${path.join(worktree, "apps", "web")} (deleted)`);
+    await observe(sibling, `${worktree}-old (deleted)`);
+
+    await runSweep();
+    await settled(wasRoot, wasBelow);
+
+    expect(exitSignal(wasRoot)).toBe("SIGKILL");
+    expect(exitSignal(wasBelow)).toBe("SIGKILL");
+    expect(exitSignal(sibling)).toBeNull();
+  });
+
   it("finishes cleanly with nothing to stop", async () => {
     const result = await runSweep();
 

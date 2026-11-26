@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useCommandPalette } from "@/components/providers/command-palette-provider";
 
 interface KeyboardShortcutsProviderProps {
   children: React.ReactNode;
@@ -12,7 +13,7 @@ interface KeyboardShortcutsProviderProps {
  */
 export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProviderProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const palette = useCommandPalette();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -22,6 +23,13 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
       // Don't trigger shortcuts when typing in inputs
       const tag = (e.target as HTMLElement)?.tagName;
       const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      // Cmd/Ctrl + K. The workspace search
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        palette.toggle();
+        return;
+      }
 
       // Cmd/Ctrl + N. New chat
       if (mod && e.key.toLowerCase() === "n") {
@@ -53,17 +61,16 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
         router.push("/dashboard/settings");
       }
 
-      // /. Focus search (when not in input)
+      // /. Search, when the caret is not already in a field
       if (e.key === "/" && !isInput) {
         e.preventDefault();
-        // Dispatch custom event for search bar to listen
-        window.dispatchEvent(new CustomEvent("focus-search"));
+        palette.show();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router, pathname]);
+  }, [router, palette]);
 
   return <>{children}</>;
 }

@@ -20,26 +20,26 @@ same in mail, chat, tasks, contacts, calendar and memory.
 
 ### HTTP routes
 
-| Route                             | Matches                                               |
-| --------------------------------- | ----------------------------------------------------- |
-| `GET /api/search`                 | chat titles, chat messages, email subject/sender/body |
-| `GET /api/email/messages?search=` | email subject, sender, body                           |
-| `GET /api/contacts?search=`       | name, email, company                                  |
-| `GET /api/memories?search=`       | title, content                                        |
+| Route                             | Matches                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------- |
+| `GET /api/search`                 | chats, email, contacts, tasks, calendar events, memories, automations, machines |
+| `GET /api/email/messages?search=` | email subject, sender, body                                                     |
+| `GET /api/contacts?search=`       | name, email, company                                                            |
+| `GET /api/memories?search=`       | title, content                                                                  |
 
 ### UI
 
 | Surface                                                         | Reaches                               |
 | --------------------------------------------------------------- | ------------------------------------- |
-| ⌘K palette (`dashboard-nav`)                                    | `GET /api/search`                     |
+| ⌘K palette (`components/layout/command-palette.tsx`)            | `GET /api/search`, filtered by kind   |
 | Mail inbox search box                                           | `GET /api/email/messages?search=`     |
 | Contacts page                                                   | `includes()` over the fetched list    |
 | Settings → memories                                             | `GET /api/memories?search=`           |
 | Command sheet, model picker, every `PickerShell`/`SearchSelect` | `filterOptions()`, substring          |
 | Admin → users                                                   | better-auth `searchValue`, email only |
 
-No search at all: the chat session list, the files browser, jobs, automations,
-the calendar page, and coder sessions.
+No search at all: the chat session list, the files browser, schedules, the
+calendar page, and coder sessions.
 
 ## How a query is matched
 

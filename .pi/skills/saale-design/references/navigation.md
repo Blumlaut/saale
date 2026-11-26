@@ -12,7 +12,7 @@ nav.sidebar-nav (sticky top-6 h-fit w-56 shrink-0)
    └─ GlassPanelContent p-3
       ├─ Brand row: ChevronRight (orange) + "Saale" + NotificationBell
       ├─ Separator
-      ├─ Search button (ghost, w-full, ⌘K kbd) → portal dropdown (bg-popover, rounded-xl)
+      ├─ Search button (ghost, w-full, ⌘K kbd) → the ⌘K dialog (command-palette.tsx)
       └─ Nav items (space-y-0.5): the user's visible items, in the user's order (+ Admin for admins)
 └─ Console footer (mt-4 border-t px-3 pt-3)
    ├─ Row: console-label "Saale 2026.10.0" (version in normal-case, same font) + theme toggle icon button
@@ -91,7 +91,12 @@ Reproduce this pattern for other "console identity" moments: `console-label` + s
 - **Width:** 224px (`w-56`), `sticky top-6 h-fit` — floats, doesn't stretch
 - **Icons:** `h-4 w-4`, `gap-2` to label
 - **Items:** sentence case, `text-sm`
-- **Search:** ghost button with `⌘K` kbd; results dropdown portals out of the panel (overflow-hidden) as a `bg-popover rounded-xl shadow-2xl` surface
+- **Search:** ghost button with `⌘K` kbd; it opens the ⌘K dialog
+  (`src/components/layout/command-palette.tsx`), which takes every result kind
+  behind one row of filter chips. It is a Dialog on purpose: the box needs the
+  whole width for one input, and no sheet has that shape. `CommandPalette` is
+  rendered once by `CommandPaletteProvider` in the app shell, so the sidebar
+  row, the phone bar's search button and the shortcut all open the same box.
 - **Admin item:** only rendered for admin users, same styling, always last — it is
   not part of the user's layout and can't be reordered or hidden (the bottom bar
   appends it the same way)

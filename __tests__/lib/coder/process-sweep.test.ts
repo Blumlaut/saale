@@ -27,7 +27,7 @@ vi.mock("@/lib/coder/processes", () => ({
   stopChatProcessesById: mocks.stopChatProcessesById,
 }));
 
-import { sweepOrphanProcesses } from "@/lib/coder/process-sweep";
+import { sweepOrphanProcesses, sweepUserOrphanProcesses } from "@/lib/coder/process-sweep";
 import { userIdentity } from "@/lib/sandbox/identity";
 
 const USER = "user-1";
@@ -132,5 +132,33 @@ describe("sweepOrphanProcesses", () => {
 
     expect(result).toEqual({ stopped: [], live: 0 });
     expect(mocks.findChats).not.toHaveBeenCalled();
+  });
+});
+
+describe("sweepUserOrphanProcesses", () => {
+  it("sweeps one account without asking which accounts have a project", async () => {
+    mocks.listRunningChatIds.mockResolvedValue(["chat-deleted"]);
+
+    const result = await sweepUserOrphanProcesses(OTHER_USER);
+
+    expect(result).toEqual({ stopped: ["chat-deleted"], live: 0 });
+    expect(mocks.findProjects).not.toHaveBeenCalled();
+    expect(mocks.findChats).toHaveBeenCalledWith({
+      where: { userId: OTHER_USER, id: { in: ["chat-deleted"] } },
+      select: { id: true },
+    });
+    expect(mocks.stopChatProcessesById).toHaveBeenCalledWith(OTHER_USER, "chat-deleted");
+  });
+
+  it("reports a container it cannot read as nothing to stop", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.listRunningChatIds.mockRejectedValue(new Error("container is down"));
+
+    const result = await sweepUserOrphanProcesses(USER);
+
+    expect(result).toEqual({ stopped: [], live: 0 });
+    expect(mocks.findChats).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });

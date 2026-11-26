@@ -2,14 +2,16 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, Shield, type LucideIcon } from "lucide-react";
+import { Home, Search, Shield, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebarNav } from "@/components/providers/sidebar-nav-provider";
 import { SIDEBAR_NAV_ICONS } from "@/components/layout/sidebar-nav-icons";
 import { ADMIN_NAV_ITEMS } from "@/components/admin/admin-nav";
+import { useCommandPalette } from "@/components/providers/command-palette-provider";
 import { useSessionPermissions } from "@/hooks/use-session-permissions";
 import { hasGrant } from "@/lib/permissions/roles";
 import { canOpenAdminItem } from "@/lib/navigation/admin-sections";
+import { Button } from "@/components/ui/button";
 
 interface MobileNavItem {
   href: string;
@@ -32,6 +34,7 @@ function isItemActive(href: string, pathname: string): boolean {
  */
 export function MobileNav() {
   const pathname = usePathname();
+  const { show: showPalette } = useCommandPalette();
   const { visibleItems } = useSidebarNav();
   const access = useSessionPermissions();
   const isAdmin = access ? hasGrant(access.permissions, "admin", "access") : false;
@@ -58,6 +61,15 @@ export function MobileNav() {
   return (
     <nav className="mobile-nav border-border bg-card fixed inset-x-0 bottom-0 z-40 border-t md:hidden">
       <div className="flex h-11 items-center px-1.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Search"
+          className="h-full flex-none rounded-none px-2"
+          onClick={showPalette}
+        >
+          <Search className="h-5 w-5 stroke-[1.5px]" />
+        </Button>
         {items.map((item) => {
           const isActive = isItemActive(item.href, pathname);
           const Icon = item.icon;

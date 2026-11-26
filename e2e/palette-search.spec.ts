@@ -10,10 +10,10 @@ import { gotoAndSettle } from "./utils";
  * these kinds of row are rendered, so this is where a broken `href` shows.
  */
 
-/** Open the sidebar's search box, the way a click on it does. */
+/** Open the sidebar's search row, the way a click on it does. */
 async function openPalette(page: import("@playwright/test").Page): Promise<void> {
   await page
-    .getByRole("button", { name: /Search\.\.\./ })
+    .getByRole("button", { name: /Search/ })
     .first()
     .click();
 }
@@ -29,16 +29,83 @@ test.describe("the ⌘K palette", () => {
       await gotoAndSettle(page, "/dashboard/tasks");
       await openPalette(page);
 
-      await page.getByPlaceholder("Search chats, mail, tasks...").fill(title);
+      const box = page.getByRole("textbox", { name: "Search the workspace" });
+      await box.fill(title);
 
       // The row carries the kind it found, so the list says what it is.
-      const row = page.getByRole("button", { name: new RegExp(title) }).first();
+      const row = page.getByRole("option", { name: new RegExp(title) }).first();
       await expect(row).toBeVisible();
       await expect(row.getByText("task", { exact: true })).toBeVisible();
 
       await row.click();
 
       // The task's own form is what the link names, already filled in.
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("heading", { name: "Edit Task" })).toBeVisible();
+      await expect(dialog.getByPlaceholder("What needs to be done?")).toHaveValue(title);
+    } finally {
+      await request.delete(`/api/tasks/${task.id}`);
+    }
+  });
+
+  test("a server row opens the machine it names", async ({ page, request }) => {
+    const name = `palette machine ${Date.now()}`;
+    const created = await request.post("/api/infra/machines", {
+      data: {
+        name,
+        host: "palette.example.com",
+        port: 22,
+        username: "deploy",
+        authMethod: "key",
+      },
+    });
+    expect(created.ok()).toBe(true);
+    const { machine } = await created.json();
+
+    try {
+      await gotoAndSettle(page, "/dashboard/infra");
+      await openPalette(page);
+
+      await page.getByRole("textbox", { name: "Search the workspace" }).fill(name);
+      await page.getByRole("button", { name: "Servers", exact: true }).click();
+
+      const row = page.getByRole("option", { name: new RegExp(name) }).first();
+      await expect(row).toBeVisible();
+      await row.click();
+
+      // The machine's own dialog is what the row names.
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("heading", { name: "Edit Machine" })).toBeVisible();
+      await expect(dialog.locator("#infra-host")).toHaveValue("palette.example.com");
+    } finally {
+      await request.delete(`/api/infra/machines/${machine.id}`);
+    }
+  });
+
+  test("opens the top row with Enter, and a chip narrows the list", async ({ page, request }) => {
+    const title = `palette enter ${Date.now()}`;
+    const created = await request.post("/api/tasks", { data: { title } });
+    expect(created.ok()).toBe(true);
+    const { task } = await created.json();
+
+    try {
+      await gotoAndSettle(page, "/dashboard/tasks");
+      await openPalette(page);
+
+      const box = page.getByRole("textbox", { name: "Search the workspace" });
+      await box.fill(title);
+      await expect(page.getByRole("option", { name: new RegExp(title) })).toBeVisible();
+
+      // Mail cannot hold a task, so the same query has nothing left to show.
+      await page.getByRole("button", { name: "Mail", exact: true }).click();
+      await expect(page.getByText("Nothing matched.")).toBeVisible();
+
+      await page.getByRole("button", { name: "Tasks", exact: true }).click();
+      await expect(page.getByRole("option", { name: new RegExp(title) })).toBeVisible();
+
+      // The top row is the active one, so Enter is the whole trip.
+      await box.press("Enter");
+
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("heading", { name: "Edit Task" })).toBeVisible();
       await expect(dialog.getByPlaceholder("What needs to be done?")).toHaveValue(title);

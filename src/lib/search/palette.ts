@@ -17,15 +17,19 @@ import {
   type PaletteResult,
 } from "./palette-result";
 import {
+  searchAutomations,
   searchCalendarEvents,
   searchChatMessages,
   searchChatSessions,
   searchContacts,
+  searchMachines,
   searchMemories,
   searchTasks,
   searchUserMail,
+  type AutomationHit,
   type CalendarEventHit,
   type ContactHit,
+  type MachineHit,
   type TaskHit,
 } from "./sources";
 
@@ -47,13 +51,24 @@ function contactSnippet(contact: ContactHit, query: string): string {
 function taskSnippet(task: TaskHit, query: string): string {
   const excerpt = snippetAround(task.description ?? "", query, SNIPPET_LENGTH);
   if (excerpt) return excerpt;
-  const due = task.dueDate ? task.dueDate.toISOString().slice(0, 10) : "no due date";
-  return `${task.status} · ${due}`;
+  const due = task.dueDate ? task.dueDate.toISOString().slice(0, 10) : null;
+  return due ? `${task.status} · ${due}` : task.status;
 }
 
 function eventSnippet(event: CalendarEventHit): string {
   const day = event.dtStart.toISOString().slice(0, 10);
   return event.location ? `${day} · ${event.location}` : day;
+}
+
+/** Whether it is paused, and whatever the description matched. */
+function automationSnippet(automation: AutomationHit, query: string): string {
+  const excerpt = snippetAround(automation.description ?? "", query, SNIPPET_LENGTH);
+  if (!automation.enabled) return excerpt ? `paused · ${excerpt}` : "paused";
+  return excerpt;
+}
+
+function machineSnippet(machine: MachineHit): string {
+  return `${machine.username}@${machine.host}`;
 }
 
 /**
@@ -171,6 +186,37 @@ async function memoryRows(userId: string, query: string, limit: number): Promise
   }));
 }
 
+async function automationRows(
+  userId: string,
+  query: string,
+  limit: number,
+): Promise<PaletteResult[]> {
+  const hits = await searchAutomations(userId, query, { limit });
+
+  return hits.map((automation) => ({
+    kind: "automation",
+    id: automation.id,
+    title: automation.name,
+    snippet: automationSnippet(automation, query),
+    score: automation.score,
+    // The automations page opens one it is told about, the way a notification does.
+    href: `/dashboard/jobs/automations?id=${encodeURIComponent(automation.id)}`,
+  }));
+}
+
+async function machineRows(userId: string, query: string, limit: number): Promise<PaletteResult[]> {
+  const hits = await searchMachines(userId, query, { limit });
+
+  return hits.map((machine) => ({
+    kind: "server",
+    id: machine.id,
+    title: machine.name,
+    snippet: machineSnippet(machine),
+    score: machine.score,
+    href: `/dashboard/infra?id=${encodeURIComponent(machine.id)}`,
+  }));
+}
+
 /** The one function per kind. A new kind is one entry here and one label. */
 const ROW_SEARCHES: Record<
   PaletteKind,
@@ -182,6 +228,8 @@ const ROW_SEARCHES: Record<
   task: taskRows,
   event: eventRows,
   memory: memoryRows,
+  automation: automationRows,
+  server: machineRows,
 };
 
 function boundedLimit(limit: number): number {

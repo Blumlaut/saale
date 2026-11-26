@@ -365,3 +365,64 @@ export function searchCalendarEvents(
     limit: opts.limit,
   });
 }
+
+/** An automation (a script watcher) matched by its name or description. */
+export interface AutomationHit {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+}
+
+export function searchAutomations(
+  userId: string,
+  query: string,
+  opts: { limit: number } = { limit: 10 },
+): Promise<Array<AutomationHit & { score: number }>> {
+  return searchRows<AutomationHit>(query, {
+    from: Prisma.sql`"ScriptWatcher" w`,
+    where: Prisma.sql`w."userId" = ${userId}`,
+    fields: [
+      { expr: Prisma.sql`w.name`, weight: 3 },
+      { expr: Prisma.sql`w.description`, weight: 1 },
+    ],
+    tsvector: Prisma.sql`(
+      setweight(to_tsvector('english', coalesce(w.name, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(w.description, '')), 'B')
+    )`,
+    select: Prisma.sql`w.id, w.name, w.description, w.enabled`,
+    orderBy: Prisma.sql`w.enabled DESC, w.name ASC`,
+    limit: opts.limit,
+  });
+}
+
+/** A machine (an SSH server) matched by its name, host or login. */
+export interface MachineHit {
+  id: string;
+  name: string;
+  host: string;
+  username: string;
+}
+
+export function searchMachines(
+  userId: string,
+  query: string,
+  opts: { limit: number } = { limit: 10 },
+): Promise<Array<MachineHit & { score: number }>> {
+  return searchRows<MachineHit>(query, {
+    from: Prisma.sql`"InfraMachine" m`,
+    where: Prisma.sql`m."userId" = ${userId}`,
+    fields: [
+      { expr: Prisma.sql`m.name`, weight: 3 },
+      { expr: Prisma.sql`m.host`, weight: 2 },
+      { expr: Prisma.sql`m.username`, weight: 1 },
+    ],
+    tsvector: Prisma.sql`(
+      setweight(to_tsvector('english', coalesce(m.name, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(m.host, '') || ' ' || coalesce(m.username, '')), 'B')
+    )`,
+    select: Prisma.sql`m.id, m.name, m.host, m.username`,
+    orderBy: Prisma.sql`m.name ASC`,
+    limit: opts.limit,
+  });
+}
