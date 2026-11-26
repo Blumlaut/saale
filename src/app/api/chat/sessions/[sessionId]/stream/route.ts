@@ -149,9 +149,10 @@ export async function GET(
   //
   // The decision only needs the LAST message: one indexed lookup (the
   // [sessionId, createdAt] index, scanned backwards) instead of loading
-  // every message the session has ever had, on every SSE connection.
+  // every message the session has ever had, on every SSE connection. App
+  // notices are skipped: they sit in the transcript, but they are not a turn.
   const lastMessage = await prisma.chatMessage.findFirst({
-    where: { sessionId, queuedAt: null },
+    where: { sessionId, queuedAt: null, role: { not: "system" } },
     orderBy: { createdAt: "desc" },
     include: {
       attachments: {
