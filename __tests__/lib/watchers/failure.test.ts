@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCreateMessage, mockUpdateSession, mockNotify, mockNote, mockPublish } = vi.hoisted(
-  () => ({
+const { mockCreateMessage, mockUpdateSession, mockFindSession, mockNotify, mockNote, mockPublish } =
+  vi.hoisted(() => ({
     mockCreateMessage: vi.fn(),
     mockUpdateSession: vi.fn(),
+    mockFindSession: vi.fn(),
     mockNotify: vi.fn(),
     mockNote: vi.fn(),
     mockPublish: vi.fn(),
-  }),
-);
+  }));
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     chatMessage: { create: mockCreateMessage },
-    chatSession: { update: mockUpdateSession },
+    chatSession: { update: mockUpdateSession, findFirst: mockFindSession },
   },
 }));
 vi.mock("@/lib/notifications/notify", () => ({ notifyUser: mockNotify }));
@@ -75,11 +75,20 @@ describe("failureNoticeEarned", () => {
   });
 });
 
+describe("failureText", () => {
+  it("carries the reason as one sentence, whatever it ended with", () => {
+    expect(failureText("Watch", "The script threw.")).toBe(
+      'Automation "Watch" failed: The script threw. What it would have reported never arrived.',
+    );
+  });
+});
+
 describe("announceTickFailure", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateMessage.mockResolvedValue({});
     mockUpdateSession.mockResolvedValue({});
+    mockFindSession.mockResolvedValue({ id: "chat-1" });
     mockNote.mockResolvedValue(undefined);
     mockPublish.mockResolvedValue(undefined);
     mockNotify.mockResolvedValue(undefined);
@@ -93,10 +102,20 @@ describe("announceTickFailure", () => {
       data: { sessionId: "chat-1", role: "system", content: text },
     });
     expect(mockUpdateSession).toHaveBeenCalledWith({
-      where: { id: "chat-1" },
+      where: { id: "chat-1", userId: "user-1" },
       data: { lastActivityAt: expect.any(Date), messageCount: { increment: 1 } },
     });
     expect(mockPublish).toHaveBeenCalledWith("chat-1", "messages_changed", {});
+  });
+
+  it("does not write into a chat the automation's owner does not own", async () => {
+    mockFindSession.mockResolvedValue(null);
+
+    await announceTickFailure({ watcher, outcome: outcome() });
+
+    expect(mockCreateMessage).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalled();
   });
 
   it("notes it in the transcript the agent reads", async () => {
@@ -127,6 +146,10 @@ describe("announceTickFailure", () => {
   it("falls back to the chat the automation was created from", async () => {
     await announceTickFailure({ watcher: { ...watcher, sessionId: null }, outcome: outcome() });
 
+    expect(mockFindSession).toHaveBeenCalledWith({
+      where: { id: "chat-0", userId: "user-1" },
+      select: { id: true },
+    });
     expect(mockCreateMessage).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ sessionId: "chat-0" }) }),
     );

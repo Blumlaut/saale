@@ -28,6 +28,7 @@ import { resolveChatModel } from "@/lib/pi/chat-session-factory";
 import { publishSessionEvent } from "@/lib/pi/session-events";
 import { waitForPersistenceTeardown } from "@/lib/pi/session-persistence";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "./agent-run";
+import { appendChatMessage } from "./append-message";
 import { chatUsageKind } from "@/lib/usage/record";
 
 /**
@@ -109,12 +110,11 @@ export async function respondInChat(options: RespondInChatOptions): Promise<Resp
   const detachAbort = attachAbort(options.signal, entry.session);
   try {
     promptedAt = new Date();
-    const userMessage = await prisma.chatMessage.create({
-      data: { sessionId: chatSession.id, role: "user", content: message },
-    });
-    await prisma.chatSession.update({
-      where: { id: chatSession.id },
-      data: { lastActivityAt: new Date(), messageCount: { increment: 1 } },
+    const userMessage = await appendChatMessage({
+      sessionId: chatSession.id,
+      userId,
+      role: "user",
+      content: message,
     });
     entry.lastPromptedMessageId = userMessage.id;
 

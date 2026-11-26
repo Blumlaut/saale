@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { isSessionBusy } from "@/lib/redis";
 import { get as getPoolEntry, getPoolKey } from "@/lib/pi/agent-pool";
 import { beginChatRun, dispatchChatRun, ensureChatAgent } from "@/lib/chat/agent-run";
+import { appendChatMessage } from "@/lib/chat/append-message";
 import { chatUsageKind } from "@/lib/usage/record";
 import { promptTitleFields } from "@/lib/chat/derive-title";
 import { resolveChatModel } from "@/lib/pi/chat-session-factory";
@@ -153,16 +154,12 @@ export async function runRoutedTelegramMessage(params: RoutedTelegramRunParams):
   let approvals: TelegramApprovalChannel | undefined;
   let settled = false;
   try {
-    const userMessage = await prisma.chatMessage.create({
-      data: { sessionId: chat.id, role: "user", content: params.content },
-    });
-    await prisma.chatSession.update({
-      where: { id: chat.id, userId },
-      data: {
-        lastActivityAt: new Date(),
-        messageCount: { increment: 1 },
-        ...promptTitleFields(chat.titleSource, params.promptText),
-      },
+    const userMessage = await appendChatMessage({
+      sessionId: chat.id,
+      userId,
+      role: "user",
+      content: params.content,
+      sessionData: promptTitleFields(chat.titleSource, params.promptText),
     });
     entry.lastPromptedMessageId = userMessage.id;
 

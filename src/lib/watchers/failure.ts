@@ -12,6 +12,7 @@
  */
 
 import { prisma } from "@/lib/db";
+import { appendChatMessage } from "@/lib/chat/append-message";
 import { notifyUser } from "@/lib/notifications/notify";
 import { appendSessionNote } from "@/lib/pi/session-notes";
 import { publishSessionEvent } from "@/lib/pi/session-events";
@@ -39,7 +40,8 @@ export interface FailureTarget {
 
 /** The line the chat and the bell both carry. */
 export function failureText(name: string, reason: string): string {
-  return `Automation "${name}" failed: ${reason}. What it would have reported never arrived.`;
+  const said = reason.trim().replace(/\.$/, "");
+  return `Automation "${name}" failed: ${said}. What it would have reported never arrived.`;
 }
 
 /**
@@ -91,11 +93,16 @@ async function noteInChat(watcher: FailureTarget, text: string): Promise<void> {
   const sessionId = watcher.sessionId ?? watcher.originSessionId;
   if (!sessionId) return;
 
-  await prisma.chatMessage.create({ data: { sessionId, role: "system", content: text } });
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: { lastActivityAt: new Date(), messageCount: { increment: 1 } },
+  const own = await prisma.chatSession.findFirst({
+    where: { id: sessionId, userId: watcher.userId },
+    select: { id: true },
   });
+  if (!own) {
+    console.error(`Automation ${watcher.id} reports into a chat that is not its owner's`);
+    return;
+  }
+
+  await appendChatMessage({ sessionId, userId: watcher.userId, role: "system", content: text });
 
   await appendSessionNote({
     userId: watcher.userId,
