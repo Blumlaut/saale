@@ -35,10 +35,12 @@ function NotificationText({ notification }: { notification: Notification }) {
   );
 }
 
-/** Where a notification points, if it points anywhere. */
+/** Where a notification points, if it points anywhere inside the app. */
 function notificationHref(notification: Notification): string | null {
   const url = notification.data?.url;
-  return typeof url === "string" && url.startsWith("/") ? url : null;
+  // `//host` is another site wearing an in-app path.
+  if (typeof url !== "string" || !url.startsWith("/") || url.startsWith("//")) return null;
+  return url;
 }
 
 export function NotificationBell() {
