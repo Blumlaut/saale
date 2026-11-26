@@ -2,11 +2,11 @@
   "name": "saale",
   "version": "2026.11.22",
   "private": true,
-  "packageManager": "pnpm@12.21.0",
+  "packageManager": "pnpm@12.23.0",
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": "^26.0.0",
+      "version": "^26.13.1",
       "onFail": "download"
     }
   },
