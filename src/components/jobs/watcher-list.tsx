@@ -114,10 +114,11 @@ interface WatcherListProps {
 
 export function WatcherList({ onRefresh, onEdit, action }: WatcherListProps) {
   const router = useRouter();
+  // A notification about one automation opens the page with it already selected.
+  const linkedId = useSearchParams().get("id");
   const [watchers, setWatchers] = useState<ScriptWatcher[]>([]);
   const [loading, setLoading] = useState(true);
-  // A notification about one automation opens the page with it already selected.
-  const [selectedId, setSelectedId] = useState<string | null>(useSearchParams().get("id"));
+  const [selectedId, setSelectedId] = useState<string | null>(linkedId);
   const [ticks, setTicks] = useState<ScriptWatcherTick[]>([]);
   const [loadingTicks, setLoadingTicks] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
